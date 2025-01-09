@@ -1,7 +1,7 @@
-# Maintainer: Sicelo <absicsz@gmail.com>
+# Maintainer: Danct12 <danct12@disroot.org>
 pkgname=gps-nokia-n900
 pkgver=0.3.2
-pkgrel=0
+pkgrel=1
 pkgdesc="GPS support for Nokia N900"
 url="https://github.com/maemo-leste/gps-nokia-n900"
 arch="armv7"

@@ -1,9 +1,8 @@
 # Reference: <https://postmarketos.org/devicepkg>
-# Maintainer: Sicelo <absicsz@gmail.com>
-# Co-Maintainer: Danct12 <danct12@disroot.org>
+# Maintainer: Danct12 <danct12@disroot.org>
 pkgname=device-nokia-n900
 pkgver=50
-pkgrel=0
+pkgrel=1
 pkgdesc="Nokia N900"
 url="https://postmarketos.org"
 arch="armv7"

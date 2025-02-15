@@ -1,7 +1,7 @@
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=postmarketos-config-nftables
 pkgver=1
-pkgrel=0
+pkgrel=1
 pkgdesc="nftables firewall configuration for postmarketOS"
 url="https://gitlab.com/postmarketos"
 arch="noarch"
@@ -10,16 +10,16 @@ depends="openssh-nftrules"
 # No subpackage for ausweisapp2, it's also on flathub, and
 # install_if won't work
 subpackages="
-	$pkgname-openusb:openusb
-	$pkgname-log:log
-	$pkgname-chromecast:chromecast
-	$pkgname-docker:docker
-	$pkgname-mdns:mdns
-	$pkgname-moshserver:moshserver
-	$pkgname-networkmanager:networkmanager
+	$pkgname-openusb
+	$pkgname-log
+	$pkgname-chromecast
+	$pkgname-docker
+	$pkgname-mdns
+	$pkgname-moshserver
+	$pkgname-networkmanager
 	$pkgname-upnp-client:upnp_client
 	$pkgname-vlc-chromecast:vlc_chromecast
-	$pkgname-vncserver:vncserver
+	$pkgname-vncserver
 	$pkgname-wifi-display:wifi_display
 "
 source="

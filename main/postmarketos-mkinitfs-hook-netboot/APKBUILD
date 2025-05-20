@@ -1,10 +1,10 @@
 # Maintainer: Mark <clashclanacc2602@gmail.com>
 pkgname=postmarketos-mkinitfs-hook-netboot
-pkgver=4.1.3
+pkgver=4.2.0
 pkgrel=0
 pkgdesc="Netboot postmarketOS using nbd feature"
 url="https://postmarketos.org"
-depends="devicepkg-utils postmarketos-mkinitfs"
+depends="devicepkg-utils postmarketos-mkinitfs !usb-moded"
 source="
 	netboot.sh
 	netboot.modules

@@ -2,7 +2,7 @@
 # Maintainer: Bart Ribbers <bribbers@disroot.org>
 pkgname=postmarketos-ui-plasma-mobile
 pkgver=6
-pkgrel=5
+pkgrel=6
 pkgdesc="(Wayland) Mobile variant of KDE Plasma"
 url="https://wiki.postmarketos.org/wiki/Plasma_Mobile"
 # armhf blocked by pmaports#75
@@ -15,6 +15,7 @@ depends="
 	feedbackd
 	plasma-mobile
 	postmarketos-base-ui-plasma
+	postmarketos-usb-moded
 	udisks2
 	"
 _pmb_recommends="

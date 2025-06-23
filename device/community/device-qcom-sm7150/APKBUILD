@@ -6,7 +6,7 @@
 
 pkgname=device-qcom-sm7150
 pkgdesc="Generic device package for Qualcomm SM7150 devices"
-pkgver=3
+pkgver=4
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -14,22 +14,15 @@ arch="aarch64"
 options="!check !archcheck"
 depends="
 	alsa-ucm-conf-qcom-sm7150
-	bootmac
-	hexagonfs-firmware-loader
+	firmware-qcom-sm7150
 	hexagonrpcd
-	linux-firmware-ath10k
-	linux-firmware-qca
-	linux-firmware-qcom
 	linux-postmarketos-qcom-sm7150
 	make-dynpart-mappings
-	msm-firmware-loader
-	msm-modem
-	msm-modem-uim-selection
 	postmarketos-base
-	qbootctl
-	swclock-offset
+	soc-qcom
+	soc-qcom-modem
+	soc-qcom-qbootctl
 	systemd-boot
-	tqftpserv
 	unl0kr-fbforcerefresh
 "
 makedepends="devicepkg-dev"
@@ -38,10 +31,8 @@ subpackages="
 "
 
 source="
-	30-initramfs-firmware.files
 	81-libssc-180-degrees.rules
 	deviceinfo
-	initfs-hook.sh
 "
 
 build() {
@@ -50,9 +41,6 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
-
-	install -Dm644 "$srcdir"/30-initramfs-firmware.files -t \
-		"$pkgdir"/usr/share/mkinitfs/files
 
 	install -Dm644 "$srcdir"/81-libssc-180-degrees.rules -t \
 		"$pkgdir"/usr/lib/udev/rules.d
@@ -72,8 +60,6 @@ openrc() {
 }
 
 sha512sums="
-73438ceec8ca76dec24a92718d456d17b01a23510ee0b0e6c1263e3f6c2ca82263a3e41298c0a8ebf3dd8439da354fc1c914fd475ad1cf5c669c200770df62fa  30-initramfs-firmware.files
 2c16ba75e0077b2b1eaefa4c73b287475505a1aeb291ec29316d41cc094277320f9d2aaabfd91eb1dc0f488ab2d61a94faef16e7afe0f1e226779113761b9a37  81-libssc-180-degrees.rules
-f38e438c79dadda0eef3abe5c55ad69f8947bf39e5c57e03b7cba7a60b09091e326c525e2451de446ab6de9e92a6d4e39da32ef854cc285bde2e7d56f7b7d10d  deviceinfo
-8cfd961424d97242f8be42750377315825039891362bf5fbead7de9cbaaf50be34fd35e9c3ac2f981c7c3138243544f162182020b8a5a56779474476d84a7775  initfs-hook.sh
+38b30ae76411656821a262a4c990bb530906c0ab7da45b70d6ff38c58ee3cc54120c5c22a21bc9e58d025ec7ab4a88fcca780bcc2c12b86803c9b4a1cdaed144  deviceinfo
 "

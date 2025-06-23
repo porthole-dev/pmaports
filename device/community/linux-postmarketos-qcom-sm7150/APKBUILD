@@ -4,7 +4,7 @@
 
 _flavor="postmarketos-qcom-sm7150"
 pkgname=linux-$_flavor
-pkgver=6.15.0_rc2
+pkgver=6.17.0_rc7
 pkgrel=0
 pkgdesc="Mainline Kernel fork for SM7150 devices"
 arch="aarch64"
@@ -42,10 +42,6 @@ package() {
 		# ZBOOT EFI decompressor for EFI booting
 		install -Dm644 "$builddir/arch/$_carch/boot/vmlinuz.efi" \
 			"$pkgdir/boot/linux.efi"
-
-		# Old GZIP'd kernel image for boot.img compatibility
-		install -Dm644 "$builddir/arch/$_carch/boot/vmlinuz" \
-			"$pkgdir/boot/vmlinuz"
 	else
 		echo "WARNING: CONFIG_ZBOOT not enabled!"
 		install -Dm644 "$builddir/arch/$_carch/boot/Image.gz" \
@@ -71,6 +67,6 @@ package() {
 
 
 sha512sums="
-ddb65acb95da6e26a21e3e08a8613fd8af9c5bce33f8f18ff933f75460c3c51d58f18dba431f037e56902f75c7174dcff03923225641db246a0c3b1643855e5f  linux-postmarketos-qcom-sm7150-v6.15.0_rc2.tar.gz
-5b5aa50a301a4542eb0fbee94edfcc1c1120d6b39a50ec74ecae5f37ac86d8f5228d780c920c5cf26e72d909485073624d604f0e3909b87f6c7c32eaba7362a0  config-postmarketos-qcom-sm7150.aarch64
+3d920797ca8542c3a8004e430aa6efcabf5d38373af2b229ee981c6b693fda45c173df5d8e08a18b23661ac85e39171ae7fe6e15ce2835f8208c236e4ed82ed3  linux-postmarketos-qcom-sm7150-v6.17.0_rc7.tar.gz
+84553d7ca57964ae730595f662ff8eeadfde9d09b9b724947eed2a894285bfa5d675be46f70ce9f9aa296f85f539f7a7cf7d7a781d5030723ffb27a878656dfe  config-postmarketos-qcom-sm7150.aarch64
 "

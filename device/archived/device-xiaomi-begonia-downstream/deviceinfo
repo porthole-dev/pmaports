@@ -5,7 +5,7 @@
 deviceinfo_format_version="0"
 deviceinfo_name="Xiaomi Redmi Note 8 Pro"
 deviceinfo_manufacturer="Xiaomi"
-deviceinfo_codename="xiaomi-begonia"
+deviceinfo_codename="xiaomi-begonia-downstream"
 deviceinfo_year="2019"
 deviceinfo_arch="aarch64"
 

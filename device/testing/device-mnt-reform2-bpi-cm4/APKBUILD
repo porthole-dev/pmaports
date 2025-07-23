@@ -23,7 +23,7 @@ package() {
 
 nonfree_firmware() {
 	pkgdesc="vdec firmware"
-	depends="linux-firmware-meson"
+	depends="linux-firmware-meson linux-firmware-rtw88"
 	mkdir "$subpkgdir"
 }
 

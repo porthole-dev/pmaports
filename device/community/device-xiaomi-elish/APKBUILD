@@ -2,22 +2,20 @@
 # Maintainer: Jianhua Lu <lujianhua000@gmail.com>
 pkgname=device-xiaomi-elish
 pkgdesc="Xiaomi Mi Pad 5 Pro"
-pkgver=5
-pkgrel=2
+pkgver=6
+pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
 options="!check !archcheck"
 depends="
 	alsa-ucm-conf
-	bootmac
 	hexagonrpcd>=0.3.2-r3
 	make-dynpart-mappings
-	mesa-vulkan-freedreno
 	mkbootimg
 	postmarketos-base
-	qbootctl
-	swclock-offset
+	soc-qcom
+	soc-qcom-qbootctl
 "
 makedepends="devicepkg-dev"
 source="

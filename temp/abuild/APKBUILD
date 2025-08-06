@@ -2,8 +2,8 @@
 pkgname=abuild
 pkgver=99993.15.0
 _pkgver=3.15.0
-_commit="0d6da731d6a09221fd2dabc2b93cd44c53846d46"
-pkgrel=2
+_commit="7f9a70d90df86fd8150965d090beb4351fb9107f"
+pkgrel=3
 pkgdesc="Script to build Alpine Packages"
 url="https://git.alpinelinux.org/cgit/abuild/"
 arch="all"
@@ -122,6 +122,6 @@ _sudo() {
 }
 
 sha512sums="
-cc2852f56885f622b3efb725b62fec77e2cb60f05107fe7ab4756238ebcd16abc2ee6608081d410fb9fb017850b58d5b17cec3058faa8de9ca4e56db5e7ce0e9  abuild-0d6da731d6a09221fd2dabc2b93cd44c53846d46.tar.gz
+bcb00f5dc408d25153f1f5a28eb1789fa99e13e6e9d4bc58f11a79632b17cce192b33a1ff9d5935a6b5aadb1de3c4caf58de7618eb7db1538468662011da1050  abuild-7f9a70d90df86fd8150965d090beb4351fb9107f.tar.gz
 fbb44d871d57f31f1e94f0b7a1daed8bd86e2312c6c7a68dd599e71836b7fbc6e1159e865ce464c58f7fa2292adba3ab73ad90bd5b1a274f0ba8886108842f8a  cargo-target.patch
 "

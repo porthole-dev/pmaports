@@ -1,18 +1,20 @@
-# Maintainer: Paul Sajna <hello@paulsajna.com>
+# Maintainer: Paul Sajna <sajattack@postmarketos.org>
 pkgname=xkeyboard-config
 pkgver=9999
 _pkgver=2.46
-pkgrel=4
+pkgrel=5
 pkgdesc="X keyboard configuration files"
 url="https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config"
-arch="armv7"
+arch="aarch64 armv7"
 license="MIT"
 subpackages="$pkgname-dev $pkgname-doc $pkgname-lang"
 depends_dev="$pkgname"
 makedepends="gettext meson perl libxslt"
 checkdepends="gawk"
-source="https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/archive/xkeyboard-config-$_pkgver/xkeyboard-config-xkeyboard-config-$_pkgver.tar.gz
-	re-nokia.patch
+source="
+	https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/archive/xkeyboard-config-$_pkgver/xkeyboard-config-xkeyboard-config-$_pkgver.tar.gz
+	0001-re-nokia.patch
+	0002-add-symbols-for-BlackBerry-KEY2-keypad.patch
 	"
 builddir="$srcdir"/xkeyboard-config-xkeyboard-config-$_pkgver
 
@@ -37,5 +39,6 @@ package() {
 
 sha512sums="
 1bf0bd78dd9a8df9f9a1f0fcf949d4d80d281c8beb7395b68040ff46259879471772e373b132dd3caade7565e513d908a19238a8549f9cacfe1f956b48958535  xkeyboard-config-xkeyboard-config-2.46.tar.gz
-88c44ba723dc97fdaba04076fc49ff09c01384b689e93c9b1ab2b7c4547ea88cb64fbd2f203094abe149d4c1ff6efe38529ddf37f97fbbc3a22a714966289775  re-nokia.patch
+88c44ba723dc97fdaba04076fc49ff09c01384b689e93c9b1ab2b7c4547ea88cb64fbd2f203094abe149d4c1ff6efe38529ddf37f97fbbc3a22a714966289775  0001-re-nokia.patch
+5aaf4b72badd86e2a371300eac0eaa741c2f7d221f794fbcd7ab8bd4a626f0a80402993bc45af50760723885079b2836972bc927b99260491e6b2ff9e36b0019  0002-add-symbols-for-BlackBerry-KEY2-keypad.patch
 "

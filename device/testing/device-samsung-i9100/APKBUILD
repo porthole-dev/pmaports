@@ -1,6 +1,6 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-samsung-i9100
-pkgver=11
+pkgver=12
 pkgrel=0
 pkgdesc="Samsung Galaxy SII"
 url="https://postmarketos.org"
@@ -14,6 +14,7 @@ depends="
 	linux-postmarketos-exynos4
 	mesa-egl
 	postmarketos-base
+	u-boot-samsung-i9100>=2025.07
 	v4l-utils
 	"
 makedepends="devicepkg-dev"
@@ -42,6 +43,6 @@ openrc() {
 }
 
 sha512sums="
-44d28e6456ca7ace2e0a67f242bf29e6c0459d38e12eda64185530ad8084afff2ef4d0b5e864dce69fbf4f4ae724a9c7223c6d75488877e39280403a5731c546  deviceinfo
+7299545003590d7f060cface4c0e15bfb8234c02f1dedb9aea0c9510b590a7f890a1b3bcb9958e090737613c4bc4305cacd673e7fe0293c179cbc822076ba0d6  deviceinfo
 d3f06476be583f095189557e5269866cfc9346ddbf8d78267d7562fad7f5eca6b09b81fd08cd9690ecf88105bafe8f3ebd9136b68ab5cdaa8bfff740a8bdf3d2  media-pipeline.initd
 "

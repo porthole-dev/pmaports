@@ -4,7 +4,7 @@
 pkgname=device-google-nyan-big
 pkgdesc="Acer Chromebook 13 CB5-311 / Acer Chromebook C810"
 pkgver=6
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -100,7 +100,7 @@ nonfree_firmware() {
 sway() {
 	install_if="$pkgname=$pkgver-r$pkgrel postmarketos-ui-sway"
 	install -Dm755 "$srcdir"/10-no-hardware-cursor.sh \
-		"$subpkgdir"/etc/tinydm.d/env-wayland.d/10-no-hardware-cursor.sh
+		"$subpkgdir"/usr/share/tinydm/env-wayland.d/10-no-hardware-cursor.sh
 }
 
 sha512sums="

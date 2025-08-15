@@ -4,7 +4,7 @@
 # Contributor: Clayton Craft <clayton@craftyguy.net>
 pkgname=device-purism-librem5
 pkgver=9
-pkgrel=1
+pkgrel=2
 _confver=69
 _purismrel=2
 # <librem5-base ver>.<purism release>
@@ -102,7 +102,7 @@ tinydm() {
 	pkgdesc="Tinydm config for the Librem 5"
 	install_if="$pkgname tinydm"
 	install -Dm755 "$srcdir"/70-librem5-xwayland-accel.sh \
-		"$subpkgdir"/etc/tinydm.d/env-wayland.d/70-librem5-xwayland-accel.sh
+		"$subpkgdir"/usr/share/tinydm/env-wayland.d/70-librem5-xwayland-accel.sh
 }
 
 openrc() {

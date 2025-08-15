@@ -1,7 +1,7 @@
 # Maintainer: Jenneron <jenneron@protonmail.com>
 pkgname=postmarketos-ui-moonlight
 pkgver=1
-pkgrel=0
+pkgrel=1
 pkgdesc="(Wayland) Open Source PC client for NVIDIA GameStream, as used by the NVIDIA Shield"
 # riscv64 blocked by moonlight-qt
 arch="all !riscv64"
@@ -20,7 +20,7 @@ _pmb_recommends="moonlight-qt"
 
 package() {
 	install -Dm755 "$srcdir"/10-moonlight-qt.sh \
-		-t "$pkgdir"/etc/tinydm.d/env-wayland.d
+		-t "$pkgdir"/usr/share/tinydm/env-wayland.d
 }
 
 sha512sums="

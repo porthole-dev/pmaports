@@ -150,7 +150,7 @@ package() {
 	install -D -m644 "$srcdir"/boot.scr \
 		"$pkgdir"/boot/boot.scr
 	install -D -m644 "$srcdir"/modprobe.d_rsi.conf "$pkgdir"/usr/lib/modprobe.d/rsi.conf
-	install -D -m644 "$srcdir"/modules-load.d_librem5.conf "$pkgdir"/etc/modules-load.d/librem5.conf
+	install -D -m644 "$srcdir"/modules-load.d_librem5.conf "$pkgdir"/usr/lib/modules-load.d/librem5.conf
 	install -D -m644 "$srcdir"/00-mesa.sh "$pkgdir"/etc/profile.d/00-mesa.sh
 	install -D -m644 "$srcdir"/flash_script.lst "$pkgdir"/usr/share/uuu/flash_script.lst
 

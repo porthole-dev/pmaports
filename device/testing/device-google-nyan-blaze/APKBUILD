@@ -4,7 +4,7 @@
 pkgname=device-google-nyan-blaze
 pkgdesc="HP Chromebook 14 G3"
 pkgver=6
-pkgrel=2
+pkgrel=3
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -42,7 +42,7 @@ package() {
 
 	# Block nouveau as it is in very bad condition
 	install -Dm644 "$srcdir"/gpu.conf \
-		"$pkgdir"/etc/modprobe.d/gpu.conf
+		"$pkgdir"/usr/lib/modprobe.d/gpu.conf
 }
 
 nonfree_firmware() {

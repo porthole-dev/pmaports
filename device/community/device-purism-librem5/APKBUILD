@@ -4,7 +4,7 @@
 # Contributor: Clayton Craft <clayton@craftyguy.net>
 pkgname=device-purism-librem5
 pkgver=9
-pkgrel=3
+pkgrel=4
 _confver=69
 _purismrel=2
 # <librem5-base ver>.<purism release>
@@ -149,7 +149,7 @@ x11() {
 package() {
 	install -D -m644 "$srcdir"/boot.scr \
 		"$pkgdir"/boot/boot.scr
-	install -D -m644 "$srcdir"/modprobe.d_rsi.conf "$pkgdir"/etc/modprobe.d/rsi.conf
+	install -D -m644 "$srcdir"/modprobe.d_rsi.conf "$pkgdir"/usr/lib/modprobe.d/rsi.conf
 	install -D -m644 "$srcdir"/modules-load.d_librem5.conf "$pkgdir"/etc/modules-load.d/librem5.conf
 	install -D -m644 "$srcdir"/00-mesa.sh "$pkgdir"/etc/profile.d/00-mesa.sh
 	install -D -m644 "$srcdir"/flash_script.lst "$pkgdir"/usr/share/uuu/flash_script.lst
@@ -196,7 +196,7 @@ package() {
 	install -Dm755 "$builddir"/default/lockdown-support/lockdown-support.sh \
 		-t "$pkgdir"/usr/sbin/
 	install -Dm755 "$builddir"/default/lockdown-support/modprobe.d/librem5-lsm9ds1.conf \
-		-t "$pkgdir"/etc/modprobe.d/
+		-t "$pkgdir"/usr/lib/modprobe.d/
 	install -Dm755 "$srcdir"/l5-lockdown-support.initd \
 		"$pkgdir"/etc/init.d/l5-lockdown-support
 	install -Dm644 "$builddir"/debian/librem5-base-defaults.librem5-lockdown-support.service -t \

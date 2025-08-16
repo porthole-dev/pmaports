@@ -3,7 +3,7 @@
 pkgname=device-asus-me176c
 pkgdesc="ASUS MeMO Pad 7 (ME176C(X))"
 pkgver=7
-pkgrel=0
+pkgrel=1
 _commit=3155254999ac36c3051a2118c415de25a072c0f6
 url="https://postmarketos.org"
 license="MIT"
@@ -47,7 +47,7 @@ build() {
 package() {
 	devicepkg_package $startdir $pkgname
 	install -Dm644 "$srcdir"/sof-workaround.conf \
-		"$pkgdir"/etc/modprobe.d/sof-workaround.conf
+		"$pkgdir"/usr/lib/modprobe.d/sof-workaround.conf
 }
 
 factory() {

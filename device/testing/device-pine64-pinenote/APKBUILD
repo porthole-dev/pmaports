@@ -2,7 +2,7 @@
 pkgname=device-pine64-pinenote
 pkgdesc="Pine64 PineNote"
 pkgver=5
-pkgrel=0
+pkgrel=1
 _commit="28d2c05ab4e80a7972611cd3188f3e8be4197f6a"
 url="https://postmarketos.org"
 license="GPL-3.0-only"
@@ -73,7 +73,7 @@ package() {
 	install -Dm644 \
 		"$builddir"/etc/modprobe.d/rockchip_ebc.conf \
 		"$builddir"/etc/modprobe.d/wifi.conf \
-		-t "$pkgdir"/etc/modprobe.d
+		-t "$pkgdir"/usr/lib/modprobe.d
 
 	# udev rules
 	install -Dm644 \
@@ -96,7 +96,7 @@ package() {
 
 	# panfront sometimes insists on loading after rockchip_ebc
 	install -Dm644 "$srcdir"/panfrost.conf \
-		-t "$pkgdir"/etc/modprobe.d
+		-t "$pkgdir"/usr/lib/modprobe.d
 }
 
 phosh() {

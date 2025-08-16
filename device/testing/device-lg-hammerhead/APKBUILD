@@ -2,7 +2,7 @@
 # Maintainer: Luca Weiss <luca@lucaweiss.eu>
 pkgname=device-lg-hammerhead
 pkgver=12
-pkgrel=0
+pkgrel=1
 pkgdesc="Google Nexus 5"
 url="https://postmarketos.org"
 arch="armv7"
@@ -69,7 +69,7 @@ nonfree_firmware() {
 	mkdir "$subpkgdir"
 	# This config makes sense only if non-free firmware is installed
 	install -Dm644 "$srcdir"/bt-module-deps.conf \
-		"$subpkgdir"/etc/modprobe.d/bt-module-deps.conf
+		"$subpkgdir"/usr/lib/modprobe.d/bt-module-deps.conf
 }
 
 sha512sums="

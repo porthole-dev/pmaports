@@ -2,7 +2,7 @@
 pkgname=device-samsung-klte
 pkgdesc="Samsung Galaxy S5 (G900F/G9006/G9008/G9009W)"
 pkgver=10
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -59,7 +59,7 @@ nonfree_firmware() {
 	mkdir "$subpkgdir"
 	# This config makes sense only if non-free firmware is installed
 	install -Dm644 "$srcdir"/bt-module-deps.conf \
-		"$subpkgdir"/etc/modprobe.d/bt-module-deps.conf
+		"$subpkgdir"/usr/lib/modprobe.d/bt-module-deps.conf
 }
 
 sha512sums="

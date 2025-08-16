@@ -4,7 +4,7 @@
 pkgname=device-google-nyan-big
 pkgdesc="Acer Chromebook 13 CB5-311 / Acer Chromebook C810"
 pkgver=6
-pkgrel=2
+pkgrel=3
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -43,7 +43,7 @@ package() {
 
 	# Block nouveau as it is in very bad condition
 	install -Dm644 "$srcdir"/gpu.conf \
-		"$pkgdir"/etc/modprobe.d/gpu.conf
+		"$pkgdir"/usr/lib/modprobe.d/gpu.conf
 }
 
 kernel_nyan_big() {

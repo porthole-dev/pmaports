@@ -3,7 +3,7 @@
 pkgname=device-jolla-c2
 pkgdesc="Jolla C2"
 pkgver=1
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -14,8 +14,8 @@ depends="
 	firmware-jolla-c2-boot
 	linux-postmarketos-unisoc-ums9230
 	postmarketos-base
+	soc-unisoc-ums9230
 	u-boot-jolla-c2
-	unisoc-nvitem-daemon
 "
 _pmb_recommends="firmware-jolla-c2-wcn"
 makedepends="devicepkg-dev"

@@ -1,6 +1,6 @@
 # Maintainer: Affe Null <affenull2345@gmail.com>
 pkgname=alsa-ucm-conf-unisoc-ums9230
-pkgver=1.2.9_git20250423
+pkgver=1.2.9_git20250614
 pkgrel=0
 pkgdesc="ALSA UCM configuration for UMS9230 devices"
 url="https://codeberg.org/ums9230-mainline/alsa-ucm-conf"
@@ -8,7 +8,7 @@ arch="aarch64"
 license="BSD-3-Clause"
 provides="alsa-ucm-conf"
 provider_priority=1
-_commit="b8b016a24b5a8dd5d8a9d0839b85c12e8087e537"
+_commit="89dc4b9c65ed858be0459cb37d69c737814e0b9a"
 source="alsa-ucm-conf-$_commit.tar.gz::$url/archive/$_commit.tar.gz"
 options="!check"
 
@@ -19,5 +19,5 @@ package() {
 }
 
 sha512sums="
-1e7f9176c5128c28f64c1bfd1b1d18395f5b78234d8d8c997ecf6ef38b43691d2f7ec5a9abd6fcacfdcdcf590c309cd81377d2d79af268221dcb190419be7d92  alsa-ucm-conf-b8b016a24b5a8dd5d8a9d0839b85c12e8087e537.tar.gz
+1ce2b2731d173e25f4f8c2e31a2dd2dd2294bdf2a531800b8e0e544028c781dd44236ea52fc98ff68237ef7d971a6eb6ae39983b8d46bf71d29bfbc8c38d99ba  alsa-ucm-conf-89dc4b9c65ed858be0459cb37d69c737814e0b9a.tar.gz
 "

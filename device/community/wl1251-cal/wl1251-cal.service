@@ -1,12 +1,12 @@
 [Unit]
 Description=Update wl1251 calibration data
-After=local-fs.target
-Before=network-pre.target
+RequiresMountsFor=/lib/firmware
+Before=udev.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c '/usr/bin/calibrate-wl1251 || true; /sbin/modprobe wl1251_spi'
+ExecStart=/bin/sh -c '/usr/bin/calibrate-wl1251 || true'
 RemainAfterExit=yes
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sysinit.target

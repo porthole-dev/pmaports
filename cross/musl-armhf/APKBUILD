@@ -8,7 +8,7 @@ fi
 
 pkgname=musl-armhf
 pkgver=1.2.5
-pkgrel=19
+pkgrel=20
 arch="x86_64"
 subpackages="musl-dev-armhf:package_dev"
 
@@ -57,6 +57,6 @@ package_dev() {
 }
 
 sha512sums="
-260f9152004ed8497c0946848ff7c015d4358e151c4e422c4325e6ee2900d0dd632fc3ad0928732770931c7f48efde1e57b11ba87579faa599dd51fdd63e6014  musl-1.2.5-r19-armhf-edge.apk
-4e471661577db142f41e3788cc518281586e97ac1cc25a1f4499cb9348b2593674bbe3393e28f0d1dff903834eb3f7ed2938a213b83144898641f461f41d4007  musl-dev-1.2.5-r19-armhf-edge.apk
+62cfdede4c1ef611ad9386409052fd3d2544749eb79d945eaaddab438deeca316c561211a4eeee012e88e92ed29a1580f82abee95ea75351ae0f754c8af31f3e  musl-1.2.5-r20-armhf-edge.apk
+b4277045fac537c84aa04f29e29cd72c9e01b821b5e8104c1c6c48d8d53e454ce27cb70bc8f9c51984b0235d1c308312412cedf664a221b9e570dcf2354e3cd6  musl-dev-1.2.5-r20-armhf-edge.apk
 "

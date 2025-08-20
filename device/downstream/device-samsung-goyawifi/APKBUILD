@@ -2,7 +2,7 @@
 pkgname=device-samsung-goyawifi
 pkgdesc="Samsung Galaxy Tab 3 Lite"
 pkgver=2
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -41,12 +41,12 @@ package() {
 
 	# Add module rules for Wi-Fi (mbt8xxx kernel panic)
 	install -D -m644 "$srcdir"/goyawifi.conf \
-		"$pkgdir"/lib/modprobe.d/goyawifi.conf
+		"$pkgdir"/usr/lib/modprobe.d/goyawifi.conf
 	install -D -m644 "$srcdir"/sd8xxx.conf \
-		"$pkgdir"/lib/modules-load.d/sd8xxx.conf
+		"$pkgdir"/usr/lib/modules-load.d/sd8xxx.conf
 	# Load Vivante GPU module
 	install -D -m644 "$srcdir"/galcore.conf \
-		"$pkgdir"/lib/modules-load.d/galcore.conf
+		"$pkgdir"/usr/lib/modules-load.d/galcore.conf
 
 	# Alsa UCM configs
 	install -Dm644 "$srcdir"/emei-dkb-hifi.conf \

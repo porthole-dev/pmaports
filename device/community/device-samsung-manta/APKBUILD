@@ -4,7 +4,7 @@
 pkgname=device-samsung-manta
 pkgdesc="Google Nexus 10"
 pkgver=9
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -30,13 +30,13 @@ build() {
 package() {
 	devicepkg_package $startdir $pkgname
 
-	mkdir -p "$pkgdir"/lib/modules-load.d
+	mkdir -p "$pkgdir"/usr/lib/modules-load.d
 	echo "ds2482" \
-		> "$pkgdir"/lib/modules-load.d/ds2482.conf
+		> "$pkgdir"/usr/lib/modules-load.d/ds2482.conf
 
-	mkdir -p "$pkgdir"/lib/modprobe.d
+	mkdir -p "$pkgdir"/usr/lib/modprobe.d
 	echo "options ds2482 active_pullup=0" \
-		> "$pkgdir"/lib/modprobe.d/ds2482.conf
+		> "$pkgdir"/usr/lib/modprobe.d/ds2482.conf
 
 	install -Dm644 "$srcdir"/hwclock \
 		-t "$pkgdir"/etc/conf.d/

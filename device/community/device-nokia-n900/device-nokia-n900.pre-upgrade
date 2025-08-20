@@ -6,5 +6,5 @@ postmarketos-mvcfg-pre-upgrade \
 
 postmarketos-mvcfg-pre-upgrade \
 	device-nokia-n900-v2 \
-	/etc/modules-load.d/nokia-modem.conf
+	/usr/lib/modules-load.d/nokia-modem.conf
 

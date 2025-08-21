@@ -1,7 +1,7 @@
 maintainer="Bart Ribbers <bribbers@disroot.org>"
 pkgname=kjournald
 pkgver=25.04.2
-pkgrel=0
+pkgrel=1
 pkgdesc="Framework for interacting with systemd-journald"
 # armhf blocked by qt6-qtdeclarative and pmb#2618
 arch="all !armhf"
@@ -13,6 +13,7 @@ depends_dev="
 	ki18n-dev
 	qt6-qtbase-dev
 	qt6-qtdeclarative-dev
+	qt6-qtdeclarative-private-dev
 	systemd-dev
 	"
 makedepends="$depends_dev

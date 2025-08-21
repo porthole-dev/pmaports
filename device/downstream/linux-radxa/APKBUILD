@@ -3,7 +3,7 @@
 # Maintainer: Antoine Martin (ayakael) <dev@ayakael.net>
 pkgname=linux-radxa
 pkgver=6.1.115
-pkgrel=0
+pkgrel=1
 pkgdesc="Radxa kernel fork"
 arch="aarch64"
 _carch="arm64"

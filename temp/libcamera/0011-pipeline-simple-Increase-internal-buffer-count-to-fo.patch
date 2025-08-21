@@ -1,7 +1,7 @@
-From df46e9a8e797a7e4fedfecf921f809c3b8a154bd Mon Sep 17 00:00:00 2001
+From 9b0f6c6d8c4bc3e4fed87c54daadaaf79c621341 Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Sun, 13 Oct 2024 14:13:44 +0200
-Subject: [PATCH 06/12] pipeline: simple: Increase internal buffer count to
+Subject: [PATCH 11/17] pipeline: simple: Increase internal buffer count to
  four aswell
 
 Signed-off-by: Robert Mader <robert.mader@collabora.com>

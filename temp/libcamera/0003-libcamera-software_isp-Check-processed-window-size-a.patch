@@ -1,0 +1,47 @@
+From 2611679a0a425bad4f071fb70c513f73be5132df Mon Sep 17 00:00:00 2001
+From: Milan Zamazal <mzamazal@redhat.com>
+Date: Thu, 21 Aug 2025 15:41:39 +0200
+Subject: [PATCH 03/17] libcamera: software_isp: Check processed window size
+ alignment
+
+The window of the image that should be debayered must be aligned to the
+bayer pattern size.  This is already ensured for the window corner
+coordinates but not for the window sizes.
+
+We can either make the window sizes aligned similarly to how the window
+corner coordinates are aligned or reject an unaligned configuration.
+This patches chooses the latter as using a different window size than
+the requested output size could lead to artefacts.  Since such a
+situation is not expected to occur in correctly set up environments, the
+change should have no negative impact.
+
+Signed-off-by: Milan Zamazal <mzamazal@redhat.com>
+---
+ src/libcamera/software_isp/debayer_cpu.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
+index 185edd814..3200b0c53 100644
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -539,7 +539,17 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 	window_.y = ((inputCfg.size.height - outputCfg.size.height) / 2) &
+ 		    ~(inputConfig_.patternSize.height - 1);
+ 	window_.width = outputCfg.size.width;
++	if (window_.width % inputConfig_.patternSize.width != 0) {
++		LOG(Debayer, Error)
++			<< "Output width is not a multiple of the bayer pattern width";
++		return -EINVAL;
++	}
+ 	window_.height = outputCfg.size.height;
++	if (window_.height % inputConfig_.patternSize.height != 0) {
++		LOG(Debayer, Error)
++			<< "Output height is not a multiple of the bayer pattern height";
++		return -EINVAL;
++	}
+ 
+ 	/*
+ 	 * Set the stats window to the whole processed window. Its coordinates are
+-- 
+2.50.1
+

@@ -1,7 +1,7 @@
-From d5d0b31dfb7e71d0d9e1439d0985345148090708 Mon Sep 17 00:00:00 2001
+From ced95de9a798243f0152a5e2d8743d8cdc58d65d Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Mon, 22 Apr 2024 23:30:31 +0200
-Subject: [PATCH 01/12] libcamera: simple: Enable softwareISP for the librem5
+Subject: [PATCH 06/17] libcamera: simple: Enable softwareISP for the librem5
 
 And - in theory - on similar devices.
 ---

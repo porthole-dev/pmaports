@@ -1,7 +1,7 @@
-From c7a3900faac43a42678fe84f5d5683e93bbb7dc8 Mon Sep 17 00:00:00 2001
+From cb0c4005f0303798c700352e00c9389e3e2f463b Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Thu, 9 May 2024 21:07:07 +0200
-Subject: [PATCH 02/12] libcamera: simple: Force-disable softwareISP for
+Subject: [PATCH 07/17] libcamera: simple: Force-disable softwareISP for
  millipixels
 
 As the later uses libcamera and requires raw-streams to get passed

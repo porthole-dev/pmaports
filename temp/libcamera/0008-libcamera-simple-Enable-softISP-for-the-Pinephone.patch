@@ -1,7 +1,7 @@
-From feded9b82352dd659d8f6d31a94a3ccf3dbf008c Mon Sep 17 00:00:00 2001
+From a03f8f4e44e5b6d794022f8de8f54f2f68692d64 Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Wed, 1 May 2024 18:12:02 +0200
-Subject: [PATCH 03/12] libcamera: simple: Enable softISP for the Pinephone
+Subject: [PATCH 08/17] libcamera: simple: Enable softISP for the Pinephone
 
 In theory the PP should be able to use the actual HW ISP, however in
 practice this does not work well yet - especially as the driver for the

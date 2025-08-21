@@ -1,7 +1,7 @@
-From 204ba04babb83d10cb0d6e132158687f4e9cab66 Mon Sep 17 00:00:00 2001
+From 2f0d4f7929afb239d2b74ce7cfee447a70101f36 Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Sat, 8 Mar 2025 10:39:44 +0100
-Subject: [PATCH 12/12] ipa/simple: Add tuning file for IMX376
+Subject: [PATCH 17/17] ipa/simple: Add tuning file for IMX376
 
 The value is guessed from similar IMX sensors.
 ---

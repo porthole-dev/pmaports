@@ -1,0 +1,33 @@
+From ef0b475f471e114044a7fbacf13bb16b5d362def Mon Sep 17 00:00:00 2001
+From: Milan Zamazal <mzamazal@redhat.com>
+Date: Thu, 21 Aug 2025 15:41:41 +0200
+Subject: [PATCH 05/17] libcamera: simple: Prevent division by zero in BLC
+
+When there are no values in the histogram, BLC simple IPA can crash on
+division by zero.  We cannot get anything meaningful in such a case
+anyway, let's simply return from `process()' then.
+
+Signed-off-by: Milan Zamazal <mzamazal@redhat.com>
+---
+ src/ipa/simple/algorithms/blc.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/blc.cpp b/src/ipa/simple/algorithms/blc.cpp
+index 8c1e9ed08..71731c6f6 100644
+--- a/src/ipa/simple/algorithms/blc.cpp
++++ b/src/ipa/simple/algorithms/blc.cpp
+@@ -77,6 +77,11 @@ void BlackLevel::process(IPAContext &context,
+ 	constexpr float ignoredPercentage = 0.02;
+ 	const unsigned int total =
+ 		std::accumulate(begin(histogram), end(histogram), 0);
++	if (total == 0) {
++		LOG(IPASoftBL, Debug) << "Not guessing black level, histogram is empty";
++		return;
++	};
++
+ 	const unsigned int pixelThreshold = ignoredPercentage * total;
+ 	const unsigned int histogramRatio = 256 / SwIspStats::kYHistogramSize;
+ 	const unsigned int currentBlackIdx =
+-- 
+2.50.1
+

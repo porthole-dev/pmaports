@@ -1,4 +1,4 @@
-# Maintainer: Jami Kettunen <jami.kettunen@protonmail.com>
+# Maintainer:
 # Stable Linux kernel with patches for MSM8998 devices
 # Kernel config based on: msm8998_defconfig
 _flavor="postmarketos-qcom-msm8998"

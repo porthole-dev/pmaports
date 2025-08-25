@@ -1,4 +1,4 @@
-# Maintainer: Jami Kettunen <jami.kettunen@protonmail.com>
+# Maintainer:
 # Mainline Linux kernel fork with patches for MediaTek MT6768 devices
 # Kernel config based on: arch/arm64/configs/mt6768_defconfig
 _flavor="postmarketos-mediatek-mt6768"

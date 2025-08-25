@@ -1,4 +1,4 @@
-# Maintainer: Jami Kettunen <jami.kettunen@protonmail.com>
+# Maintainer:
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-volla-yggdrasil
 pkgdesc="Volla Phone"

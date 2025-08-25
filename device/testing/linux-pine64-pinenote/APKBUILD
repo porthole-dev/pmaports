@@ -31,6 +31,7 @@ source="
 	$pkgname-$_kernver-$_commit.patch::https://ayakael.net/forge/linux-pinenote/compare/$_commit..v$_kernver.patch
 	pmos-kconfig-default.patch
 	$_config
+	arch-boot-dts-pinenote-use-sw-lid-to-susepend.patch
 "
 builddir="$srcdir"/linux-$_kernver
 
@@ -69,4 +70,5 @@ ce15c84d462d5b751bb8d535880116d28dce2151402835a8bdddfc5bb181c799e80a630022b49ea7
 4d35ee18a5631b8cdb381caad81fcc8ab64f050e197bfda168c7f4f12339eced201b8cc89f8f7353b405fde7e9734de04c4c63f7413db9e73d3f70d3e366a9b5  linux-pine64-pinenote-6.15-fa594ab9a7c3f6cf1e1fb69a112d709472bddba7.patch
 522c7c38800ac0479f6e99e4e97ba88add5021fe6ab6eeba6e604a37635e48622c113919a425607edbe0abf2aa6bb95b2e824d5d2fe293e149fe588e05374122  pmos-kconfig-default.patch
 1752b556065885fd3c229d2c4231cf3f7421c0f788b30fb6f61443d422582c6e1a4bdac82789f7502691754bcbec591fbe279ad28ea4149bf947b0c5eb727240  config-pine64-pinenote.aarch64
+c1b755c620ca5c159462b97436e561e94268848008249c1ffa82492fa33582266d56172e4bcfc4ec18dba31a717aa8ff465db276ee21effb21c36384fd017a28  arch-boot-dts-pinenote-use-sw-lid-to-susepend.patch
 "

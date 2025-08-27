@@ -2,7 +2,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-qcom-msm8956
 pkgdesc="Generic device package for various Qualcomm MSM8956/MSM8976-based devices"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -31,6 +31,6 @@ package() {
 }
 
 sha512sums="
-8027b542e3b3eb162bf2b4b46cf4978f5091836699e996d52312e66afd11c490272f492b0da5c2036527f3a925051a89cfeaa29a32bf6fab183ad87ab7cd07a9  deviceinfo
+ac57a214a974f9c73350248e6e74402e2e83101dcb42762b86020936980eace860469a3371877de2e6d7f0f37761ceca95c93cf06960b24fe283d3f656b4b66e  deviceinfo
 fb0b1eb76b59133b0270b1a1485292e1b3814ab337451e3c2d2ffb8ec6713478f07b7eefe170ca1b3986a739110163cb170c751d9a04f5a853d266927c2ff0aa  modules-initfs
 "

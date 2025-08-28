@@ -1,6 +1,6 @@
 pkgname=postmarketos-base
 pkgver=48
-pkgrel=0
+pkgrel=1
 pkgdesc="Meta package for minimal postmarketOS base"
 url="https://postmarketos.org"
 arch="noarch"
@@ -31,6 +31,7 @@ _pmb_recommends="
 install="$pkgname.post-install $pkgname.post-upgrade"
 triggers="$pkgname.trigger=/usr/share/deviceinfo"
 subpackages="
+	$pkgname-core
 	$pkgname-mesa
 	$pkgname-nftables
 	$pkgname-nftables-openrc:nftables_openrc
@@ -130,6 +131,24 @@ package() {
 	for i in $_source755; do
 		install -Dm755 "$srcdir/$(flatpath "$i")" "$pkgdir/$i"
 	done
+}
+
+core() {
+	# This is needed for backwards compatibility with installs that got
+	# the alpine-baselayout-core package in world:
+	# https://gitlab.postmarketos.org/postmarketOS/pmbootstrap/-/merge_requests/2680
+	# as if alpine-baselayout-core is removed, the symlinks will disappear.
+	pkgdesc="Minimal structure for compatibility reasons"
+	depends=""
+	replaces="alpine-baselayout"
+	provides="alpine-baselayout-core=$pkgver-r$pkgrel"
+
+	mkdir -p "$subpkgdir"
+	cd "$subpkgdir"
+	install -m 0755 -d usr/bin usr/lib usr/sbin
+	ln -s usr/bin "$subpkgdir"/bin
+	ln -s usr/lib "$subpkgdir"/lib
+	ln -s usr/sbin "$subpkgdir"/sbin
 }
 
 mesa() {

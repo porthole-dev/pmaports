@@ -1,0 +1,65 @@
+# Maintainer: BotchedRPR <igor.belwon@mentallysanemainliners.org>
+pkgname=linux-postmarketos-mediatek-mt6878
+pkgver=6.17_rc4
+pkgrel=0
+pkgdesc="Mainline Kernel fork for MT6878 devices"
+arch="aarch64"
+_carch="arm64"
+_flavor="postmarketos-mediatek-mt6878"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps pmb:cross-native pmb:kconfigcheck-community"
+makedepends="
+	bash
+	bc
+	bison
+	devicepkg-dev
+	flex
+	openssl-dev
+	perl
+	python3
+"
+
+_repository="linux"
+_commit="eb7644312c31ce93a72dd8065be6c994c8fe7261"
+_config="config-$_flavor.$arch"
+source="
+	$pkgname-$_commit.tar.gz::https://github.com/MT6878-mainline/$_repository/archive/$_commit.tar.gz
+	$_config
+"
+builddir="$srcdir/$_repository-$_commit"
+
+prepare() {
+	default_prepare
+	cp "$srcdir/config-$_flavor.$arch" .config
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" CC="${CC:-gcc}" \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor"
+}
+
+package() {
+	mkdir -p "$pkgdir"/boot
+
+	# We need an uncompressed kernel image for including in uniLoader.
+	install -Dm644 "$builddir/arch/$_carch/boot/Image" \
+		"$pkgdir/boot/vmlinuz"
+
+	make modules_install dtbs_install \
+		ARCH="$_carch" \
+		INSTALL_PATH="$pkgdir"/boot/ \
+		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release
+}
+
+sha512sums="
+c2aca5b13772a6c1fb42b45a25ccf9557eb2e75cf51d8cf132d63b29043e026b8d6ed796895d217a51680ecc3915936cbb3bbc4f5bcd7d41b583af148ea5b02f  linux-postmarketos-mediatek-mt6878-eb7644312c31ce93a72dd8065be6c994c8fe7261.tar.gz
+75e970987140c5a700041cbdc094c7a6319cd48566d1c8e5654996261d1364ef2fe6bcf63f3527e6ca2b4e8bb4968835e0472330f62b1ed5815aa5b7ba2219c5  config-postmarketos-mediatek-mt6878.aarch64
+"

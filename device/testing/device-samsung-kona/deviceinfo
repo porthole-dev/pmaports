@@ -6,7 +6,7 @@ deviceinfo_format_version="0"
 # Device related
 deviceinfo_name="Samsung Galaxy Note 8.0 (Wi-Fi)"
 deviceinfo_manufacturer="Samsung"
-deviceinfo_codename="samsung-n5110"
+deviceinfo_codename="samsung-kona"
 deviceinfo_year="2013"
 deviceinfo_chassis="tablet"
 deviceinfo_dtb="exynos4412-n5110"

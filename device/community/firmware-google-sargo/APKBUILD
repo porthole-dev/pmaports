@@ -1,7 +1,7 @@
 # Maintainer: Richard Acayan <mailingradian@gmail.com>
 pkgname=firmware-google-sargo
 pkgver=220505.008
-pkgrel=8
+pkgrel=9
 pkgdesc="Proprietary firmware blobs from the Google Pixel 3a factory image"
 url="https://github.com/TheMuppets/proprietary_vendor_google_sargo"
 arch="aarch64"
@@ -76,6 +76,8 @@ package() {
 	mkdir -p "$pkgdir"/usr/share/qcom/sdm670/Google/sargo/sensors/
 	cp -r "$builddir"/sensors-registry \
 	      "$pkgdir"/usr/share/qcom/sdm670/Google/sargo/sensors/registry
+	ln -s sargo "$pkgdir"/usr/share/qcom/sdm670/Google/bonito
+	ln -s sargo "$pkgdir"/usr/share/qcom/sdm670/Google/b4s4-sdm670
 
 	install -Dm644 "$srcdir"/Global_cal.acdb \
 		       "$pkgdir"/lib/firmware/qcom/sdm670/sargo/Global_cal.acdb

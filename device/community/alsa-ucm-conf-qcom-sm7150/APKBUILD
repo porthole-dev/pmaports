@@ -2,7 +2,7 @@
 # Co-Maintainer: Jens Reidel <adrian@travitia.xyz>
 # Co-Maintainer: David Wronek <david@mainlining.org>
 pkgname=alsa-ucm-conf-qcom-sm7150
-pkgver=1.2.11_git20240810
+pkgver=1.2.14_git20250830
 pkgrel=1
 pkgdesc="ALSA UCM configuration for SM7150 devices"
 url="https://github.com/sm7150-mainline/alsa-ucm-conf"
@@ -10,7 +10,7 @@ arch="aarch64"
 license="BSD-3-Clause"
 provides="alsa-ucm-conf"
 provider_priority=1
-_commit="30ff4bed580e0c24f235409069c5f798866897e0"
+_commit="b2109b06f732d9c34382962370699f8681eabea4"
 source="$pkgname-$_commit.tar.gz::https://github.com/sm7150-mainline/alsa-ucm-conf/archive/$_commit.tar.gz"
 options="!check"
 builddir="$srcdir/alsa-ucm-conf-$_commit"
@@ -22,5 +22,5 @@ package() {
 }
 
 sha512sums="
-9a722c6c8090242ac3914e270931a27f241bb616d25b0964e9402805577362939c4dfd973da20df8d9fab75ae9e77656987c6c9b3cd9e59a74d5cb10b1eae052  alsa-ucm-conf-qcom-sm7150-30ff4bed580e0c24f235409069c5f798866897e0.tar.gz
+22508b67e1f38d59b5214fded767a5f0f10169127a32fbbff43d68436ad6396b49c38e831ce50a179ea479ce13a60dfa9d23ddfa5517ba0b4a29471898495284  alsa-ucm-conf-qcom-sm7150-b2109b06f732d9c34382962370699f8681eabea4.tar.gz
 "

@@ -1,8 +1,0 @@
-#!/usr/sbin/nft -f
-
-table inet filter {
-	chain input {
-		# allow ssh
-		tcp dport 22 accept comment "accept SSH"
-	}
-}

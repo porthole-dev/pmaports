@@ -7,7 +7,8 @@ There are many more packages defined in the [Alpine Linux aports](https://gitlab
 Helpful resources:
 * [How to create a package](https://wiki.postmarketos.org/wiki/Create_a_package)
 * [APKBUILD reference](https://wiki.alpinelinux.org/wiki/APKBUILD_Reference)
+* [postmarketOS commit style](./COMMITSTYLE.md)
+* [Review and merging guidelines](https://wiki.postmarketos.org/wiki/Rules_for_merging)
 * [Alpine Linux aports](https://gitlab.alpinelinux.org/alpine/aports/)
 * [Alpine Linux package search](https://pkgs.alpinelinux.org/packages)
 * [postmarketOS package search](https://pkgs.postmarketos.org/packages)
-* [postmarketOS commit style](./COMMITSTYLE.md)

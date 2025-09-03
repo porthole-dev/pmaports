@@ -1,0 +1,38 @@
+# Maintainer: Stefan Hansson <newbyte@postmarketos.org>
+pkgname=dint
+pkgver=0.0.1_git20250904
+pkgrel=0
+pkgdesc="postmarketOS deviceinfo validator and linter"
+url="https://gitlab.postmarketos.org/Newbyte/dint"
+# armhf, armv7, riscv64: cpufeatures crate fails to build with --frozen specified
+arch="all !armhf !armv7 !riscv64"
+license="EUPL-1.2"
+makedepends="cargo cargo-auditable"
+_commit="f641015d0b79896c84bc7c3a69522509d3bf53c8"
+source="https://gitlab.postmarketos.org/Newbyte/dint/-/archive/$_commit/hello-world-rust-$_commit.tar.bz2"
+builddir="$srcdir/dint-$_commit"
+
+prepare() {
+	default_prepare
+
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	cargo auditable build --release --frozen
+}
+
+check() {
+	cargo test --frozen
+}
+
+package() {
+	install -Dm755 target/release/dint \
+		-t "$pkgdir"/usr/bin
+	install -Dm644 deviceinfo_schema.toml \
+		-t "$pkgdir"/usr/share/dint
+}
+
+sha512sums="
+0c98a7a78464f6e6aae0b0642f2df4dd40458be931ddd463454bd690c68ab05b569263955b1469241e2f2c7b8c4ad1d9f0dcc12a95ff04eb3b083845a43c748e  hello-world-rust-f641015d0b79896c84bc7c3a69522509d3bf53c8.tar.bz2
+"

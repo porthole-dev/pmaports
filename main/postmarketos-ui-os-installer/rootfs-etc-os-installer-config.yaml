@@ -49,6 +49,10 @@ desktop:
     description : 'Lightweight desktop with focus on modularity.'
     image_path  : '/etc/os-installer/desktops/xfce.png'
     keyword     : 'xfce4'
+  - name        : 'Console'
+    description : 'Console environment for headless devices such as servers.'
+    image_path  : '/etc/os-installer/desktops/console.png'
+    keyword     : 'console'
 
 user:
   request_username: True

@@ -2,5 +2,4 @@ clk_scmi
 drm_kms_helper
 drm_shmem_helper
 pvi_waveform
-rc_rk322x_tvbox
 rockchip_ebc

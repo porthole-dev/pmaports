@@ -1,87 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jonas Karlman <jonas@kwiboo.se>
-Date: Sun, 3 May 2020 16:51:31 +0000
-Subject: [PATCH] drm/rockchip: vop: filter modes outside 0.5% pixel clock
- tolerance
-
-Filter modes that require a pixel clock that differ more then 0.5%
-from the requested pixel clock.
-
-This filter is only applied to tmds only connector and/or encoders.
-
-Signed-off-by: Jonas Karlman <jonas@kwiboo.se>
-Signed-off-by: Alex Bee <knaerzche@gmail.com>
----
- drivers/gpu/drm/rockchip/rockchip_drm_vop.c | 54 +++++++++++++++++++++
- 1 file changed, 54 insertions(+)
-
-diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c b/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-index dbe4d411b30f..fac23d370ee0 100644
---- a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-+++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-@@ -1206,6 +1206,59 @@ static void vop_crtc_disable_vblank(struct drm_crtc *crtc)
- 	spin_unlock_irqrestore(&vop->irq_lock, flags);
- }
- 
-+static bool vop_crtc_is_tmds(struct drm_crtc *crtc)
-+{
-+	struct rockchip_crtc_state *s = to_rockchip_crtc_state(crtc->state);
-+	struct drm_encoder *encoder;
-+
-+	switch (s->output_type) {
-+	case DRM_MODE_CONNECTOR_LVDS:
-+	case DRM_MODE_CONNECTOR_DSI:
-+		return false;
-+	case DRM_MODE_CONNECTOR_eDP:
-+	case DRM_MODE_CONNECTOR_HDMIA:
-+	case DRM_MODE_CONNECTOR_DisplayPort:
-+		return true;
-+	}
-+
-+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask)
-+		if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS)
-+			return true;
-+
-+	return false;
-+}
-+
-+/*
-+ * The VESA DMT standard specifies a 0.5% pixel clock frequency tolerance.
-+ * The CVT spec reuses that tolerance in its examples.
-+ */
-+#define	CLOCK_TOLERANCE_PER_MILLE	5
-+
-+static enum drm_mode_status vop_crtc_mode_valid5(struct drm_crtc *crtc,
-+					const struct drm_display_mode *mode)
-+{
-+	struct vop *vop = to_vop(crtc);
-+	long rounded_rate;
-+	long lowest, highest;
-+
-+	if (!vop_crtc_is_tmds(crtc))
-+		return MODE_OK;
-+
-+	rounded_rate = clk_round_rate(vop->dclk, mode->clock * 1000 + 999);
-+	if (rounded_rate < 0)
-+		return MODE_NOCLOCK;
-+
-+	lowest = mode->clock * (1000 - CLOCK_TOLERANCE_PER_MILLE);
-+	if (rounded_rate < lowest)
-+		return MODE_CLOCK_LOW;
-+
-+	highest = mode->clock * (1000 + CLOCK_TOLERANCE_PER_MILLE);
-+	if (rounded_rate > highest)
-+		return MODE_CLOCK_HIGH;
-+
-+	return MODE_OK;
-+}
-+
- static bool vop_crtc_mode_fixup(struct drm_crtc *crtc,
- 				const struct drm_display_mode *mode,
- 				struct drm_display_mode *adjusted_mode)
-
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Jonas Karlman <jonas@kwiboo.se>
 Date: Mon, 20 Jul 2020 15:15:50 +0000
 Subject: [PATCH] drm/rockchip: vop: filter interlaced modes
 
@@ -97,147 +15,16 @@ diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c b/drivers/gpu/drm/rockc
 index fac23d370ee0..9f7326c5b1f5 100644
 --- a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
 +++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-@@ -1244,6 +1244,9 @@ static enum drm_mode_status vop_crtc_mode_valid(struct drm_crtc *crtc,
- 	if (!vop_crtc_is_tmds(crtc))
- 		return MODE_OK;
+@@ -1245,6 +1245,9 @@ static enum drm_mode_status vop_crtc_mode_valid(struct drm_crtc *crtc,
+	if (vop->data->max_output.width && mode->hdisplay > vop->data->max_output.width)
+		return MODE_BAD_HVALUE;
  
 +	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
 +		return MODE_NO_INTERLACE;
 +
- 	rounded_rate = clk_round_rate(vop->dclk, mode->clock * 1000 + 999);
- 	if (rounded_rate < 0)
- 		return MODE_NOCLOCK;
-
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Jonas Karlman <jonas@kwiboo.se>
-Date: Mon, 20 Jul 2020 11:46:16 +0000
-Subject: [PATCH] drm/rockchip: vop: filter modes above max output supported
-
-Filter any mode with a resolution not supported by the VOP.
-
-Signed-off-by: Jonas Karlman <jonas@kwiboo.se>
-Signed-off-by: Alex Bee <knaerzche@gmail.com>
----
- drivers/gpu/drm/rockchip/rockchip_drm_vop.c | 48 +++++++++++++++------
- 1 file changed, 34 insertions(+), 14 deletions(-)
-
-diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c b/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-index 9f7326c5b1f5..30e252ba7184 100644
---- a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-+++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-@@ -1228,6 +1228,24 @@ static bool vop_crtc_is_tmds(struct drm_crtc *crtc)
- 	return false;
+	return MODE_OK;
  }
- 
-+static enum drm_mode_status vop_crtc_size_valid(struct drm_crtc *crtc,
-+					const struct drm_display_mode *mode)
-+{
-+	struct vop *vop = to_vop(crtc);
-+	const struct vop_rect *max_output = &vop->data->max_output;
-+
-+	if (max_output->width && max_output->height) {
-+		/* only the size of the resulting rect matters */
-+		if(drm_mode_validate_size(mode, max_output->width,
-+					  max_output->height) != MODE_OK) {
-+			return drm_mode_validate_size(mode, max_output->height,
-+						      max_output->width);
-+		}
-+	}
-+
-+	return MODE_OK;
-+}
-+
- /*
-  * The VESA DMT standard specifies a 0.5% pixel clock frequency tolerance.
-  * The CVT spec reuses that tolerance in its examples.
-@@ -1241,25 +1259,24 @@ static enum drm_mode_status vop_crtc_mode_valid(struct drm_crtc *crtc,
- 	long rounded_rate;
- 	long lowest, highest;
- 
--	if (!vop_crtc_is_tmds(crtc))
--		return MODE_OK;
--
- 	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
--		return MODE_NO_INTERLACE;
-+			return MODE_NO_INTERLACE;
- 
--	rounded_rate = clk_round_rate(vop->dclk, mode->clock * 1000 + 999);
--	if (rounded_rate < 0)
--		return MODE_NOCLOCK;
-+	if (vop_crtc_is_tmds(crtc)) {
-+		rounded_rate = clk_round_rate(vop->dclk, mode->clock * 1000 + 999);
-+		if (rounded_rate < 0)
-+			return MODE_NOCLOCK;
- 
--	lowest = mode->clock * (1000 - CLOCK_TOLERANCE_PER_MILLE);
--	if (rounded_rate < lowest)
--		return MODE_CLOCK_LOW;
-+		lowest = mode->clock * (1000 - CLOCK_TOLERANCE_PER_MILLE);
-+		if (rounded_rate < lowest)
-+			return MODE_CLOCK_LOW;
- 
--	highest = mode->clock * (1000 + CLOCK_TOLERANCE_PER_MILLE);
--	if (rounded_rate > highest)
--		return MODE_CLOCK_HIGH;
-+		highest = mode->clock * (1000 + CLOCK_TOLERANCE_PER_MILLE);
-+		if (rounded_rate > highest)
-+			return MODE_CLOCK_HIGH;
-+	}
- 
--	return MODE_OK;
-+	return vop_crtc_size_valid(crtc, mode);
- }
- 
- static bool vop_crtc_mode_fixup(struct drm_crtc *crtc,
-@@ -1269,6 +1286,9 @@ static bool vop_crtc_mode_fixup(struct drm_crtc *crtc,
- 	struct vop *vop = to_vop(crtc);
- 	unsigned long rate;
- 
-+	if (vop_crtc_size_valid(crtc, adjusted_mode) != MODE_OK)
-+		return false;
-+
- 	/*
- 	 * Clock craziness.
- 	 *
 
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Jonas Karlman <jonas@kwiboo.se>
-Date: Wed, 8 Jan 2020 21:07:52 +0000
-Subject: [PATCH] drm/rockchip: dw-hdmi: remove unused plat_data on
- rk3228/rk3328
-
-mpll_cfg/cur_ctr/phy_config is not used when phy_force_vendor is true,
-lets remove them.
-
-Signed-off-by: Jonas Karlman <jonas@kwiboo.se>
----
- drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c | 6 ------
- 1 file changed, 6 deletions(-)
-
-diff --git a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
-index 15ecb257b902..38dded2baaf7 100644
---- a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
-+++ b/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
-@@ -417,9 +417,6 @@ static struct rockchip_hdmi_chip_data rk3228_chip_data = {
- 
- static const struct dw_hdmi_plat_data rk3228_hdmi_drv_data = {
- 	.mode_valid = dw_hdmi_rockchip_mode_valid,
--	.mpll_cfg = rockchip_mpll_cfg,
--	.cur_ctr = rockchip_cur_ctr,
--	.phy_config = rockchip_phy_config,
- 	.phy_data = &rk3228_chip_data,
- 	.phy_ops = &rk3228_hdmi_phy_ops,
- 	.phy_name = "inno_dw_hdmi_phy2",
-@@ -454,9 +451,6 @@ static struct rockchip_hdmi_chip_data rk3328_chip_data = {
- 
- static const struct dw_hdmi_plat_data rk3328_hdmi_drv_data = {
- 	.mode_valid = dw_hdmi_rockchip_mode_valid,
--	.mpll_cfg = rockchip_mpll_cfg,
--	.cur_ctr = rockchip_cur_ctr,
--	.phy_config = rockchip_phy_config,
- 	.phy_data = &rk3328_chip_data,
- 	.phy_ops = &rk3328_hdmi_phy_ops,
- 	.phy_name = "inno_dw_hdmi_phy2",
 
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jonas Karlman <jonas@kwiboo.se>
@@ -253,16 +40,16 @@ diff --git a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c b/drivers/gpu/drm/rockc
 index 38dded2baaf7..9e460b7e14a4 100644
 --- a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
 +++ b/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
-@@ -558,7 +558,7 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
+@@ -592,7 +592,7 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
  	if (IS_ERR(hdmi->phy)) {
  		ret = PTR_ERR(hdmi->phy);
  		if (ret != -EPROBE_DEFER)
--			DRM_DEV_ERROR(hdmi->dev, "failed to get phy\n");
-+			DRM_DEV_ERROR(hdmi->dev, "Failed to get phy: %d\n", ret);
+-			dev_err(hdmi->dev, "failed to get phy\n");
++			dev_err(hdmi->dev, "failed to get phy: %d\n", ret);
  		return ret;
  	}
  
-@@ -590,7 +590,12 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
+@@ -605,7 +605,12 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
  	}
  
  	drm_encoder_helper_add(encoder, &dw_hdmi_rockchip_encoder_helper_funcs);
@@ -276,14 +63,15 @@ index 38dded2baaf7..9e460b7e14a4 100644
  
  	platform_set_drvdata(pdev, hdmi);
  
-@@ -609,6 +614,7 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
+@@ -624,7 +629,7 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
  
  err_bind:
  	drm_encoder_cleanup(encoder);
+-
 +err_disable_clk:
- 	clk_disable_unprepare(hdmi->ref_clk);
- err_clk:
- 	regulator_disable(hdmi->avdd_1v8);
+ 	return ret;
+ }
+ 
 
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jonas Karlman <jonas@kwiboo.se>
@@ -1309,7 +1097,7 @@ Subject: [PATCH] HACK: dts: rockchip: do not use vopl for hdmi
 
 ---
  arch/arm/boot/dts/rockchip/rk3288.dtsi            | 9 ---------
- arch/arm64/boot/dts/rockchip/rk3399.dtsi | 9 ---------
+ arch/arm64/boot/dts/rockchip/rk3399-base.dtsi | 9 ---------
  2 files changed, 18 deletions(-)
 
 diff --git a/arch/arm/boot/dts/rockchip/rk3288.dtsi b/arch/arm/boot/dts/rockchip/rk3288.dtsi
@@ -1339,11 +1127,11 @@ index d1ae42757242..7b2cde230b87 100644
  			};
  		};
  
-diff --git a/arch/arm64/boot/dts/rockchip/rk3399.dtsi b/arch/arm64/boot/dts/rockchip/rk3399.dtsi
+diff --git a/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi b/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi
 index 92c2207e686c..980b12cb0a49 100644
---- a/arch/arm64/boot/dts/rockchip/rk3399.dtsi
-+++ b/arch/arm64/boot/dts/rockchip/rk3399.dtsi
-@@ -1728,11 +1728,6 @@ vopl_out_edp: endpoint@1 {
+--- a/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi
+@@ -1846,11 +1846,6 @@ vopl_out_edp: endpoint@1 {
  				remote-endpoint = <&edp_in_vopl>;
  			};
  
@@ -1355,7 +1143,7 @@ index 92c2207e686c..980b12cb0a49 100644
  			vopl_out_mipi1: endpoint@3 {
  				reg = <3>;
  				remote-endpoint = <&mipi1_in_vopl>;
-@@ -1926,10 +1921,6 @@ hdmi_in_vopb: endpoint@0 {
+@@ -2048,10 +2043,6 @@ hdmi_in_vopb: endpoint@0 {
  					reg = <0>;
  					remote-endpoint = <&vopb_out_hdmi>;
  				};
@@ -1771,7 +1559,7 @@ index 89424c5bc24a..05de2052d95d 100644
 @@ -68,6 +68,7 @@ struct rockchip_hdmi_chip_data {
  	u32	lcdsel_big;
  	u32	lcdsel_lit;
-	int	max_tmds_clock;
+ 	int	max_tmds_clock;
 +	bool	ycbcr_444_allowed;
  };
  
@@ -1837,7 +1625,7 @@ index 89424c5bc24a..05de2052d95d 100644
 @@ -604,6 +630,7 @@ static const struct dw_hdmi_phy_ops rk3328_hdmi_phy_ops = {
  static struct rockchip_hdmi_chip_data rk3328_chip_data = {
  	.lcdsel_grf_reg = -1,
-	.max_tmds_clock = 594000,
+ 	.max_tmds_clock = 594000,
 +	.ycbcr_444_allowed = true,
  };
  
@@ -2153,7 +1941,7 @@ index cb201612199f..8627f6826bfe 100644
 @@ -616,6 +616,7 @@ static const struct dw_hdmi_phy_ops rk3228_hdmi_phy_ops = {
  static struct rockchip_hdmi_chip_data rk3228_chip_data = {
  	.lcdsel_grf_reg = -1,
-	.max_tmds_clock = 594000,
+ 	.max_tmds_clock = 594000,
 +	.ycbcr_444_allowed = true,
  };
  
@@ -2180,7 +1968,7 @@ diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c b/drivers/gpu/drm/rockc
 index e50f71ad3ceb..ef0a078c22f4 100644
 --- a/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
 +++ b/drivers/gpu/drm/rockchip/rockchip_drm_vop.c
-@@ -965,6 +965,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
+@@ -958,6 +958,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
  	int format;
  	int is_yuv = fb->format->is_yuv;
  	int i;
@@ -2188,7 +1976,7 @@ index e50f71ad3ceb..ef0a078c22f4 100644
  
  	/*
  	 * can't update plane when vop is disabled.
-@@ -983,8 +984,14 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
+@@ -976,8 +977,14 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
  	obj = fb->obj[0];
  	rk_obj = to_rockchip_obj(obj);
  
@@ -2204,7 +1992,7 @@ index e50f71ad3ceb..ef0a078c22f4 100644
  	act_info = (actual_h - 1) << 16 | ((actual_w - 1) & 0xffff);
  
  	dsp_info = (drm_rect_height(dest) - 1) << 16;
-@@ -1026,7 +1033,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
+@@ -1019,7 +1026,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
  
  	VOP_WIN_SET(vop, win, format, format);
  	VOP_WIN_SET(vop, win, fmt_10, is_fmt_10(fb->format->format));
@@ -2213,7 +2001,7 @@ index e50f71ad3ceb..ef0a078c22f4 100644
  	VOP_WIN_SET(vop, win, yrgb_mst, dma_addr);
  	VOP_WIN_YUV2YUV_SET(vop, win_yuv2yuv, y2r_en, is_yuv);
  	VOP_WIN_SET(vop, win, y_mir_en,
-@@ -1050,7 +1057,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
+@@ -1040,7 +1047,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
  		offset += (src->y1 >> 16) * fb->pitches[1] / vsub;
  
  		dma_addr = rk_uv_obj->dma_addr + offset + fb->offsets[1];
@@ -2413,9 +2201,9 @@ index b78df931aa74..ebbea63ea9de 100644
  /* cec-core.c */
  extern int cec_debug;
 +extern int cec_debounce_ms;
- int cec_get_device(struct cec_devnode *devnode);
- void cec_put_device(struct cec_devnode *devnode);
  
+ /* cec-adap.c */
+ int cec_monitor_all_cnt_inc(struct cec_adapter *adap);
 diff --git a/include/media/cec.h b/include/media/cec.h
 index abee41ae02d0..544eedb5d671 100644
 --- a/include/media/cec.h
@@ -2552,3 +2340,4 @@ index 49619f794061..9915bf124374 100644
  	}
  
  	port = of_get_child_by_name(dev->of_node, "port");
+

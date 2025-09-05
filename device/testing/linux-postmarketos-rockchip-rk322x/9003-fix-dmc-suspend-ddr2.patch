@@ -1,3 +1,5 @@
+Patch from https://github.com/rk-unofficial-cfw/LibreELEC.tv/blob/le12-rk322x-wip/projects/Rockchip/devices/RK322X/patches/linux/default/linux-9003-fix-dmc-suspend-ddr2.patch
+
 diff -ruPN linux-5.10.76/drivers/devfreq/rk3228_dmc.c linux-new/drivers/devfreq/rk3228_dmc.c
 --- linux-5.10.76/drivers/devfreq/rk3228_dmc.c	2022-02-17 11:10:14.196295398 +0100
 +++ linux-new/drivers/devfreq/rk3228_dmc.c	2022-02-17 11:13:37.163303895 +0100

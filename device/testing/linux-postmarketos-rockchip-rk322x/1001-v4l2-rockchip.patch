@@ -289,7 +289,7 @@ index eaf2f133a264..f55abb7c377f 100644
  	}
  
 +
-+	rkvdec->rstc = devm_reset_control_array_get(&pdev->dev, false, true);
++	rkvdec->rstc = devm_reset_control_array_get(&pdev->dev, RESET_CONTROL_OPTIONAL_EXCLUSIVE);
 +	if (IS_ERR(rkvdec->rstc)) {
 +		dev_err(&pdev->dev,
 +			"get resets failed %ld\n", PTR_ERR(rkvdec->rstc));
@@ -349,13 +349,13 @@ Date: Tue, 18 Aug 2020 11:38:04 +0200
 Subject: [PATCH] WIP: arm64: dts: add resets to vdec for RK3399
 
 ---
- arch/arm64/boot/dts/rockchip/rk3399.dtsi | 5 +++++
+ arch/arm64/boot/dts/rockchip/rk3399-base.dtsi | 5 +++++
  1 file changed, 5 insertions(+)
 
-diff --git a/arch/arm64/boot/dts/rockchip/rk3399.dtsi b/arch/arm64/boot/dts/rockchip/rk3399.dtsi
+diff --git a/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi b/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi
 index 980b12cb0a49..6e3149e587c5 100644
---- a/arch/arm64/boot/dts/rockchip/rk3399.dtsi
-+++ b/arch/arm64/boot/dts/rockchip/rk3399.dtsi
+--- a/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3399-base.dtsi
 @@ -1345,6 +1348,11 @@ vdec: video-codec@ff660000 {
  		clock-names = "axi", "ahb", "cabac", "core";
  		iommus = <&vdec_mmu>;
@@ -392,9 +392,9 @@ index 8de6fd2e8eef..002b1a600f93 100644
 -#define RK3288_ACLK_MAX_FREQ (400 * 1000 * 1000)
 +#define RK3288_ACLK_MAX_FREQ (600 * 1000 * 1000)
 +#define RK3399_ACLK_MAX_FREQ (400 * 1000 * 1000)
- #define RK3588_ACLK_MAX_FREQ (300 * 1000 * 1000)
  
  #define ROCKCHIP_VPU981_MIN_SIZE 64
+ 
 @@ -346,13 +347,20 @@ static int rk3066_vpu_hw_init(struct hantro_dev *vpu)
  	return 0;
  }

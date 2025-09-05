@@ -1,25 +1,25 @@
-From b4f40590a4f946d8ee704faf8579930e53ef4650 Mon Sep 17 00:00:00 2001
+From 50a8db983c682918cd2efe02ede48db93892d52a Mon Sep 17 00:00:00 2001
 From: Paolo Sabatino <paolo.sabatino@gmail.com>
-Date: Sun, 12 Sep 2021 10:15:56 +0000
-Subject: [PATCH] rk322x: analog audio codec
+Date: Sat, 20 Jul 2024 13:51:55 +0200
+Subject: [PATCH] rk3228: add analog audio codec
 
 ---
  .../bindings/sound/rockchip,rk3228-codec.txt  |  22 +
- arch/arm/boot/dts/rockchip/rk322x.dtsi                 |   9 +
+ arch/arm/boot/dts/rockchip/rk322x.dtsi        |   9 +
  drivers/clk/rockchip/clk-rk3228.c             |   2 +-
  include/dt-bindings/clock/rk3228-cru.h        |   1 +
- sound/soc/codecs/Kconfig                      |   5 +
+ sound/soc/codecs/Kconfig                      |   6 +
  sound/soc/codecs/Makefile                     |   2 +
  sound/soc/codecs/rk3228_codec.c               | 545 ++++++++++++++++++
  sound/soc/codecs/rk3228_codec.h               | 218 +++++++
- 8 files changed, 803 insertions(+), 1 deletion(-)
+ 8 files changed, 804 insertions(+), 1 deletion(-)
  create mode 100644 Documentation/devicetree/bindings/sound/rockchip,rk3228-codec.txt
  create mode 100644 sound/soc/codecs/rk3228_codec.c
  create mode 100644 sound/soc/codecs/rk3228_codec.h
 
 diff --git a/Documentation/devicetree/bindings/sound/rockchip,rk3228-codec.txt b/Documentation/devicetree/bindings/sound/rockchip,rk3228-codec.txt
 new file mode 100644
-index 000000000..9191a8593
+index 000000000000..9191a8593380
 --- /dev/null
 +++ b/Documentation/devicetree/bindings/sound/rockchip,rk3228-codec.txt
 @@ -0,0 +1,22 @@
@@ -46,20 +46,19 @@ index 000000000..9191a8593
 +	status = "disabled";
 +};
 diff --git a/arch/arm/boot/dts/rockchip/rk322x.dtsi b/arch/arm/boot/dts/rockchip/rk322x.dtsi
-index 75af99c76..c2670d498 100644
+index cc5a5e609f04..d13dc979a67e 100644
 --- a/arch/arm/boot/dts/rockchip/rk322x.dtsi
 +++ b/arch/arm/boot/dts/rockchip/rk322x.dtsi
-@@ -145,6 +145,16 @@ i2s1: i2s1@100b0000 {
+@@ -249,6 +249,15 @@ i2s1: i2s1@100b0000 {
  		status = "disabled";
  	};
  
-+	analog_codec: analog-codec@12010000 {
++	codec: codec@12010000 {
 +		compatible = "rockchip,rk3228-codec";
 +		reg = <0x12010000 0x1000>;
 +		clocks =  <&cru SCLK_I2S_OUT>, <&cru PCLK_ACODECPHY>, <&cru SCLK_I2S1>;
 +		clock-names = "mclk", "pclk", "sclk";
 +		spk-en-gpio = <&gpio1 RK_PA3 GPIO_ACTIVE_HIGH>;
-+		#sound-dai-cells = <0>;
 +		status = "disabled";
 +	};
 +
@@ -67,10 +66,10 @@ index 75af99c76..c2670d498 100644
  		compatible = "rockchip,rk3228-i2s", "rockchip,rk3066-i2s";
  		reg = <0x100c0000 0x4000>;
 diff --git a/drivers/clk/rockchip/clk-rk3228.c b/drivers/clk/rockchip/clk-rk3228.c
-index a24a35553..69f8c792f 100644
+index 0db8a97007f2..0f690dd84650 100644
 --- a/drivers/clk/rockchip/clk-rk3228.c
 +++ b/drivers/clk/rockchip/clk-rk3228.c
-@@ -620,7 +620,7 @@ static struct rockchip_clk_branch rk3228_clk_branches[] __initdata = {
+@@ -603,7 +603,7 @@ static struct rockchip_clk_branch rk3228_clk_branches[] __initdata = {
  	GATE(0, "pclk_sim", "pclk_cpu", 0, RK2928_CLKGATE_CON(10), 3, GFLAGS),
  
  	GATE(0, "pclk_ddrphy", "pclk_phy_pre", 0, RK2928_CLKGATE_CON(10), 3, GFLAGS),
@@ -80,10 +79,10 @@ index a24a35553..69f8c792f 100644
  	GATE(0, "pclk_vdacphy", "pclk_phy_pre", 0, RK2928_CLKGATE_CON(10), 8, GFLAGS),
  	GATE(0, "pclk_phy_noc", "pclk_phy_pre", 0, RK2928_CLKGATE_CON(10), 9, GFLAGS),
 diff --git a/include/dt-bindings/clock/rk3228-cru.h b/include/dt-bindings/clock/rk3228-cru.h
-index de550ea56..30d44ce90 100644
+index 911824731866..9162f9132657 100644
 --- a/include/dt-bindings/clock/rk3228-cru.h
 +++ b/include/dt-bindings/clock/rk3228-cru.h
-@@ -115,6 +115,7 @@
+@@ -116,6 +116,7 @@
  #define PCLK_HDMI_CTRL		364
  #define PCLK_HDMI_PHY		365
  #define PCLK_GMAC		367
@@ -92,51 +91,52 @@ index de550ea56..30d44ce90 100644
  /* hclk gates */
  #define HCLK_I2S0_8CH		442
 diff --git a/sound/soc/codecs/Kconfig b/sound/soc/codecs/Kconfig
-index db1607120..5f7f01102 100644
+index 4afc43d3f71f..183a69249160 100644
 --- a/sound/soc/codecs/Kconfig
 +++ b/sound/soc/codecs/Kconfig
-@@ -154,6 +154,7 @@ config SND_SOC_ALL_CODECS
- 	imply SND_SOC_PCM512x_I2C
- 	imply SND_SOC_PCM512x_SPI
+@@ -182,6 +182,7 @@ config SND_SOC_ALL_CODECS
+ 	imply SND_SOC_PCM6240
  	imply SND_SOC_PEB2466
+ 	imply SND_SOC_RK3308
 +	imply SND_SOC_RK3228
  	imply SND_SOC_RK3328
  	imply SND_SOC_RK817
  	imply SND_SOC_RT274
-@@ -1063,6 +1064,10 @@ config SND_SOC_PCM512x_SPI
- 	select SND_SOC_PCM512x
- 	select REGMAP_SPI
+@@ -1457,6 +1458,11 @@ config SND_SOC_RK3308
+ 	  It has 8 24-bit ADCs and 2 24-bit DACs. The maximum supported
+ 	  sampling rate is 192 kHz.
  
 +config SND_SOC_RK3228
-+        select REGMAP_MMIO
-+        tristate "Rockchip RK3228 CODEC"
++	tristate "Rockchip RK3228 audio CODEC"
++	depends on ARCH_ROCKCHIP || COMPILE_TEST
++	select REGMAP_MMIO
 +
  config SND_SOC_RK3328
  	tristate "Rockchip RK3328 audio CODEC"
- 	select REGMAP_MMIO
+ 	depends on ARCH_ROCKCHIP || COMPILE_TEST
 diff --git a/sound/soc/codecs/Makefile b/sound/soc/codecs/Makefile
-index 7bb38c370..232b5c43e 100644
+index b4df22186e25..454179eb7b73 100644
 --- a/sound/soc/codecs/Makefile
 +++ b/sound/soc/codecs/Makefile
-@@ -165,6 +165,7 @@ snd-soc-pcm5102a-objs := pcm5102a.o
- snd-soc-pcm512x-i2c-objs := pcm512x-i2c.o
- snd-soc-pcm512x-spi-objs := pcm512x-spi.o
- snd-soc-peb2466-objs := peb2466.o
-+snd-soc-rk3228-objs := rk3228_codec.o
- snd-soc-rk3328-objs := rk3328_codec.o
- snd-soc-rk817-objs := rk817_codec.o
- snd-soc-rl6231-objs := rl6231.o
-@@ -491,6 +492,7 @@ obj-$(CONFIG_SND_SOC_PCM5102A)	+= snd-soc-pcm5102a.o
- obj-$(CONFIG_SND_SOC_PCM512x_I2C)	+= snd-soc-pcm512x-i2c.o
- obj-$(CONFIG_SND_SOC_PCM512x_SPI)	+= snd-soc-pcm512x-spi.o
+@@ -207,6 +207,7 @@ snd-soc-pcm512x-spi-y := pcm512x-spi.o
+ snd-soc-pcm6240-y := pcm6240.o
+ snd-soc-peb2466-y := peb2466.o
+ snd-soc-rk3308-y := rk3308_codec.o
++snd-soc-rk3228-y := rk3228_codec.o
+ snd-soc-rk3328-y := rk3328_codec.o
+ snd-soc-rk817-y := rk817_codec.o
+ snd-soc-rl6231-y := rl6231.o
+@@ -599,6 +600,7 @@ obj-$(CONFIG_SND_SOC_PCM512x_SPI)	+= snd-soc-pcm512x-spi.o
+ obj-$(CONFIG_SND_SOC_PCM6240)	+= snd-soc-pcm6240.o
  obj-$(CONFIG_SND_SOC_PEB2466)	+= snd-soc-peb2466.o
+ obj-$(CONFIG_SND_SOC_RK3308)	+= snd-soc-rk3308.o
 +obj-$(CONFIG_SND_SOC_RK3228)	+= snd-soc-rk3228.o
  obj-$(CONFIG_SND_SOC_RK3328)	+= snd-soc-rk3328.o
  obj-$(CONFIG_SND_SOC_RK817)	+= snd-soc-rk817.o
  obj-$(CONFIG_SND_SOC_RL6231)	+= snd-soc-rl6231.o
 diff --git a/sound/soc/codecs/rk3228_codec.c b/sound/soc/codecs/rk3228_codec.c
 new file mode 100644
-index 000000000..b65307435
+index 000000000000..197e7e2e0d8b
 --- /dev/null
 +++ b/sound/soc/codecs/rk3228_codec.c
 @@ -0,0 +1,545 @@
@@ -166,7 +166,7 @@ index 000000000..b65307435
 + * 31: 6dB
 + * Step: 1.5dB
 + */
-+#define OUT_VOLUME	(0x1a)
++#define OUT_VOLUME	(0x18)
 +#define INITIAL_FREQ	(11289600)
 +
 +struct rk3228_codec_priv {
@@ -212,10 +212,10 @@ index 000000000..b65307435
 +	unsigned int val = 0;
 +
 +	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-+	case SND_SOC_DAIFMT_CBS_CFS:
++	case SND_SOC_DAIFMT_CBC_CFC:
 +		val |= PIN_DIRECTION_IN | DAC_I2S_MODE_SLAVE;
 +		break;
-+	case SND_SOC_DAIFMT_CBM_CFM:
++	case SND_SOC_DAIFMT_CBP_CFP:
 +		val |= PIN_DIRECTION_OUT | DAC_I2S_MODE_MASTER;
 +		break;
 +	default:
@@ -656,7 +656,7 @@ index 000000000..b65307435
 +	return ret;
 +}
 +
-+static int rk3228_platform_remove(struct platform_device *pdev)
++static void rk3228_platform_remove(struct platform_device *pdev)
 +{
 +	struct rk3228_codec_priv *rk3228 = platform_get_drvdata(pdev);
 +
@@ -669,7 +669,7 @@ index 000000000..b65307435
 +	if (!IS_ERR(rk3228->sclk))
 +		clk_disable_unprepare(rk3228->sclk);
 +
-+	return 0;
++	return;
 +}
 +
 +static struct platform_driver rk3228_codec_driver = {
@@ -687,7 +687,7 @@ index 000000000..b65307435
 +MODULE_LICENSE("GPL v2");
 diff --git a/sound/soc/codecs/rk3228_codec.h b/sound/soc/codecs/rk3228_codec.h
 new file mode 100644
-index 000000000..7283d0ba8
+index 000000000000..7283d0ba86e8
 --- /dev/null
 +++ b/sound/soc/codecs/rk3228_codec.h
 @@ -0,0 +1,218 @@
@@ -910,5 +910,5 @@ index 000000000..7283d0ba8
 +
 +#endif
 -- 
-2.25.1
+2.34.1
 

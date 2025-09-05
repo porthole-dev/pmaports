@@ -1,3 +1,5 @@
+Patch from https://github.com/rk-unofficial-cfw/LibreELEC.tv/blob/le12-rk322x-wip/projects/Rockchip/devices/RK322X/patches/linux/default/linux-9004-wip-audio-passtrough.patch
+
 diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c
 index d7e65c869415..2ea9f69d312b 100644
 --- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-i2s-audio.c

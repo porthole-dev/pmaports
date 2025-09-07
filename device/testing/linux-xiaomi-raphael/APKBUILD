@@ -2,7 +2,7 @@
 # Kernel config based on: arch/arm64/configs/raphael_defconfig
 pkgname=linux-xiaomi-raphael
 pkgver=6.12.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Xiaomi Mi 9T Pro / Redmi K20 Pro kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -26,7 +26,7 @@ makedepends="
 
 # Source
 _repository="linux"
-_commit="4b227fde6e7897e21c23c8559c2ef6dfc4acbff0"
+_commit="2447484c8665f0b6fc4fbc8b3208dfa0250bf35f"
 _config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/NekoSekaiMoe/$_repository/archive/$_commit.tar.gz
@@ -67,6 +67,6 @@ package() {
 
 
 sha512sums="
-5b83aaf58452b1bc702d9e21d203c62448d4a3328dcaa05684e6cfe0937ef80dd9f76ceb0abcbee6703a2ffcd70982c26ed42203be822b020f0445539610438e  linux-xiaomi-raphael-4b227fde6e7897e21c23c8559c2ef6dfc4acbff0.tar.gz
+6c2ab2db07bf6e18b9e40161d052aaa2ad2c35890a1bb03cf1fcf88521cf3353feac9a6b3fb781a296e1bbdad37ce7131cf1163e113468c640ad283b0e8e0408  linux-xiaomi-raphael-2447484c8665f0b6fc4fbc8b3208dfa0250bf35f.tar.gz
 c273bcdfd64b48388168331281eb315d9e8adee135726a12ba2cd1443af65d4a7e5379dd7527a271b45dde71b7b48ce32c4a5a97d7aefaecb61aadddb3fb7dbb  config-xiaomi-raphael.aarch64
 "

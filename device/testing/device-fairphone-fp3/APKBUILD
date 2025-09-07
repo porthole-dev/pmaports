@@ -3,7 +3,7 @@
 pkgname=device-fairphone-fp3
 pkgdesc="Fairphone 3"
 pkgver=5
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -11,17 +11,22 @@ options="!check !archcheck"
 depends="
 	firmware-fairphone-fp3-adreno
 	firmware-fairphone-fp3-adsp
+	firmware-fairphone-fp3-audio
+	firmware-fairphone-fp3-modem
 	firmware-fairphone-fp3-venus
 	firmware-fairphone-fp3-wcnss
 	firmware-qcom-adreno-a530
 	linux-postmarketos-qcom-msm8953
 	lk2nd-msm8953
 	mkbootimg
+	msm-modem-uim-selection
 	postmarketos-base
+	qbootctl
 	rmtfs
 	soc-qcom-msm8953
 "
 makedepends="devicepkg-dev"
+subpackages="$pkgname-openrc"
 source="deviceinfo modules-initfs"
 
 build() {
@@ -30,6 +35,17 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+}
+
+openrc() {
+	install_if="$pkgname=$pkgver-r$pkgrel openrc"
+	install="$subpkgname.post-install $subpkgname.post-upgrade"
+	depends="
+		openrc
+		qbootctl-openrc
+	"
+
+	mkdir -p "$subpkgdir"
 }
 
 sha512sums="

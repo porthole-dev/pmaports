@@ -2,7 +2,7 @@
 pkgname=device-xiaomi-raphael
 pkgdesc="Xiaomi Mi 9T Pro / Redmi K20 Pro"
 pkgver=3
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -39,6 +39,8 @@ nonfree_firmware() {
 		firmware-xiaomi-raphael
 		firmware-xiaomi-raphael-adreno
 		firmware-xiaomi-raphael-adsp
+		firmware-xiaomi-raphael-ath10k
+		firmware-xiaomi-raphael-bluetooth
 		firmware-xiaomi-raphael-camera
 		firmware-xiaomi-raphael-cdsp
 		firmware-xiaomi-raphael-ipa
@@ -47,7 +49,7 @@ nonfree_firmware() {
 		firmware-xiaomi-raphael-touchscreen
 		firmware-xiaomi-raphael-venus
 		firmware-xiaomi-raphael-wlan
-		linux-firmware-ath11k
+		linux-firmware-ath10k
 		linux-firmware-qcom
 		msm-modem
 		pd-mapper

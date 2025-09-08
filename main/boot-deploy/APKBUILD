@@ -1,9 +1,9 @@
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=boot-deploy
 pkgver=0.20.1
-pkgrel=0
+pkgrel=1
 pkgdesc="tool for finalizing and deploying boot related files"
-url="https://gitlab.com/postmarketos/boot-deploy"
+url="https://gitlab.postmarketos.org/postmarketOS/boot-deploy"
 arch="noarch"
 license="GPL-2.0-or-later"
 source="

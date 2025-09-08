@@ -1,6 +1,6 @@
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=boot-deploy
-pkgver=0.20.0
+pkgver=0.20.1
 pkgrel=0
 pkgdesc="tool for finalizing and deploying boot related files"
 url="https://gitlab.com/postmarketos/boot-deploy"
@@ -29,7 +29,7 @@ package() {
 		"$pkgdir"/usr/share/mkinitfs-triggers/boot-deploy
 }
 sha512sums="
-694e5392400cf11a49aeb9f5c3d78e79c734c759da545306dcd80182b2968008ef05dfb36a835fd31e61a26c19d1f622d29f2db2438133d8b126ccd31a0bcd7d  boot-deploy-0.20.0.tar.gz
+ccfcb429ad43eeb656e439327ba810f946ccdfa022a9a7bd8070e511aba92e24a798e8c66a1928cd2c0d242e90fb7e663c31b4eab4d2c8818277f60e0ffa6bde  boot-deploy-0.20.1.tar.gz
 a243975b9850d9933e0f917f7eb38fc4a76ea658c3dcc56f035f60ee6c62d6740c1107143b8210bdc0231d4c9b6b2003e458120985604eb09649322d359ae89f  os-customization
 5b3da17fab1b0e76b3686667c0c8c3a3e29a5794406875dd6375d73c5b1b47d60da6cf54720a3d8ad98b79c563af0863fedc87d2506b19055fb3fdea1cbd731d  use-busybox-sh.patch
 "

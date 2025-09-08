@@ -1,7 +1,7 @@
 # Maintainer: BotchedRPR <igor.belwon@mentallysanemainliners.org>
 pkgname=device-nothing-tetris
 pkgdesc="Nothing CMF Phone 1"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -26,5 +26,5 @@ package() {
 }
 
 sha512sums="
-61d092102f75ec0b8983971d4292b044c02426159c692e516b16c62db77efabab21fc4fcf2ae5acc713a37f740bdfff8d3810c8174453a03c03e2ad4376015a7  deviceinfo
+fbb2f4c0d1ea57baf8ffc46ad10306f6a383c4a6cbcc58a1fd843d48b0da836517ae2191f5f1b102e388db1e41665d47e273f6cd09cc6cba5d7768bdd8898806  deviceinfo
 "

@@ -8,12 +8,21 @@ deviceinfo_arch="aarch64"
 
 # Device related
 deviceinfo_chassis="handset"
-deviceinfo_external_storage="false"
+deviceinfo_drm="true"
+deviceinfo_external_storage="true"
 deviceinfo_rootfs_image_sector_size="4096"
 
 # Bootloader related
-# Note: MT6878 devices CANNOT boot with stock lk to mainline. The stock
-# lk messes up the mainline device tree and will not boot. As such,
-# creating the mainline boot.img is done manually for now.
-# Packaging with uniLoader is not supported right now in postmarketOS.
-deviceinfo_flash_method="none"
+deviceinfo_flash_method="fastboot"
+deviceinfo_bootimg_dtb_second="false"
+deviceinfo_bootimg_qcdt="false"
+
+# Boot image
+deviceinfo_generate_bootimg="true"
+deviceinfo_flash_offset_base="0x0"
+deviceinfo_flash_offset_dtb="0x47c80000"
+deviceinfo_flash_offset_tags="0x47c80000"
+deviceinfo_flash_offset_ramdisk="0x66f00000"
+deviceinfo_flash_offset_kernel="0x40000000"
+deviceinfo_flash_pagesize="4096"
+deviceinfo_header_version="2"

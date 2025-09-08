@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 6.17.0-rc4 Kernel Configuration
+# Linux/arm64 6.17.0-rc5 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="aarch64-alpine-linux-musl-gcc (Alpine 15.2.0) 15.2.0"
 CONFIG_CC_IS_GCC=y
@@ -3321,8 +3321,8 @@ CONFIG_PINCTRL_MT6878=y
 #
 # end of Renesas pinctrl drivers
 
-CONFIG_GPIOLIB=y
 CONFIG_GPIOLIB_LEGACY=y
+CONFIG_GPIOLIB=y
 CONFIG_GPIOLIB_FASTPATH_LIMIT=512
 CONFIG_OF_GPIO=y
 CONFIG_GPIOLIB_IRQCHIP=y
@@ -4354,6 +4354,7 @@ CONFIG_MEDIA_TUNER_XC5000=y
 #
 # Graphics support
 #
+CONFIG_APERTURE_HELPERS=y
 CONFIG_VIDEO=y
 # CONFIG_AUXDISPLAY is not set
 CONFIG_DRM=y
@@ -4402,7 +4403,8 @@ CONFIG_DRM_SCHED=y
 #
 # Drivers for system framebuffers
 #
-# CONFIG_DRM_SIMPLEDRM is not set
+CONFIG_DRM_SYSFB_HELPER=y
+CONFIG_DRM_SIMPLEDRM=y
 # end of Drivers for system framebuffers
 
 #
@@ -4666,7 +4668,6 @@ CONFIG_FB=y
 CONFIG_XEN_FBDEV_FRONTEND=y
 # CONFIG_FB_METRONOME is not set
 # CONFIG_FB_MB862XX is not set
-# CONFIG_FB_SIMPLE is not set
 # CONFIG_FB_SSD1307 is not set
 # CONFIG_FB_SM712 is not set
 CONFIG_FB_CORE=y

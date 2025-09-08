@@ -4,7 +4,7 @@
 # Co-Maintainer: Danila Tikhonov (JIaxyga) <danila@mainlining.org>
 pkgname=soc-qcom-msm8953
 pkgdesc="Common package for Qualcomm MSM8953 devices"
-pkgver=15
+pkgver=16
 pkgrel=0
 url="https://postmarketos.org"
 license="BSD-3-Clause"
@@ -18,7 +18,7 @@ subpackages="
 	$pkgname-ucm
 "
 
-_ucm_commit="f6dfc9b072e74b0ab2afcf452bc106242049ef28"
+_ucm_commit="ed9334bda853fe032794751c34cea03ec0d7d4eb"
 source="
 	$pkgname-$_ucm_commit.tar.gz::https://github.com/msm8953-mainline/alsa-ucm-conf/archive/$_ucm_commit.tar.gz
 	q6voiced.conf
@@ -72,7 +72,7 @@ gpu() {
 }
 
 sha512sums="
-8aadc874c8a334e46c7bf630874c3035070aa7b9052deba1a28ae059ab9d63dd99dfb82c1a58d09da5063ad250de813e3974e040ce938a53347e390ce2e450eb  soc-qcom-msm8953-f6dfc9b072e74b0ab2afcf452bc106242049ef28.tar.gz
+ade2ffb266adf502a7e3d0a9c9927c3bf153377093a903de1961ad6e4fdf04e813fab08c3077990c6ceb4e364809c5551174d19e4029e4374367444275325ca3  soc-qcom-msm8953-ed9334bda853fe032794751c34cea03ec0d7d4eb.tar.gz
 3a4a9322839d4b3ef9d79668a37840a9f444954759ae3c512e694051d2f9a2573db42ad6c4c1a5c75eeb861232a27ba1a8cef9b503decd54ead25a96e3dd6f98  q6voiced.conf
 4f9af3c582ae611d42fc058f949f60a96fc7cc884052e4c9f82e0292d57bba3b3cb8ace1d512b5a59535caa633be8558246a7519c2d067b7980f4088f452df6d  adreno-a506-quirks.sh
 0d2539681c6a8e6f222ab378dc688a2b4a21dc61e393b4fe42420abb7ffd9ad1b8f69b10fbe18995f10b13cb870130f616b0b37a38f253e12041dd36391c613f  moto-modem-rfs-setup.openrc

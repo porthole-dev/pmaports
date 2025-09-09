@@ -62,8 +62,10 @@ parse_diff_output() {
 	local diff_output="$1"
 	local added_var="$2"
 	local removed_var="$3"
-	local added_paths=""
-	local removed_paths=""
+	# Note: use an underscore here to reduce the chances that $added_var and
+	# $removed_car are set to the variable names here:
+	local _added_paths=""
+	local _removed_paths=""
 
 	# Using heredoc to process lines and avoid a subshell, see SC2031
 	while IFS= read -r line; do
@@ -74,10 +76,10 @@ parse_diff_output() {
 				# Skip directories
 				continue;;
 			-[!-]*)
-				removed_paths="$removed_paths $path"
+				_removed_paths="$_removed_paths $path"
 				;;
 			+[!+]*)
-				added_paths="$added_paths $path"
+				_added_paths="$_added_paths $path"
 				;;
 			*)
 	            ;;
@@ -87,8 +89,8 @@ parse_diff_output() {
 	EOF
 
     # Set results in caller's variables
-    if [ -n "$added_var" ]; then eval "$added_var=\"$added_paths\""; fi
-    if [ -n "$removed_var" ]; then eval "$removed_var=\"$removed_paths\""; fi
+    if [ -n "$added_var" ]; then eval "$added_var=\"$_added_paths\""; fi
+    if [ -n "$removed_var" ]; then eval "$removed_var=\"$_removed_paths\""; fi
 }
 
 run_systemctl() {

@@ -1,6 +1,6 @@
 pkgname=devicepkg-utils
-pkgver=0.2.0
-pkgrel=2
+pkgver=0.3.0
+pkgrel=0
 pkgdesc="Utilities for interacting with device packages"
 url="https://postmarketos.org"
 arch="noarch"
@@ -21,5 +21,5 @@ package() {
 }
 sha512sums="
 ef2181d7072b4ef62c11d3f50677fcd455e50cf89a3110e67fcaa6058ea695f101ded48b1442758494e3d23a97cdd93df6669656f329037020ba715af4341b55  etc-deviceinfo
-a6e4f57280bed21fe3ac480eaa582c14fa8337d77386ff92c3e271818b5a028cac2a4f557ecfe9f7432e23a6dadd33bdc6b429a0e5e29cce2602b2a6e58a8bdd  source_deviceinfo
+b92a28574268c0e71db77309a288d81e2525922cb5043557566e0cfa5fc74986b630762d826eff08462a1506886be3fbfd9cefccd06e006af9b2dc4f89619650  source_deviceinfo
 "

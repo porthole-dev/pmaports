@@ -2,7 +2,7 @@
 pkgname=device-samsung-kona
 replaces="device-samsung-n5110"
 pkgdesc="Samsung Galaxy Note 8.0 (Wi-Fi)"
-pkgver=2
+pkgver=3
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -41,7 +41,7 @@ package() {
 }
 
 sha512sums="
-5eb7a3a5b23ae02dd6aa1277e059a054fe6f4c5ade800d900849cc83926545b234e80df9276cee76dd60b4d4644ba4ac517cdfe2f572c89bd530642550ac53a9  deviceinfo
+678fb3eae3e6ad1b936a1d1eea7ad19da6fffc0c211b217a3e4274d30ac88c687fefe8275618d27bd9f5e09439618bbba3a4c27f01086d2799987edb7e568e9d  deviceinfo
 dbbe2516c347708f72ef2e8fb6a110e6b18234c72f7173940a9a3727c6fd357b449df7c0a5ba223d2571b90249714d811307c3155b8d76974ecb1fe92c5abe98  asound.state
 1edafcded27093f6d71b2459e92e59390dfbea50c866612f7b78943dd4b96057649b2ffa677956a2b160956c5d12e8eff76ace7ec91134bafba2b632b461c660  hifi.conf
 f885a785caabd7e1d2ccf456a6ad4fa90bf01f76ba94c902a0d55268a8eddbad4b591db524a2359f1b676929d426e892db4597189e91fcd8df06bc54e3555b92  Kona_WM1811.conf

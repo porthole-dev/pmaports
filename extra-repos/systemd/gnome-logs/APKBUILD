@@ -1,7 +1,7 @@
 # Maintainer: Achill Gilgenast <achill@achill.org>
 pkgname=gnome-logs
-pkgver=45.0
-pkgrel=1
+pkgver=49.0
+pkgrel=0
 pkgdesc="Log viewer for the systemd journal"
 url="https://apps.gnome.org/Logs"
 # armhf: pmb#2618
@@ -34,5 +34,5 @@ package() {
 }
 
 sha512sums="
-a4021b182da29fc027311b6bb18491287ba232310fe61c982af759da7b36613cab589d0ca4caadec5d03fcb3d3000591c92ae37c881a8fd95aa9273025d17fd4  gnome-logs-45.0.tar.xz
+3151890e77f1c2e80ac830f8a58d60f8f766c62b8693b3671e53373d528c1465366413985b820c82b3460bd8ca1d1205053a75ccba6d36e96933f794e96f5418  gnome-logs-49.0.tar.xz
 "

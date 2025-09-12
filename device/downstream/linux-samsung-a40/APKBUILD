@@ -3,7 +3,7 @@
 
 pkgname=linux-samsung-a40
 pkgver=4.4.177
-pkgrel=0
+pkgrel=1
 pkgdesc="Samsung Galaxy A40 kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -12,7 +12,6 @@ url="https://kernel.org"
 license="GPL-2.0-only"
 options="!strip !check !tracedeps pmb:cross-native"
 makedepends="bash bc bison devicepkg-dev flex openssl-dev perl gcc6"
-subpackages="samsung-a40-headers"
 
 # Compiler: GCC 6 (doesn't boot when compiled with newer versions)
 if [ "${CC:0:5}" != "gcc6-" ]; then
@@ -64,41 +63,6 @@ build() {
 package() {
 	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" \
 		"$_flavor" "$_outdir"
-}
-
-headers() {
-	pkgdesc="Headers and scripts for building modules for $_flavor kernel"
-	provides="linux-headers=$pkgver-r$pkgrel"
-	replaces="linux-headers"
-
-	cd "$builddir"
-
-	# Install sanitized kernel headers to standard location
-	make O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" \
-		INSTALL_HDR_PATH="$subpkgdir/usr" headers_install
-
-	# Install Samsung MFC headers with HEVC support and dependencies
-	mkdir -p "$subpkgdir/usr/include/linux"
-
-	# Install Samsung's V4L2 extensions (dependencies)
-	cp include/uapi/linux/videodev2_exynos_media.h \
-		"$subpkgdir/usr/include/linux/"
-	cp include/uapi/linux/videodev2_exynos_camera.h \
-		"$subpkgdir/usr/include/linux/"
-
-	# Install Samsung MFC media header with HEVC support
-	cp drivers/media/platform/exynos/mfc/exynos_mfc_media.h \
-		"$subpkgdir/usr/include/linux/"
-
-	# Install ION headers (Android DMA buffer allocator)
-	cp include/uapi/linux/ion.h \
-		"$subpkgdir/usr/include/linux/"
-	cp include/linux/exynos_ion.h \
-		"$subpkgdir/usr/include/linux/"
-
-	# Remove .install files
-	find "$subpkgdir/usr" -name '.install' -delete
-	find "$subpkgdir/usr" -name '..install.cmd' -delete
 }
 
 sha512sums="

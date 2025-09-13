@@ -48,6 +48,8 @@ enable urfkill.service
 enable plasma-mobile.service
 enable sddm.service
 
+enable drkonqi-coredump-processor@.service
+
 ## gnome
 enable gdm.service
 

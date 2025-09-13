@@ -21,3 +21,6 @@ enable xfconfd.service
 
 # phosh
 enable cellbroadcastd.service
+
+# Plasma
+enable drkonqi-coredump-launcher.socket

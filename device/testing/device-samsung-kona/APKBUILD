@@ -15,7 +15,11 @@ depends="
 	postmarketos-base
 	"
 makedepends="devicepkg-dev"
-_pmb_recommends="firmware-samsung-midas"
+_pmb_recommends="
+	firmware-samsung-midas-bluetooth
+	firmware-samsung-midas-wifi
+	linux-firmware-s5p-mfc
+	"
 source="
 	deviceinfo
 	asound.state

@@ -2,7 +2,7 @@
 pkgname=soc-qcom-sc7280
 pkgdesc="Common package for Qualcomm SC7280/SM7325/QCM6490 devices"
 pkgver=1
-pkgrel=3
+pkgrel=4
 url="https://postmarketos.org"
 license="BSD-3-Clause"
 arch="aarch64"
@@ -15,6 +15,7 @@ depends="
 	pd-mapper
 	swclock-offset
 	tqftpserv
+	81voltd
 "
 subpackages="
 	$pkgname-openrc

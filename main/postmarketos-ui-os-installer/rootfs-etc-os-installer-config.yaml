@@ -39,7 +39,7 @@ disk_encryption:
 desktop:
   - name        : 'GNOME'
     description : 'Simple desktop that can be personalized with extensions.'
-    image_path  : '/etc/os-installer/desktops/gnome.jpg'
+    image_path  : '/etc/os-installer/desktops/gnome.png'
     keyword     : 'gnome'
   - name        : 'KDE Plasma'
     description : 'Configurable desktop that is similar to Windows.'

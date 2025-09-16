@@ -1,8 +1,8 @@
-pkgname=firmware-samsung-kylepro
+pkgname=firmware-samsung-kyleproxx
 pkgver=1
-pkgrel=2
+pkgrel=0
 _commit="a6725fbede9f2b1f8fa3177b8733e204c753f108"
-pkgdesc="Samsung Galaxy Trend Plus Firmware"
+pkgdesc="Samsung Galaxy Trend Plus & Samsung Galaxy S Duos 2 Firmware"
 url="https://github.com/Samsung-KYLEPROXX/android_vendor_samsung_kyleproxx"
 arch="armv7"
 license="proprietary"
@@ -17,4 +17,6 @@ package() {
 	install -Dm644 proprietary/etc/wifi/nvram_net.txt \
 		"$pkgdir"/lib/firmware/postmarketos/nvram_net.txt
 }
-sha512sums="c0ac8771a7ca6be7db485f0f8a3625091ee56513a8d8075659711a0c2c26cd630649d763b6ebda2f7579beeb56e682f6eccfed024cf5400c53cc0b0ec41dff26  firmware-samsung-kylepro-a6725fbede9f2b1f8fa3177b8733e204c753f108.tar.gz"
+sha512sums="
+c0ac8771a7ca6be7db485f0f8a3625091ee56513a8d8075659711a0c2c26cd630649d763b6ebda2f7579beeb56e682f6eccfed024cf5400c53cc0b0ec41dff26  firmware-samsung-kyleproxx-a6725fbede9f2b1f8fa3177b8733e204c753f108.tar.gz
+"

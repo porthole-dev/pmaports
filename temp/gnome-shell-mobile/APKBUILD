@@ -2,7 +2,7 @@
 
 pkgname=gnome-shell-mobile
 pkgver=48.0
-pkgrel=1
+pkgrel=2
 pkgdesc="GNOME shell"
 url="https://wiki.gnome.org/Projects/GnomeShell"
 # gjs / riscv64: mutter-mobile

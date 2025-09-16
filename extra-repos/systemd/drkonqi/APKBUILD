@@ -1,15 +1,19 @@
 maintainer="Bart Ribbers <bribbers@disroot.org>"
 pkgname=drkonqi
 pkgver=6.4.5
-pkgrel=0
+pkgrel=1
 pkgdesc="The KDE crash handler"
 # armhf blocked by qt6-qtdeclarative -> ki18n
 arch="all !armhf"
 url="https://kde.org/plasma-desktop/"
 license="GPL-2.0-or-later"
 depends="
+	elfutils
+	gdb
 	kirigami
 	kitemmodels
+	py3-psutil
+	py3-pygdbmi
 	py3-sentry-sdk
 	"
 makedepends="
@@ -34,10 +38,6 @@ makedepends="
 	samurai
 	syntax-highlighting-dev
 	systemd-dev
-	"
-checkdepends="
-	py3-psutil
-	py3-pygdbmi
 	"
 
 case "$pkgver" in

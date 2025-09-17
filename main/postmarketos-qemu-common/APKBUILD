@@ -4,7 +4,7 @@ pkgver=2
 pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
-arch="aarch64 x86_64 ppc64le riscv64"
+arch="aarch64 x86_64 loongarch64 ppc64le riscv64"
 options="!check !archcheck !tracedeps"
 subpackages="
 	$pkgname-mce

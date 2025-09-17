@@ -1,0 +1,51 @@
+# Reference: <https://postmarketos.org/devicepkg>
+# Maintainer: Jens Reidel <adrian@postmarketos.org>
+# Co-Maintainer: Clayton Craft <clayton@craftyguy.net>
+pkgname=device-qemu-loongarch64
+pkgver=1
+pkgrel=0
+pkgdesc="Simulated device in QEMU (loongarch64)"
+url="https://postmarketos.org"
+arch="loongarch64"
+license="MIT"
+depends="
+	postmarketos-base
+	postmarketos-qemu-common
+	systemd-boot
+	"
+makedepends="devicepkg-dev"
+subpackages="
+	$pkgname-kernel-lts:kernel_lts
+	$pkgname-kernel-stable:kernel_stable
+	"
+
+source="
+	deviceinfo
+	modules-initfs
+	"
+options="!check !archcheck"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+kernel_lts() {
+	pkgdesc="Alpine LTS kernel (recommended)"
+	depends="linux-lts linux-firmware-none"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_stable() {
+	pkgdesc="Alpine Stable kernel"
+	depends="linux-stable linux-firmware-none"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+sha512sums="
+300bcc701e81a8106c39e51bfcd77e655f28bcd05a53b4ea597c26692c790ee4734f966eb977a6666a898a96802cfbd6d541fd8316b7cc35f9e254edc68035b1  deviceinfo
+8129439ec53e76e714b2d3dac97bbe702822d6f6642ea6b631aa26001fec85ca310fbe9eeb04c2bd849145a1137b7934c21b704524f3a98b96b7c6f71c2ca992  modules-initfs
+"

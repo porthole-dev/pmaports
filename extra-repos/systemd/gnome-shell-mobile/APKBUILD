@@ -3,7 +3,7 @@
 pkgname=gnome-shell-mobile
 pkgver=99948.0
 _pkgver=48.0
-pkgrel=3
+pkgrel=4
 pkgdesc="GNOME shell mobile"
 url="https://wiki.gnome.org/Projects/GnomeShell"
 # gjs / riscv64: mutter-mobile
@@ -36,7 +36,7 @@ makedepends="
 	systemd-dev
 	evolution-data-server-dev evolution-dev
 	gcr4-dev
-	gjs-dev>=1.64.0
+	gjs-dev>=1.85.90
 	gnome-autoar-dev
 	gnome-bluetooth-dev
 	gnome-control-center-dev
@@ -80,6 +80,7 @@ source="gnome-shell-mobile-$_commit.tar.gz::https://gitlab.gnome.org/verdre/gnom
 	libgnome-volume-control-$_gvc_commit.tar.gz::https://gitlab.gnome.org/GNOME/libgnome-volume-control/-/archive/$_gvc_commit/gnome-shell-$_gvc_commit.tar.gz
 	gsh.patch
 	pcver.patch
+	gjs-1.85.90-girepository.patch
 	"
 builddir="$srcdir/gnome-shell-mobile-$_commit"
 options="!check" # Tests have circular dependency 'gnome-shell <-> gdm'
@@ -146,4 +147,5 @@ sha512sums="
 ef6a103ddca784db35648acd11a423a9d65173c597c6463a572834827c9812bb1be5c8113d93a28ea99ca017dd1655b8eaf417a30b6b9085677baf373395aac1  libgnome-volume-control-5f9768a2eac29c1ed56f1fbb449a77a3523683b6.tar.gz
 40cafbd0da2f2a40ff9e9db1026179d52a3b296a81fa43a98e433c0919800f0ec5231fcad32d523b8f01b8f7c0205dce1332e48493b0101ad02dae9469ac3de0  gsh.patch
 0503440b547b78859c3bb87a66308899bcf33cc0b543e04e9c865904ff7fb86b10b66594c37a1726828ee1a497b0e034150be8cf1a9fbd06c59809619f6a31c8  pcver.patch
+7d1bd0a60ee389c8fbc830ac573235ac1053fe44e8c249d32fb34427d9a1c0129444d781d311a6474d5e0b97897a14a52013a3aec0c85c120b8b525b835378bb  gjs-1.85.90-girepository.patch
 "

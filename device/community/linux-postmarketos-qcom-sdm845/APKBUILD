@@ -5,8 +5,8 @@
 
 _flavor="postmarketos-qcom-sdm845"
 pkgname=linux-$_flavor
-pkgver=6.16.0_rc2
-pkgrel=1
+pkgver=6.16.7
+pkgrel=0
 pkgdesc="Mainline Kernel fork for SDM845 devices"
 arch="aarch64"
 _carch="arm64"
@@ -18,7 +18,7 @@ options="!check !tracedeps
 makedepends="bash bison findutils flex installkernel openssl-dev perl zstd python3"
 
 _config="config-$_flavor.$arch"
-_tag="sdm845-6.16-rc2-4"
+_tag="sdm845-6.16.7-r0"
 
 # Source
 source="
@@ -71,6 +71,6 @@ package() {
 }
 
 sha512sums="
-904c7b83c9d00880e617b4d7102a16f51dd59afebfb00ff1353362203be2be069c1b7df40668bb9ddc83864541d493bbf6604a6722fc584553f8fd61b4bc3ef2  linux-sdm845-6.16-rc2-4.tar.gz
-bb76a8d2424c59df6fdbc9e0264be988ddb758f5276fdd2d5cd41fa189a5617a5d26f8986c3968777f8b8786d0859fb2c1977246b66b996e6a9d066686703ec1  config-postmarketos-qcom-sdm845.aarch64
+803d2cf85b248c3da41a9c9178d69d211eccf5d1adb72acd5343e09cbb65782f727e579939287c91712c69a862bed7344a0e2bc893c2791a971b6fed95ec6f1a  linux-sdm845-6.16.7-r0.tar.gz
+afba069444a7b79f7b3255bbd37592ce5929d9a6fd11ebaf4b392127856750edac3b18e25fe9f47becd65e0b3e99a4cb1c1377586c3bb93d4c6d8d8788608a1b  config-postmarketos-qcom-sdm845.aarch64
 "

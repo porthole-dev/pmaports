@@ -1,8 +1,8 @@
-# Archived: Kernel does not build anymore
 # Reference: <https://postmarketos.org/devicepkg>
+maintainer="Duje Mihanović <duje@dujemihanovic.xyz>"
 pkgname=device-lg-vee3e
 pkgdesc="LG Optimus L3 II"
-pkgver=2
+pkgver=3
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -21,5 +21,5 @@ package() {
 }
 
 sha512sums="
-3396ccc8e4287a5c75522dcc830a0114e50249c905e3b940d12cd09500a342a3b3834fa22fa9159b3edbc33b7e3f387c8c78cf0929b11cf16edf0876cfbc0955  deviceinfo
+79bda0c316da3b181c27662e1db90e9b563c5368d84bca38aabead0ca0e8203f3dce30eb4655fcc264282e2ce927c4b6c3a3008e6cd0a549b2d35b324ca65a4a  deviceinfo
 "

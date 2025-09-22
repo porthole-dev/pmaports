@@ -46,19 +46,19 @@ def test_executable_files():
                                "m0755` or a variation thereof.")
 
 
-# Make sure files are either:
-#  - in root directory (README.md)
-#  - hidden (.ci/, device/.shared-patches/)
-#  - or belong to a package (below a directory with APKBUILD)
+# Make sure files belong to a package (below a directory with APKBUILD)
 def test_files_belong_to_package():
     # Walk directories and set package_dir when we find an APKBUILD
     # This allows matching files in subdirectories to the package directory.
     package_dir = None
     for dirpath, dirs, files in os.walk("."):
-        # Skip "hidden" directories
+        # Skip "hidden" directories (.ci/, device/.shared-patches/)
         dirs[:] = [d for d in dirs if not d.startswith(".")]
-        # Ignore files in root directory
+        # Ignore files in root directory (README.md)
         if dirpath == '.':
+            continue
+        # Ignore files under docs/
+        if dirpath.startswith('./docs'):
             continue
 
         # Switched to another directory?

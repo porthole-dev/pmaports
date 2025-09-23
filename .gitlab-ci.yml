@@ -10,6 +10,7 @@ stages:
   - build
   - autoupdate
   - test
+  - deploy
 variables:
   # Default of 20 is pretty small, sometimes MRs have >20 commits in them. 100
   # seems like a reasonable balance. If this is too low, git merge-base (from ci/
@@ -192,6 +193,27 @@ build-jobs:
       pipeline_variables: true
   rules:
     - if: *mr_rule
+
+build-docs:
+  stage: build
+  before_script:
+    - adduser -D build
+  script:
+    - .ci/build-docs.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - docs/**/*
+
+deploy-docs:
+  stage: deploy
+  trigger:
+    project: postmarketOS/handbook
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master" && $CI_PROJECT_NAMESPACE == "postmarketOS"
+      changes:
+        - docs/**/*
 
 auto-update:
   stage: autoupdate

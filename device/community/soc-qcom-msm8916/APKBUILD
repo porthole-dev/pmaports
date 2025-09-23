@@ -2,7 +2,7 @@
 # Co-Maintainer: Nikita Travkin <nikita@trvn.ru>
 pkgname=soc-qcom-msm8916
 pkgdesc="Common package for Qualcomm MSM8916 devices"
-pkgver=24
+pkgver=25
 pkgrel=0
 url="https://postmarketos.org"
 license="BSD-3-Clause"
@@ -12,10 +12,8 @@ depends="$pkgname-ucm swclock-offset"
 subpackages="
 	$pkgname-gpu
 	$pkgname-ucm
-	$pkgname-rproc-none:rproc_none
-	$pkgname-rproc-no-modem:rproc_no_modem
-	$pkgname-rproc-all:rproc_all
-	$pkgname-rproc-all-openrc:rproc_all_openrc
+	$pkgname-rproc
+	$pkgname-rproc-openrc:rproc_openrc
 	soc-samsung-msm8916-modem-workaround:samsung_modem_workaround
 "
 
@@ -47,39 +45,19 @@ ucm() {
 	cp -r ucm2 "$subpkgdir"/usr/share/alsa
 }
 
-rproc_none() {
-	pkgdesc="Disable all remote processors (no WiFi/BT/modem, ~90 MiB more RAM)"
-	provides="soc-qcom-msm8916-rproc=$pkgver-r$pkgrel"
-
-	mkdir -p "$subpkgdir"/boot
-	echo none > "$subpkgdir"/boot/lk2nd_rproc_mode
-}
-
-rproc_no_modem() {
-	pkgdesc="Disable only modem (audio bypasses modem, ~80 MiB more RAM)"
-	provides="soc-qcom-msm8916-rproc=$pkgver-r$pkgrel"
-	provider_priority=50
-
-	mkdir -p "$subpkgdir"/boot
-	echo no-modem > "$subpkgdir"/boot/lk2nd_rproc_mode
-}
-
-rproc_all() {
-	pkgdesc="Enable all remote processors (audio goes through modem)"
-	provides="soc-qcom-msm8916-rproc=$pkgver-r$pkgrel"
-	provider_priority=100
+rproc() {
+	pkgdesc="Enable all remote processors (WiFi/BT/modem)"
 
 	depends="msm-modem msm-modem-uim-selection q6voiced"
-	replaces="soc-qcom-msm8916-modem"
+	replaces="$pkgname-modem $pkgname-rproc_none $pkgname-rproc_no_modem $pkgname-rproc_all"
 
-	mkdir -p "$subpkgdir"/boot
-	echo all > "$subpkgdir"/boot/lk2nd_rproc_mode
 	install -Dm644 q6voiced.conf "$subpkgdir"/etc/conf.d/q6voiced
 }
 
-rproc_all_openrc() {
-	install_if="$pkgname-rproc-all=$pkgver-r$pkgrel openrc"
+rproc_openrc() {
+	install_if="$pkgname-rproc=$pkgver-r$pkgrel openrc"
 	install="$subpkgname.post-install"
+	replaces="$pkgname-rproc_all_openrc"
 
 	mkdir -p "$subpkgdir"
 }

@@ -1,7 +1,7 @@
 pkgname=soc-qcom-msm8909
 pkgdesc="Common package for Qualcomm MSM8909 devices"
 pkgver=1
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="GPL-3.0-or-later"
 arch="armv7 aarch64"
@@ -22,7 +22,7 @@ package() {
 
 modem() {
 	pkgdesc="Modem support for Qualcomm MSM8909 devices"
-	install_if="soc-qcom-msm8909 soc-qcom-msm8916-rproc-all"
+	install_if="soc-qcom-msm8909 soc-qcom-msm8916-rproc"
 	depends="qmi-utils"
 	mkdir -p "$subpkgdir"
 }

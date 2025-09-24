@@ -1,15 +1,17 @@
 # Maintainer: Jenneron <jenneron@protonmail.com>
 pkgname=firmware-ayn-odin
-pkgver=2
+pkgver=3
 pkgrel=0
 pkgdesc="Firmware for AYN Odin"
-url="https://gitlab.com/jenneron/firmware-ayn-odin"
+# FIXME: Switch back to Jenneron's repo after
+# https://gitlab.com/jenneron/firmware-ayn-odin/-/merge_requests/2 is merged
+url="https://gitlab.com/Adrianyyy/firmware-ayn-odin"
 arch="aarch64"
 license="proprietary"
 options="!check !strip !archcheck !tracedeps textrels pmb:cross-native"
 
 _repo="firmware-ayn-odin"
-_commit="afdaff716138e8f6caf1fee03a7de94e46cb56d8"
+_commit="5397d272deb7c2a2018a156212646184c946b37b"
 source="$pkgname-$_commit.tar.gz::$url/-/archive/$_commit/$_repo-$_commit.tar.gz"
 
 builddir="$srcdir/$_repo-$_commit"
@@ -19,5 +21,5 @@ package() {
 }
 
 sha512sums="
-50ef64def282778152bc25561483473f8421866f293182fa4fcf2b75b99739425f6b8ff27469c4aa7d087eb3f46d8c7c816c3b2eb49024bff5b37d844e973366  firmware-ayn-odin-afdaff716138e8f6caf1fee03a7de94e46cb56d8.tar.gz
+d61bae515fceca0192937fe2cbee669b50691aefdfb2551a9786734fa6b5959e1df2716b16071127dec6db4e969f89cc34b870459d075f786a314ed4957858ad  firmware-ayn-odin-5397d272deb7c2a2018a156212646184c946b37b.tar.gz
 "

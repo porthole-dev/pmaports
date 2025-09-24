@@ -38,5 +38,7 @@ if ! [ -e $deviceinfo ]; then
 	exit 1
 fi
 
+# Needed to import "common"
+export PYTHONPATH=".ci/lib"
 # Run testcases
 pytest -vv -x --tb=native "$pmaports/.ci/testcases" "$@"

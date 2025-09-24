@@ -12,3 +12,12 @@ Helpful resources:
 * [Alpine Linux aports](https://gitlab.alpinelinux.org/alpine/aports/)
 * [Alpine Linux package search](https://pkgs.alpinelinux.org/packages)
 * [postmarketOS package search](https://pkgs.postmarketos.org/packages)
+
+## Git Hooks
+
+You can find some useful git hooks in the `.githooks` directory.
+To use them, run the following command after cloning this repository:
+
+```sh
+git config --local core.hooksPath .githooks
+```

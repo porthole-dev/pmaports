@@ -49,6 +49,12 @@ case "$lcp" in
 	device/*/*)
 		prefix="$(echo "$lcp" | cut -d/ -f3)"
 		;;
+	docs/*.adoc)
+		prefix="docs/$(basename $lcp .adoc)"
+		;;
+	docs/*)
+		prefix="docs"
+		;;
 	device/*)
 		# Multiple packages touched for same device category. More
 		# logic could be added to detect if they all belong to same

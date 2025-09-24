@@ -9,7 +9,7 @@
 pkgname=systemd
 pkgver=257.8
 _pkgver="musl-v${pkgver//_/-}-split-usr"
-pkgrel=1
+pkgrel=2
 pkgdesc="System and service manager"
 url="https://github.com/systemd/systemd"
 # ppc64le and s390x blocked by pmboostrap not supporting
@@ -262,6 +262,10 @@ package() {
 udevd() {
 	pkgdesc="systemd udev"
 	# is a dependency of systemd
+
+	# Some lib dependencies can't be automatically detected because they are
+	# dlopened and must be explicitly listed
+	depends="kmod-libs"
 
 	# NOTE: should only be udev, but packages hardcode eudev
 	provides="eudev udev eudev-libs"

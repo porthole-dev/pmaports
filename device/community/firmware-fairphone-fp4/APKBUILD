@@ -1,7 +1,7 @@
 # Maintainer: Luca Weiss <luca@lucaweiss.eu>
 pkgname=firmware-fairphone-fp4
 pkgver=20240313
-pkgrel=1
+pkgrel=2
 pkgdesc="Firmware for Fairphone 4"
 subpackages="
 	$pkgname-adreno
@@ -75,13 +75,13 @@ hexagonfs() {
 
 	mkdir -p "$subpkgdir"/usr/share/qcom/sm7225/Fairphone/
 	cp -r "$builddir"/hexagonfs/ \
-		"$subpkgdir"/usr/share/qcom/sm7225/Fairphone/fairphone4
+		"$subpkgdir"/usr/share/qcom/sm7225/Fairphone/fp4
 
 	# Remove files that we don't need - for now
-	rm -r "$subpkgdir"/usr/share/qcom/sm7225/Fairphone/fairphone4/acdb/
-	rm -r "$subpkgdir"/usr/share/qcom/sm7225/Fairphone/fairphone4/dsp/
+	rm -r "$subpkgdir"/usr/share/qcom/sm7225/Fairphone/fp4/acdb/
+	rm -r "$subpkgdir"/usr/share/qcom/sm7225/Fairphone/fp4/dsp/
 
-	find "$subpkgdir/usr/share/qcom/sm7225/Fairphone/fairphone4/" \
+	find "$subpkgdir/usr/share/qcom/sm7225/Fairphone/fp4/" \
 		-type f -exec chmod 0644 {} \;
 }
 

@@ -2,7 +2,7 @@
 
 pkgname=firmware-oneplus-sdm845
 pkgver=10
-pkgrel=1
+pkgrel=2
 pkgdesc="Firmware for OnePlus 6 / 6T"
 url="https://gitlab.com/sdm845-mainline/firmware-oneplus-sdm845"
 arch="aarch64"
@@ -47,6 +47,9 @@ firmware_sensors() {
 		echo $_i
 		install -Dm644 $_i "$pkgdir/$_i"
 	done < "$srcdir/sensor.files"
+
+	ln -s oneplus6 "$pkgdir"/usr/share/qcom/sdm845/OnePlus/enchilada
+	ln -s oneplus6 "$pkgdir"/usr/share/qcom/sdm845/OnePlus/fajita
 }
 
 sha512sums="

@@ -123,11 +123,9 @@ https://wiki.postmarketos.org/wiki/Bpo[bpo]. We configure the images as follows:
 * Build images for _some_ devices in testing, maintainers may
   https://wiki.postmarketos.org/wiki/Bpo#Image_configuration[enable building
   images] if:
-** the port runs a mainline kernel
-** the port is actively maintained
-** the maintainer has been active for some time (~6 months)
-** the device is not so obscure that probably nobody will make use of the
-   pre-built images
+** The port runs a mainline kernel.
+** The port is actively maintained.
+** The maintainer has been active for some time (~6 months).
 
 We may adjust these rules again, e.g. depending on how many testing devices will
 be added over time. Testing images may be removed again, e.g. if they don't

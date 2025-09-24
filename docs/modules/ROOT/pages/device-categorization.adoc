@@ -156,11 +156,10 @@ straight to main.
   approvals* (instead of the usual two).
 * Everyone should be given the chance to look at the entire device port again,
   to identify issues/possible improvements. Therefore the MR should not be
-  merged before a *minimum time of one week* passed.
-** Clarification on the week: usually the MR should be in good shape when
-   opened, and only minor fixups should need to be done before merging. If that
-   is the case, then it is one week after the MR was opened. Otherwise, one week
-   after there were the last significant changes.
+  merged before a *minimum time of one week* passed. Usually, the MR should be
+  in good shape when opened, and only minor fixups should need to be done before
+  merging. If that is the case, then it is one week after the MR was
+  opened. Otherwise, one week after there were the last significant changes.
 * Reviewers should look at all files that were moved and add comments as
   necessary. (GitLab currently doesn't allow in-line comments for moved files
   (https://gitlab.com/gitlab-org/gitlab/-/issues/213446[gitlab#213446]), so just
@@ -170,10 +169,9 @@ straight to main.
 * Reviewers should pay special attention to consistency issues, as outlined in
   https://gitlab.postmarketos.org/postmarketOS/postmarketos/-/issues/24[postmarketos#24].
 * Consistency issues/possible improvements in the existing features (not missing
-  features) should be discussed and ideally fixed before merge.
-** Consistency changes that require lots of work should be documented as issues
-   at least. (Let's not unnecessarily delay merge, that's annoying for
-   everyone.)
+  features) should be discussed and ideally fixed before merge. Consistency
+  changes that require lots of work should be documented as issues an expect to
+  be fixed in the future, but should not unnecessarily delay merge.
 
 ==== After merge ====
 
@@ -185,9 +183,7 @@ straight to main.
 === Moving to a lower category ===
 
 If rules to keep a device in a category are no longer fulfilled, we should
-create a merge request to move them to the now appropriate category. So far we
-did not come up with extra rules, so we would treat it just like any other merge
-request.
+create a merge request to move them to the now appropriate category.
 
 == See also ==
 

@@ -1,7 +1,7 @@
 # Maintainer: Jianhua Lu <lujianhua000@gmail.com>
 pkgname=firmware-xiaomi-elish
 pkgver=20240917
-pkgrel=1
+pkgrel=2
 pkgdesc="Firmware for Xiaomi Mi Pad 5 Pro"
 subpackages="
 	$pkgname-adreno
@@ -63,13 +63,13 @@ cirrus() {
 hexagonfs() {
 	pkgdesc="Xiaomi elish hexagonfs files"
 
-	mkdir -p "$subpkgdir"/usr/share/qcom/sm8250/xiaomi
+	mkdir -p "$subpkgdir"/usr/share/qcom/sm8250/Xiaomi
 	cp -r "$builddir"/hexagonfs/ \
-		"$subpkgdir"/usr/share/qcom/sm8250/xiaomi/elish
+		"$subpkgdir"/usr/share/qcom/sm8250/Xiaomi/elish
 
 	# Remove files that we don't need - for now
-	rm -r "$subpkgdir"/usr/share/qcom/sm8250/xiaomi/elish/acdb/
-	rm -r "$subpkgdir"/usr/share/qcom/sm8250/xiaomi/elish/dsp/
+	rm -r "$subpkgdir"/usr/share/qcom/sm8250/Xiaomi/elish/acdb/
+	rm -r "$subpkgdir"/usr/share/qcom/sm8250/Xiaomi/elish/dsp/
 }
 
 initramfs() {

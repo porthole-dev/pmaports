@@ -7,6 +7,8 @@ content:
   - url: .
     start_path: docs
     branches: HEAD
+  - url: https://gitlab.postmarketos.org/postmarketOS/handbook
+    branches: HEAD
 
 ui:
   bundle:

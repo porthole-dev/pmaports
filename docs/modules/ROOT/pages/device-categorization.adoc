@@ -152,8 +152,6 @@ straight to main.
 
 ==== Review process ====
 
-* People with merge access collect approvals as usual, but requires *four
-  approvals* (instead of the usual two).
 * Everyone should be given the chance to look at the entire device port again,
   to identify issues/possible improvements. Therefore the MR should not be
   merged before a *minimum time of one week* passed. Usually, the MR should be
@@ -172,6 +170,8 @@ straight to main.
   features) should be discussed and ideally fixed before merge. Consistency
   changes that require lots of work should be documented as issues an expect to
   be fixed in the future, but should not unnecessarily delay merge.
+* Before merging, the MR must have at least *four approvals*, 2 of which should
+  be from Core Contributors.
 
 ==== After merge ====
 

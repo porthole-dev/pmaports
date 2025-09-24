@@ -7,7 +7,6 @@
 import configparser
 import os
 import subprocess
-import sys
 
 
 cache = {}

@@ -22,6 +22,8 @@ workflow:
   rules:
     # Run for merge requests
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # Some things have to run in the default branch
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     # Run scheduled pipeline for autoupdate or manually triggered pipeline
     - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"
 
@@ -211,7 +213,7 @@ deploy-docs:
     project: postmarketOS/handbook
     strategy: depend
   rules:
-    - if: $CI_COMMIT_BRANCH == "master" && $CI_PROJECT_NAMESPACE == "postmarketOS"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PROJECT_NAMESPACE == "postmarketOS"
       changes:
         - docs/**/*
 

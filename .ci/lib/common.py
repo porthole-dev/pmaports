@@ -98,6 +98,10 @@ def get_base_commit() -> str:
     """Get the base commit that can be compared with HEAD to get all commits in the
     given branch/merge request."""
 
+    commit = os.getenv("CI_MERGE_REQUEST_DIFF_BASE_SHA")
+    if commit is not None:
+        return commit
+
     branch_upstream = f"upstream/{get_upstream_branch()}"
     commit_head = run_git(["rev-parse", "HEAD"])[:-1]
     commit_upstream = run_git(["rev-parse", branch_upstream])[:-1]

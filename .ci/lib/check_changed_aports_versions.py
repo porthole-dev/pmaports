@@ -104,6 +104,9 @@ def check_versions(packages):
     # desired here, since we already know what packages changed, and really
     # want to check if the version was increased towards *current* upstream
     # branch HEAD.
+    common.run_git(["remote", "add", "upstream",
+             "https://gitlab.postmarketos.org/postmarketOS/pmaports.git"], False)
+    common.run_git(["fetch", "-q", "upstream"])
     commit = f"upstream/{common.get_upstream_branch()}"
     if common.run_git(["rev-parse", "HEAD"]) == common.run_git(["rev-parse",
                                                                 commit]):

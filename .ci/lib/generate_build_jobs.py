@@ -184,7 +184,6 @@ if __name__ == "__main__":
     devices_under_test = set()
     packages_modified = set()
     # Get and print modified packages
-    common.add_upstream_git_remote()
     for file in common.get_changed_files():
         path = Path(file)
 

@@ -41,7 +41,6 @@ if __name__ == "__main__":
     custom_valid_options += kconfigcheck_categories
     os.environ["CUSTOM_VALID_OPTIONS"] = " ".join(custom_valid_options)
 
-    common.add_upstream_git_remote()
     apkbuilds = {file for file in common.get_changed_files(removed=False)
                  if os.path.basename(file) == "APKBUILD"}
     if len(apkbuilds) < 1:

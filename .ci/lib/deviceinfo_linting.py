@@ -8,7 +8,6 @@ import subprocess
 import sys
 
 if __name__ == "__main__":
-    common.add_upstream_git_remote()
     deviceinfo_files = {file for file in common.get_changed_files(removed=False)
                         if os.path.basename(file) == "deviceinfo"}
 

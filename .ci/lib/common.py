@@ -32,13 +32,6 @@ def run_git(parameters, check=True, stderr=None):
         return None
 
 
-def add_upstream_git_remote():
-    """ Add a remote pointing to postmarketOS/pmaports. """
-    run_git(["remote", "add", "upstream",
-             "https://gitlab.postmarketos.org/postmarketOS/pmaports.git"], False)
-    run_git(["fetch", "-q", "upstream"])
-
-
 def commit_message_has_string(needle):
     base_commit = get_base_commit()
 
@@ -101,6 +94,11 @@ def get_base_commit() -> str:
     commit = os.getenv("CI_MERGE_REQUEST_DIFF_BASE_SHA")
     if commit is not None:
         return commit
+
+    # Add a remote pointing to postmarketOS/pmaports
+    run_git(["remote", "add", "upstream",
+             "https://gitlab.postmarketos.org/postmarketOS/pmaports.git"], False)
+    run_git(["fetch", "-q", "upstream"])
 
     branch_upstream = f"upstream/{get_upstream_branch()}"
     commit_head = run_git(["rev-parse", "HEAD"])[:-1]

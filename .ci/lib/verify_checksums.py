@@ -26,7 +26,6 @@ def verify_checksums(packages):
 
 if __name__ == "__main__":
     # Get and print modified packages
-    common.add_upstream_git_remote()
     packages = common.get_changed_packages()
 
     # Load context

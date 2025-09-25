@@ -75,8 +75,6 @@ def show_error_all():
 
 
 if __name__ == "__main__":
-    common.add_upstream_git_remote()
-
     if "kconfigcheck.toml" in common.get_changed_files():
         print("kconfigcheck.toml changed -> checking all kernels")
         if not check_kconfig_all():

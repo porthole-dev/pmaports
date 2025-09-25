@@ -32,7 +32,6 @@ if __name__ == "__main__":
     arch = sys.argv[1]
 
     # Get and print modified packages
-    common.add_upstream_git_remote()
     packages = common.get_changed_packages()
 
     # Load context

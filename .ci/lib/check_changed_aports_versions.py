@@ -216,7 +216,6 @@ Thank you and sorry for the inconvenience.
 
 if __name__ == "__main__":
     # Get and print modified packages
-    common.add_upstream_git_remote()
     packages = common.get_changed_packages()
     if len(packages) == 0:
         print("no aports changed in this branch")

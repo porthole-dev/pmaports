@@ -7,7 +7,7 @@
 # How to add a new service file (5 steps):
 pkgname=systemd-services
 # 1. bump pkgver
-pkgver=99
+pkgver=100
 pkgrel=0
 pkgdesc="Systemd service files"
 url="https://postmarketos.org"
@@ -54,6 +54,7 @@ subpackages="
 	hkdm-systemd:_service
 	httpd-systemd:_service
 	iio-sensor-proxy-systemd:_service
+	irqbalance-systemd:_service
 	iwd-systemd:_service
 	kactivitymanagerd-systemd:_service
 	kanshi-systemd:_service
@@ -182,6 +183,7 @@ _hfd_service_sources="system/hfd-service.service" # From https://gitlab.com/ubpo
 _hkdm_sources="system/hkdm.service"
 _httpd_sources="system/httpd.service"
 _iio_sensor_proxy_sources="system/iio-sensor-proxy.service"
+_irqbalance_sources="system/irqbalance.service"
 _iwd_sources="system/iwd.service" # From https://git.kernel.org/pub/scm/network/wireless/iwd.git/tree/src/iwd.service.in
 _kanshi_sources="user/kanshi.service" # created, no unit file upstream
 _kactivitymanagerd_sources="user/plasma-kactivitymanagerd.service"
@@ -305,6 +307,7 @@ source="$(flatpath \
 	$_hkdm_sources \
 	$_httpd_sources \
 	$_iio_sensor_proxy_sources \
+	$_irqbalance_sources \
 	$_iwd_sources \
 	$_kactivitymanagerd_sources \
 	$_kanshi_sources \
@@ -463,6 +466,7 @@ cf95791ba56247e3b37a1e23d59638ded09cf343b646dd68b733cc1f72d3ea3daa038a99ca961f44
 083e59dcbbbd8f6ea148880256ff20f1a16e583348cd7cfc7aa6321d7b0cbe0a82780fd482a26ef25a5ebcfc83f5b7899d5db7c7d479fd7c56e5d7e95fd24a34  system-hkdm.service
 666ba094bff47aa67b4e4431929516af355f90ffc1fd60429dcd20b337c3c17d2d62a71c289496217282f0819bc8deba8db5cc5b2915b692defa14d19532a8d1  system-httpd.service
 d12ebe6e7db2a8e34baab640dd4e2ea9cd01bc19054adf32d55528a6b27f71c2006ac2d65a58c98e21ed598e9cc66bfe79e197d20ed9d13f866a5a6cd3e247d5  system-iio-sensor-proxy.service
+0ed5e05b73cf4952c81deeffc7f662f0ef6e684c24fb8177f625f2d086582fad2df1376a2479155b4a6aa6d584f1cccfe8c143f7830eccaf5e693cae5aefed2d  system-irqbalance.service
 df3388cb7b9d035e54b34d8f8a6594be89c3015f979fe3bdc199fb7db1ab0bef821d6b306eecdf978eb227454d5e50aab29ac02d9722b1b075ec0ce4705e3518  system-iwd.service
 9cf877929b16f3437e65d1a0a2049799cc97cc84a7caab6a581e90139495b4febb5fb4c59ee463110866a0b60c9462d6d0fdb331d92d29b30ce6aeada365ac48  user-plasma-kactivitymanagerd.service
 fa41668288d53f8ce42a7524f10b1e03812fb11ed71bcb484dc22d0d374b453837317eb599cf61b66163a905949024509e73d5190012b664b301d48af7002a01  user-kanshi.service

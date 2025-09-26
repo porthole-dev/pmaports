@@ -1,7 +1,7 @@
 # Maintainer: Oliver Smith <ollieparanoid@postmarketos.org>
 # Co-Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=postmarketos-mkinitfs
-pkgver=2.6.4
+pkgver=2.7.0
 pkgrel=0
 pkgdesc="Tool to generate initramfs images for postmarketOS"
 url="https://postmarketos.org"
@@ -73,6 +73,6 @@ check() {
 }
 
 sha512sums="
-cb1a995f87f69b6f28fc735fd35d6a165c14c4eadd99df30a9f3131c497a9ed72866dac8fd104cfb1705cfc7cee2c1dcba1a1a732659ad62cc8c3f2408f55b1d  postmarketos-mkinitfs-2.6.4.tar.gz
-403da22fce289c0f71eb7dd032785a6cb2414cf39c8de40171b5a6d0d2659cf2aa387cefa4fa1f7350d0c705b50cf1159c9dc17bc2fc222a2639b0bcbd378d06  mkinitfs-vendor-2.6.4.tar.gz
+ea32f2bd8f10703bcdf7beb5f9854d466018a0a3e5697889a683e0b26026ba8189224a9e0c6a9a04d05e73ff814406c043ca3a56d871e3bb46aa8315ba58267c  postmarketos-mkinitfs-2.7.0.tar.gz
+7e773fe412defb5631ff1a8e2f5e000acef2abe4a9086f9125e36d6e96e16a106f2f1cf898af1a6f1eb01fda7b3200cb36dd26e66f73b7f6c8e91076829b93c9  mkinitfs-vendor-2.7.0.tar.gz
 "

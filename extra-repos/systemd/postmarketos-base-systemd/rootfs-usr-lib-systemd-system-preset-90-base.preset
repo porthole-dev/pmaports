@@ -36,6 +36,7 @@ enable alsa-state.service
 # so that they start at boot without waiting for a user to login.
 enable tuned.service
 enable tuned-ppd.service
+enable irqbalance.service
 
 # Note: technically these two shouldn't be enabled at the same time, but
 # pmos-base-wifi provides should make sure that only one is installed at the

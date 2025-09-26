@@ -15,9 +15,11 @@ def test_aports_ui():
     pmaports_cfg = pmb.config.pmaports.read_config()
     for arch in pmaports_cfg["supported_arches"].split(","):
         for path in common.get_changed_files():
-            if Path(path).name != "APKBUILD":
+            path = Path(path)
+
+            if path.name != "APKBUILD":
                 continue
-            if not Path(path).parent.name.startswith("postmarketos-ui"):
+            if not path.parent.name.startswith("postmarketos-ui"):
                 continue
 
             apkbuild = pmb.parse.apkbuild(path)

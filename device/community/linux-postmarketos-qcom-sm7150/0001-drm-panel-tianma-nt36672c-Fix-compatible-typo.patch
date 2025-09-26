@@ -1,0 +1,26 @@
+From 35eb95b24b63c7136e028d43a6c13c542d793c37 Mon Sep 17 00:00:00 2001
+From: Jens Reidel <adrian@mainlining.org>
+Date: Fri, 26 Sep 2025 17:53:49 +0200
+Subject: [PATCH] drm: panel: tianma-nt36672c: Fix compatible typo
+
+Signed-off-by: Jens Reidel <adrian@mainlining.org>
+---
+ drivers/gpu/drm/panel/panel-nt36672c-tianma.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-nt36672c-tianma.c b/drivers/gpu/drm/panel/panel-nt36672c-tianma.c
+index 958c3f9e9a58..29fc66315c46 100644
+--- a/drivers/gpu/drm/panel/panel-nt36672c-tianma.c
++++ b/drivers/gpu/drm/panel/panel-nt36672c-tianma.c
+@@ -440,7 +440,7 @@ static void nt36672c_tianma_remove(struct mipi_dsi_device *dsi)
+ }
+ 
+ static const struct of_device_id nt36672c_tianma_of_match[] = {
+-	{ .compatible = "tianma,n36672c" }, // FIXME
++	{ .compatible = "tianma,nt36672c" }, // FIXME
+ 	{ /* sentinel */ }
+ };
+ MODULE_DEVICE_TABLE(of, nt36672c_tianma_of_match);
+-- 
+2.51.0
+

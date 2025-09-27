@@ -1,5 +1,8 @@
 [Unit]
 Description=Daemon to support Qualcomm Hexagon ADSP virtual filesystem for RootPD
+# FIXME: Remove this once hexagonrpcd can serve rootpd on the ADSP
+# of the SDM845 devices
+ConditionPathExists=!/dev/fastrpc-sdsp
 ConditionPathExists=/dev/fastrpc-adsp
 
 [Service]

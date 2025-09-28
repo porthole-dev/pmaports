@@ -1,19 +1,18 @@
 pkgname=firmware-xiaomi-clover
-pkgver=1
+pkgver=2
 pkgrel=0
 pkgdesc="Firmware files for Xiaomi Mi Pad 4 / 4 Plus"
-url="https://github.com/kubntd/$pkgname"
+url="https://github.com/setotau/$pkgname"
 arch="aarch64"
 license="proprietary"
 options="!strip !check !archcheck !spdx !tracedeps pmb:cross-native"
 makedepends="qca-swiss-army-knife"
 
-_commit="b9042a06a4e50aec39dd7b6c80493663421668b7"
-_pix106_commit="e5c04c692b31a40df0f6b93b21071f8f650f1580"
+_commit="c850ad5d11315e690df8244670241e3d5a8436dc"
 
 source="
 	$pkgname-$_commit.tar.gz::$url/archive/$_commit/$pkgname-$_commit.tar.gz
-	$pkgname-$_pix106_commit.tar.gz::https://github.com/pix106/android_vendor_xiaomi_clover/archive/$_pix106_commit.tar.gz
+	30-touchscreen-config.files
 "
 
 builddir="src"
@@ -26,10 +25,11 @@ package() {
 		--set-fw-api=5
 	install -Dm644 firmware-5.bin -t "$pkgdir/$_fwdir/ath10k/WCN3990/hw1.0/"
 	install -Dm644 $pkgname-$_commit/board-2.bin -t "$pkgdir/$_fwdir/ath10k/WCN3990/hw1.0/"
-	install -Dm644 android_vendor_xiaomi_clover-$_pix106_commit/proprietary/vendor/firmware/* -t "$pkgdir/$_fwdir/postmarketos/"
+	install -Dm644 $pkgname-$_commit/goodix_9110_cfg.bin -t "$pkgdir/$_fwdir/postmarketos/"
+	install -Dm644 30-touchscreen-config.files -t "$pkgdir/usr/share/mkinitfs/files/"
 }
 
 sha512sums="
-437b4db1a2373493b1d980f0d2a7628ad14947b72e1cef49155bb8219af99019179dfa53783b1aeba5c8a7af2f3d1d3f4dc857f123da044bbf8773fd233e4c34  firmware-xiaomi-clover-b9042a06a4e50aec39dd7b6c80493663421668b7.tar.gz
-46245eef4d84ff602e7a9db75165c300700c91cc08b94ec14fe1c49e6ec9c98835c00cf9e3b9ad140542a0b20cf1646be7b04fe68468ba87fe9adb8c383eec52  firmware-xiaomi-clover-e5c04c692b31a40df0f6b93b21071f8f650f1580.tar.gz
+2b11770127704f31f31ac40401e7f336475491e1c5c315638b489a48d0da5e963e9a971ffd053696083306f7b778f78f6f273d9f2594b51f72cd996a407e792b  firmware-xiaomi-clover-c850ad5d11315e690df8244670241e3d5a8436dc.tar.gz
+8bfefcf41d7c6476db6911c031c706c66b1d472c342fb23ebf50c313d85154456a04d65d984d247b65c9771a48d2b4f819835b5cda73f4de6dd7071aff86a14a  30-touchscreen-config.files
 "

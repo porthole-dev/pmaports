@@ -1,7 +1,7 @@
 maintainer="Ingo Reitz <9l@9lo.re>"
 pkgname=device-google-oriole
 pkgdesc="Google Pixel 6"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -28,6 +28,6 @@ package() {
 }
 
 sha512sums="
-1ce44a4f0adacc292105c9359724ef1836238a2180ec7672d9130caaabb15420df09c8e1dedad81b29cbd2992a449547a2932842a2cf519026f7f0e98c511437  deviceinfo
+f5bdbe58a42d0af97a0cf6704266e2987bb6939a218b62bf3d8cd3582264d1d8578a14a1f551cf4b16db6f9244ad021615821d20e5a7b455c3d357377a3d6e6b  deviceinfo
 a5171dc7a4221a5a63c02820bac1e372c557cee72db9f777099f67eb272595fad6019f876cb47dd1bf455eeb3a45a74f215f2e8c44a6e1bf7cf3d7d9f49d98ad  modules-initfs
 "

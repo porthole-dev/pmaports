@@ -1,7 +1,7 @@
 maintainer="Ingo Reitz <9l@9lo.re>"
 pkgname=device-google-raven
 pkgdesc="Google Pixel 6 Pro"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -28,6 +28,6 @@ package() {
 }
 
 sha512sums="
-d5ea6a7c7b68616ec1f14b4abb6d0fa68ee5a28ab2329afe185909c7957f14743f35813c480af468315296574f49780faa11d305d36e3ec340872dc23851ea94  deviceinfo
+77325111ff8613e9d85d7f6247e4fbf7786430b5730bde12ed399a6f4a75822c2bab26270a086bf485015a90376964d1bfef96be18e213aea252a75a080842ed  deviceinfo
 a5171dc7a4221a5a63c02820bac1e372c557cee72db9f777099f67eb272595fad6019f876cb47dd1bf455eeb3a45a74f215f2e8c44a6e1bf7cf3d7d9f49d98ad  modules-initfs
 "

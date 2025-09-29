@@ -1,8 +1,9 @@
 # Reference: https://postmarketos.org/uipkg
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
+# Contributor: Aster Boese <asterboese@mailbox.org>
 pkgname=postmarketos-ui-cosmic
 pkgver=1
-pkgrel=3
+pkgrel=4
 pkgdesc="COSMIC Desktop Environment from System76"
 url="https://system76.com/cosmic/"
 # Only tested on these archs.
@@ -44,6 +45,7 @@ source="
 	favorites.conf
 	wallpaper.conf
 "
+subpackages="$pkgname-openrc"
 options="!check pmb:drm pmb:systemd"
 replaces="
 	cosmic-applets
@@ -55,6 +57,24 @@ package() {
 		"$pkgdir"/usr/share/cosmic/com.system76.CosmicBackground/v1/all
 	install -Dm644 favorites.conf \
 		"$pkgdir"/usr/share/cosmic/com.system76.CosmicAppList/v1/favorites
+}
+
+openrc() {
+	install_if="$pkgname=$pkgver-r$pkgrel openrc"
+	install="
+		$subpkgname.post-install
+		$subpkgname.post-upgrade
+		"
+	depends="
+		bluez-openrc
+		cosmic-greeter-openrc
+		elogind-openrc
+		networkmanager-openrc
+		openrc
+		seatd
+		seatd-openrc
+		"
+	mkdir -p "$subpkgdir"
 }
 
 sha512sums="

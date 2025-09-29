@@ -1,7 +1,7 @@
 # Maintainer: Adam Thiede <me@adamthiede.com>
 # Co-Maintainer: Jenneron <jenneron@protonmail.com>
 pkgname=linux-postmarketos-mediatek-mt8173
-pkgver=6.16.5
+pkgver=6.17
 pkgrel=0
 pkgdesc="Mainline kernel fork for Mediatek MT8173 devices"
 arch="aarch64"
@@ -65,6 +65,6 @@ package() {
 }
 
 sha512sums="
-0c08a9ac9ab69b2e7ac7c3d19807b746f706df39f5d29883d7dbf2f3d7f32f8d80611ea4168d43f3617bf203aa50e5f965b28cdb9d29d674e6a28753e948da16  linux-6.16.5.tar.xz
-4f4649d645c0d53c4c14e362d8d97ff4823f37c2962f443725c40ffc52e9c8675262e0206b0f8308004a199408e68f7dd97f3a4691ef24b29c4f27d00fdcf2e4  config-postmarketos-mediatek-mt8173.aarch64
+063999d7b819970657f6b7713fdb4173da2065ffdeed7cae197026dbb1edfd7f1d50374f073a1e19ef9686539594824ff6ecb8a930d97c4f272cb12f1c6d8355  linux-6.17.tar.xz
+dae7f9f8fae53ef1f23a8fc517218df258ed53e30c853b3b046c251e986c020d2c0e51861bc87e438315fd37622cf0cf498f269cd7d74161b8c8e541cecc79c4  config-postmarketos-mediatek-mt8173.aarch64
 "

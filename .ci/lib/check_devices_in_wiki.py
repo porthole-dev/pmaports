@@ -7,6 +7,8 @@ import argparse
 import sys
 import urllib.request
 
+# Same dir
+import common
 
 def get_devices() -> list[str]:
     """:returns: list of all devices"""
@@ -94,13 +96,23 @@ def main() -> int:
     parser.add_argument("--path", help="instead of downloading the devices"
                         " page from the wiki, use a local HTML file",
                         type=Path, default=None)
+    parser.add_argument("--all", help="check all devices (default: check only"
+                        " devices changed from branch point)",
+                        action="store_true")
     args = parser.parse_args()
 
-    # Check all devices
     html = get_wiki_devices_html(args.path)
     html["renamed"] = get_wiki_renamed_devices_html()
     error = False
-    for device in get_devices():
+    devices = []
+    if args.all:
+        devices = get_devices()
+    else:
+        devices = common.get_changed_devices()
+        # remove 'device-' prefix
+        devices = [d[7:] for d in devices]
+        devices = [d.removesuffix("-downstream") for d in devices]
+    for device in devices:
         if not check_device(device, html, args.booting):
             error = True
 

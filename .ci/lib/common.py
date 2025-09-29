@@ -184,3 +184,10 @@ def get_changed_kernels():
         if pkgname.startswith("linux-"):
             ret += [pkgname]
     return ret
+
+def get_changed_devices():
+    ret = []
+    for pkgname in get_changed_packages():
+        if pkgname.startswith("device-"):
+            ret += [pkgname]
+    return ret

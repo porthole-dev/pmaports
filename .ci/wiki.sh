@@ -7,9 +7,11 @@
 if [ "$(id -u)" = 0 ]; then
 	set -x
 	apk -q add \
+		git \
 		python3
 	exec su "${TESTUSER:-build}" -c "sh -e $0"
 fi
 
 set -x
-.ci/lib/check_devices_in_wiki.py --booting
+# shellcheck disable=SC2068
+.ci/lib/check_devices_in_wiki.py --booting $@

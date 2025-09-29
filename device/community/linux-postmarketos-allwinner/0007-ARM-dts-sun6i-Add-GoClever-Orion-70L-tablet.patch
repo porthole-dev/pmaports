@@ -1,4 +1,4 @@
-From 23e46bd2772fb46f692f208073c2a2a91613e522 Mon Sep 17 00:00:00 2001
+From f3648639efa2e64f8cf288a6bb05e850e35e5d84 Mon Sep 17 00:00:00 2001
 From: JuniorJPDJ <git@juniorjpdj.pl>
 Date: Tue, 23 Mar 2021 12:29:37 +0100
 Subject: [PATCH] ARM: dts: sun6i: Add GoClever Orion 70L tablet
@@ -131,5 +131,5 @@ index 000000000000..4fcba20ffe48
 +	status = "okay";
 +};
 -- 
-2.50.0
+2.51.0
 

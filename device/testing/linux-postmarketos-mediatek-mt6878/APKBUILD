@@ -1,6 +1,6 @@
 # Maintainer: BotchedRPR <igor.belwon@mentallysanemainliners.org>
 pkgname=linux-postmarketos-mediatek-mt6878
-pkgver=6.17_rc5
+pkgver=6.17
 pkgrel=0
 pkgdesc="Mainline Kernel fork for MT6878 devices"
 arch="aarch64"
@@ -15,14 +15,13 @@ makedepends="
 	bison
 	devicepkg-dev
 	flex
-	lz4
 	openssl-dev
 	perl
 	python3
 "
 
 _repository="linux"
-_commit="fe8dbf4ceda497e791308668e7b906280ebc431b"
+_commit="b82e3a1c9d6c7a8e5f2ac3bb26b0b9f97e63b427"
 _config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/MT6878-mainline/$_repository/archive/$_commit.tar.gz
@@ -37,21 +36,15 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-
-	# first, build the image, dtbs and modules - regular build flow
 	make ARCH="$_carch" CC="${CC:-gcc}" \
-		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor"
-
-	# lk needs lz4 compression to boot - so build a lz4-compressed image
-	make ARCH="$_carch" CC="${CC:-gcc}" \
-		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor" Image.lz4
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 
 package() {
 	mkdir -p "$pkgdir"/boot
 
-	install -Dm644 "$builddir/arch/$_carch/boot/Image.lz4" \
-		"$pkgdir/boot/vmlinuz"
+	install -Dm644 "$builddir/arch/$_carch/boot/Image.gz" \
+				   "$pkgdir/boot/vmlinuz"
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
@@ -66,6 +59,6 @@ package() {
 }
 
 sha512sums="
-9837c059347719123439d7ee73cd585cd0822cfcfcfa73c679e53c400eb178be1ab33d32aca423ad2c99efb9a37701022cc593cabd565e18a8982f7bc2a390a5  linux-postmarketos-mediatek-mt6878-fe8dbf4ceda497e791308668e7b906280ebc431b.tar.gz
-0f772dce95060766142cc59cc99ecaa3f7ed2004fc9f9d06dd0fdbafdecbc1fe955a01810a65f3a7839cafc7620c8e5d5f5647c723ea2a79fe4d78cbeaef4c4d  config-postmarketos-mediatek-mt6878.aarch64
+72450ff264056b06eeda957e5eec495e43a50d6abdc630445d7207071b22df7b29a1ddb729b09e6090dfdf7f782b0b7e3e44875bde2315ad608fac4476d30d44  linux-postmarketos-mediatek-mt6878-b82e3a1c9d6c7a8e5f2ac3bb26b0b9f97e63b427.tar.gz
+681887f6157480371fad94d9aaf3530bf5924d26e9e0a845ed223de342b3dfc536224f69fa61fcab66c55178a8eeb2f149bf5c5e7dfa8e74dff49ec18ffa635f  config-postmarketos-mediatek-mt6878.aarch64
 "

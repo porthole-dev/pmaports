@@ -1,7 +1,7 @@
 # Maintainer: BotchedRPR <igor.belwon@mentallysanemainliners.org>
 pkgname=device-nothing-tetris
 pkgdesc="Nothing CMF Phone 1"
-pkgver=2
+pkgver=3
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -9,7 +9,6 @@ arch="aarch64"
 options="!check !archcheck"
 depends="
 	linux-postmarketos-mediatek-mt6878
-	mkbootimg
 	postmarketos-base
 "
 makedepends="devicepkg-dev"
@@ -26,5 +25,5 @@ package() {
 }
 
 sha512sums="
-fbb2f4c0d1ea57baf8ffc46ad10306f6a383c4a6cbcc58a1fd843d48b0da836517ae2191f5f1b102e388db1e41665d47e273f6cd09cc6cba5d7768bdd8898806  deviceinfo
+2f6d90fb4d79b2747bf9fc9b16f0efba52e1c34561cc32ae10ce824aa8064968da7339641a8a9c0abf848932aa70ab025034fe4a547481db9d87abcacd8f1f6b  deviceinfo
 "

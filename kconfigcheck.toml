@@ -526,6 +526,7 @@ BPF_JIT = "y" # Required by HID_BPF
 DRM_UDL = "y"  # DisplayLink - connecting displays via USB
 SND_USB_AUDIO = "y"  # USB audio devices
 USB_SERIAL_CP210X = "y"  # USB serial console
+USB_SERIAL_SIMPLE = "y" # USB serial console
 USB_STORAGE = "y"  # USB mass storage devices
 USB_RTL8152 = "y"  # USB Ethernet
 

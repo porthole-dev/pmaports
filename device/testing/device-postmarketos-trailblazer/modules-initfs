@@ -48,6 +48,8 @@ phy-qcom-qusb2
 phy-snps-eusb2
 phy_sun6i_mipi_dphy
 pinctrl-sm6115
+pinctrl_sm8550
+rtc_pm8xxx
 pmic-glink
 pmic-glink-altmode
 ps883x

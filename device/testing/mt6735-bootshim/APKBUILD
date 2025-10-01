@@ -2,13 +2,13 @@
 
 pkgname=mt6735-bootshim
 pkgver=0.0.1
-pkgrel=0
+pkgrel=1
 pkgdesc="MT6735 AArch64 boot shim"
 url="https://gitlab.com/mt6735-mainline/bootshim/"
 arch="noarch"
 license="MIT"
 makedepends="clang lld scons"
-options="!check"
+options="!check pmb:cross-native"
 
 _commit="169b57cdf2ccbbe79dbca290b8ff789d0ca4e9b9"
 source="bootshim-$_commit.tar.gz::$url/-/archive/$_commit/bootshim-$_commit.tar.gz"

@@ -1,6 +1,5 @@
 pkgname=unixbench
-pkgver=5.1.3_git20230411
-_commit="a07fcc03264915c624f0e4818993c5b4df3fa703"
+pkgver=6.0.0
 pkgrel=0
 pkgdesc="The original BYTE UNIX benchmark suite"
 url="https://github.com/kdlucas/byte-unixbench"
@@ -9,10 +8,12 @@ license="GPL-2.0-or-later"
 depends="perl make"
 options="!check"
 source="
-	$pkgname-$_commit.tar.gz::https://github.com/kdlucas/byte-unixbench/archive/$_commit.tar.gz
+	$pkgname-$pkgver.tar.gz::https://github.com/kdlucas/byte-unixbench/archive/v$pkgver.tar.gz
+	0001-Stop-using-native-CPU-optimizations.patch
+	0002-Specify-the-C-standard.patch
 	ubench
 "
-builddir="$srcdir/byte-unixbench-$_commit/UnixBench"
+builddir="$srcdir/byte-unixbench-$pkgver/UnixBench"
 
 build() {
 	make
@@ -26,6 +27,8 @@ package() {
 }
 
 sha512sums="
-43bb6cbbb4ed1c1e564c6b17cb1b8f0ee3852a5ef9133200e1cb0891c4809615cf9a3b69cf4ffe62bdee6ef9ecc0f05dc9d3d83bbff929013d17199eaad11a4a  unixbench-a07fcc03264915c624f0e4818993c5b4df3fa703.tar.gz
+9f30091b4300cb01235b36679aa62b5c7034dc1ebbbfe345f30622cf46fb39431acd5e206a3b2422d2c0566bf3b807968f2b70689238e593003a6a190dd24e8c  unixbench-6.0.0.tar.gz
+10138fd425365cfd9fc624f6f47d5f49f087d763cd7c7a329fa6639c15d29224aae9ac8fbd02d2632e8a01559ba47ff7381418b2f31fdbc478159e779c299ce4  0001-Stop-using-native-CPU-optimizations.patch
+4165d0204c70eb0f27ef27a214d0284ad444c77c4607d717946d13037dd649a28d3b2158fcbf2520db8c2a2c7c0b134580bd6a513ffc82aaffed35d50a390a37  0002-Specify-the-C-standard.patch
 91590bfaac3b118ad9a7ec66200ecc7b5ff88b84f5e8552c6b30fcc4436669eb4467d6b9a89d0be8682903e88b843fc4e40e3c7f90406c398449edb187ad6771  ubench
 "

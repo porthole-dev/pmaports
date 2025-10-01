@@ -1,0 +1,25 @@
+From ddfec5f4d8432b10daa57572585dcfe8c6e346df Mon Sep 17 00:00:00 2001
+From: Jens Reidel <adrian@travitia.xyz>
+Date: Thu, 2 Oct 2025 00:17:10 +0200
+Subject: [PATCH] Use -std=gnu99 for tools
+
+Signed-off-by: Jens Reidel <adrian@travitia.xyz>
+---
+ tools/Makefile.am | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/tools/Makefile.am b/tools/Makefile.am
+index 41e5441..a411307 100644
+--- a/tools/Makefile.am
++++ b/tools/Makefile.am
+@@ -2,6 +2,7 @@ NULL =
+ 
+ AM_CFLAGS = \
+ 	-I$(top_srcdir)/include \
++	-std=gnu99 \
+ 	$(NULL)
+ 
+ bin_PROGRAMS = \
+-- 
+2.51.0
+

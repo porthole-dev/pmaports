@@ -1,7 +1,7 @@
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=f0rmz
 pkgver=3.4.0
-pkgrel=0
+pkgrel=1
 _commit_lvgl=7f07a129e8d77f4984fff8e623fd5be18ff42e74
 pkgdesc="Framebuffer-based form wizard for the initramfs based on LVGL"
 url="https://gitlab.postmarketos.org/postmarketOS/buffybox"
@@ -23,6 +23,7 @@ source="
 	lvgl-$_commit_lvgl.tar.gz::https://github.com/lvgl/lvgl/archive/$_commit_lvgl.tar.gz
 	f0rmz.conf
 	f0rmz.files
+	0001-f0rmz-define-shutdown-method.patch
 	10-fb-force-refresh.conf
 	"
 options="!check" # No tests
@@ -68,5 +69,6 @@ f4a7f572841c228e4b3401966717e2f20b6805d1c7876a3da0f27f3ecf1580900716e725fa7265a5
 eec9a6c2d07f7bfbfd4865bfaaf9d60890532d900366f019424f83f104b20377056cdcecb720c46ad748f3e8a304c609ac99f7a77289d7e302b89aabb4adfb55  lvgl-7f07a129e8d77f4984fff8e623fd5be18ff42e74.tar.gz
 7155c2f95dcf3716c0f392cf5717e96f1414c383a1f7c2ed30a1f8518dfe0b17c3c0e0e93f6476a342504aa855404099e2f5444eeb099023491c9a9a26fa3d90  f0rmz.conf
 a7974c1ef4ba7050ab0e1d05d9a2ca15ef8bf1a638f21df6a5eb004003a8a33e34ecb2808e8b5125bc980d98b2c26f6ad66ee93b2ff2d3ee20045d8458b7cfcf  f0rmz.files
+adef02d8b6edab7580ad56fd4f909cb3546a7e6faa956ee39155d20b3e36c33a6b959e744c35358137a6982a32ca16d08e9cd2a6b79b597b0efefd8aea1b52f9  0001-f0rmz-define-shutdown-method.patch
 f700af3145b79d1ef9edfb22982899b25cabfb212f9620dcbd3a2e6f44b5ad591e0a66056c6fcd66c3fde89a2b5f551e8a8fe2e65cf0e2a48adec57c027d7825  10-fb-force-refresh.conf
 "

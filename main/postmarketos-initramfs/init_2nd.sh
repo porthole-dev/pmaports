@@ -9,6 +9,12 @@
 . /init_functions.sh
 . /init_functions_2nd.sh
 
+# Handle halt/poweroff/reboot
+# Signals from busybox/halt.c
+trap 'halt -f' USR1
+trap 'poweroff -f' USR2
+trap 'reboot -f' TERM
+
 # Run udev early, before splash, to make sure any relevant display drivers are
 # loaded in time
 setup_udev

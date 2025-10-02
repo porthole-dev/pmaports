@@ -7,6 +7,12 @@ set -a
 IN_CI="false"
 LOG_PREFIX="[pmOS-rd]"
 
+# Handle halt/poweroff/reboot
+# Signals from busybox/halt.c
+trap 'halt -f' USR1
+trap 'poweroff -f' USR2
+trap 'reboot -f' TERM
+
 [ -e /hooks/10-verbose-initfs.sh ] && set -x
 
 [ -e /hooks/05-ci.sh ] && IN_CI="true"

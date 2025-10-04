@@ -149,6 +149,7 @@ class ArchTagSet(set):
         Arch.armv7,
         Arch.armhf,
         Arch.riscv64,
+        Arch.ppc64le,
     ]
 
     def update(self, iterable):
@@ -231,6 +232,7 @@ if __name__ == "__main__":
                 Arch.armv7: "qemu",
                 Arch.armhf: "qemu",
                 Arch.riscv64: "qemu",
+                Arch.ppc64le: "ppc64le",
             },
         )
         with open(child_pipeline, "w") as fw:

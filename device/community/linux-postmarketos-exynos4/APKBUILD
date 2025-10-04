@@ -4,8 +4,8 @@
 # Kernel config based on: arch/arm/configs/exynos_defconfig
 
 pkgname=linux-postmarketos-exynos4
-pkgver=6.16.1
-pkgrel=1
+pkgver=6.16.10
+pkgrel=0
 pkgdesc="Mainline kernel fork for Samsung Exynos4 devices"
 arch="armv7"
 _carch="arm"
@@ -69,6 +69,6 @@ package() {
 }
 
 sha512sums="
-c6e0d0ffaa68a5a54b5b64c5bbe92acf91ca6fb8e239d8f13450e3adf612b90a26e9139f9a49bb67e9db418534a002969a59039a253fe27f2d7b0d9ee21260c4  linux-postmarketos-exynos4-v6.16.1-exynos4.tar.bz2
-4cbfb627234ab115e162816ab3decac43cd4ef71ccd7b86d861246d1f65afe5f29880d86e7e78a7bd31df868b721c84564f22547d88d99bc3628bfc903dbc018  config-postmarketos-exynos4.armv7
+2b70d220163811efc79e21fc7ba3ff2a6d81c8633d9439f1c3b2fbea51c40b5fff42220af8ae5105665b49372cfa9ba30f4560b4c0d53bfbb83bbd84c94c0e64  linux-postmarketos-exynos4-v6.16.10-exynos4.tar.bz2
+b0b4529d19c511cca75f48d10c3b353b6f57aa299d8b242539f5b8427d25e2752b1bad04f92fdd4b49a454e7a31852316ec26388cefb03a98c3bb8746523aea3  config-postmarketos-exynos4.armv7
 "

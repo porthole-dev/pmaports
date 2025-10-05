@@ -1,12 +1,12 @@
 # Forked from Alpine for systemd split func
 # Maintainer: Achill Gilgenast <achill@achill.org>
 pkgname=phosh
-_pkgver=0.49.0
+_pkgver=0.50.0
 pkgver=9999$_pkgver
-pkgrel=1
+pkgrel=0
 pkgdesc="Wayland shell for GNOME on mobile devices"
-# armhf: blocked by gnome-shell-schemas and pmb#2618
-arch="all !armhf"
+# armhf, s390x: blocked by gnome-shell-schemas and pmb#2618
+arch="all !armhf !s390x"
 url="https://gitlab.gnome.org/World/Phosh/phosh"
 license="GPL-3.0-only"
 triggers="$pkgname.trigger=/usr/lib/phosh/plugins/prefs"
@@ -111,5 +111,5 @@ libphosh_dev() {
 }
 
 sha512sums="
-103fd004c3f9cd534842c52720dedd9faa83f6c16abf6b6a1b7af905fe992159ba3a5b6d0be40c75799c8cc492d484f07638fede1161257e504c9d65ccbb2afb  phosh-0.49.0.tar.xz
+4b6a7626a3395f7e294c0a24726038db4d95b58d217144f6afa3da97d0cfb861798e403f4553c3cdf178efcfea3c6a87d15be0804d33c1d4aa5667cbe67d13cd  phosh-0.50.0.tar.xz
 "

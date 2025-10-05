@@ -1,5 +1,6 @@
+# Maintainer: Hendrik Noack <hendrik.noack@protonmail.com>
 pkgname=firmware-samsung-n2awifi
-pkgdesc="Firmware for Samsung Galaxy Note Pro 10.1"
+pkgdesc="Firmware for Samsung Galaxy Tab Pro 10.1"
 pkgver=1
 pkgrel=2
 url="https://github.com/exynos5420/android_vendor_samsung_n2a-common"
@@ -44,7 +45,7 @@ package() {
 }
 
 downstream() {
-	pkgdesc="Firmware for Samsung Galaxy Note Pro 10.1 when using downstream kernel"
+	pkgdesc="Firmware for Samsung Galaxy Tab Pro 10.1 when using downstream kernel"
 	mkdir -p "$subpkgdir"
 	# Wifi
 	local file
@@ -55,7 +56,7 @@ downstream() {
 }
 
 mainline() {
-	pkgdesc="Firmware for Samsung Galaxy Note Pro 10.1 when using mainline kernel"
+	pkgdesc="Firmware for Samsung Galaxy Tab Pro 10.1 when using mainline kernel"
 	mkdir -p "$subpkgdir"
 
 	# Bluetooth

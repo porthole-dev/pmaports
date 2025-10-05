@@ -3,7 +3,7 @@
 pkgname=wireplumber
 _pkgver=0.5.11
 pkgver=999$_pkgver
-pkgrel=1
+pkgrel=2
 pkgdesc="Session / policy manager implementation for PipeWire"
 url="https://pipewire.org/"
 # armhf: pmb#2618
@@ -17,8 +17,10 @@ depends_dev="
 	"
 makedepends="$depends_dev
 	doxygen
+	gobject-introspection-dev
 	graphviz
 	meson
+	py3-lxml
 	"
 checkdepends="
 	dbus
@@ -54,6 +56,7 @@ esac
 build() {
 	abuild-meson \
 		-Db_lto=true \
+		-Dintrospection=enabled \
 		-Dsystem-lua=true \
 		-Dsystemd=enabled \
 		-Dsystemd-user-service=true\

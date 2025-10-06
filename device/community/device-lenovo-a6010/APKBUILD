@@ -4,7 +4,7 @@
 pkgname=device-lenovo-a6010
 pkgdesc="Lenovo A6010"
 pkgver=9
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -17,7 +17,6 @@ subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-phosh
 "
-_pmb_select="soc-qcom-msm8916-rproc"
 
 # Backwards compatibility for old kernel variant subpackages
 replaces="$pkgname-kernel-mainline $pkgname-kernel-mainline-modem"

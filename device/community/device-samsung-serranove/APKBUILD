@@ -3,7 +3,7 @@
 pkgname=device-samsung-serranove
 pkgdesc="Samsung Galaxy S4 Mini Value Edition"
 pkgver=15
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -20,7 +20,6 @@ subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-phosh
 "
-_pmb_select="soc-qcom-msm8916-rproc"
 
 # Backwards compatibility for old device package names + kernel variants
 _substitutes="device-samsung-serranovelte"

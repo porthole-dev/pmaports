@@ -3,7 +3,7 @@
 pkgname=device-samsung-fortunaltezt
 pkgdesc="Samsung Galaxy Grand Prime (SM-G530Y)"
 pkgver=3
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -21,7 +21,6 @@ source="
 	modules-initfs
 "
 subpackages="$pkgname-nonfree-firmware:nonfree_firmware"
-_pmb_select="soc-qcom-msm8916-rproc"
 
 build() {
 	devicepkg_build $startdir $pkgname

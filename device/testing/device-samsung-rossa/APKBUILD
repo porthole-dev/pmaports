@@ -3,7 +3,7 @@
 pkgname=device-samsung-rossa
 pkgdesc="Samsung Galaxy Core Prime LTE"
 pkgver=5
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -21,7 +21,6 @@ source="
 	modules-initfs
 "
 subpackages="$pkgname-nonfree-firmware:nonfree_firmware"
-_pmb_select="soc-qcom-msm8916-rproc"
 
 # Backwards compatibility for old device package name
 _old_pkgname="device-samsung-cprime"

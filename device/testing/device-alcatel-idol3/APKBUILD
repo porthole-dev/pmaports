@@ -3,7 +3,7 @@
 pkgname=device-alcatel-idol3
 pkgdesc="Alcatel OneTouch Idol 3 (5.5)"
 pkgver=2
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -16,7 +16,6 @@ subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-phosh
 "
-_pmb_select="soc-qcom-msm8916-rproc"
 
 build() {
 	devicepkg_build $startdir $pkgname

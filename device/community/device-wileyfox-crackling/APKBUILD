@@ -4,7 +4,7 @@
 pkgname=device-wileyfox-crackling
 pkgdesc="Wileyfox Swift"
 pkgver=9
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -20,7 +20,6 @@ source="
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 "
-_pmb_select="soc-qcom-msm8916-rproc"
 
 # Backwards compatibility for old kernel variant subpackages
 replaces="$pkgname-kernel-mainline $pkgname-kernel-mainline-modem"

@@ -3,7 +3,7 @@
 pkgname=device-samsung-fortuna
 pkgdesc="Samsung Galaxy Grand Prime"
 pkgver=5
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -35,7 +35,6 @@ for _variant in $_variants; do
 	"
 done
 
-_pmb_select="soc-qcom-msm8916-rproc"
 
 build() {
 	devicepkg_build $startdir $pkgname

@@ -4,7 +4,7 @@
 pkgname=device-samsung-a5
 pkgdesc="Samsung Galaxy A5 (2015)"
 pkgver=12
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -16,7 +16,6 @@ source="deviceinfo modules-initfs"
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 "
-_pmb_select="soc-qcom-msm8916-rproc"
 
 # Backwards compatibility for old device package names + kernel variants
 _substitutes="device-samsung-a5lte device-samsung-a5ulte"

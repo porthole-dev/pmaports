@@ -3,7 +3,7 @@
 pkgname=device-samsung-gt58
 pkgdesc="Samsung Galaxy Tab A 8.0 (2015)"
 pkgver=8
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -20,7 +20,6 @@ subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-phosh
 "
-_pmb_select="soc-qcom-msm8916-rproc"
 
 # Backwards compatibility for old kernel variant subpackages
 replaces="$pkgname-kernel-mainline $pkgname-kernel-mainline-modem-lte"

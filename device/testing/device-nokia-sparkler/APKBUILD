@@ -2,7 +2,7 @@
 pkgname=device-nokia-sparkler
 pkgdesc="Nokia 8000 4G"
 pkgver=4
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="GPL-2.0-only"
 arch="armv7"
@@ -14,7 +14,6 @@ depends="
 	soc-qcom-msm8909
 	soc-qcom-msm8916-rproc
 "
-_pmb_select="soc-qcom-msm8916-rproc"
 subpackages="$pkgname-nonfree-firmware:nonfree_firmware"
 makedepends="devicepkg-dev mipi-dbi-cmd"
 _panel="nokia,sparkler-gc9307-hlt-28-panel"

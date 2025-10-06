@@ -2,7 +2,7 @@
 # Maintainer: Raymond Hackley <wonderfulShrineMaidenOfParadise@postmarketos.org>
 pkgname=device-samsung-fortuna
 pkgdesc="Samsung Galaxy Grand Prime"
-pkgver=7
+pkgver=8
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -128,6 +128,6 @@ nonfree_firmware_grandprimelte() {
 }
 
 sha512sums="
-f5523f77c9d497ed4b45bc262a618cb36e682bb5220fba657906b1b12b962d9de4199aaf4702de1bc9f721742b4ee74174247ef0ff33b5253229bdb676dd0437  deviceinfo
+8341169d74693de00f1f69538c673e718c7afd9705543ba59da1a5846e915b8088bc46d1df1955c8aec189104063c150ad273e1be0e049999cdff87727310ba7  deviceinfo
 02b6d383149ba2ec3a31b206767be7ead31d9f0e7ee5cab11047000c53ccad387a118cbddb06093bca5cae3e82f884c02194de47b8e7a9c76102ac46506bb111  modules-initfs
 "

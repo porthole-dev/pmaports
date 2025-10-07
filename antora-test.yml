@@ -12,5 +12,5 @@ content:
 
 ui:
   bundle:
-    url: ./handbook/ui-bundle
+    url: https://gitlab.postmarketos.org/postmarketOS/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
     snapshot: true

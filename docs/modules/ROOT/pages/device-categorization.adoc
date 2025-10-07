@@ -58,6 +58,13 @@ https://gitlab.postmarketos.org/postmarketOS/postmarketos/-/issues/25[postmarket
    device per SoC is enough for community devices, but of course more is better)
 * 2021-11 and later: track record of upgrading the kernel, device kernel or SoC
   kernel must at least have been upgraded through 3 kernel releases
+* Kernel must be upgraded regularly; the kernel version used by the device may not
+  be older than 6 months. The age of the kernel version is determined by the date
+  the release was
+  https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/refs/tags[tagged]
+  upstream by Linus Torvalds or the stable kernel maintainers.
+  For e.g. version 6.12.3, the date would be that of the specific patch release,
+  not that of the initial 6.12 release
 
 Regarding device features (calls working, camera, ...), there is not a fixed
 feature set (so for users, don't assume that everything works, look at the
@@ -69,7 +76,6 @@ The purpose of community is to increase visibility of devices that:
 * Are (and stay) working quite well (i.e. they are useful in some way and are
   tested occasionally to find and fix regressions)
 * Are still being improved or are considered completed at some point
-* Are (and stay) overall in good shape
 
 See also: See also:
 https://gitlab.postmarketos.org/postmarketOS/postmarketos/-/issues/24[postmarketos#24]

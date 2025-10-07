@@ -1,7 +1,7 @@
 #!/bin/sh -e
 # Copyright 2025 Pablo Correa Gomez
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Description: create documentation with sphinx
+# Description: create documentation with antora
 # Options: with-dot-git
 # Artifacts: build/site
 # https://postmarketos.org/pmb-ci

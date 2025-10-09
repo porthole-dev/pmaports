@@ -4,7 +4,7 @@
 # Co-Maintainer: Minecrell <minecrell@minecrell.net>
 pkgname=device-samsung-a3
 pkgdesc="Samsung Galaxy A3 (2015)"
-pkgver=15
+pkgver=16
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -46,6 +46,6 @@ nonfree_firmware() {
 }
 
 sha512sums="
-33ed9da51491daa77cb72b1b26c3fbbebaf1e3f129a80aa51252a650fb4702329a48cdf09c1189d9dfb8d615228e6f1cc7db1f05205109359bccbaaf10b44810  deviceinfo
+b611d82cc3ee9c0e42690edd42341b9578b1d841a92964eb5912a4267b5a7357279ea07479572264fbe7a4286b87474b65e9747359607a9e95d1f0749ff1cb89  deviceinfo
 3754688b2a61c204f37944d700b6fc273f68a01e25d444a3c3f2dd2531d8538650a2e571657e18e7a96a2db96b19f2f738d6f465bde477efd66ab31a78edfb91  modules-initfs
 "

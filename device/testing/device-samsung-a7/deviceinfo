@@ -11,7 +11,7 @@ deviceinfo_append_dtb="true"
 deviceinfo_arch="aarch64"
 
 # Device related
-deviceinfo_gpu_accelerated="true"
+deviceinfo_drm="true"
 deviceinfo_chassis="handset"
 deviceinfo_external_storage="true"
 deviceinfo_screen_width="1080"

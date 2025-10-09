@@ -2,7 +2,7 @@
 # Maintainer: Raymond Hackley <wonderfulShrineMaidenOfParadise@postmarketos.org>
 pkgname=device-samsung-e7
 pkgdesc="Samsung Galaxy E7"
-pkgver=4
+pkgver=5
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -36,6 +36,6 @@ nonfree_firmware() {
 }
 
 sha512sums="
-256d2194500c5ebdbcb20f14b9747bcf2dca66c3e098f4905e83b73e8c7e53cb60d9161a1ffbf8373e06f0fca188fd86f42829b85004dd0688dbbb78b0f7a906  deviceinfo
+2bfa8df6a7a21962d9665650fb10a2272d7c6af4f42fe7aaebd9612b2373e3d1df33491e9fc3541cba26eb47f6a8f4c686e21b2bd308738d5858816e6089089d  deviceinfo
 659b6cdc0e9be756cfae34031d407175356edc331a8d4f51fb70b0beea4f8067c5ded39e158054c02811df0964d967d3a790bfef99675ca2587ef867d02db8db  modules-initfs
 "

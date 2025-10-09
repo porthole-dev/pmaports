@@ -5,7 +5,7 @@
 _flavor="postmarketos-qcom-sm7150"
 pkgname=linux-$_flavor
 pkgver=6.17.0_rc7
-pkgrel=1
+pkgrel=2
 pkgdesc="Mainline Kernel fork for SM7150 devices"
 arch="aarch64"
 _carch="arm64"
@@ -15,7 +15,18 @@ options="!strip !check !tracedeps
 	pmb:cross-native
 	pmb:kconfigcheck-community
 	"
-makedepends="bison findutils flex openssl-dev perl postmarketos-installkernel python3"
+makedepends="
+	bison
+	clang
+	findutils
+	flex
+	lld
+	llvm
+	openssl-dev
+	perl
+	postmarketos-installkernel
+	python3
+"
 
 _tag="$pkgver"
 
@@ -34,7 +45,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 
@@ -69,6 +80,6 @@ package() {
 
 sha512sums="
 3d920797ca8542c3a8004e430aa6efcabf5d38373af2b229ee981c6b693fda45c173df5d8e08a18b23661ac85e39171ae7fe6e15ce2835f8208c236e4ed82ed3  linux-postmarketos-qcom-sm7150-v6.17.0_rc7.tar.gz
-84553d7ca57964ae730595f662ff8eeadfde9d09b9b724947eed2a894285bfa5d675be46f70ce9f9aa296f85f539f7a7cf7d7a781d5030723ffb27a878656dfe  config-postmarketos-qcom-sm7150.aarch64
+64b7ae7d7143239350faaf302174d7db00496e582f81175e398459fe511691e3c35abcf8249ce2c6e7944889045498c252c2c33a0547c3334f26ac149a017368  config-postmarketos-qcom-sm7150.aarch64
 bdc2f65e5bf2a3f718118791fece0aa8f35c555c35da470279ca531ee9100b6f289f3b8b53afcdaef17deff8a58822050d9a3d1b77e877fc160daa519b7adbd3  0001-drm-panel-tianma-nt36672c-Fix-compatible-typo.patch
 "

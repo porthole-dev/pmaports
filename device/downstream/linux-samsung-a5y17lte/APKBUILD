@@ -82,6 +82,9 @@ package() {
 	cp -v "$builddir"/modules.builtin "$pkgdir"/lib/modules/$pkgver
 	make INSTALL_MOD_PATH="$pkgdir" INSTALL_MOD_STRIP=1 M=$_qcaclddir modules_install
 
+	# Create a fake modules.order to ensure depmod runs correctly
+	touch "$pkgdir"/lib/modules/"$pkgver"/modules.order
+
 	# Master DTB (deviceinfo_bootimg_qcdt)
 	install -Dm644 "$builddir/arch/arm64/boot/dtb.img" \
 		"$pkgdir/boot/dt.img"

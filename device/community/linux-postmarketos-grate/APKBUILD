@@ -12,19 +12,15 @@ url="https://gitlab.com/grate-driver/linux"
 license="GPL-2.0-only"
 options="!strip !check !tracedeps pmb:cross-native pmb:kconfigcheck-community pmb:kconfigcheck-uefi"
 makedepends="
-	bash
 	bison
 	clang
 	findutils
 	flex
 	lld
 	llvm
-	postmarketos-installkernel
 	openssl-dev
 	perl
-	gmp-dev
-	mpc1-dev
-	mpfr-dev
+	postmarketos-installkernel
 	xz
 "
 

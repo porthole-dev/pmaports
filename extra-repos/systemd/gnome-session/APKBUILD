@@ -1,9 +1,11 @@
 # Forked from Alpine for systemd
 
+# We can use gnome-session 49 already on pmOS/systemd, while aports is stuck on
+# gnome-session 48 until a openrc backend is ported there.
 pkgname=gnome-session
-pkgver=99948.0
-_pkgver=48.0
-pkgrel=2
+pkgver=99949.0
+_pkgver=49.0
+pkgrel=0
 pkgdesc="GNOME session manager"
 url="https://gitlab.gnome.org/GNOME/gnome-session"
 # armhf: pmb#2618
@@ -17,7 +19,6 @@ depends="
 	"
 makedepends="
 	docbook-xml
-	systemd-dev
 	gnome-desktop-dev
 	gnome-settings-daemon-dev
 	gtk+3.0-dev
@@ -27,13 +28,14 @@ makedepends="
 	libxml2-utils
 	libxslt
 	meson
+	systemd-dev
 	upower-dev
 	xmlto
 	"
 options="!check" #no tests
 subpackages="$pkgname-lang $pkgname-doc $pkgname-systemd gnome-shell-session:_shell:noarch"
 source="https://download.gnome.org/sources/gnome-session/${_pkgver%%.*}/gnome-session-$_pkgver.tar.xz
-	gnome-session-bash-login.patch"
+	"
 builddir="$srcdir/gnome-session-$_pkgver"
 
 build() {
@@ -64,11 +66,11 @@ _shell() {
 
 	amove usr/share/gnome-session/sessions
 	amove usr/share/wayland-sessions
-	amove usr/share/xsessions
+	# x11 is disabled by default in meson.options. leaving this here for reference
+	#amove usr/share/xsessions
 	amove usr/share/xdg-desktop-portal
 }
 
 sha512sums="
-84baafdf0d7a4f4b15faaacde02821f6449481d655c8d6ff6ea79996aa052483475c9a77a021d47001249c6c84c66be728f683a2b1725657b329c64fc7951dc0  gnome-session-48.0.tar.xz
-ff14a97f16aa4ad22122c7dda181d995ee54882132800c5e766bba8203ae2851e22e4bea39fc04b5c4c34b618babc3efb2a3699a2be722b1ea962210b30e0b50  gnome-session-bash-login.patch
+f9d6eeb66573ee0c114da9069b33c2f33bfdd5fd23a15bbefd5f05a3733dc64b4ee1462d121559eb1913d7aa7ebebb8c717f8c9b4cc8d50bc1166328b63861d7  gnome-session-49.0.tar.xz
 "

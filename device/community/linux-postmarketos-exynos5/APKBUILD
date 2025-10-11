@@ -5,7 +5,7 @@
 
 pkgname=linux-postmarketos-exynos5
 pkgver=6.12.53
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline kernel fork for Samsung Exynos5 devices"
 arch="armv7"
 _carch="arm"
@@ -17,16 +17,15 @@ options="!strip !check !tracedeps
 	pmb:kconfigcheck-community
 "
 makedepends="
-	bash
 	bison
+	clang
 	findutils
 	flex
-	postmarketos-installkernel
+	lld
+	llvm
 	openssl-dev
 	perl
-	gmp-dev
-	mpc1-dev
-	mpfr-dev
+	postmarketos-installkernel
 	xz
 "
 
@@ -50,7 +49,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -70,5 +69,5 @@ package() {
 
 sha512sums="
 64d8d36e50859bff47e6c92ab469c36e21d2e730a485e39655b5c469fce8c7c80987f210950d19c811eafff1f90fb4beb3e3e3cad1f01ba3941901837dc8f2c6  linux-postmarketos-exynos5-v6.12.53-exynos5-lts.tar.bz2
-b9adb0df612be18e6e73bcb9ef2b67568080ccc3ce667a785f56741b5d9a26d554c3fdd4e942b8ff6dba7ca9e9235e9af4cdd7153e556efac4572785ff5c7654  config-postmarketos-exynos5.armv7
+1d647b598fbdbbd608059a4e63998006e1528c4d0b6fbeb1f1f9b50d1c4472a1c43e901b47ec0624c936d42592310ce38cd0dc8ce3806ee2cb6112a3f827e992  config-postmarketos-exynos5.armv7
 "

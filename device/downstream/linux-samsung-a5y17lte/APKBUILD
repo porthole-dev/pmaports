@@ -27,6 +27,7 @@ source="
 	gcc8-fix-put-user.patch
 	gcc10-extern_YYLOC_global_declaration.patch
 	linux3.7to4.5-ARM64-remove-Sun-Solaris-style-flag-on-section.patch
+	0006-Makefile-ignore-bundled-toolchain.patch
 	0007-usb_gadget-set-random-rndis-host-MAC-address-to-prev.patch
 	qcacld-2.0.config
 	disable_wlan_werror.qcapatch
@@ -105,4 +106,5 @@ b5f7aed0d4c78fcd9ea6f65e11606c4d33004b45eed39017baa8b0a78db801396aa04ba7cd3a4a66
 f763033e73f5a00ad42273c11058446ff365d09d5f204c828d111aa48bc816baca74c333cbd2fa61c21ccdebc7329d0a3cfe971f5991026cb5abe7871b51a32b  skbuff_increased.patch
 24fde35d01ecc706120d808ca7283e302f6de2d66bb0c58af855b9033f6e815261ed38719d3eb93129b52c2db58f1045993abd9a1d16e264b4fcfa74c01a9c40  disable_knox.patch
 d40153e1d86d407301ff3e6824b8445bf259bffdd50179149f67012b42829e565ce9dbeeeb2eca34bb14ddabcc694dd28793e6faa4f44a88f962e33490766ff7  debug_muic.patch
+921a169741fb19233cd998aae23324c2bb05b95f4b22eca11aa6bfd5224a6899324b560a4fd97421d849581a57e0eab519f5634b281c08edf2956e8e52cdee80  0006-Makefile-ignore-bundled-toolchain.patch
 "

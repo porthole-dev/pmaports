@@ -11,7 +11,7 @@ _flavor="samsung-a5y17lte"
 url="https://kernel.org"
 license="GPL-2.0-only"
 options="!strip !check !tracedeps pmb:cross-native"
-makedepends="perl sed installkernel bash gmp-dev bc linux-headers elfutils-dev devicepkg-dev dtbtool-exynos gcc6"
+makedepends="bash bc devicepkg-dev dtbtool-exynos elfutils-dev gcc6 gmp-dev installkernel linux-headers perl sed"
 
 # Source
 _repository="android_kernel_samsung_universal7880"

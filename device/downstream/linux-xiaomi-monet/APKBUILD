@@ -1,9 +1,9 @@
 # Maintainer: Augustas Stankevicius <augustas.stankevicius@gmail.com>
 # Reference: <https://postmarketos.org/vendorkernel>
-# Kernel config based on: arch/arm64/configs/vendor/monet_user_defconfig
+# Kernel config based on: arch/arm64/configs/milito_defconfig
 pkgname=linux-xiaomi-monet
-pkgver=4.19.113
-pkgrel=1
+pkgver=4.19.325
+pkgrel=0
 pkgdesc="Xiaomi Mi 10 Lite 5G kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -15,24 +15,25 @@ makedepends="
 	bash
 	bc
 	bison
+	clang
 	devicepkg-dev
 	findutils
 	flex
+	linux-headers
 	openssl-dev
 	perl
 	xz
 "
 
+export CC="clang"
+export HOSTCC="clang"
+
 _repository="android_kernel_xiaomi_sm7250"
-_commit="fe4abf71920f4685218fb9951ca9950ff6dac0a9"
+_commit="bf6ad6ec272d0d25c35ec41dcd0a02129638ce28"
 _config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/LineageOS/$_repository/archive/$_commit.tar.gz
 	$_config
-	Remove-gcc-python-wrapper.patch
-	selinux_include_generated_headers.patch
-	Suppress-error-about-static-buffer-overflow.patch
-	Revert-selinux-Relocate-ss_initialized-and-selinux_e.patch
 "
 
 builddir="$srcdir/$_repository-$_commit"
@@ -45,7 +46,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" -j4 \
+	make O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -58,10 +59,6 @@ package() {
 }
 
 sha512sums="
-69ef51f16dbb3af9ad776cc1ca1169bb338a28643dc879841e1ffb2a99562b0ad78af1f445178610a5d0f244fc2ca1f0a90c95875a082325786805d46c044fe6  linux-xiaomi-monet-fe4abf71920f4685218fb9951ca9950ff6dac0a9.tar.gz
-35a9077f9351048579df71970095ae1ed715ae23eb20d30f05b54188827f7b2b7639a94863f695063c07f95210286aeb851009c0d9c4eb4ac5ed386ec1b3f794  config-xiaomi-monet.aarch64
-359f619b7aac5bab061311f0806018ed04ce96a2233584a507b14c50ce616dfbc1681dd465ca3f0182165a6fc6c7b87435615bd1bd93efe174b95deba071f5fc  Remove-gcc-python-wrapper.patch
-6ab9db01d35f7f5cc2c19ebe5f65a7dc479a1c68de587300cdde9a6c759d34610666c72f0f321cd450cf56c13df3b54a774e0f7ebdbf0f8608fbfd66b49d04e7  selinux_include_generated_headers.patch
-4e7a73a1c6e8424a34d317899525ca3d783de1a5e65cc0ecdf6334bbb233d165b476107e599cbd86868ed91a5a60d2ef0eff975861d61cb2c403b572314b4a94  Suppress-error-about-static-buffer-overflow.patch
-16459200092a2fa68054a758ad8fb175c86e6cdaa49e81c0c91568082cd0348526d43b9dfe0faac8b21465240f44253683f9c475c6f7350d7ef74149aa9c1dba  Revert-selinux-Relocate-ss_initialized-and-selinux_e.patch
+b1a22324eae5cf1fe745321858b43901e6f8be8a3382492c8f55ab65b1c9ba53de0624c590867771807b3393281b45e5a0fc799c7c03b40b9f255011b8feeb11  linux-xiaomi-monet-bf6ad6ec272d0d25c35ec41dcd0a02129638ce28.tar.gz
+b3a6006636fc3b697744adefa47930d13c94e6eb675daf4ee7e2fcedfcf1386d687466e093adb1234e01d9fc8d08ba1b13f346a8c3666d4d100843b1fd345265  config-xiaomi-monet.aarch64
 "

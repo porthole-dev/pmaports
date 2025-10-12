@@ -1,9 +1,9 @@
 # Forked from Alpine for systemd support
 
 pkgname=wireplumber
-_pkgver=0.5.11
+_pkgver=0.5.12
 pkgver=999$_pkgver
-pkgrel=2
+pkgrel=0
 pkgdesc="Session / policy manager implementation for PipeWire"
 url="https://pipewire.org/"
 # armhf: pmb#2618
@@ -74,5 +74,5 @@ package() {
 }
 
 sha512sums="
-cfdfae956355c77ddce705947086db5c102dece7d456f25033c36b468e949b61c3552f058758fa52521ee07e3f7e76a34e9fc48b0058f7c524d2035883b6529b  wireplumber-0.5.11.tar.gz
+50af8e7e5fc82fbc19a8e1df4e006da2f53ffdf7c638a228fb0dc07125b2654640750494a07545319a8683d4afa765e036dbbc3c9477b4529ce74fa7db4f0869  wireplumber-0.5.12.tar.gz
 "

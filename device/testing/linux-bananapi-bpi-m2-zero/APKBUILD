@@ -2,8 +2,8 @@
 # Kernel config based on: arch/arm/configs/sun8iw7p1smp_defconfig in downstream kernel for BPi M2 Zero
 
 pkgname=linux-bananapi-bpi-m2-zero
-pkgver=6.13.0_rc7
-pkgrel=1
+pkgver=6.18.0_rc1
+pkgrel=0
 pkgdesc="Banana Pi BPI-M2 Zero mainline kernel fork"
 arch="armv7"
 _carch="arm"
@@ -26,7 +26,7 @@ makedepends="bash
 "
 
 # Source
-_commit="619f0b6fad524f08d493a98d55bac9ab8895e3a6"
+_commit="3a8660878839faadb4f1a6dd72c3179c1df56787"
 _config="config-$_flavor.$arch"
 _repository="linux"
 source="
@@ -61,6 +61,6 @@ package() {
 }
 
 sha512sums="
-6bf4bb3e7e6974ffb5eb21438d8ac7c651b6b4cf494133946650a95a0ca7ceac01820351e6583fc14b2aa66e6c4a4b6c2c9989d99ecff3731aef4f48a0bb2161  linux-bananapi-bpi-m2-zero-619f0b6fad524f08d493a98d55bac9ab8895e3a6.tar.gz
-b538899c97489cb1c410c96f06f1f85a4f8eebcdaf4e4bcf619655aa8108bc27c6c8f46cfb2f27d205c6097f9b6d7130b9e8aac70eec6d437fdb1b9bc5f2ba81  config-bananapi-bpi-m2-zero.armv7
+e76c72fcd27580ebf832f9957519e955bdac01073dcaa0a38f2f026d1997540c4eaea29c255cb03de9d5c3136ac3fb8a6fcd1d631a5c92fa7707dff52c3e2cde  linux-bananapi-bpi-m2-zero-3a8660878839faadb4f1a6dd72c3179c1df56787.tar.gz
+37d79146d11c15343d703ba0d76df24c905c7656b66fca68a155ac75e8384e7f291e8eb03bf5f3de11a33903e0b7b302d187a33f063587a87e71d5b75750f352  config-bananapi-bpi-m2-zero.armv7
 "

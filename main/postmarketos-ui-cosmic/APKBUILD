@@ -3,7 +3,7 @@
 # Contributor: Aster Boese <asterboese@mailbox.org>
 pkgname=postmarketos-ui-cosmic
 pkgver=2
-pkgrel=0
+pkgrel=1
 pkgdesc="COSMIC Desktop Environment from System76"
 url="https://system76.com/cosmic/"
 # Only tested on these archs.
@@ -76,6 +76,9 @@ openrc() {
 		openrc
 		seatd
 		seatd-openrc
+		"
+	_pmb_recommends="
+		tuned-ppd-openrc
 		"
 	mkdir -p "$subpkgdir"
 }

@@ -3,7 +3,7 @@ pkgname=linux-pine64-pinephonepro
 pkgver=6.16.8
 _pkgver=6.16
 _tagdate=20250922-1910
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline kernel for the pinephone pro"
 arch="aarch64"
 _flavor="${pkgname#linux-}"
@@ -17,11 +17,14 @@ options="!strip !check !tracedeps
 makedepends="
 	bash
 	bison
+	clang
 	findutils
 	flex
 	gmp-dev
 	gzip
 	linux-headers
+	lld
+	llvm
 	mpc1-dev
 	mpfr-dev
 	openssl-dev
@@ -51,7 +54,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))"
 
 }
@@ -73,5 +76,5 @@ package() {
 
 sha512sums="
 4d9719ef43a55f81cdc09d8664edfe3aafd0f5a7d1374eda340a5dbf899eb2d3ef4e65559df6c78599873f578c4743839eb8d01bd774ff3fa7b7cf4f45ab981d  linux-ppp-6.16-20250922-1910.tar.gz
-068ba5d66818107fe656d5f9a095b8403514147805cac3526adab2408c3287d1d1cfd182dddf1f6944687a1c1a863b69b9b6b720f6c67c5b0168a5884d849593  config-pine64-pinephonepro.aarch64
+6dff432fa02e2fd1a624d3103b3ea61f35c9a50471c2c4dee0e3dca9d6b990181d6fa1b24fa52331ba4df3b7205c9a83446223f2ff798b14aa9a5d62263f7582  config-pine64-pinephonepro.aarch64
 "

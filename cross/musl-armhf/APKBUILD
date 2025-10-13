@@ -7,8 +7,8 @@ if [ -z "$(type -t arch_to_hostspec)" ]; then
 fi
 
 pkgname=musl-armhf
-pkgver=1.2.6_git20250919
-pkgrel=1
+pkgver=1.2.5
+pkgrel=21
 arch="x86_64"
 subpackages="musl-dev-armhf:package_dev"
 
@@ -57,6 +57,6 @@ package_dev() {
 }
 
 sha512sums="
-6e0e8c084c7a7ae78fc2d3f19a208a15d4fef8863e6be02917231d5472481b3fa13f3438f17bde56062007d151e4420e9498305a50faf6889fc1879e025012f7  musl-1.2.6_git20250919-r1-armhf-edge.apk
-9b961a8f3d84ff37fd74dff7a2a52e4e15ca6f7f9dcee67a874631c73f91198de90085e2eacc79bf502b0e9f0c629a82288b48e0d69b93dbfce5c2530af528eb  musl-dev-1.2.6_git20250919-r1-armhf-edge.apk
+b5411d6b4e03c1c8767906733d091e3438b5ca61959395e5de969a311c131d460052d6ad0c776740bce51a57ea7956ceb11e76355ddc9cc7b045804dfea9927e  musl-1.2.5-r21-armhf-edge.apk
+cb52d3a273cfe102f1c782412d0fa5cb24d735527c99e6702aa456d04655bb09f2939c8c64db86c7e256579cc4179c5fbf1f56b6461596a5e298494c4464c35d  musl-dev-1.2.5-r21-armhf-edge.apk
 "

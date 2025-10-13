@@ -7,8 +7,8 @@ if [ -z "$(type -t arch_to_hostspec)" ]; then
 fi
 
 pkgname=musl-armv7
-pkgver=1.2.6_git20250919
-pkgrel=1
+pkgver=1.2.5
+pkgrel=21
 arch="x86_64"
 subpackages="musl-dev-armv7:package_dev"
 
@@ -57,6 +57,6 @@ package_dev() {
 }
 
 sha512sums="
-c3cf50d40b476ef3f49eed66e00cac309f8cc1aa95a8603bac493e747040391a4a18e894f939127bf217674e8fd4948cc217df19c850545954dabbdb527ed54c  musl-1.2.6_git20250919-r1-armv7-edge.apk
-296af53bae1d5c401b11a125e17b2fc74fe67db4315cb63e9ef6ee2aaeb051951dd35421406a915b3ae4d605b7d35fe137d8e6a53d89a046189b9c2aafb87636  musl-dev-1.2.6_git20250919-r1-armv7-edge.apk
+440fa575b03ca4253d9d25fbe5a59ae3164ba945c012d12224ef829786afa14c654a2ff3868fedbd200bbbadd5789539f6d88def7831ca207e63a1d753021e5e  musl-1.2.5-r21-armv7-edge.apk
+3b7ce82a7ab3c02cb302614898ca68356ed18512f37f3632b1ef8df44b242b40b528c60c42cc19cb6b31c1e197019bf712713eb3b7998b4efbf96dc2aac29723  musl-dev-1.2.5-r21-armv7-edge.apk
 "

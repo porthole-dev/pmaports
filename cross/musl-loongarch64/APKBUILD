@@ -7,8 +7,8 @@ if [ -z "$(type -t arch_to_hostspec)" ]; then
 fi
 
 pkgname=musl-loongarch64
-pkgver=1.2.6_git20250919
-pkgrel=1
+pkgver=1.2.5
+pkgrel=21
 arch="x86_64"
 subpackages="musl-dev-loongarch64:package_dev"
 
@@ -57,6 +57,6 @@ package_dev() {
 }
 
 sha512sums="
-04a0650e037303c5847dbc720ebca3528db490972b2cd4c8194d2a5c32358a6defd2301ca86b9a1e931ef7becc78290f8ee3d8fa6f190e21a8cbf0c35fca90a3  musl-1.2.6_git20250919-r1-loongarch64-edge.apk
-0ca036f32e996662a49a9868233e65fa2902b930568878b69121f345ea03e45ab735cb1f74688991689264997d091576c7abc344e4e860a78d0e27d43865e3b7  musl-dev-1.2.6_git20250919-r1-loongarch64-edge.apk
+ec3cafd077ad5d07aadd75fdefadb6bcb625979eec47f2ac4ac675471c4d57c956c563bbcb1a455fe30b72212047cff8a1d7f4e4d143ad681a1f3c71c98614fd  musl-1.2.5-r21-loongarch64-edge.apk
+6bfff1beebaa45f409e414e3213c1260a98fc6a1345e11f41d23dcc1a7d37380ae21c538e28e72ab1c4ce5370f3e776dad6e827f741358ce85888bf5ab4e027c  musl-dev-1.2.5-r21-loongarch64-edge.apk
 "

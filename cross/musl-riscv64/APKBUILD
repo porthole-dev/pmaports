@@ -7,8 +7,8 @@ if [ -z "$(type -t arch_to_hostspec)" ]; then
 fi
 
 pkgname=musl-riscv64
-pkgver=1.2.6_git20250919
-pkgrel=1
+pkgver=1.2.5
+pkgrel=21
 arch="x86_64"
 subpackages="musl-dev-riscv64:package_dev"
 
@@ -57,6 +57,6 @@ package_dev() {
 }
 
 sha512sums="
-443359bc42dd8b091a48f55d4110347a83c530c548ccdda05f58ece7396f3a7c29b3a6c85b41eeb066c37d37e403f4f2cf23a06d20c88fc7de785e909937146e  musl-1.2.6_git20250919-r1-riscv64-edge.apk
-5203471e7c27fc67fc605356666ced61921ee76cc4b9925ba894b409c9f812af4b3702e11a1052364b832cec6eb2ba1eb1aeebdecc38a21b7e0df8761650d7bf  musl-dev-1.2.6_git20250919-r1-riscv64-edge.apk
+c3f9b76c99bd9c1426f4f87b1d60405e3b4fc6c93451d08b72338496b4cefae6692ef0b0ab9f09b78317d944289060b38c0a7072737d92b3f75fbb0fd8e81132  musl-1.2.5-r21-riscv64-edge.apk
+2b28646a759b54c3b2846499c04df7d9b8195da8892a004cbefb69625bbbb874bbc1748ce3d49738931e1e321ab5d90482b08783d07efe28f55d8d1657d451dd  musl-dev-1.2.5-r21-riscv64-edge.apk
 "

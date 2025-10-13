@@ -2,7 +2,7 @@
 # Co-Maintainer: Casey Connolly <kcxt@postmarketos.org>
 pkgname=linux-postmarketos-qcom-laptop
 pkgver=6.16
-pkgrel=1
+pkgrel=2
 # Commit from branch @ https://github.com/jhovold/linux/tree/wip/x1e80100-$pkgver
 _commit="a9cd6cda46ab81b1ec1d687d40ff0933dc6e6915"
 pkgdesc="Generic kernel for Qualcomm laptops"
@@ -23,12 +23,15 @@ makedepends="
 	bash
 	bc
 	bison
+	clang
 	devicepkg-dev
 	elfutils-dev
 	findutils
 	flex
 	git
 	linux-headers
+	lld
+	llvm
 	openssl-dev
 	pahole
 	perl
@@ -55,14 +58,14 @@ prepare() {
 
 	# Generate .config
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor" \
 		"$_defconfig" pmos.config misc.config
 }
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 

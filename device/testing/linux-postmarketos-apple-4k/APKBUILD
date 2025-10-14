@@ -3,22 +3,29 @@
 maintainer="Aster Boese <asterboese@mailbox.org>"
 _flavor="postmarketos-apple-4k"
 pkgname=linux-$_flavor
-pkgver=6.16.0
+pkgver=6.18.1
 pkgrel=0
 pkgdesc="Mainline kernel fork for Apple iPhone and iPad devices (4k)"
 arch="aarch64"
 _carch="arm64"
 url="https://kernel.org"
 license="GPL-2.0-only"
-options="!strip !check !tracedeps pmb:cross-native"
+options="!strip !check !tracedeps
+	pmb:cross-native
+	pmb:kconfigcheck-community
+	"
 makedepends="
 	bash
 	bc
 	bison
+	clang
 	devicepkg-dev
 	flex
+	lld
+	llvm
 	openssl-dev
 	perl
+	python3
 	linux-headers
 "
 
@@ -29,6 +36,9 @@ _config="config-$_flavor.$arch"
 source="
 	http://github.com/$_repository/archive/refs/tags/$_tag.tar.gz
 	$_config
+	apple.config
+	pagesize.config
+	pmos.config
 "
 builddir="$srcdir/linux-$_tag"
 
@@ -39,19 +49,19 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" \
-		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS" \
-		Image.gz dtbs
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
 package() {
 	mkdir -p "$pkgdir"/boot
 
-	install -Dm644 "$builddir/arch/$_carch/boot/Image.gz" \
+	install -Dm644 "$builddir/arch/$_carch/boot/vmlinuz" \
 		"$pkgdir/boot/vmlinuz"
 
-	make dtbs_install \
+	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -63,6 +73,9 @@ package() {
 }
 
 sha512sums="
-7f9a60a57ad165d820f821425614de77b57bd8fc71380f5bf2df9d048b9570f17a4246ead44fbc42a8a597aeea80bd85d5212e5942eed9360ebcb5cfe1f91640  hoolock-6.16.tar.gz
-aabf13d9e2db53e8553e5a12ddde5acc5ecece6ec47b5de17b8ab80ae47c654c2cf45bba1d50fd64a0ffbdbcf568ccd13a093c418901d63b980fcfb06ed7d6bf  config-postmarketos-apple-4k.aarch64
+15ca1734320fdfbd839f7d154c2365928f9fb7a1d3d370e6f649ca3cb8516baf7f887a99737909246d84454524658f21fd76064852bdec8e15ea5ef4fce0812f  hoolock-6.18.tar.gz
+cbe60989ac87dd8713682d5aa79bba1d0d6eb4a8bf59fa85352592b2353ff7f450b8e9e61c7b6d34cbc3be367a7567c31f897af101741726b9e1b12a320043d6  config-postmarketos-apple-4k.aarch64
+ee09eed2017a7b0cf91a47608918addaa238daa1b91149f964d0e6fb1bcd1b133273a3f56ba7326b12ac58a2cd013366c0aa944d64b2e044d78d70b96095a740  apple.config
+b1bb89de0caeeea66c1056cf2b52905b9c4c58931f40ecbed1b1431b846d43e6a33c94f69e36c113a26dd13bb5ca2255b26caa1c756dcbf701ea499cf618d6bd  pagesize.config
+b8896dba01003c574b18c1a98160a024cb0935c9ab6c408f71086061f7f56fa1ed8bb1f0810e524c88f3404e847a3eb038d16fd47b806670e74b8a4cb657a3fa  pmos.config
 "

@@ -1,0 +1,66 @@
+# Reference: <https://postmarketos.org/vendorkernel>
+# Kernel config based on: arch/arm/configs/checkers_defconfig
+
+pkgname=linux-amazon-checkers
+pkgver=4.9.77
+pkgrel=0
+pkgdesc="Amazon Echo Show 5 1st Generation kernel fork"
+arch="armv7"
+_carch="arm"
+_flavor="amazon-checkers"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps pmb:cross-native"
+makedepends="
+	bash
+	bc
+	bison
+	devicepkg-dev
+	findutils
+	flex
+	openssl-dev
+	perl
+"
+
+_repository="linux-downstream"
+_commit="846c2e61fec7d94feed35e58812bb8b97eb59aab"
+_config="config-$_flavor.$arch"
+
+# NOTE: despite the github namespace, this is *NOT* a mainline kernel!
+source="
+	$pkgname-$_commit.tar.gz::https://github.com/checkers-mainline/$_repository/archive/$_commit.tar.gz
+	$_config
+	0001-Remove-redundant-YYLOC-global-declaration.patch
+	0002-Fix-solaris-style-flag.patch
+	0003-Add-missing-kconfig-files.patch
+	fix-check-lxdialog.patch
+	fix-check-lxdialog-makefile.patch
+"
+builddir="$srcdir/$_repository-$_commit"
+_outdir="out"
+
+prepare() {
+	default_prepare
+	. downstreamkernel_prepare
+}
+
+build() {
+	unset LDFLAGS
+	make O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
+}
+
+package() {
+	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" \
+		"$_flavor" "$_outdir"
+}
+
+sha512sums="
+68dd148b050277f66ec243e6a129257f1b23b841009258e2be50e0a46208765595f6b4db2b726b243f203c20bddb5e52461e97d2252010b0cb82f07b402fa8ed  linux-amazon-checkers-846c2e61fec7d94feed35e58812bb8b97eb59aab.tar.gz
+82585dc91763436b55dee7c1d3f522ed059556e2f5c14c6f186efebb7a9388d5632fe4bdf2ad0bba910a867cbe108d69422d4678f374c7b5575ba2023b886cc6  config-amazon-checkers.armv7
+3fa90b7883d66e85e2f7a2d8011643f1a378169269fd8b172185e1179b6862789caadc500fc930f7b32498770d1f0145cf25dfe10022f99db60918bca01ef7e8  0001-Remove-redundant-YYLOC-global-declaration.patch
+491879bc492820e608b3604daca24f26187f6e552ec47d358d205118179f89594f9cbb1480ad0d5c7a94126dfe523fd6e1bbb594821431967ee59f6908ebeeea  0002-Fix-solaris-style-flag.patch
+0f7c76b206144d78a0f8fb18979f363c008bebbac96e075824c69651d52a2c06c8e5db5060b61033517e4c78d54cb9c446dfa03e1ddfac9e5fb44a6bfdf42265  0003-Add-missing-kconfig-files.patch
+182be3c596b9cc267ac108d7cf03fc8c328ccc6b36770800e4dcedea8d1bb65e3f5eacf590c2948f58b1418cc60a1670ba77dde8c259e428d158c31b6e1dbaf5  fix-check-lxdialog.patch
+c33fad9de627e72f12e61e728fa1ec53ef15259c7790392a997cc7269e60e45da9534d58851c3b348a1729aaa134d1df305e33546e8a1f3654462f2c3c1d9563  fix-check-lxdialog-makefile.patch
+"

@@ -2,7 +2,7 @@
 # Co-Maintainer: Jenneron <jenneron@protonmail.com>
 pkgname=linux-postmarketos-mediatek-mt8173
 pkgver=6.17
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline kernel fork for Mediatek MT8173 devices"
 arch="aarch64"
 _carch="arm64"
@@ -16,14 +16,14 @@ options="!strip !check !tracedeps
 makedepends="
 	bash
 	bison
+	clang
 	findutils
 	flex
+	lld
+	llvm
 	openssl-dev
 	perl
 	postmarketos-installkernel
-	gmp-dev
-	mpc1-dev
-	mpfr-dev
 	xz
 "
 
@@ -46,7 +46,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -66,5 +66,5 @@ package() {
 
 sha512sums="
 063999d7b819970657f6b7713fdb4173da2065ffdeed7cae197026dbb1edfd7f1d50374f073a1e19ef9686539594824ff6ecb8a930d97c4f272cb12f1c6d8355  linux-6.17.tar.xz
-dae7f9f8fae53ef1f23a8fc517218df258ed53e30c853b3b046c251e986c020d2c0e51861bc87e438315fd37622cf0cf498f269cd7d74161b8c8e541cecc79c4  config-postmarketos-mediatek-mt8173.aarch64
+b8c23497676e4c3b2175316c8f522f7364e01d5cb2ace106cc00379996f5968c1ca9040ef431d941108b031d65dce487252b58d70cde174c7fbbfcd0e12b07f5  config-postmarketos-mediatek-mt8173.aarch64
 "

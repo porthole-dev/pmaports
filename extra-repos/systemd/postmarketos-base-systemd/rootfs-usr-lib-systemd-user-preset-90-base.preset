@@ -14,6 +14,7 @@ enable udiskie.service
 enable xdg-desktop-portal-rewrite-launchers.service
 enable systemd-tmpfiles-clean.timer
 enable xdg-user-dirs.service
+enable usb-moded-notify.service
 
 # GNOME
 enable gnome-keyring-daemon.service

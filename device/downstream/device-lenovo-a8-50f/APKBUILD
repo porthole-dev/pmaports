@@ -1,0 +1,32 @@
+# Reference: <https://postmarketos.org/devicepkg>
+pkgname=device-lenovo-a8-50f
+pkgdesc="Lenovo TAB 2 A8-50F"
+pkgver=1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	linux-lenovo-a8-50f
+	mkbootimg
+	postmarketos-base
+	postmarketos-base-downstream
+"
+makedepends="devicepkg-dev"
+_pmb_recommends="firmware-lenovo-a8-50f"
+source="
+	deviceinfo
+"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+sha512sums="
+28d3b4074cdf0aee230212c0e37d44daafab3729feaba524e47c55b357b0e2546b2562e75028fa86953e87e54b74dba81679717bec20ac989e576e00f3a58806  deviceinfo
+"

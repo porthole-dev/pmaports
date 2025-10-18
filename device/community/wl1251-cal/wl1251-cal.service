@@ -1,11 +1,12 @@
 [Unit]
-Description=Update wl1251 calibration data
-RequiresMountsFor=/lib/firmware
-Before=udev.service
+Description=Extract wl1251 calibration data
+RequiresMountsFor=/sys /dev
+Before=systemd-udevd.service
+DefaultDependencies=no
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c '/usr/bin/calibrate-wl1251 || true'
+ExecStart=/usr/bin/calibrate-wl1251
 RemainAfterExit=yes
 
 [Install]

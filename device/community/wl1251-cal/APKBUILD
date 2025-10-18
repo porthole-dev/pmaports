@@ -1,7 +1,7 @@
 # Maintainer: Dang Huynh <danct12@disroot.org>
 pkgname=wl1251-cal
 pkgver=1.2
-pkgrel=6
+pkgrel=7
 pkgdesc="Retrieve wl1251 calibration data from a CAL partition and feed it to the driver"
 url="https://github.com/maemo-leste/wl1251-cal"
 arch="armv7"
@@ -33,6 +33,6 @@ openrc() {
 sha512sums="
 1a402553fc98fa8f2d81d34a548f96be91d13bdcb77ec8e9d8373732b27a6e908895f6044aef8e88dbcd9fa6fa04f0a3d62bed877be91ba6207f68440c3ce758  wl1251-cal-1.2.tar.gz
 350d10f21b3d66ff9fa72e7af8696e67fa04c21f4eba02e977339c35d00e6e71735125d3d341f249b86541f7f0719e3218efaa344cc5bed727316bdf6864577c  wl1251-cal.initd
-3bc9f4476693d891cec72e736e67a2daccc22af61333aa392896173bd2307620036596392f89ff2e46dc2aea59f2c8fc7828fc448fb32d6f78b68c0e8a37cd43  wl1251-cal.service
-b6ee8ab642d2c70444851c6c57c4460f9712a423c8b655ea960563a143ea5609dc9f2bc2af5549b35c4a34ecae5597a382d0d6e4a829b72f0e76b77ab51edaf6  calibrate-wl1251
+7d2271691ea6b7c5ec58eb4e01d00e1b06c24344617906911e01b6b34a817f357c45514fd3807ba60a8649e74adf7c78327d4d4a442672cf548efcee101c2673  wl1251-cal.service
+cb7d51179d6b13fc1e0bef70e0d14f688338359b5827f5e2de0f71bd1eb218d7aa0c9d9badfb399b265ac6e063c267d11ad5d26210e44f04ff1acb8f9f3ec79c  calibrate-wl1251
 "

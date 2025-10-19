@@ -10,10 +10,9 @@ deviceinfo_year="2015"
 deviceinfo_arch="aarch64"
 
 # Device related
-deviceinfo_gpu_accelerated="true"
-deviceinfo_chassis="embedded"
+deviceinfo_drm="true"
+deviceinfo_chassis="handset"
 deviceinfo_external_storage="true"
-deviceinfo_keyboard="false"
 
 # Bootloader related
 deviceinfo_flash_method="fastboot"

@@ -3,7 +3,7 @@
 # Co-Maintainer: Minecrell <minecrell@minecrell.net>
 pkgname=device-qcom-msm8916
 pkgdesc="Generic device package for various Qualcomm MSM8916/MSM8939-based devices"
-pkgver=3
+pkgver=4
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -59,6 +59,6 @@ kernel_efi() {
 }
 
 sha512sums="
-1ac19001a2b89bc5bec53fe5dfbdbc2b57030dc2982ada172f7ef438279a95bc8ebad54621d4672067ec258a6d3f8cea8faefe3b1adcaf7587a94d1f44c2ef01  deviceinfo
+d968e36fc900c740dcdb7a3430a7492c9d17ee3fccdcf18ce388e7470df1ff63758abd0e2314186b95bed80d6c973f895cf639e6e8296d2649c717cdb4dabe7a  deviceinfo
 80b037998756dab0c6b2a3bb438fb2d6bf727148c4af29648074b85c3beacdbbbffb2fefd477e68904d4c3bedb76bf0e532719a15a3bb7c8ef5f922be0d73c1d  modules-initfs
 "

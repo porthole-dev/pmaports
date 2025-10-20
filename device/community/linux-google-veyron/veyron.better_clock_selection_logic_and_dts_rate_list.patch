@@ -49,7 +49,7 @@ index c14f88893868..cb7a302497a5 100644
  static struct rockchip_hdmi *to_rockchip_hdmi(struct drm_encoder *encoder)
  {
  	struct rockchip_encoder *rkencoder = to_rockchip_encoder(encoder);
-@@ -89,126 +94,132 @@ static struct rockchip_hdmi *to_rockchip_hdmi(struct drm_encoder *encoder)
+@@ -89,127 +94,133 @@ static struct rockchip_hdmi *to_rockchip_hdmi(struct drm_encoder *encoder)
  	return container_of(rkencoder, struct rockchip_hdmi, encoder);
  }
  
@@ -262,13 +262,14 @@ index c14f88893868..cb7a302497a5 100644
  static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
  {
  	struct device_node *np = hdmi->dev->of_node;
+ 	int ret;
 +	int rates_cnt;
  
  	hdmi->regmap = syscon_regmap_lookup_by_phandle(np, "rockchip,grf");
  	if (IS_ERR(hdmi->regmap)) {
-@@ -237,39 +256,51 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
- 	if (IS_ERR(hdmi->avdd_1v8))
- 		return PTR_ERR(hdmi->avdd_1v8);
+@@ -237,43 +256,55 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
+ 
+ 	ret = devm_regulator_get_enable(hdmi->dev, "avdd-1v8");
  
 +	if ((rates_cnt = of_property_count_u32_elems(np, "rockchip,hdmi-rates-hz")) > 0) {
 +		int rv;
@@ -290,7 +291,7 @@ index c14f88893868..cb7a302497a5 100644
 +	}
 +
 +
- 	return 0;
+ 	return ret;
  }
  
  static enum drm_mode_status
@@ -306,6 +307,10 @@ index c14f88893868..cb7a302497a5 100644
 -	bool exact_match = hdmi->plat_data->phy_force_vendor;
 +	int num_rates = hdmi->rates_cnt;
  	int i;
+ 
+ 	if (hdmi->chip_data->max_tmds_clock &&
+ 	    mode->clock > hdmi->chip_data->max_tmds_clock)
+ 		return MODE_CLOCK_HIGH;
  
 -	if (hdmi->ref_clk) {
 -		int rpclk = clk_round_rate(hdmi->ref_clk, pclk);
@@ -395,9 +400,9 @@ index c14f88893868..cb7a302497a5 100644
  
  static const struct dw_hdmi_plat_data rk3228_hdmi_drv_data = {
 -	.mode_valid = dw_hdmi_rockchip_mode_valid,
- 	.mpll_cfg = rockchip_mpll_cfg,
- 	.cur_ctr = rockchip_cur_ctr,
- 	.phy_config = rockchip_phy_config,
+ 	.phy_data = &rk3228_chip_data,
+ 	.phy_ops = &rk3228_hdmi_phy_ops,
+ 	.phy_name = "inno_dw_hdmi_phy2",
 @@ -442,7 +521,6 @@ static struct rockchip_hdmi_chip_data rk3288_chip_data = {
  };
  
@@ -411,9 +416,9 @@ index c14f88893868..cb7a302497a5 100644
  
  static const struct dw_hdmi_plat_data rk3328_hdmi_drv_data = {
 -	.mode_valid = dw_hdmi_rockchip_mode_valid,
- 	.mpll_cfg = rockchip_mpll_cfg,
- 	.cur_ctr = rockchip_cur_ctr,
- 	.phy_config = rockchip_phy_config,
+ 	.phy_data = &rk3328_chip_data,
+ 	.phy_ops = &rk3328_hdmi_phy_ops,
+ 	.phy_name = "inno_dw_hdmi_phy2",
 @@ -480,7 +557,6 @@ static struct rockchip_hdmi_chip_data rk3399_chip_data = {
  };
  

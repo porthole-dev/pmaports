@@ -88,6 +88,9 @@ if __name__ == "__main__":
     if len(pkgnames) == 0:
         print("No kernels changed in this branch")
         exit(0)
+    elif common.commit_message_has_string("[ci:skip-kconfigcheck]"):
+        print("WARNING: not checking kernel configs ([ci:skip-kconfigcheck])")
+        exit(0)
 
     last_failed = check_kconfig(pkgnames)
 

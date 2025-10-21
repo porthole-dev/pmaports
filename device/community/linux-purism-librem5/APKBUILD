@@ -4,7 +4,7 @@
 # Contributor: Clayton Craft <clayton@craftyguy.net>
 pkgname=linux-purism-librem5
 pkgver=6.6.110
-pkgrel=0
+pkgrel=1
 # NOTE: Don't forget to rebase the config! See prepare() for instructions.
 _purismrel=1
 _pureosrel=cri1
@@ -24,10 +24,13 @@ options="!strip !check !tracedeps
 makedepends="
 	bash
 	bison
+	clang
 	devicepkg-dev
 	findutils
 	flex
 	installkernel
+	lld
+	llvm
 	openssl-dev
 	perl
 	rsync
@@ -62,7 +65,7 @@ prepare() {
 	# This can be uncommented to help generate the defconfig using "pmbootstrap
 	# build linux-purism-librem5". The build will fail (exit 1) to let you grab
 	# the config before it starts building the kernel:
-	#    make ARCH="$_carch" CC="${CC:-gcc}" \
+	#    make ARCH="$_carch" LLVM=1 \
 	#       defconfig KBUILD_DEFCONFIG=librem5_defconfig
 	#    exit 1
 	#
@@ -75,7 +78,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS" \
 		LOCALVERSION=".$_purismrel"
 }
@@ -85,12 +88,12 @@ package() {
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_DTBS_PATH="$pkgdir/boot/dtbs"
-
 }
 
 sha512sums="
 33f525ea3e317e036d09595ceac9557ffa6d053b2d6ae891742f6ebaed3c7467879e09c1bacd2e1dfa72ca1fa50c12ef6f5708d45bde04f5feceb17e68fcfa96  linux-purism-librem5-6.6.110pureos1_cri1.tar.gz
-667a1013fe904c4ba07b23286a001ffd5cd8a8ee04990b929c054dfa262c71f27bdc83aa65a046249319a8125564533ebe8b340426cefaddfcccd183ecb16d9f  config-purism-librem5.aarch64
+bddbafe7ad4096b93d6d38cf8879f945c52763bc3b7c29e193783592095bee07e86ff399330eefb73f1465e423518293ec5e2eaa14e8f80e500dc28e1f4195cd  config-purism-librem5.aarch64
 "

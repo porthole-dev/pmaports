@@ -1,0 +1,44 @@
+From f0466e0bf079919df780a1bdbc22a55d5fa67c7d Mon Sep 17 00:00:00 2001
+From: Robert Mader <robert.mader@collabora.com>
+Date: Thu, 23 Oct 2025 19:37:31 +0200
+Subject: [PATCH 19/19] ipa/simple: Add tuning file for s5kjn1
+
+Used by the Fairphone 5. The value is guessed from similar IMX sensors.
+---
+ src/ipa/simple/data/meson.build |  1 +
+ src/ipa/simple/data/s5kjn1.yaml | 11 +++++++++++
+ 2 files changed, 12 insertions(+)
+ create mode 100644 src/ipa/simple/data/s5kjn1.yaml
+
+diff --git a/src/ipa/simple/data/meson.build b/src/ipa/simple/data/meson.build
+index 8536a9672..4cecff634 100644
+--- a/src/ipa/simple/data/meson.build
++++ b/src/ipa/simple/data/meson.build
+@@ -8,6 +8,7 @@ conf_files = files([
+     'imx376.yaml',
+     'imx858.yaml',
+     's5k3l6xx.yaml',
++    's5kjn1.yaml',
+     'uncalibrated.yaml',
+ ])
+ 
+diff --git a/src/ipa/simple/data/s5kjn1.yaml b/src/ipa/simple/data/s5kjn1.yaml
+new file mode 100644
+index 000000000..f7d01b738
+--- /dev/null
++++ b/src/ipa/simple/data/s5kjn1.yaml
+@@ -0,0 +1,11 @@
++# SPDX-License-Identifier: CC0-1.0
++%YAML 1.1
++---
++version: 1
++algorithms:
++  - BlackLevel:
++      blackLevel: 4096
++  - Awb:
++  - Lut:
++  - Agc:
++...
+-- 
+2.51.0
+

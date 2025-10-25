@@ -2,7 +2,7 @@
 # Maintainer: Raymond Hackley <wonderfulShrineMaidenOfParadise@postmarketos.org>
 pkgname=device-samsung-rossa
 pkgdesc="Samsung Galaxy Core Prime LTE"
-pkgver=6
+pkgver=7
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -45,6 +45,6 @@ nonfree_firmware() {
 }
 
 sha512sums="
-4d0192bdf0dee652a60f85cabf18543d3b8150870d62e675d817bb226913296f9d023d2bf17be08bb053dec767ad73c2dca24015db4f687e9a66de966e0c056f  deviceinfo
+d8d45352db16f5e67bf48b9d24f7776ca0a88b5973162a3cabef38b14bd1303311f2b2d5849a6aa7b83f89d7b11491048f3ab3f747e008a7526b3c4ea0ad4a96  deviceinfo
 9ead03b9e3edb69b238b25e5eecd477c99f03223237a549d124903dfb56a8be02df25ea43c8c308998d2250f9e586c8fef594007f43bc426dfb2d074a6270bba  modules-initfs
 "

@@ -23,6 +23,7 @@ r8152
 xhci-hcd
 xhci-plat-hcd
 sec-core
+sec-i2c
 sec-irq
 s2mps11
 clk-s2mps11

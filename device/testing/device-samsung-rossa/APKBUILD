@@ -3,7 +3,7 @@
 pkgname=device-samsung-rossa
 pkgdesc="Samsung Galaxy Core Prime LTE"
 pkgver=5
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -14,6 +14,7 @@ depends="
 	linux-postmarketos-qcom-msm8916
 	soc-qcom-msm8916
 	soc-qcom-msm8916-rproc
+	soc-samsung-msm8916-modem-workaround
 "
 makedepends="devicepkg-dev"
 source="

@@ -4,7 +4,7 @@
 pkgname=device-shift-otter
 pkgdesc="SHIFTphone 8"
 pkgver=2
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -12,12 +12,15 @@ options="!check !archcheck"
 depends="
 	firmware-qcom-adreno-a660
 	firmware-shift-otter
+	linux-firmware-ath11k
 	linux-postmarketos-qcom-sc7280
 	make-dynpart-mappings
 	mkbootimg
 	postmarketos-base
-	soc-qcom-sc7280
-	soc-qcom-sc7280-qbootctl
+	soc-qcom
+	soc-qcom-modem
+	soc-qcom-pd-mapper
+	soc-qcom-qbootctl
 	unl0kr-fbforcerefresh
 "
 makedepends="devicepkg-dev"

@@ -15,10 +15,7 @@ deviceinfo_chassis="handset"
 deviceinfo_external_storage="true"
 
 # Bootloader related
-deviceinfo_flash_method="fastboot-bootpart"
-# Where to flash boot.img, or in our case where to flash the pmOS boot partition.
-# This is a bit confusing.
-deviceinfo_flash_fastboot_partition_kernel="super"
+deviceinfo_flash_method="fastboot"
 deviceinfo_kernel_cmdline="quiet loglevel=2"
 deviceinfo_getty="ttyMSM0;115200"
 deviceinfo_generate_systemd_boot="true"

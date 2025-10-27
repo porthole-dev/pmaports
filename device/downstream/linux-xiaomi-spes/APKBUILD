@@ -27,7 +27,7 @@ makedepends="
 "
 
 # Source
-_repository="kernel_xiaomi_sm6225"
+_repository="kernel_xiaomi_spes"
 _commit="ae003d9abaa184f767e16e641e9d0eeb1ffcbef2"
 _config="config-$_flavor.$arch"
 source="

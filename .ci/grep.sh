@@ -94,4 +94,20 @@ if grep -qEr '^deviceinfo_kernel_cmdline.*[\"\s]console=null' -- device/; then
 	exit_code=1
 fi
 
+# Disallow installation of files to /etc/modules-load.d and /etc/modprobe.d
+if grep -qr '/etc/modules-load.d' --exclude-dir='device-samsung-golden-downstream' -- *; then
+	echo "ERROR: Please replace '/etc/modules-load.d' with '/usr/lib/modules-load.d' in the following files:"
+	grep --color=always -r '/etc/modules-load.d' --exclude-dir='device-samsung-golden-downstream' -- *
+	exit_code=1
+fi
+# n900 is excluded because the string is in a comment linking to a repo.
+# No other non-archived devices should be excluded.
+if grep -qr '/etc/modprobe.d' --exclude-dir='archived' \
+		--exclude-dir='device-nokia-n900' -- *; then
+			echo "ERROR: Please replace '/etc/modprobe.d' with '/usr/lib/modprobe.d' in the following files:"
+			grep --color=always -r '/etc/modprobe.d' --exclude-dir='device-nokia-n900' \
+				--exclude-dir='archived' -- *
+	exit_code=1
+fi
+
 exit "$exit_code"

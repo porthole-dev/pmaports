@@ -3,7 +3,7 @@
 
 pkgname=linux-xiaomi-spes
 pkgver=4.19.325
-pkgrel=0
+pkgrel=1
 pkgdesc="Xiaomi Redmi Note 11 kernel fork"
 arch="aarch64"
 _carch="arm64"

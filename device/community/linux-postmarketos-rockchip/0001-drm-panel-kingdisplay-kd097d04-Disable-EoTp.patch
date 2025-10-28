@@ -1,0 +1,32 @@
+From 66e9fe4375ab6bd2c827c80eb44790269ec795f7 Mon Sep 17 00:00:00 2001
+From: Sebastian Fleer <dev@dwurp.de>
+Date: Tue, 28 Oct 2025 20:20:07 +0100
+Subject: [PATCH] drm/panel: kingdisplay-kd097d04: Disable EoTp
+
+Since commit d97e71e44937 ("drm/bridge: synopsys: dw-mipi-dsi: enable EoTp by
+default") panel output on an Acer Chromebook Tab 10 (google-dru) is corrupted.
+The tablet I use is equipped with a kingdisplay-kd097d04 panel, disabling EoTp
+restores the correct functionality.
+
+Fixes: d97e71e44937 ("drm/bridge: synopsys: dw-mipi-dsi: enable EoTp by default")
+Signed-off-by: Sebastian Fleer <dev@dwurp.de>
+---
+ drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c b/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c
+index 2fc7b0779b37..893af9b16756 100644
+--- a/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c
++++ b/drivers/gpu/drm/panel/panel-kingdisplay-kd097d04.c
+@@ -359,7 +359,7 @@ static int kingdisplay_panel_probe(struct mipi_dsi_device *dsi)
+ 	dsi->lanes = 4;
+ 	dsi->format = MIPI_DSI_FMT_RGB888;
+ 	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
+-			  MIPI_DSI_MODE_LPM;
++			  MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_NO_EOT_PACKET;
+ 
+ 	kingdisplay = devm_drm_panel_alloc(&dsi->dev, __typeof(*kingdisplay), base,
+ 					   &kingdisplay_panel_funcs,
+-- 
+2.51.2
+

@@ -5,7 +5,7 @@
 
 pkgname=linux-postmarketos-marvell
 pkgver=6.16
-pkgrel=1
+pkgrel=2
 pkgdesc="mainline (stable) for Marvell SoC"
 arch="armv7"
 _carch="arm"
@@ -31,6 +31,7 @@ replaces="linux-postmarketos-marvell-dove"
 # Source
 _config="config-$_flavor.$arch"
 source="
+	wd-glacier.patch
 	$pkgname-$pkgver.tar.xz::https://cdn.kernel.org/pub/linux/kernel/v${pkgver%%.*}.x/linux-$pkgver.tar.xz
 	$_config
 "
@@ -65,6 +66,7 @@ package() {
 
 
 sha512sums="
+4c26ffca58dbdb75f24670d0aee5115cc3dc96b09ba2bcbcdd435d3e1e49cc0672cb0c0934a357047f59f47e1d24846f46cdd0cdcd19c87e14ff1c045ddd21af  wd-glacier.patch
 55a00f89ad6db6db2e26ff5dc5cfc96bbf6654e5bd5d17d2a3b944a47640367e54139716d230923187bebc6cb7756edc9511a620fb8abc6f32c50a658a734784  linux-postmarketos-marvell-6.16.tar.xz
 1bec9af8453e93d123c3763ee8fcea3ad1fa8a2e2712829662054362be76b943921ce3974a74820f3dec0ec76d2aa67d00d83f323f57731ad58ac5885085ee99  config-postmarketos-marvell.armv7
 "

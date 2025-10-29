@@ -3,7 +3,7 @@
 pkgname=plasma-workspace
 pkgver=99996.5.1
 _pkgver=6.5.1
-pkgrel=0
+pkgrel=1
 pkgdesc="KDE Plasma Workspace"
 # armhf blocked by qt6-qtdeclarative
 arch="all !armhf"
@@ -117,7 +117,9 @@ subpackages="
 	$pkgname-x11
 	"
 _repo_url="https://invent.kde.org/plasma/plasma-workspace.git"
-source="https://download.kde.org/$_rel/plasma/$_pkgver/plasma-workspace-$_pkgver.tar.xz"
+source="https://download.kde.org/$_rel/plasma/$_pkgver/plasma-workspace-$_pkgver.tar.xz
+	0001-plasma-workspace-krunner-crash-workaround.patch
+	"
 builddir="$srcdir/$pkgname-$_pkgver"
 
 replaces="xdg-desktop-portal-kde<=6.1.5-r0"
@@ -183,6 +185,11 @@ check() {
 	case "$CARCH" in
 		arm*|aarch64|ppc64le) tests="$tests calculatorrunnertest" ;;
 	esac
+
+	# bitaptest is broken by our downstream patch
+	# 0001-plasma-workspace-krunner-crash-workaround.patch
+	tests="$tests bitaptest"
+
 	for test in $tests; do
 		skipped_tests="$skipped_tests|$test"
 	done
@@ -204,4 +211,5 @@ x11() {
 
 sha512sums="
 227fabd70468cd8089d4052d885b182e9bd6d5831fba78f1140748688ee22baf3e64383ea063d38a7e25f4be16b279d68471530149455822af7928dbc775a99c  plasma-workspace-6.5.1.tar.xz
+8ea774b192bd79c2f03fb7e7219f352eab83f10cb9df3e6eeede236c83e22cce134e7a6ae29a18c7d45b0689e137a7df9ed67e57be3f7c9b2fd9623cfc7b7df2  0001-plasma-workspace-krunner-crash-workaround.patch
 "

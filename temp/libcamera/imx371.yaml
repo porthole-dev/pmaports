@@ -6,6 +6,6 @@ algorithms:
   - BlackLevel:
       blackLevel: 4096
   - Awb:
-  - Lut:
+  - Adjust:
   - Agc:
 ...

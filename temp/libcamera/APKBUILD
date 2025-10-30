@@ -1,22 +1,15 @@
 # Forked from Alpine for temporary downstream patches
 maintainer="Robert Mader <robert.mader@collabora.com>"
 pkgname=libcamera
-_pkgver=0.6.0
+_pkgver=0.7.0
 pkgver=9999$_pkgver
-pkgrel=1
+pkgrel=0
 pkgdesc="Linux camera framework"
 url="https://libcamera.org/"
 arch="all"
 license="LGPL-2.1-or-later AND GPL-2.0-or-later"
-depends_dev="
-	eudev-dev
-	glib-dev
-	gnutls-dev
-	gst-plugins-bad-dev
-	qt6-qtbase-dev
-	"
 # upstream calls 'date' with a non-POSIX option so we pull in coreutils
-makedepends="$depends_dev
+makedepends="
 	coreutils
 	doxygen
 	eudev-dev
@@ -62,10 +55,9 @@ _tuning_files="
 	s5kjn1.yaml
 	"
 source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
-	0001-libcamera-simple-Enable-softwareISP-for-the-librem5.patch
-	0002-libcamera-simple-Force-disable-softwareISP-for-milli.patch
-	0003-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
-	0004-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
+	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
+	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
+	0003-RFC-egl-Implement-DMABuf-import-for-input-buffers.patch
 	qcam.desktop
 	$_tuning_files
 	"
@@ -92,6 +84,7 @@ esac
 
 build() {
 	abuild-meson \
+		-Dpipelines=auto,virtual \
 		-Dv4l2=true \
 		-Dwerror=false \
 		-Ddocumentation=disabled \
@@ -177,18 +170,17 @@ py3() {
 }
 
 sha512sums="
-901debb8fe864ab5b7b9a9011c760165e0a94f9c14bb6654e297161aaadb6ed1929f1cf4fe20357c188bf24bd00db3953ddd257a0ac726973ad3ceeea07d959f  libcamera-v0.6.0.tar.gz
-b6e4d79bb3e206bec84804100033bec80d0c3a2408d5d0643c5c52c658b2a3ff2eb4bf4df0d1c21b91b510eecdeb59af826d324c64fcc481790952836cca2ea8  0001-libcamera-simple-Enable-softwareISP-for-the-librem5.patch
-82b1e5278f571ff734bce80ded4395ac18191ea2ba94c7cb4f3d0bf5b1ff96e142a419ee6edec395e1af50fc131959b7c3bb963734bd0e573e3c197d00e99493  0002-libcamera-simple-Force-disable-softwareISP-for-milli.patch
-7b9e97b1cc866cd0ad6e52c7980ebe5561d3e9a092912602cc85ff502cee5d69b6487ef16419a248a720617be3f1817aa92f8f15992869b87af5c02859fa6aa6  0003-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
-48de0e1e1acefb0a901dcfc4c266d633e73463f3ce2a89d7b83eed4833f6459abdc98528afe96d88c7bac78e75035a491f9228ed937e251849e9926e7d80216d  0004-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
+3d34792d3fd6a75a84150921b66875e4f8c5b8771e1218618fb58bee32d76b9e2b23226ef7ec850cdcd41b5bdd08ab41f61d4d69fca619a488c5ac0f1dcb283b  libcamera-v0.7.0.tar.gz
+e94ba31d69cad9ca9f9d895a253e849ac79b73bafea58987c078f9144049896138f61f3ea63a4c00de44e5a480622aed0bebe1b062d6c52757ce5f62f3a642f3  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
+1850f847a5a8597b78c5bf2cd88e9012531634ac7141925edf52f49fbca8c3b432a1e8d4270971741adbca150ed9928a86f86cdcb6f4ed04f5488ab21002074d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
+4ba352092bc5ed0b982efe854a7a079c363497b54b5ef5693975bd2c4d1ca0c134fb3278b60d9d77f5a87039ba2b165b5786497b7e1d74343580f2ecdc0a7049  0003-RFC-egl-Implement-DMABuf-import-for-input-buffers.patch
 22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  hi846.yaml
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  imx355.yaml
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  imx363.yaml
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  imx371.yaml
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  imx376.yaml
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  imx858.yaml
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  s5k3l6xx.yaml
-fa9e4736c7651d4f97d97b58eef2d1d7ddd4616b1de67c840c4804585c62c78bb5ce80cb14669ae462414faa1c6af10c60cad0c416d69f685bc96434ad73e08a  s5kjn1.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx355.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx363.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx376.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx858.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5k3l6xx.yaml
+2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  s5kjn1.yaml
 "

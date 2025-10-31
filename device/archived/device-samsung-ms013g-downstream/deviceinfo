@@ -4,7 +4,7 @@
 deviceinfo_format_version="0"
 deviceinfo_name="Samsung Galaxy Grand 2"
 deviceinfo_manufacturer="Samsung"
-deviceinfo_codename="samsung-ms013g"
+deviceinfo_codename="samsung-ms013g-downstream"
 deviceinfo_year="2013"
 deviceinfo_arch="armv7"
 

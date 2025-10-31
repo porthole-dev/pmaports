@@ -2,7 +2,7 @@
 pkgname=firmware-samsung-v1awifi
 pkgdesc="Firmware for Samsung Galaxy Tab Pro 12.2"
 pkgver=3
-pkgrel=0
+pkgrel=1
 url="https://github.com/exynos5420/android_vendor_samsung_v1a-common"
 arch="armv7"
 license="proprietary"
@@ -33,7 +33,7 @@ package() {
 
 	# Touchscreen
 	install -Dm644 maxtouch_v1.cfg \
-		-t "$pkgdir/lib/firmware/postmarketos/maxtouch.cfg"
+		"$pkgdir/lib/firmware/postmarketos/maxtouch.cfg"
 	install -Dm644 30-touchscreen-firmware.files \
 		-t "$pkgdir/usr/share/mkinitfs/files/"
 }

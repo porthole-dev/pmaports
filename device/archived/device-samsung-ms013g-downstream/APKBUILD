@@ -1,7 +1,7 @@
 # Archived: Downstream port, only for testing. Use mainline port!
 pkgname=device-samsung-ms013g-downstream
 pkgdesc="Samsung Galaxy Grand 2 (Downstream)"
-pkgver=2
+pkgver=3
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -21,5 +21,5 @@ package() {
 
 
 sha512sums="
-cde622ff31be26dc2ada9826937f6e1407572adc4ea3a6a5d6ba5025c4ef589e99f39aed244a31b3ac621d96b2ad027ed97232d25501237714027cc2d89b83f4  deviceinfo
+df738008ecb0f874e43aecd99977661759b6b351023a876c6d392f065cbcbbee5b7788e6f9c793d39a631a2e0b1004f3ca26d1e0c106a2c4136f62a590870561  deviceinfo
 "

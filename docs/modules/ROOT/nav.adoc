@@ -1,2 +1,0 @@
-* xref:device-categorization.adoc[Device categorization]
-* xref:merging-rules.adoc[Merging rules]

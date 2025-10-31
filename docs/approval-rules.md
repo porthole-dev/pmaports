@@ -1,22 +1,21 @@
-= pmaports merging rules =
+# pmaports Approval Rules
 
 pmaports follows the general
-xref:handbook:Technical-Docs:review-merging-guidelines.adoc[merging rules] with
-some specific changes
+[code review and merge](https://docs.postmarketos.org/policies-and-processes/development/code-review-and-merge.html)
+rules, but with the following changes.
 
-== Regular MR approvals ==
+## Regular MR approvals
 
 Most MRs, those not considered critical or trivial require approval by the
 package maintainer, and by another team member with approval and merge
 rights. If there is no package maintainer, then 2 any approvals are required.
 
-== Move device from category ==
+## Move device from category
 
-Moving devices from category is a special operation that requires more work. You
-can find further details in the
-xref:device-categorization#_review_process[device categorization].
+Moving devices from category is a special operation, see
+[device categorization](./device-categorization).
 
-== Enable kernel options across multiple kernels ==
+## Enable kernel options across multiple kernels
 
 Enable kernel options across multiple kernels can be done in one merge request,
 and requires 2 any approvals from the team, but does not need approvals from
@@ -24,17 +23,17 @@ package maintainers. The reason is that would be too much effort to enable
 kernel options across all kernels. It can be reverted afterwards if there is a
 good reason.
 
-== Testing requirements ==
+## Testing requirements
 
 Some MRs require testing due to changes affecting multiple devices. In such
 cases, before merging, in addition to the regular approvals, it is required to:
 
-* *edge*: any person in a MR thread confirms that a MR works.
-* *stable*: one person from the team confirms that a MR works. On
-   device-specific MRs that the team can't test, instead require confirmation of
-   device maintainer that it works.
+* **edge**: any person in a MR thread confirms that a MR works.
+* **stable**: one person from the team confirms that a MR works. On
+  device-specific MRs that the team can't test, instead require confirmation of
+  device maintainer that it works.
 
-== Backporting ==
+## Backporting
 
 Backporting features from edge to stable is done at request of the MR author or
 package maintainer. All patches for stable branches must go through edge first

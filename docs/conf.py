@@ -1,0 +1,29 @@
+# Configuration file for the Sphinx documentation builder.
+
+import datetime
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(".."))  # Allow modules to be found
+
+project = "pmaports"
+copyright = str(datetime.date.today().year) + ", postmarketOS contributors"
+exclude_patterns = ["_build", "_out", "Thumbs.db", ".DS_Store", ".venv", "README.md"]
+
+extensions = [
+    "myst_parser",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.doctest",
+    "sphinxcontrib.autoprogram",
+    "sphinxcontrib.jquery",
+]
+
+html_theme = "pmos"
+html_theme_options = {
+    # FIXME: This should be main once we rename the branch
+    "source_edit_link": "https://gitlab.postmarketos.org/postmarketOS/pmaports/-/blob/master/docs/{filename}",
+}
+
+# Set the explicit title of the HTML output
+html_title = "postmarketOS Packaging"

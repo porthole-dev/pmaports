@@ -1,4 +1,0 @@
-= Device ports
-
-This is the documentation related to the `pmaports` repository, and everything
-you need to know to understand how to work with device ports in postmarketOS.

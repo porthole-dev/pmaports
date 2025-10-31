@@ -2,8 +2,8 @@
 # Maintainer: Lin, Meng-Bo <linmengbo06890@proton.me>
 pkgname=device-samsung-j3ltetw
 pkgdesc="Samsung Galaxy J3 2016 (SM-J320YZ)"
-pkgver=4
-pkgrel=2
+pkgver=5
+pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -34,6 +34,6 @@ nonfree_firmware() {
 }
 
 sha512sums="
-8525b036da879cc13147d82374c39c89d8f867b31db11ba54959e9ae4f65815a145256536533bcb492f3aece73188ace76b18e63b100bb46da8fee53c53d4d2f  deviceinfo
+b20a7a4e3d98dff8308c1709ffba937c682051853058012b3b9528ccfe278d0d4be71a2fc9a914bfd9eef79aaebf6a42947cae5760e279b3fa6b3c7168ea5701  deviceinfo
 27839a3da5c8b17516f64e0f7c38af2f502379553643a23834038cebd8ef47ea8d321fe796f99715102ce92f70a9fe0cb97062624a3589b98696154bfd7a4514  modules-initfs
 "

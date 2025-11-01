@@ -3,12 +3,13 @@
 pkgname=wireplumber
 _pkgver=0.5.12
 pkgver=999$_pkgver
-pkgrel=0
+pkgrel=1
 pkgdesc="Session / policy manager implementation for PipeWire"
 url="https://pipewire.org/"
 # armhf: pmb#2618
 arch="all !armhf"
 license="LGPL-2.1-or-later"
+options="!pmb:crossdirect"
 depends_dev="
 	systemd-dev
 	glib-dev
@@ -44,11 +45,6 @@ builddir="$srcdir/$pkgname-$_pkgver"
 case "$CARCH" in
 s390x)
 	# probably broken here, but we want this just so pipewire is installable
-	options="$options !check"
-	;;
-armv7|armhf)
-	# Tests fail in BPO, probably related to QEMU since they seem to pass
-	# for the pipewire package in Alpine for these arches.
 	options="$options !check"
 	;;
 esac

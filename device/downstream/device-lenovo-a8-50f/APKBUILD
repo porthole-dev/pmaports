@@ -1,7 +1,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-lenovo-a8-50f
 pkgdesc="Lenovo TAB 2 A8-50F"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -28,5 +28,5 @@ package() {
 }
 
 sha512sums="
-28d3b4074cdf0aee230212c0e37d44daafab3729feaba524e47c55b357b0e2546b2562e75028fa86953e87e54b74dba81679717bec20ac989e576e00f3a58806  deviceinfo
+8baec5e48191d7771d05d644ef99473a35bbca24bd991407e1b54fa20a3c6916171fd1c2c7b3f4b01a0fe9c70477a9058aa02e172ed427109114277c5eefbb7c  deviceinfo
 "

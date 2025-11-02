@@ -14,7 +14,7 @@ deviceinfo_chassis="tablet"
 deviceinfo_external_storage="true"
 
 # Bootloader related
-deviceinfo_flash_method="fastboot"
+deviceinfo_flash_method="mtkclient"
 deviceinfo_kernel_cmdline="bootopt=64S3,32N2,64N2"
 deviceinfo_generate_bootimg="true"
 deviceinfo_flash_pagesize="2048"

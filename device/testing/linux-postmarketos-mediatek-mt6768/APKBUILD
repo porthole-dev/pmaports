@@ -45,10 +45,6 @@ build() {
 	make ARCH="$_carch" CC="${CC:-gcc}" \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor"\
 		V=1
-	make ARCH="$_carch" CC="${CC:-gcc}" \
-		modules_install INSTALL_MOD_PATH=modules
-	mkdir -p "$srcdir/lib"
-	cp -r modules/lib/* "$srcdir/lib"
 }
 
 package() {

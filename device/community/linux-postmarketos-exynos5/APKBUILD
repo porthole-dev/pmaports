@@ -5,7 +5,7 @@
 
 pkgname=linux-postmarketos-exynos5
 pkgver=6.12.53
-pkgrel=2
+pkgrel=3
 pkgdesc="Mainline kernel fork for Samsung Exynos5 devices"
 arch="armv7"
 _carch="arm"
@@ -70,5 +70,5 @@ package() {
 
 sha512sums="
 64d8d36e50859bff47e6c92ab469c36e21d2e730a485e39655b5c469fce8c7c80987f210950d19c811eafff1f90fb4beb3e3e3cad1f01ba3941901837dc8f2c6  linux-postmarketos-exynos5-v6.12.53-exynos5-lts.tar.bz2
-1d647b598fbdbbd608059a4e63998006e1528c4d0b6fbeb1f1f9b50d1c4472a1c43e901b47ec0624c936d42592310ce38cd0dc8ce3806ee2cb6112a3f827e992  config-postmarketos-exynos5.armv7
+59ce40512c75be4d258a3f21b0bbeccc850623e2c0d45f2f299a0fbad5d859edf48b1a11ac724d68756f3eaa6ffe4009ae59d55b687b2078beab4fa791fc19b3  config-postmarketos-exynos5.armv7
 "

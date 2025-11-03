@@ -66,8 +66,7 @@ instance/
 .scrapy
 
 # Documentation
-docs/_build/
-build/site
+public
 
 # PyBuilder
 target/

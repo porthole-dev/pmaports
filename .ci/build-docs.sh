@@ -10,13 +10,10 @@
 # Install dependencies
 if [ "$(id -u)" = 0 ]; then
 	set -x
-	apk -q add git nodejs npm
+	apk -q add py3-pip make git
 	exec su "${TESTUSER:-build}" -c "sh -e $0"
 fi
 
-npm install antora
-npx antora -v
-
-# FIXME: https://gitlab.com/antora/antora/-/issues/1183
-git clone --depth 1 https://gitlab.postmarketos.org/postmarketOS/handbook
-npx antora --clean antora-test.yml
+cd docs/
+make venv
+make

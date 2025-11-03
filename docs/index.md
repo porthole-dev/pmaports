@@ -15,5 +15,6 @@ in pmaports and the processes around device categorization.
 
    approval-rules
    device-categorization
+   kernel-versions
 ```
 

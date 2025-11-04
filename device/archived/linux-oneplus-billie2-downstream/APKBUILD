@@ -1,6 +1,6 @@
 # Archived: Downstream port, only for testing. Use mainline port (oneplus-billie2)!
-# Reference: <https://postmarketos.org/vendorkernel>
 # Kernel config based on: arch/arm64/configs/vendor/bengal_defconfig
+# Reference: <https://postmarketos.org/vendorkernel>
 
 pkgname=linux-oneplus-billie2-downstream
 pkgver=4.19.95

@@ -1,6 +1,6 @@
 pkgname=81voltd
-pkgver=1.0.0
-pkgrel=3
+pkgver=1.1.0
+pkgrel=0
 pkgdesc="Server-side implementation of the QMI IMS Data service"
 url="https://gitlab.com/flamingradian/81voltd"
 arch="all"
@@ -8,15 +8,17 @@ license="GPL-2.0-or-later"
 makedepends="
 	modemmanager-dev
 	qrtr-dev
+	libqmi-dev
 	meson
+	qmi-utils
 	"
 source="
-	$pkgname-$pkgver.tar.gz::https://gitlab.com/flamingradian/$pkgname/-/archive/v$pkgver/$pkgname-v$pkgver.tar.gz
+	$pkgname-$pkgver.tar.gz::https://gitlab.postmarketos.org/modem/$pkgname/-/archive/v$pkgver/$pkgname-v$pkgver.tar.gz
 	81voltd.initd
 	81voltd.service
 	"
 builddir="$srcdir/$pkgname-v$pkgver"
-subpackages="$pkgname-openrc $pkgname-systemd"
+subpackages="$pkgname-openrc $pkgname-systemd $pkgname-doc"
 
 # There are no checks to run
 options="!check"
@@ -36,7 +38,7 @@ package() {
 }
 
 sha512sums="
-460ad150d7f43303147d22d4552ee5fc90a6ba0cda5606d29e55939de1df465f713272cfa009ab1d606fd6b140ffdb9f080f2356713cd24e7c8b3040031013fc  81voltd-1.0.0.tar.gz
+20a48208ed59078ce45942d81b01ebe55480e5078d2ccc8504cf85b9fd8ff2a13b081df59df227d6d8d37c57090149de71b6988ad02821a2db130de6b79b3f61  81voltd-1.1.0.tar.gz
 73fa6f27259f3731a811216983911886e4ce5fb15664f978e99184ab88fd4444142f72b6313474e59260596a54e8e3ace7b66f10ead92159fad930b3a225b464  81voltd.initd
 2b3f0b2fb03b0c1e21edd1f9e29ea4e5d4ca0d4110ed890c847b4098ac8175c7a77e1f1868d799f1e00010f67539f2bc1d143521847aaacbea882db4d7b199a1  81voltd.service
 "

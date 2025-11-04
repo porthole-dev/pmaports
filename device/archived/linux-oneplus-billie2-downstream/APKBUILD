@@ -1,9 +1,10 @@
+# Archived: Downstream port, only for testing. Use mainline port (oneplus-billie2)!
 # Reference: <https://postmarketos.org/vendorkernel>
 # Kernel config based on: arch/arm64/configs/vendor/bengal_defconfig
 
-pkgname=linux-oneplus-billie2
+pkgname=linux-oneplus-billie2-downstream
 pkgver=4.19.95
-pkgrel=4
+pkgrel=0
 pkgdesc="OnePlus Nord N100 kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -62,7 +63,7 @@ package() {
 }
 
 sha512sums="
-9995a00adeceb30d4a64421e17c85a8349fe674b8a20dc2462cf21af867197f23e62326f0948ca12b52c7cb954388a3767122cea85eb033ff9525e15aa5af9b5  linux-oneplus-billie2-6db26f433f9a8722d0858562804da13f3090bfd7.tar.gz
+9995a00adeceb30d4a64421e17c85a8349fe674b8a20dc2462cf21af867197f23e62326f0948ca12b52c7cb954388a3767122cea85eb033ff9525e15aa5af9b5  linux-oneplus-billie2-downstream-6db26f433f9a8722d0858562804da13f3090bfd7.tar.gz
 53d5c7e98bcf0621f15e249393a610f685c9c9b20086dd1d463ce3d6c85df9bb7bed229ba65b80f0b28951ec174981613a48fad0c9d07228b0ae861eac8b98f7  config-oneplus-billie2.aarch64
 c6739758f857f3da23702e005b1ed11e30fa28981a4307fa8d5d7419931400c419c3bd0c2dcfb2c0aff8972e5a19125be5074597e094195315d8a760e373802a  0001-Fix-function-declarations.patch
 39007dd285b502633c7bbf398acd6841a14fb6f5e0a3ad8570d31be77763b537b2352401701d67c53d36ddbf4068ee32446bf3b4ef9aa20c39f052ca491d2be4  0002-Fix-dangerous-relocation.patch

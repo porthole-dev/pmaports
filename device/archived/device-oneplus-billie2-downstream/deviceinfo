@@ -5,14 +5,13 @@
 deviceinfo_format_version="0"
 deviceinfo_name="OnePlus Nord N100"
 deviceinfo_manufacturer="OnePlus"
-deviceinfo_codename="oneplus-billie2"
+deviceinfo_codename="oneplus-billie2-downstream"
 deviceinfo_year="2020"
 deviceinfo_dtb="bengal-qrd"
 deviceinfo_arch="aarch64"
 
 # Device related
 deviceinfo_chassis="handset"
-deviceinfo_keyboard="false"
 deviceinfo_external_storage="true"
 deviceinfo_screen_width="720"
 deviceinfo_screen_height="1600"
@@ -24,7 +23,6 @@ deviceinfo_kernel_cmdline="androidboot.hardware=qcom androidboot.console=ttyMSM0
 deviceinfo_generate_bootimg="true"
 deviceinfo_append_dtb="true"
 deviceinfo_bootimg_qcdt="false"
-deviceinfo_bootimg_dtb_second="false"
 deviceinfo_flash_offset_base="0x00000000"
 deviceinfo_flash_offset_kernel="0x00008000"
 deviceinfo_flash_offset_ramdisk="0x01000000"

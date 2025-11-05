@@ -1,0 +1,26 @@
+# Archived: Downstream port, only for testing. Use mainline port!
+# Reference: <https://postmarketos.org/devicepkg>
+pkgname=device-samsung-matissewifi-downstream
+pkgdesc="Samsung Galaxy Tab 4 10.1 (Downstream)"
+pkgver=1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="armv7"
+options="!check !archcheck"
+depends="postmarketos-base linux-samsung-matissewifi-downstream mkbootimg msm-fb-refresher"
+makedepends="devicepkg-dev"
+source="deviceinfo"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+
+sha512sums="
+67a09613beea7df9489f56e3d88808aeeb11c24fab77f577840082798f7a5a1a0e72c4dc2d86369c5563e263efe66a9391bc2953defdae2bc102c31c7f1b6cac  deviceinfo
+"

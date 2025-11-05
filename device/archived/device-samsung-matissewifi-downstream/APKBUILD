@@ -2,7 +2,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-samsung-matissewifi-downstream
 pkgdesc="Samsung Galaxy Tab 4 10.1 (Downstream)"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -22,5 +22,5 @@ package() {
 
 
 sha512sums="
-67a09613beea7df9489f56e3d88808aeeb11c24fab77f577840082798f7a5a1a0e72c4dc2d86369c5563e263efe66a9391bc2953defdae2bc102c31c7f1b6cac  deviceinfo
+477a759ec8885e46f95e096dad8f4897882cdf23989c2dbf3ed3f97d70e3d3ba591cf2847e4a5601d65f5b7aecf23c7f481e13dbf9cec96009c13f2e0230b4f4  deviceinfo
 "

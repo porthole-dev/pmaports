@@ -3,7 +3,7 @@
 _flavor="postmarketos-qcom-sm6350"
 pkgname=linux-$_flavor
 pkgver=6.17.6
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline Kernel fork for SM6350/SM7225 devices"
 arch="aarch64"
 _carch="arm64"
@@ -13,7 +13,18 @@ options="!strip !check !tracedeps
 	pmb:cross-native
 	pmb:kconfigcheck-community
 	"
-makedepends="bash bison findutils flex installkernel openssl-dev perl python3"
+makedepends="
+	bison
+	clang
+	findutils
+	flex
+	installkernel
+	lld
+	llvm
+	openssl-dev
+	perl
+	python3
+"
 
 _repo="linux"
 _config="config-$_flavor.$arch"
@@ -33,7 +44,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 
@@ -43,6 +54,7 @@ package() {
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -55,5 +67,5 @@ package() {
 
 sha512sums="
 8b6418ef520cb789b7f8c4aa3d1cedeab087e104198bb5569541348b173ad1509db561e126ff86e650624b1693e618389ab8abf40e0a1af79e89b5b4b026c9f1  linux-v6.17.6-sm6350.tar.gz
-9c30e5366607dd335648c59b4b8126d72da1a14f8124ba293cff7f5d816ce96ff4662407d896d37810013b9c9e28239f1bdee5647b0c46463e1f516cae6c6ec5  config-postmarketos-qcom-sm6350.aarch64
+1694404b966968b1e6a727935632bc75f8967ed748f01773678acfa4f481e98c9da3b3fa6a6623ae89e03856b9ded37a0c7bad413ff5dee096f0ec8c3bc9afc6  config-postmarketos-qcom-sm6350.aarch64
 "

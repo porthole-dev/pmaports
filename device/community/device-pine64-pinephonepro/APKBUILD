@@ -3,7 +3,7 @@
 pkgname=device-pine64-pinephonepro
 pkgdesc="PINE64 PinePhone Pro"
 pkgver=5
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -43,13 +43,15 @@ source="
 	sway-pinephone-keyboard.conf
 	x11-pinephone-keyboard.conf
 	"
+builddir="$srcdir/build"
 
 build() {
+	mkdir "$builddir"
 	devicepkg_build $startdir $pkgname
 
 	grub-mkimage \
 		--prefix="/grub" \
-		--output="bootaa64.efi" \
+		--output="$builddir/bootaa64.efi" \
 		--format="arm64-efi" \
 		--compression="xz" \
 		\
@@ -78,8 +80,7 @@ package() {
 	devicepkg_package $startdir $pkgname
 
 	# Grub / bootloader
-	install -Dm644 -t "$pkgdir"/boot/EFI/Boot \
-		"$srcdir"/bootaa64.efi
+	install -Dm644 -t "$pkgdir"/boot/EFI/Boot bootaa64.efi
 
 	# Alsa usecase manager config
 	install -Dm644 -t "$pkgdir"/usr/share/alsa/ucm2/PinePhonePro \

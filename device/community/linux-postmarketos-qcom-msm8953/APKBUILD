@@ -1,12 +1,10 @@
-# Maintainer: M0Rf30 <morf3089@gmail.com>
-# Co-Maintainer: Ultra-azu <ultra.public@proton.me>
-# Co-Maintainer: Barnabas Czeman <barnabas.czeman@postmarketos.org>
+# Maintainer: Barnabas Czeman <barnabas.czeman@postmarketos.org>
 # Kernel config based on: defconfig, msm8953.config, and device configs
 
 _flavor="postmarketos-qcom-msm8953"
 pkgname=linux-$_flavor
-pkgver=6.16.3
-pkgrel=1
+pkgver=6.17.7
+pkgrel=0
 pkgdesc="Close to mainline linux kernel for Qualcomm Snapdragon MSM8953"
 arch="aarch64"
 _carch="arm64"
@@ -61,6 +59,6 @@ package() {
 		"$pkgdir/usr/share/kernel/$_flavor/kernel.release"
 }
 sha512sums="
-1f3f490fa86b54237168c888f2a99a1b754ecb9a53b3dc7a21083c8ea247a9451fd2bcc9e9ba9aeb5fafc5623205e82f4d123c1c68fb3978590400f4166e4069  linux-postmarketos-qcom-msm8953-v6.16.3-r0.tar.gz
-b8892e18d765911e48b1d1cd40128e05f8bbcea6e1e2c9a12d00078b502753ae1a0732ff1ce4a15464538fd784a6ec43c6838eee357ba430716f295e36f976d0  config-postmarketos-qcom-msm8953.aarch64
+2487f0e5af708cabb3ff3604744a5781088445a74e84df87feb5c022d4c8c56bf9dac5604435b5fcbd2bbea09972267e80eaf2c52b91badfdfb296d33a9b05b2  linux-postmarketos-qcom-msm8953-v6.17.7-r0.tar.gz
+14cce140d7b7ae24e30cca1f3987ca322134939419c7533687eea641f33306642492988390aea7c476e1cb78ef46776f46792eee10ad4c478a433f1e6dcf8b30  config-postmarketos-qcom-msm8953.aarch64
 "

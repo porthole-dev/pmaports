@@ -3,12 +3,12 @@
 pkgname=device-cutiepi-tablet
 pkgdesc="CutiePi Tablet"
 pkgver=2
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
 options="!check !archcheck"
-depends="postmarketos-base raspberrypi-bootloader linux-rpi4"
+depends="postmarketos-base raspberrypi-bootloader linux-rpi"
 makedepends="devicepkg-dev dtc"
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware

@@ -10,10 +10,10 @@ initramfs initramfs
 kernel=vmlinuz-rpi
 initramfs initramfs
 [pi2]
-kernel=vmlinuz-rpi2
+kernel=vmlinuz-rpi
 initramfs initramfs
 [pi3]
-kernel=vmlinuz-rpi2
+kernel=vmlinuz-rpi
 initramfs initramfs
 [all]
 include usercfg.txt

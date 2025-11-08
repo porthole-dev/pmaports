@@ -1,19 +1,20 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-raspberry-pi
 pkgdesc="Raspberry Pi"
-pkgver=3
+pkgver=4
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
 arch="armhf"
 options="!check !archcheck"
-depends="postmarketos-base raspberrypi-bootloader"
+depends="
+	linux-rpi
+	postmarketos-base
+	raspberrypi-bootloader
+"
 makedepends="devicepkg-dev"
 subpackages="
-	$pkgname-kernel-rpi:kernel_rpi
-	$pkgname-kernel-rpi-openrc:kernel_rpi_openrc
-	$pkgname-kernel-rpi2:kernel_rpi2
-	$pkgname-kernel-rpi2-openrc:kernel_rpi2_openrc
+	$pkgname-openrc
 	$pkgname-sway
 	$pkgname-phosh
 "
@@ -35,28 +36,8 @@ package() {
 		"$pkgdir"/etc/udev/rules.d/95-vchiq-permissions.rules
 }
 
-kernel_rpi() {
-	pkgdesc="Kernel for the Raspberry Pi 1 (from Alpine, depends on non free firmware!)"
-	depends="$pkgname linux-rpi"
-	mkdir "$subpkgdir"
-}
-
-kernel_rpi_openrc() {
-	install_if="$pkgname=$pkgver-r$pkgrel $pkgname-kernel-rpi openrc"
-	install="$subpkgname.post-install $subpkgname.post-upgrade"
-	depends="openrc"
-
-	mkdir -p "$subpkgdir"
-}
-
-kernel_rpi2() {
-	pkgdesc="Kernel for the Raspberry Pi 2 (from Alpine, depends on non free firmware!)"
-	depends="$pkgname linux-rpi2"
-	mkdir "$subpkgdir"
-}
-
-kernel_rpi2_openrc() {
-	install_if="$pkgname=$pkgver-r$pkgrel $pkgname-kernel-rpi2 openrc"
+openrc() {
+	install_if="$pkgname=$pkgver-r$pkgrel openrc"
 	install="$subpkgname.post-install $subpkgname.post-upgrade"
 	depends="openrc"
 
@@ -79,7 +60,7 @@ phosh() {
 
 sha512sums="
 f647be686be0a224ddc383e31fed90118f9d50af756a72a69155acbadfffb8bee2d6894035b694f0ad86adf71680711272379f37ff82a7b94553d72fe26ea80a  deviceinfo
-f70469c3dca65f39ff041af9983eae3b87080fcfb1f8fddb3f58b5a477f708f758f64d46b2195a5bef8d3fa03894e1bf0a427fec5e138d57549392e5b9a6e589  config.txt
+2f146944f5b30a1a065b3002e965cb74edbcb3b50dcfb448b9b0e8c379e9e7aa1f732a48b0539208cd8185234ce8011a1737961a04ebaee28e8a7dad224347ce  config.txt
 e94c810f973eb6b6d0fb3687ea1d70612ba00e9c5d6b3608390a161e077c5591fd9d232c37b42443c05ed28bb639ca1754422ff35899c5e33d7fc266e0e1ad05  usercfg.txt
 7e5505cb07d5b4a81bd28443d508336b5c547356538f1c06f91ed93ad0d7d456d4f74f1d24df5a2e08c17e74f0a66607352ac4874e967e9a91dfec9522d2d58d  95-vchiq-permissions.rules
 5e91a9efbaa0c734492472b0d1bb1798ec75587f3cf0ccbc31489b2e1ee6c6713e78397e67cdce3616af967bb3cbf57b49a137879106a3eec4a4a4e3d74f0610  start-even-without-input.sh

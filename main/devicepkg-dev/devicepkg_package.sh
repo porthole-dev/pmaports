@@ -50,7 +50,7 @@ if [ -f "$srcdir/modules-load.conf" ]; then
 fi
 
 if [ -f "$srcdir/modprobe.conf" ]; then
-	# NOTE: This requires kmod, busybox only looks in /etc/modprobe.d
+	# NOTE: This requires kmod, busybox only looks in etc/modprobe.d
 	# See https://gitlab.postmarketos.org/postmarketOS/pmaports/-/issues/2184
 	install -Dm644 "$srcdir/modprobe.conf" \
 		"$pkgdir/usr/lib/modprobe.d/$pkgname.conf"

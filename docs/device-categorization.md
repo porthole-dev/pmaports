@@ -181,8 +181,20 @@ straight to main.
 
 ### Moving to a lower category
 
-If rules to keep a device in a category are no longer fulfilled, we should
-create a merge request to move them to the now appropriate category.
+If rules to keep a device in a category are no longer fulfilled, an attempt to
+contact the device maintainers and make them aware of the situation must be
+made. The maintainers then have two weeks to ensure the device meets the criteria
+again. Maintainers can request additional time in response, but only up to one
+more month from the time they were contacted. If a stable release is scheduled
+for branching in that timeframe, additional time can only be requested up until
+the date of the branching.
+
+If the maintainers cannot be contacted, or if two weeks and any additionally
+requested time pass and the device still does not meet the criteria, a merge
+request to move them to the now appropriate category should be opened.
+
+Merge requests moving a device to a lower category are subject to the standard
+[pmaports approval rules](./approval-rules).
 
 ## See also
 

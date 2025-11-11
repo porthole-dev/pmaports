@@ -2,7 +2,7 @@
 # Contributor: Quade Curry <qc8086@qc8086.com>
 pkgname=linux-postmarketos-rockchip
 pkgver=6.12.57
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline kernel for rockchip devices"
 arch="aarch64"
 _carch="arm64"
@@ -75,6 +75,6 @@ package() {
 
 sha512sums="
 57ad723d2a8d9eb04b3ac7897f0b37cff3771e0be4420edb6bfd7fdf35f8317d4a9527ed7eac2b9e659a0e0ca899d8ec6b6be0ef80d2512d483152b4113ba2e0  linux-6.12.57.tar.xz
-ce8e86c0511815c58cbc3acef9bd388280b73f60061a4b163ecb7de66cb29be6fd4e708a7b20dc7881a283174190e9e3723d6938afa7518e38c22c90c44256f3  config-postmarketos-rockchip.aarch64
+82dd616e212a9ed9790947f4b7f843b839b9723e84bb3751faf21076138418d02e3efcc7b4eb13f84d2c9b1b2b23030e2a429524cd626ebe0a258aa79fb56177  config-postmarketos-rockchip.aarch64
 95e544656c26376703cd14b45a3c8f996d08f550e8e1963e5f25ac8437ebaa03511865307ca7b4862c06b61ea6706eb61b7ba76beddc6c38ed166e7b09f6d094  0001-drm-panel-kingdisplay-kd097d04-Disable-EoTp.patch
 "

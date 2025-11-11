@@ -3,7 +3,7 @@
 # Contributor: Jenneron <jenneron@protonmail.com>
 pkgname=device-google-gru
 pkgdesc="Google Gru Chromebooks"
-pkgver=9
+pkgver=10
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -18,8 +18,16 @@ depends="
 	soc-rockchip-rk3399
 "
 makedepends="devicepkg-dev"
-subpackages="$pkgname-nonfree-firmware:nonfree_firmware $pkgname-openrc"
-source="deviceinfo modules-initfs"
+subpackages="
+	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-openrc
+	$pkgname-systemd
+"
+source="
+	deviceinfo
+	modules-initfs
+	systemd-gru-watchdog.conf
+"
 
 # provides and replaces to switch old installations to this package
 provides="
@@ -57,7 +65,14 @@ openrc() {
 	mkdir "$subpkgdir"
 }
 
+systemd() {
+	install -Dm644 "$srcdir"/systemd-gru-watchdog.conf \
+	  "$subpkgdir"/usr/lib/systemd/system.conf.d/90-gru-watchdog.conf
+	default_systemd
+}
+
 sha512sums="
 492fbd4d1abf694e580f2090b941b65d40cfcc4d571c2ab4e74ecdf21e741bdaf40b9705e820e726defc57acc2224aee8a500ef9391e1705f57d257ca8e49384  deviceinfo
 a750a0c41068082e0b82351d5aec91715e1a5215b09b26fec644dfe259cea2d662e878433a732a8c06dab2a9b420baec2bcc6161d8357cf3ed770239c5165090  modules-initfs
+54989f531765745629565ea8506afaccf07a0968b9165304f704d529467eb21cecac0ec49d2cf14ebe2779958e4eaafe6721103163c760dcaf6099b761461ff6  systemd-gru-watchdog.conf
 "

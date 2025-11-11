@@ -4,7 +4,7 @@
 
 pkgname=device-qcom-msm8953
 pkgdesc="Generic device package for various Qualcomm MSM8953/SDM450/SDM632-based devices"
-pkgver=8
+pkgver=9
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -47,7 +47,7 @@ xiaomi_daisy_fake_goodix() {
 
 sha512sums="
 726ea83be6efd0124ce324acc77551be13b7fced806d0fd1cdccc591c8eac9db7aeda3af44d09bea7287058ede8bef4aa9455ecab3d60d647a9517032a72d95a  deviceinfo
-0cf2749f1241a817e79425d8996d2c8b18f0468c4a2808ecee168bd04384c48f8950a0da18b01651cd12a90dd18f5c0d0286bcd07e70df5106a070ce696d9f8d  modules-initfs
+83d3a9519a659607b492b5a5a676eb46d589855b68751dfbad02f9d9dcdf84652c3a22f89357e2068b622ea91398f1590e7f26293330eb72558b9b55705fa434  modules-initfs
 a2608b01b7b6e2dade694af355ff4f0f26cad49cf54bc332c77eb75d19fdc985f7f996fedb72753de447be0391deabf5fcea52406791d1e6e0d165703b63f145  90-device-xiaomi-daisy.rules
 17af1dabd211ec942bd8cbe63743c874ef87f0613ae08b8de3f77bdb87962eae402eee2b6604d6040700d4e7ae1b898cb67c1b01f2b86db23af31435953eaa51  61-gmobile-wakeup-lenovo-cd18781y.hwdb
 "

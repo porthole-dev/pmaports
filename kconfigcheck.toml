@@ -127,7 +127,6 @@ FUSE_FS = "m"
 IP_NF_IPTABLES_LEGACY = "m"
 IP_NF_MANGLE = "m"
 NETFILTER_XTABLES = "m"
-NETFILTER_XTABLES_LEGACY = "y"
 NETFILTER_XT_MATCH_COMMENT = "m"
 SQUASHFS = "m"
 SQUASHFS_XATTR = "y"
@@ -140,6 +139,8 @@ VLAN_8021Q = "m"  # prerequisite for bridge
 CROSS_MEMORY_ATTACH = "y"
 ["category:waydroid"."<5.18"."all"]
 ASHMEM = "y"
+["category:waydroid".">=6.17"."all"]
+NETFILTER_XTABLES_LEGACY = "y"
 
 # iwd: modern inet wireless daemon
 # Obtained from 'grep ADD_MISSING src/main.c' in iwd.git
@@ -181,7 +182,6 @@ NF_REJECT_IPV4 = "m"
 IP_NF_IPTABLES = "m"
 IP_NF_FILTER = "m"
 IP_NF_TARGET_REJECT = "m"
-NETFILTER_XTABLES_LEGACY = "y"
 IP_NF_IPTABLES_LEGACY = "m"
 IP_NF_NAT = "m"
 NF_TABLES_IPV6 = "y"
@@ -193,6 +193,8 @@ IP6_NF_TARGET_REJECT = "m"
 IP6_NF_NAT = "m"
 ["category:nftables".">=3.13.0 <5.17"."all"]
 NFT_COUNTER = "y"
+["category:nftables".">=6.17"."all"]
+NETFILTER_XTABLES_LEGACY = "y"
 
 # containers: lxc, docker, etc.
 ["category:containers".">=0.0.0"."all"]

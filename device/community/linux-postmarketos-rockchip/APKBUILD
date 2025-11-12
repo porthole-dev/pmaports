@@ -17,19 +17,17 @@ options="!strip !check !tracedeps
 makedepends="
 	bash
 	bison
-	devicepkg-dev
+	clang
 	findutils
 	flex
-	postmarketos-installkernel
+	lld
+	llvm
 	openssl-dev
 	perl
-	rsync
-	gzip
+	postmarketos-installkernel
+	python3
 	xz
-	gmp-dev
-	mpc1-dev
-	mpfr-dev
-	"
+"
 
 # Source
 _config="config-$_flavor.$arch"
@@ -47,27 +45,25 @@ builddir="$srcdir/linux-$_kernver"
 
 prepare() {
 	default_prepare
-	REPLACE_GCCH=0 \
-		. downstreamkernel_prepare
+	cp "$srcdir/config-$_flavor.$arch" .config
 }
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 
 package() {
-	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" "$_flavor"
+	mkdir -p "$pkgdir"/boot
 
-	make -j1 modules_install dtbs_install \
+	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
-		INSTALL_MOD_STRIP=1 \
+		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_STRIP=1 \
 		INSTALL_DTBS_PATH="$pkgdir/boot/dtbs"
-
-	gzip -v "$pkgdir"/boot/vmlinuz
-	mv "$pkgdir"/boot/vmlinuz.gz "$pkgdir"/boot/vmlinuz
+	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
 
 	install -D "$builddir"/include/config/kernel.release \
 		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release
@@ -75,6 +71,6 @@ package() {
 
 sha512sums="
 57ad723d2a8d9eb04b3ac7897f0b37cff3771e0be4420edb6bfd7fdf35f8317d4a9527ed7eac2b9e659a0e0ca899d8ec6b6be0ef80d2512d483152b4113ba2e0  linux-6.12.57.tar.xz
-82dd616e212a9ed9790947f4b7f843b839b9723e84bb3751faf21076138418d02e3efcc7b4eb13f84d2c9b1b2b23030e2a429524cd626ebe0a258aa79fb56177  config-postmarketos-rockchip.aarch64
+c13468725cec26f1b7425f682c1a092b7507d1101947fb669442cce8c1d931b81d6153da7fcad9afe0596b1b1582aef3143d4efb753e7a3ef81813cd57149aec  config-postmarketos-rockchip.aarch64
 95e544656c26376703cd14b45a3c8f996d08f550e8e1963e5f25ac8437ebaa03511865307ca7b4862c06b61ea6706eb61b7ba76beddc6c38ed166e7b09f6d094  0001-drm-panel-kingdisplay-kd097d04-Disable-EoTp.patch
 "

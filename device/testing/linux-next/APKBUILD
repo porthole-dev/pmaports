@@ -3,7 +3,7 @@
 
 pkgname=linux-next
 pkgver=6.18_git20251112
-pkgrel=0
+pkgrel=1
 _nextver="${pkgver#*_git}"
 pkgdesc="Linux next kernel"
 arch="armv7 aarch64"
@@ -58,14 +58,14 @@ prepare() {
 
 	# Generate .config
 	unset LDFLAGS
-	make LLVM=1 ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-next-$_nextver" \
 		"$_defconfig" pmos.config devices.config
 }
 
 build() {
 	unset LDFLAGS
-	make LLVM=1 O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" \
+	make O="$_outdir" ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 

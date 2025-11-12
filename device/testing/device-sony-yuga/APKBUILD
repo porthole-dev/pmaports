@@ -1,18 +1,22 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-sony-yuga
 pkgver=5
-pkgrel=0
+pkgrel=1
 pkgdesc="Sony Xperia Z"
 url="https://postmarketos.org"
 arch="armv7"
 license="MIT"
 depends="
 	firmware-sony-fusion3
-	linux-postmarketos-qcom-apq8064
 	mkbootimg
 	postmarketos-base
 	"
 makedepends="devicepkg-dev"
+subpackages="
+	$pkgname-kernel-next:kernel_next
+	$pkgname-kernel-stable:kernel_stable
+	$pkgname-kernel-lts:kernel_lts
+"
 source="deviceinfo"
 options="!check !archcheck"
 
@@ -22,6 +26,25 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+}
+
+kernel_next() {
+	pkgdesc="Unstable next kernel (linux-next)"
+	depends="linux-next"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_stable() {
+	pkgdesc="Stable kernel from Alpine Linux (linux-stable)"
+	depends="linux-stable"
+	provides="$pkgname-kernel-edge=$pkgver-r$pkgrel"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_lts() {
+	pkgdesc="Long term support (LTS) kernel from Alpine Linux (linux-lts)"
+	depends="linux-lts"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 
 sha512sums="

@@ -2,7 +2,7 @@
 # Maintainer: David Heidelberg <david@ixit.cz>
 pkgname=device-asus-flo
 pkgver=2
-pkgrel=2
+pkgrel=3
 pkgdesc="Google Nexus 7 2013 (flo)"
 url="https://postmarketos.org"
 arch="armv7"
@@ -11,7 +11,9 @@ depends="postmarketos-base mkbootimg"
 makedepends="devicepkg-dev"
 subpackages="
 	$pkgname-kernel-mainline-old:kernel_mainline_old
-	$pkgname-kernel-mainline:kernel_mainline
+	$pkgname-kernel-next:kernel_next
+	$pkgname-kernel-stable:kernel_stable
+	$pkgname-kernel-lts:kernel_lts
 	$pkgname-nonfree-firmware:nonfree_firmware"
 source="deviceinfo 90-android-touch-dev.rules wpa_supplicant.conf pointercal"
 
@@ -37,9 +39,22 @@ kernel_mainline_old() {
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 
-kernel_mainline() {
-	pkgdesc="linux-next kernel, install only for development!"
-	depends="linux-postmarketos-qcom-apq8064"
+kernel_next() {
+	pkgdesc="Unstable next kernel (linux-next)"
+	depends="linux-next"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_stable() {
+	pkgdesc="Stable kernel from Alpine Linux (linux-stable)"
+	depends="linux-stable"
+	provides="$pkgname-kernel-edge=$pkgver-r$pkgrel"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_lts() {
+	pkgdesc="Long term support (LTS) kernel from Alpine Linux (linux-lts)"
+	depends="linux-lts"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 

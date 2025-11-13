@@ -4,7 +4,7 @@
 pkgname=device-google-gru
 pkgdesc="Google Gru Chromebooks"
 pkgver=10
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -66,6 +66,7 @@ openrc() {
 }
 
 systemd() {
+	install_if="$pkgname=$pkgver-r$pkgrel systemd"
 	install -Dm644 "$srcdir"/systemd-gru-watchdog.conf \
 	  "$subpkgdir"/usr/lib/systemd/system.conf.d/90-gru-watchdog.conf
 	default_systemd

@@ -5,7 +5,7 @@
 _flavor="postmarketos-qcom-sdm670"
 pkgname=linux-$_flavor
 pkgver=6.17.6
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline Kernel fork for SDM670 devices"
 arch="aarch64"
 _carch="arm64"
@@ -15,11 +15,13 @@ options="!strip !check !tracedeps
 	pmb:cross-native
 	pmb:kconfigcheck-community"
 makedepends="
-	bash
 	bison
+	clang
 	findutils
 	flex
 	installkernel
+	lld
+	llvm
 	openssl-dev
 	perl
 	python3
@@ -43,7 +45,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 
@@ -55,6 +57,7 @@ package() {
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -67,5 +70,5 @@ package() {
 
 sha512sums="
 79455ee2c9ccc7f0f18dbabbef09a19cf1106ac1a3d731a3a7af3a5dd8b883ba6648812b80da9992c93c71be97da396ba0b02d8cf7b8c4b54cb993b25fc48367  linux-sdm670-v6.17.6.tar.gz
-6af39e8931b2223332932058f703cbeb7928de281e445cd20cdc594ec3812191265b0714911b2da2fa905da21f7681b236161c37a5e65601194227c76732591b  config-postmarketos-qcom-sdm670.aarch64
+2044c161a3ab302e5c421e84889703224b13e878855c88a9f7a4825409760c256af3ceb9bd89e0818d610759f83d6a9be04df83737face0ab4e9473cd865ccea  config-postmarketos-qcom-sdm670.aarch64
 "

@@ -1,7 +1,7 @@
 maintainer="Ingo Reitz <9l@9lo.re>"
 pkgname=linux-postmarketos-gs101
 pkgver=6.18_rc2
-pkgrel=0
+pkgrel=1
 pkgdesc="Google gs101 (Pixel 6 Series) close-to-mainline kernel"
 arch="aarch64"
 _carch="arm64"
@@ -10,17 +10,15 @@ url="https://kernel.org"
 license="GPL-2.0-only"
 options="!strip !check !tracedeps pmb:cross-native pmb:kconfigcheck-community"
 makedepends="
-	bash
-	bc
 	bison
+	clang
 	findutils
 	flex
+	lld
+	llvm
 	lz4
 	openssl-dev
 	perl
-	gmp-dev
-	mpc1-dev
-	mpfr-dev
 	zstd
 "
 
@@ -41,7 +39,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -50,6 +48,7 @@ package() {
 
 	make Image.lz4 modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -65,5 +64,5 @@ package() {
 
 sha512sums="
 44cfb483162496f3815362ab7e782367fd6a53e8d9f989078087b0bb33522c2783953378a42225813a11d9ff0c43bbf3302fca4b64b567194e25b4dc546b7a0d  linux-postmarketos-gs101-2bce1f7172c8ee7d8e73d027c3f4963282b918f3.tar.gz
-8bd27025c1d45225af52d20db269306aa1fe7885063d0554451e0e07fab7478c5452d0b37c330f518be5491ecf07f1637e8cd181a9b027fe83dcbce5b35b3b59  config-postmarketos-gs101.aarch64
+6c23b5479256941e504d5ac1659477d4ec44b3fec0b0257a882ddef99d883c1f3dc9c64b6bade473c0128a252045ea80d661e6b945390ea8b0ebd1bc48fe0f14  config-postmarketos-gs101.aarch64
 "

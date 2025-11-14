@@ -3,7 +3,7 @@
 # Maintainer: Danct12 <danct12@disroot.org>
 # Co-Maintainer: Stefan Hansson <newbyte@postmarketos.org>
 pkgname=linux-pine64-pinetab2
-pkgver=6.15.10
+pkgver=6.17.8
 _danctnix_kernel_rel=1
 pkgrel=0
 pkgdesc="Pine64 PineTab 2 mainline"
@@ -66,6 +66,6 @@ package() {
 }
 
 sha512sums="
-8dd6ce110116887159a28962bba8afbddedcde1c610cd241be1d31596d4952c28e4884d06e8bf5a6a9ba7d2ef66a3d1a4c8d54f9a557cdde9529366b4588a533  linux-pine64-pinetab2-v6.15.10-danctnix1.tar.gz
-0d42ad4aa9326f1a47d454e637766aac2b3f30aa1c39c4dc4133ac92914267fd89f0b36826ead9e234703cc1cc639dd9fb13c46b2c0072a6cc80a74e36c7a464  config-pine64-pinetab2.aarch64
+8d2dc3222d1dac89996a3432c5b8fd5c2f21b1926a87b7bb2352f41722de46510f340e8972d1b29b077912a2ea7b82c869d42f866ec8ca2a1839a5a2fd6e88ff  linux-pine64-pinetab2-v6.17.8-danctnix1.tar.gz
+18ecd2da7a9668a71b6236641132bbffce527040c2d0e2268eb15900c932757020f87dda2bad0c0e4b3507f7b5b7e43b4b757320e6f9f5b1c69b6a4cc77c8977  config-pine64-pinetab2.aarch64
 "

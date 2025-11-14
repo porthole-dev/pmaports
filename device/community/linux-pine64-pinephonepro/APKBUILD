@@ -3,7 +3,7 @@ pkgname=linux-pine64-pinephonepro
 pkgver=6.17.7
 _pkgver=6.17
 _tagdate=20251104-2007
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline kernel for the pinephone pro"
 arch="aarch64"
 _flavor="${pkgname#linux-}"
@@ -63,6 +63,7 @@ package() {
 	mkdir -p "$pkgdir"/boot
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
 		INSTALL_PATH="$pkgdir"/boot \

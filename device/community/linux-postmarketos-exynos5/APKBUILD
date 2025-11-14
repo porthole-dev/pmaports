@@ -5,7 +5,7 @@
 
 pkgname=linux-postmarketos-exynos5
 pkgver=6.12.53
-pkgrel=1
+pkgrel=2
 pkgdesc="Mainline kernel fork for Samsung Exynos5 devices"
 arch="armv7"
 _carch="arm"
@@ -57,6 +57,7 @@ package() {
 	mkdir -p "$pkgdir"/boot
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \

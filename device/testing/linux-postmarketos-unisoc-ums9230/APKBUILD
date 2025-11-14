@@ -1,7 +1,7 @@
 # Maintainer: Affe Null <affenull2345@gmail.com>
 _flavor="postmarketos-unisoc-ums9230"
 pkgname=linux-$_flavor
-pkgver=6.17.0_rc1_git20250814
+pkgver=6.18.0_rc5_git20251114
 pkgrel=0
 pkgdesc="Linux kernel with patches for Unisoc UMS9230 devices"
 arch="aarch64"
@@ -12,9 +12,21 @@ options="!strip !check !tracedeps
 	pmb:cross-native
 	pmb:kconfigcheck-nftables
 "
-makedepends="bash bison findutils flex openssl-dev perl postmarketos-installkernel"
+makedepends="
+	bash
+	bison
+	clang
+	findutils
+	flex
+	lld
+	llvm
+	openssl-dev
+	perl
+	postmarketos-installkernel
+	python3
+"
 
-_commit="759c06098b06c853f27e916cf60aadd3fb3d9474"
+_commit="b28ee5f9df4f88a1d06026d259aeb58964a804b2"
 _config="config-$_flavor.$arch"
 source="
 	linux-$_commit.tar.gz::https://codeberg.org/ums9230-mainline/linux/archive/$_commit.tar.gz
@@ -29,14 +41,14 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
 package() {
 	mkdir -p "$pkgdir"/boot
 	make zinstall modules_install dtbs_install \
-		ARCH="$_carch" \
+		ARCH="$_carch" LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -48,6 +60,6 @@ package() {
 }
 
 sha512sums="
-5698ff217f0091f54f72f3ca7fce42370ff3c2517d47c4833f12066392612cb80becfd3922857531c0efb602afe46645479a5eb93d47747bc66e8f6e4c8dfaa4  linux-759c06098b06c853f27e916cf60aadd3fb3d9474.tar.gz
-06dbec1cf1a86a5fcf46494ceec15477b85cb99b6cf71dc67531d718fe526137314252e2bd9b00b64a2980c3758aaca22d52c66b544b0d04f4cb1fabc6330c09  config-postmarketos-unisoc-ums9230.aarch64
+cb9a6c23254c1bd2003f12849ba89b57b7e139a47f7cc4ab19ec803ec2afaed9c973041804b5e63d82d24f6bce5685b8524e666f2bf8b0051e6628c4f554baa9  linux-b28ee5f9df4f88a1d06026d259aeb58964a804b2.tar.gz
+240e45d8327881542379d73e22cc4738095b485792b464e9d0a529f286254306df492ba79e8111584ce130542a55ccab4638e506a8db90bd22c92f1a57f9b5a6  config-postmarketos-unisoc-ums9230.aarch64
 "

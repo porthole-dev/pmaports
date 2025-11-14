@@ -5,7 +5,7 @@
 
 pkgname=linux-postmarketos-grate
 pkgver=6.16.0
-pkgrel=3
+pkgrel=4
 pkgdesc="Linux kernel with experimental patches for Tegra"
 arch="armv7"
 url="https://gitlab.com/grate-driver/linux"
@@ -49,6 +49,7 @@ package() {
 	mkdir -p "$pkgdir"/boot
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -61,6 +62,6 @@ package() {
 
 sha512sums="
 f82b6736a1a4832bf12939a6d39ef11a4c1248491b77d031acd7712cd3e43016218a1e0b1944357e0c530db61d77b6d3404ca54da1a594b5fbddbf12cca2f449  linux-postmarketos-grate-v6.16.0-stable.tar.bz2
-70d0752d5960756025e7df9367b9e1106132ef3f63c5b6dba96e853987158a9b882ddd0bc7ba304235b4d37afd9dc3824e607b9e87325e0002ab754cd2cb592c  config-postmarketos-grate.armv7
+7563c17047ea229e97c06545011f3d450b0911407587053012fb7a9e71cc10374b3b4f97ae7feac9a6d8ba4ef8ab07b4d3a6238d447f9f051889f60d27e16391  config-postmarketos-grate.armv7
 0d12323fa469f87c3b801fb2088bb36ce1fbbbff22ffef010f1ae5f8a976af286d0fd7ad8e1ce2e5f677f873f0b7206700cf096ff4f0fb7523d7901e81b049a4  0001-ARM-tegra-fix-wifi-on-Microsoft-Surface-RT.patch
 "

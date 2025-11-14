@@ -5,7 +5,7 @@
 _flavor="postmarketos-qcom-sm8250"
 pkgname=linux-$_flavor
 pkgver=6.17.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Mainline kernel fork for SM8250"
 arch="aarch64"
 _carch="arm64"
@@ -55,6 +55,7 @@ package() {
 
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \

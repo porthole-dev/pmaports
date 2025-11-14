@@ -4,8 +4,8 @@
 # Co-Maintainer: exkc <exkc@exkc.moe>
 
 pkgname=linux-postmarketos-marvell
-pkgver=6.16
-pkgrel=2
+pkgver=6.17.8
+pkgrel=0
 pkgdesc="mainline (stable) for Marvell SoC"
 arch="armv7"
 _carch="arm"
@@ -54,6 +54,7 @@ package() {
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -67,6 +68,6 @@ package() {
 
 sha512sums="
 4c26ffca58dbdb75f24670d0aee5115cc3dc96b09ba2bcbcdd435d3e1e49cc0672cb0c0934a357047f59f47e1d24846f46cdd0cdcd19c87e14ff1c045ddd21af  wd-glacier.patch
-55a00f89ad6db6db2e26ff5dc5cfc96bbf6654e5bd5d17d2a3b944a47640367e54139716d230923187bebc6cb7756edc9511a620fb8abc6f32c50a658a734784  linux-postmarketos-marvell-6.16.tar.xz
-1bec9af8453e93d123c3763ee8fcea3ad1fa8a2e2712829662054362be76b943921ce3974a74820f3dec0ec76d2aa67d00d83f323f57731ad58ac5885085ee99  config-postmarketos-marvell.armv7
+eedd6d12c6b9e96481b12668bd5f7b639182f9b00b4d882038d245e493590a6bb94a72a2a162022c3abbfdfeeb7f7a4521c72210e120e8a543d5aa8a42a09bce  linux-postmarketos-marvell-6.17.8.tar.xz
+8b1ece9302f0e72c85de2b09b9883bbf21b437b0f407d259b83e1bdaef30099867fbd9458928d45f6b6972c67bac8dac6acb3f7dbc6f23b486fea00c57672829  config-postmarketos-marvell.armv7
 "

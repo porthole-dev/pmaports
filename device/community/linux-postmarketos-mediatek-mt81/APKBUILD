@@ -1,7 +1,7 @@
 # Maintainer: WeirdTreeThing <bradyn127@protonmail.com>
 pkgname=linux-postmarketos-mediatek-mt81
 pkgver=6.12.57
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline kernel for mediatek mt8183/mt8192/mt8195/mt8186"
 arch="aarch64"
 _flavor="${pkgname#linux-}"
@@ -87,6 +87,7 @@ package() {
 
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \

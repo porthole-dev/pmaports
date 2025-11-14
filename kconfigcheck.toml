@@ -522,12 +522,6 @@ HID_GOOGLE_STADIA_FF = "m"
 HID_WINWING = "m"
 ["category:input".">=6.12"."all"]
 HID_GOODIX_SPI = "m"
-["category:input".">=0.0.0"."riscv64 x86 x86_64"]
-HID_BPF = "y"
-["category:input".">=6.4.0"."aarch64"]
-HID_BPF = "y"
-["category:input".">=4.15.0"."all"]
-BPF_JIT = "y" # Required by HID_BPF
 
 ["category:usb".">=0.0.0"."all"]
 DRM_UDL = "m"  # DisplayLink - connecting displays via USB

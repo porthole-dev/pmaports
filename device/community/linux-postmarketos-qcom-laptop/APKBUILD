@@ -2,7 +2,7 @@
 # Co-Maintainer: Casey Connolly <kcxt@postmarketos.org>
 pkgname=linux-postmarketos-qcom-laptop
 pkgver=6.16
-pkgrel=2
+pkgrel=3
 # Commit from branch @ https://github.com/jhovold/linux/tree/wip/x1e80100-$pkgver
 _commit="a9cd6cda46ab81b1ec1d687d40ff0933dc6e6915"
 pkgdesc="Generic kernel for Qualcomm laptops"
@@ -75,6 +75,7 @@ package() {
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \

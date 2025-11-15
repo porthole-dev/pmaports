@@ -5,7 +5,7 @@ maintainer="Jane Rachinger <jane400+pmaports@postmarketos.org>"
 pkgname=networkmanager
 pkgver=9991.54.1
 _pkgver=1.54.1
-pkgrel=0
+pkgrel=1
 pkgdesc="Network Management daemon"
 url="https://wiki.gnome.org/Projects/NetworkManager"
 # armhf: pmb#2618
@@ -85,7 +85,8 @@ builddir="$srcdir/NetworkManager-$_pkgver"
 
 # on the builders:
 # mount("/sys") failed with Operation not permitted (1)
-options="!check"
+# !pmb:crossdirect: otherwise we see lto1: fatal error: compiler does not support ZSTD LTO compression
+options="!check !pmb:crossdirect"
 
 _plugindir="usr/lib/NetworkManager/$_pkgver"
 

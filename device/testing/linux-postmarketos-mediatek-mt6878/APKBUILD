@@ -1,6 +1,6 @@
 # Maintainer: BotchedRPR <igor.belwon@mentallysanemainliners.org>
 pkgname=linux-postmarketos-mediatek-mt6878
-pkgver=6.17
+pkgver=6.18
 pkgrel=0
 pkgdesc="Mainline Kernel fork for MT6878 devices"
 arch="aarch64"
@@ -13,15 +13,18 @@ makedepends="
 	bash
 	bc
 	bison
+	clang
 	devicepkg-dev
 	flex
+	lld
+	llvm
 	openssl-dev
 	perl
 	python3
 "
 
 _repository="linux"
-_commit="b82e3a1c9d6c7a8e5f2ac3bb26b0b9f97e63b427"
+_commit="d84b264a54a37611f2f46bc19363cb9b41606205"
 _config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/MT6878-mainline/$_repository/archive/$_commit.tar.gz
@@ -36,7 +39,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 
@@ -51,7 +54,8 @@ package() {
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
-		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs \
+		LLVM=1
 	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
 
 	install -D "$builddir"/include/config/kernel.release \
@@ -59,6 +63,6 @@ package() {
 }
 
 sha512sums="
-72450ff264056b06eeda957e5eec495e43a50d6abdc630445d7207071b22df7b29a1ddb729b09e6090dfdf7f782b0b7e3e44875bde2315ad608fac4476d30d44  linux-postmarketos-mediatek-mt6878-b82e3a1c9d6c7a8e5f2ac3bb26b0b9f97e63b427.tar.gz
-681887f6157480371fad94d9aaf3530bf5924d26e9e0a845ed223de342b3dfc536224f69fa61fcab66c55178a8eeb2f149bf5c5e7dfa8e74dff49ec18ffa635f  config-postmarketos-mediatek-mt6878.aarch64
+5d809b44f94336549285a559909bfe5d8b2dcc3f213af58c25a52d535cd2cd0345ce34f44e1d155940cf0d4089fd2ad49fa0d6829fd2b965095084cd1500003c  linux-postmarketos-mediatek-mt6878-d84b264a54a37611f2f46bc19363cb9b41606205.tar.gz
+c29d74f8bd22a93ea8b00cc08a77e13193097188cb5f11ebdc819bae53735a012a529a26e7d750bf28511dded8263c335941c628684408e10dfdbb4e8317690d  config-postmarketos-mediatek-mt6878.aarch64
 "

@@ -19,7 +19,11 @@ from pmb.core.context import get_context
 
 def build_strict(packages, arch):
     common.run_pmbootstrap(["build_init"])
-    common.run_pmbootstrap(["--details-to-stdout", "--no-ccache", "build",
+    # We set the timeout to 1 hour because linking the Linux kernel with
+    # ThinLTO on our aarch64 runners takes slightly over 30 minutes
+    common.run_pmbootstrap(["--details-to-stdout", "--no-ccache",
+                            "--timeout", "3600",
+                            "build",
                             "--strict", "--force",
                             "--arch", arch, ] + list(packages))
 

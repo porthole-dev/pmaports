@@ -384,6 +384,7 @@ NTFS3_FS = "m"
 ["category:input".">=0.0.0"."all"]
 BT = "m" # Required by BT_HIDP
 BT_HIDP = "m"  # Bluetooth HID
+GPIOLIB = "y" # Required by a couple of HID configs
 HIDRAW = "y"  # /dev/hidraw* support
 INPUT_MISC = "y" # Required by INPUT_UINPUT
 INPUT_UINPUT = "y"  # buffyboard

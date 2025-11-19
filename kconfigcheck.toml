@@ -360,7 +360,7 @@ RT_GROUP_SCHED = "n"  # https://gitlab.postmarketos.org/postmarketOS/pmaports/-/
 DM_INTEGRITY = "m"  # Device-mapper integrity target
 
 # uefi: proper modern booting
-["category:uefi".">=0.0.0"."all"]
+["category:uefi".">=0.0.0"."aarch64 armv7 armhf loongarch64 riscv64 x86 x86_64"]
 EFI_STUB = "y"
 EFI = "y"
 DMI = "y"
@@ -561,8 +561,9 @@ RS9116_FLASH_MODE = "n"  # pma!2059
 LEDS_GROUP_MULTICOLOR = "y"  # pma!5991
 
 # Required for immutable image booting
-["category:immutable".">=0.0.0"."all"]
+["category:immutable".">=0.0.0"."aarch64 armv7 armhf loongarch64 riscv64 x86 x86_64"]
 EFIVAR_FS = "m"
+["category:immutable".">=0.0.0"."all"]
 DM_VERITY = "m"
 EROFS_FS = "y"
 EROFS_FS_ZIP = "y"

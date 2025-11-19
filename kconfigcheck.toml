@@ -343,6 +343,7 @@ NETWORK_FILESYSTEMS = "y"  # Required by CIFS
 CIFS = "m"  # mount SMB shares
 LEDS_TRIGGER_PATTERN = "m"  # feedbackd
 LEDS_TRIGGER_TIMER = "m"  # hfd-service
+NETFILTER_ADVANCED = "y" # Required by NETFILTER_XT_MATCH_MARK
 NETFILTER_XT_MATCH_MARK = "m"  # e.g. HashiCorp Nomad
 NETFILTER_XT_MATCH_MULTIPORT = "m"  # e.g. HashiCorp Nomad
 NETFILTER_XT_MATCH_STATISTIC = "m"  # kube-proxy

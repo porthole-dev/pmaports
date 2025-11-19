@@ -529,6 +529,7 @@ HID_GOOGLE_STADIA_FF = "m"
 ["category:input".">=6.10"."all"]
 HID_WINWING = "m"
 ["category:input".">=6.12"."all"]
+SPI = "y" # Required by HID_GOODIX_SPI
 HID_GOODIX_SPI = "m"
 
 ["category:usb".">=0.0.0"."all"]

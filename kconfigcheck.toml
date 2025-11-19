@@ -538,6 +538,7 @@ USB_RTL8152 = "m"  # USB Ethernet
 
 ["category:virt".">=0.0.0"."all"]
 HW_RANDOM_VIRTIO = "m"
+["category:virt".">=0.0.0"."aarch64 loongarch64 ppc64le riscv64 s390x x86 x86_64"]
 KVM = "y"
 VIRTUALIZATION = "y"
 

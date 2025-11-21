@@ -7,7 +7,7 @@
 # How to add a new service file (5 steps):
 pkgname=systemd-services
 # 1. bump pkgver
-pkgver=103
+pkgver=104
 pkgrel=0
 pkgdesc="Systemd service files"
 url="https://postmarketos.org"
@@ -105,7 +105,6 @@ subpackages="
 	waydroid-sensors-systemd:_service
 	waydroid-systemd:_service
 	wpa_supplicant-systemd:_service
-	xdg-desktop-portal-gnome-systemd:_service
 	xdg-desktop-portal-gtk-systemd:_service
 	xdg-desktop-portal-kde-systemd:_service
 	xdg-desktop-portal-systemd:_service
@@ -242,7 +241,6 @@ _xdg_desktop_portal_sources="
 	user/xdg-permission-store.service
 "
 _xdg_desktop_portal_gtk_sources="user/xdg-desktop-portal-gtk.service"
-_xdg_desktop_portal_gnome_sources="user/xdg-desktop-portal-gnome.service"
 _xdg_desktop_portal_kde_sources="user/plasma-xdg-desktop-portal-kde.service" # From https://invent.kde.org/plasma/xdg-desktop-portal-kde/-/blob/master/data/plasma-xdg-desktop-portal-kde.service.in
 _xdg_desktop_portal_wlr_sources="user/xdg-desktop-portal-wlr.service"
 _xfce4_sources="user/xfce4-notifyd.service"
@@ -509,7 +507,6 @@ bef07aeb8d5d31d8f0d34e44e8db06f4a0aa1cb77245ca7e11e8775c935e3a3b3dcd923300192b01
 841caa793d256cacea7eb651f3d77039b1c0ddb22727100d6cca74230e528aee09e945e1fdf20eaf40abbe3eaec9210eb7fa27144dc906cab65f8078b36921f9  system-waydroid-sensors.service
 023fc89481f9079ac2d2d6b8a9ab212cb13a6b309caaa92b336df4c6ee9cff05538f035f8411fd8f6b87ca73b400172f56022edbf02d3776ab6f2aa7af2eebef  system-waydroid-container.service
 ff5e1481d00d870b39fa8f11545b1a3bff7ac0278440d329f600d4493de8628c120b95268494e6b87666c4743a6598afdf23778c7e666c12e1a5614fbff0e8ae  system-wpa_supplicant.service
-0ee2f844819c5f954d269d3703c17b5e51888bb89bd4376d3960f97735b1ba9769c932817270fdb75b8ddf291c21ab6eb78d1a8bde14aac83564881b36914066  user-xdg-desktop-portal-gnome.service
 eb01dd32fc598e49cbae31847aee4c3e28ee5014df052d65ad02c9a943a9e3399a4a119aa136630efef1157e31f6adc2d8420f8e72dc9da4c0b72645e4c84faa  user-xdg-desktop-portal-gtk.service
 8b7992b88fbccd4be77b7b8094349a27bde66a19585b97c40c441858a70d033b1a8fa146dd85bef5a08eed0ab08bd868ec9512ca72dbaea29ffa7038cf915605  user-plasma-xdg-desktop-portal-kde.service
 9a3620d3df53540a91efa48df322288d96ec887415f538877a979be40eb5239b95917b9ac57fda2c699fe3f1c6500f7de09a4ce6625b0818f5786e125713552f  user-xdg-desktop-portal.service

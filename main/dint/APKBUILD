@@ -1,6 +1,6 @@
 # Maintainer: Stefan Hansson <newbyte@postmarketos.org>
 pkgname=dint
-pkgver=0.0.3
+pkgver=0.0.4
 pkgrel=0
 pkgdesc="postmarketOS deviceinfo validator, linter, and documentation generator"
 url="https://gitlab.postmarketos.org/postmarketOS/dint"
@@ -32,5 +32,5 @@ package() {
 }
 
 sha512sums="
-30b9152b4c6c5a8b13be1ff5569ed40e906079b7b15324dd08950996811e60ffa8c51619e4d1b7ed787556a1a391c7e99ceb59c95191f793fb4bf6face469be3  dint-0.0.3.tar.bz2
+1cee7f733cec6950ed74b41e155667f6eeb40b1633078eb9d19c6596a0dfbe2503b09ba5255569aa371ab975773323e9cda2dbcd78692fadd7283bb930987fcd  dint-0.0.4.tar.bz2
 "

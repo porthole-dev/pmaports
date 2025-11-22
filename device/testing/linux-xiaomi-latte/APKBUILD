@@ -1,0 +1,72 @@
+# Reference: <https://postmarketos.org/vendorkernel>
+# Kernel config based on: https://github.com/Qs315490/linux_latte/blob/main/arch/x86/configs/xiaomipad2_defconfig
+
+pkgname=linux-xiaomi-latte
+pkgver=6.16.0
+pkgrel=0
+pkgdesc="Upstream Kernel For XiaoMi Pad2"
+arch="x86_64"
+_carch="x86_64"
+_flavor="xiaomi-latte"
+url="https://github.com/torvalds/linux"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps pmb:cross-native pmb:kconfigcheck-uefi"
+makedepends="
+	bash
+	bc
+	bison
+	devicepkg-dev
+	flex
+	openssl-dev
+	perl
+	gcompat
+	linux-headers
+	elfutils-dev
+	gawk
+	sbsigntool
+"
+
+# Source
+_config=xiaomipad2_defconfig
+_commit="038d61fd642278bab63ee8ef722c50d10ab01e8f"
+source="
+	$pkgname-$_commit.tar.gz::https://github.com/torvalds/linux/archive/$_commit.tar.gz
+	$_config
+	latte-audio-fix.patch
+	latte-i915-fix.patch
+	MOK.crt
+	MOK.key
+"
+builddir="$srcdir/linux-$_commit"
+_outdir="out"
+
+prepare() {
+	default_prepare
+	rm -rf ${builddir}/include/config
+	REPLACE_GCCH=0 . downstreamkernel_prepare
+}
+
+build() {
+	unset LDFLAGS
+	make O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" LOCALVERSION= \
+			KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
+}
+
+package() {
+	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" "$_flavor" "$_outdir"
+
+	# package kernel modules
+	make O="$_outdir" ARCH="$_carch" INSTALL_MOD_STRIP=1 INSTALL_MOD_PATH="$pkgdir" modules_install
+
+	# self sign kernel for Secure Boot
+	sbsign --key ${startdir}/MOK.key --cert ${startdir}/MOK.crt --output $pkgdir/boot/vmlinuz $pkgdir/boot/vmlinuz
+}
+
+sha512sums="
+9cfd1b774fce4237966f32c1880e087490885b8464cefb468c777b6ff022e9ec22a0ec0c051940fff86813c5f535e7c8e291f8998fd5ae8eaebcd546729b1ee6  linux-xiaomi-latte-038d61fd642278bab63ee8ef722c50d10ab01e8f.tar.gz
+407913bf970ee0b2e8c53d94224765e3603f987859c67926987d6d39cb70b0cfd6d0ed0f07af1f91a7dcd1ed6baf804b6b4c067b9e15ac7b58e859b479db4b72  xiaomipad2_defconfig
+7e3eeb8d54e2bf13bd9b126259daf2dd38cf698c3e66401a953d2ff235a87cfab33ea3f45575ec21cec3987f8cc0fd07f2aabc0c419753e215a851e219502025  latte-audio-fix.patch
+7a311bb9ff309349fb5dc11a8a9b18f6595abb28108da60a67cd95dd9c713f150f29068c001400f47010fab1809f092ef2cc4393bab98a64592334ca8650519a  latte-i915-fix.patch
+fedc27118b43badbcd47f44ac127ff9f02ce4e53ba04350c5bd893d6f6f6ff687c73f8cc7b15e8c71bc0def1ec63247ab675e95b339402edbaa744a3d8acf39d  MOK.crt
+1b5d43a851e7dc4085e34368b145752d4f8d00671db097f09b85a0152e1427486e7887f9a7fd876b9f97ca4f22dcd584c496f2d8bd9a7d2e64cc1fecad8ce0f0  MOK.key
+"

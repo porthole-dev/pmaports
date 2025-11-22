@@ -1,7 +1,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-xunlong-orangepi-zero3
 pkgdesc="Xunlong Orange Pi Zero 3"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -49,5 +49,5 @@ u_boot_orangepi_zero3() {
 }
 
 sha512sums="
-2d95715655ec9569b071227345bc59eedf129f92fc0b77f0bdaf3e47728be94a3f389193a153a3da3385c96a8c3dcc11b034e98414da0c3f06c9d367f807dd23  deviceinfo
+ee07bf016014cfdbbbe7e1a4ba51dc640fbc105196f8489f3451f44e1aa5fdca52a537a55b4d1d82330f832480274f4e11340cc910ddf292ec995b20836b756a  deviceinfo
 "

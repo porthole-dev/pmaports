@@ -7,7 +7,7 @@ deviceinfo_name="Xunlong Orange Pi Zero 3"
 deviceinfo_manufacturer="Xunlong"
 deviceinfo_codename="xunlong-orangepi-zero3"
 deviceinfo_year="2023"
-deviceinfo_dtb="allwinner/sun50i-h618-orangepi-zero3.dtb"
+deviceinfo_dtb="allwinner/sun50i-h618-orangepi-zero3"
 deviceinfo_arch="aarch64"
 
 # Device related

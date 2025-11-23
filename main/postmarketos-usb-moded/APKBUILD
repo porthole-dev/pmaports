@@ -1,0 +1,102 @@
+# Maintainer: Clayton Craft <clayton@craftyguy.net>
+pkgname=postmarketos-usb-moded
+pkgver=1
+pkgrel=0
+pkgdesc="Meta package for configuring usb-moded on postmarketOS"
+url="https://postmarketos.org"
+arch="noarch"
+license="GPL-3.0-or-later"
+depends="
+	umtprd
+	usb-moded
+	usb-moded-notify
+"
+subpackages="
+	$pkgname-default-profile-charging:charging_default
+	$pkgname-default-profile-developer:developer_default
+	$pkgname-systemd
+"
+_pmb_select="$pkgname-default-profile"
+
+_source644="
+	etc/usb-moded/configfs.ini
+	etc/usb-moded/dyn-modes/developer_mode_systemd.ini
+	etc/usb-moded/dyn-modes/tethering_mode_systemd.ini
+	etc/usb-moded/dyn-modes/mtp_ffs_mode_systemd.ini
+	etc/umtprd/umtprd.conf
+	usr/lib/systemd/system/usb-moded-developer-mode.service
+	usr/lib/systemd/system/usb-moded-tethering-mode.service
+	usr/lib/systemd/system/usb-moded.service.d/override.conf
+"
+_source755="
+	usr/bin/usb-moded-developer-mode
+	usr/bin/usb-moded-tethering-mode
+"
+
+# Avoid filename based checksum conflicts by including the whole path.
+flatpath() {
+	local i
+	for i in $@; do
+		echo "rootfs-$i" | sed s./.-.g
+	done
+}
+source="$(flatpath $_source644 $_source600 $_source755)"
+
+package() {
+	# usb-moded default profile config are provided by subpackages in this
+	# APKBUILD and it won't exist when this is evaluated at the top level.
+	# It's moved into this function to work around it.
+	depends="
+		$depends
+		$pkgname-default-profile
+	"
+
+	local i
+	for i in $_source644; do
+		install -Dm644 "$srcdir/$(flatpath "$i")" "$pkgdir/$i"
+	done
+	for i in $_source600; do
+		install -Dm600 "$srcdir/$(flatpath "$i")" "$pkgdir/$i"
+	done
+	for i in $_source755; do
+		install -Dm755 "$srcdir/$(flatpath "$i")" "$pkgdir/$i"
+	done
+}
+
+charging_default() {
+	pkgdesc="Make 'charging mode' the default usb-moded profile (usb networking must be manually enabled)"
+	provides="$pkgname-default-profile=$pkgver-r$pkgrel"
+	provider_priority=90
+
+	mkdir -p "$subpkgdir"/etc/usb-moded
+	cat <<-EOF > "$subpkgdir"/etc/usb-moded/usbmode.ini
+		[usbmode]
+		mode = charging_only
+	EOF
+}
+
+developer_default() {
+	pkgdesc="Make 'developer mode' the default usb-moded profile (always enables usb networking)"
+	provides="$pkgname-default-profile=$pkgver-r$pkgrel"
+	# We want this mode to be the default if not specified with e.g. pmb_select
+	provider_priority=100
+
+	mkdir -p "$subpkgdir"/etc/usb-moded
+	cat <<-EOF > "$subpkgdir"/etc/usb-moded/usbmode.ini
+		[usbmode]
+		mode = developer_mode
+	EOF
+}
+
+sha512sums="
+231c1cfb991bb4d9f9807bb81e970bc2f63b7ea6e9bb06cf06a698af69b4a9f82f015252ec4c802ad0f8b58456d624f07e62902f04207dc5bac76cc785c296a7  rootfs-etc-usb-moded-configfs.ini
+d373201040a911663fd74123e9ef35e43dedfd375eeefe8ca949a3e24737d457a4693e836b1c5ad6f4cf3149b656ae24d751f767babb9858a42114c5d2ad083e  rootfs-etc-usb-moded-dyn-modes-developer_mode_systemd.ini
+3d4e20f9e8e357030ce5f5c73367aef31cebecce48a9b1ff7915731335a83715e0679812959ac9ee41f88447a8636177244c0b9c5109cd8a227caecb9931ed9e  rootfs-etc-usb-moded-dyn-modes-tethering_mode_systemd.ini
+af41dc4ceb7255dbb88273916306c6e7e66c879bb67523c9571f9e812c9b36ab00ea666ade49369cd5846b4552a53add58cd1aea574a496bf53ddd3fbc630922  rootfs-etc-usb-moded-dyn-modes-mtp_ffs_mode_systemd.ini
+912f0700c87883b55f631cfc3d76e172ff1c21aa57b0c18d1e7b9671ecd6254b1e7565816e3967c68caab196076bf7c8b848375c89185aa4466f4ca7f65231be  rootfs-etc-umtprd-umtprd.conf
+2c838fd0ad66c92386f6159c7d96d3ba940e13834642eb2cb7612d79d6b8832e9bd06b1eb189141f21fa9085d8b43ea514c15d82736ebd6b94533811f5a15f11  rootfs-usr-lib-systemd-system-usb-moded-developer-mode.service
+56ce2662dd8f88795bd2e9063f20747e1377d896fbcf9e1ae43c90ef511c4a11517d7c673f857cf194070c425f417df8f40ced9b95749ed1df53e1be122a8ef7  rootfs-usr-lib-systemd-system-usb-moded-tethering-mode.service
+79dc304cc5d455135f929a0ba60487f03b1b66d09245d972f685ee5ddabc8414f74159e47bbb13bff862163fa07dd9497a30ab7e32074bff95f2189685d851a2  rootfs-usr-lib-systemd-system-usb-moded.service.d-override.conf
+9aab1a91a817e2337320ee0fa1bf6133e65e9269631560c1860c3b777adb336d036cebbc2510d1df35a82bf4396d553ff9e2edd0004027c7a3130168f7f50d90  rootfs-usr-bin-usb-moded-developer-mode
+5cc40b1a0c86904d824f8f03e3f44900aaf407c5c462902f4f58cd58c603be1c5919651b91320983e21da42f5891e29df504bf4f1bddef64fedc68c2accdccbc  rootfs-usr-bin-usb-moded-tethering-mode
+"

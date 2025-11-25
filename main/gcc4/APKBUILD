@@ -1,12 +1,11 @@
 pkgname=gcc4
 pkgver=9999
-_pkgver=4.9.2
-pkgrel=7
+_pkgver=4.9.4
+pkgrel=8
 pkgdesc="Old GCC for old vendor kernels (C compiler only)"
 url="http://gcc.gnu.org"
-# loongarch64: not relevant
-# ppc64le: not relevant
-# riscv64: doesn't build
+# loongarch64: not supported
+# ppc64le, riscv64: doesn't build
 arch="all !loongarch64 !ppc64le !riscv64"
 license="GPL LGPL"
 _gccrel=$_pkgver-r$pkgrel
@@ -46,11 +45,23 @@ if [ "$CHOST" != "$CTARGET" ]; then
 	LIBATOMIC=false
 	LIBITM=false
 
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 4
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
 	# reset target flags (should be set in crosscreate abuild)
 	# fixup flags. seems gcc treats CPPFLAGS as global without
 	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
-	export CFLAGS="$CPPFLAGS $CFLAGS"
-	export CXXFLAGS="$CPPFLAGS $CXXFLAGS"
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS"
 	unset CPPFLAGS
 	export CFLAGS_FOR_TARGET=" "
 	export CXXFLAGS_FOR_TARGET=" "
@@ -58,10 +69,23 @@ if [ "$CHOST" != "$CTARGET" ]; then
 
 	STRIP_FOR_TARGET="$CTARGET-strip"
 elif [ "$CBUILD" != "$CHOST" ]; then
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 4
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
+	# reset target flags (should be set in crosscreate abuild)
 	# fixup flags. seems gcc treats CPPFLAGS as global without
 	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
-	export CFLAGS="$CPPFLAGS $CFLAGS"
-	export CXXFLAGS="$CPPFLAGS $CXXFLAGS"
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS"
 	unset CPPFLAGS
 
 	# reset flags and cc for build
@@ -85,6 +109,31 @@ elif [ "$CBUILD" != "$CHOST" ]; then
 else
 	STRIP_FOR_TARGET=${CROSS_COMPILE}strip
 	_builddir="$srcdir/build"
+
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 4
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
+	# reset target flags (should be set in crosscreate abuild)
+	# fixup flags. seems gcc treats CPPFLAGS as global without
+	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS -O2"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS -O2"
+	unset CPPFLAGS
+	# https://gcc.gnu.org/install/build.html
+	export CFLAGS_FOR_TARGET="$CFLAGS"
+	export CXXFLAGS_FOR_TARGET="$CXXFLAGS"
+	export LDFLAGS_FOR_TARGET="$LDFLAGS"
+	export BOOT_CFLAGS="$CFLAGS"
+	export BOOT_LDFLAGS="$LDFLAGS"
 fi
 
 # Go needs {set,make,swap}context, unimplemented in musl
@@ -181,7 +230,6 @@ source="http://gcc.gnu.org/pub/gcc/releases/gcc-${_pkgbase:-$_pkgver}/gcc-${_pkg
 	fix-gcj-iconv-musl.patch
 	musl-posix_memalign-c++.patch
 	pr63740.patch
-	pr64037.patch
 
 	gcc-4.8-build-args.patch
 	fix-cxxflags-passing.patch
@@ -418,7 +466,7 @@ package() {
 }
 
 sha512sums="
-35a1386ae2b8629cd464383fbb3c61e94a07f3691f48b8029b97cc62a60c792ffb870aad2343b2ad8185bf46f77e1e1dd62309ecdadc42f919874c6e2c58b936  gcc-4.9.2.tar.gz
+ca0f589f33987755195e81a9c7a83f797cfe5775fca908d025eb3ddbe8857edd666d272c2e97088c1808b268c5785326b72f2a340a277f6aa2c9bfe22c02ad69  gcc-4.9.4.tar.gz
 28f8c6fdbcb19e950b1d0bafb3bcc7a8cba87bc673aa6027cece116599cdee80f0cf5e95a1440544890239f5c754e8a93ab46d9daedd937faef445d7ea33b226  ecj-4.9.jar
 618a8d037ccad15e60182acc9c85ba844cb9b5800a22ece0b814e43541b01b4e390a2847f86debb351f4b05580241747fde87e86a17060744e7bb2b9a3dc5bd4  01_all_gcc49_configure.patch
 21770259c7916e55568027926e4a543eea468b04436cc61c28f749be5a6635c48e68b7924a8eb19a76733a9d2f00921ba06faddaedbf14b1cdad5ab1810cc6c6  02_all_gcc48_config.in.patch
@@ -455,7 +503,6 @@ f89ddeb21bc8f97e6a850a6b70b4501a8f3e49a4bc8cc82897488decda5d98ad01cb7f6c8b392d45
 54d67cc008b735e47771314171930c5d8b8f5f5dc97fcf4214824c105c808f3e75d22d5a4fdf5068ed0457fa0d46c60cfb442e276259a4a5e9b8722a027d18e6  fix-gcj-iconv-musl.patch
 7de81fc8c7eb36690949eb30082515454978440a8f389b12407ac5e9125ef6824d6059ffb5b063ab1ccc6c4827b1a6a0984b538f056b85e3171800a6f723ec8b  musl-posix_memalign-c++.patch
 095281d940ad7504ed7071cc9800d81db33eb4aa5465696ef7b12bf1213dbdfa701f4392095c5167b331c38219b19d25a0798524b319f1c77aa8522d76d8c92c  pr63740.patch
-efc04b179d41b484eddddc56d0e442634995d56c994e6295ae09b9856ab46649d5f45f51ea84494ab39df41c213772d0e68aee67e66fdf340f0a647b55629ced  pr64037.patch
 abe9aaf9aa956058d0386a4396a511d176a46bb3906b90e952383646cdc158cbeb0a5dc616a1ccb1ca7d49fd0b5e351532aa15a3b13362abbf1ca4266f54a687  gcc-4.8-build-args.patch
 35d6d59f0b7b968f282f56767c9e0823a7bdc5aa0d450aca50fbd802649a7ca608b47671244a3faa208a9b0d6832cabb5a22724157dc817b2c0ad63d09f93282  fix-cxxflags-passing.patch
 c731f4aaaa65c8950e1b2bd9331410f92d378fd8c7e718532dccaa27ee11984d51d74216c3611e89a802325b81d7f184116839dce2dab50cae9b643c20a82fe7  fix-cxxflags-for-target.patch

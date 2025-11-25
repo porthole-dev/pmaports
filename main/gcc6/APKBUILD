@@ -1,7 +1,7 @@
 pkgname=gcc6
 pkgver=9999
 _pkgver=6.4.0
-pkgrel=12
+pkgrel=13
 pkgdesc="Old GCC for old vendor kernels (C compiler only)"
 url="http://gcc.gnu.org"
 # loongarch64: not relevant
@@ -46,11 +46,23 @@ if [ "$CHOST" != "$CTARGET" ]; then
 	LIBATOMIC=false
 	LIBITM=false
 
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 6
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
 	# reset target flags (should be set in crosscreate abuild)
 	# fixup flags. seems gcc treats CPPFLAGS as global without
 	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
-	export CFLAGS="$CPPFLAGS $CFLAGS"
-	export CXXFLAGS="$CPPFLAGS $CXXFLAGS"
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS"
 	unset CPPFLAGS
 	export CFLAGS_FOR_TARGET=" "
 	export CXXFLAGS_FOR_TARGET=" "
@@ -58,10 +70,23 @@ if [ "$CHOST" != "$CTARGET" ]; then
 
 	STRIP_FOR_TARGET="$CTARGET-strip"
 elif [ "$CBUILD" != "$CHOST" ]; then
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 6
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
+	# reset target flags (should be set in crosscreate abuild)
 	# fixup flags. seems gcc treats CPPFLAGS as global without
 	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
-	export CFLAGS="$CPPFLAGS $CFLAGS"
-	export CXXFLAGS="$CPPFLAGS $CXXFLAGS"
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS"
 	unset CPPFLAGS
 
 	# reset flags and cc for build
@@ -85,6 +110,31 @@ elif [ "$CBUILD" != "$CHOST" ]; then
 else
 	STRIP_FOR_TARGET=${CROSS_COMPILE}strip
 	_builddir="$srcdir/build"
+
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 6
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
+	# reset target flags (should be set in crosscreate abuild)
+	# fixup flags. seems gcc treats CPPFLAGS as global without
+	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS -O2"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS -O2"
+	unset CPPFLAGS
+	# https://gcc.gnu.org/install/build.html
+	export CFLAGS_FOR_TARGET="$CFLAGS"
+	export CXXFLAGS_FOR_TARGET="$CXXFLAGS"
+	export LDFLAGS_FOR_TARGET="$LDFLAGS"
+	export BOOT_CFLAGS="$CFLAGS"
+	export BOOT_LDFLAGS="$LDFLAGS"
 fi
 
 # Go needs {set,make,swap}context, unimplemented in musl
@@ -187,6 +237,8 @@ source="http://gcc.gnu.org/pub/gcc/releases/gcc-${_pkgbase:-$_pkgver}/gcc-${_pkg
 	fix-linux-header-use-in-libgcc.patch
 	gcc-pure64-mips.patch
 	ada-mips64.patch
+
+	gcc-6.4-isl.patch
 
 	0001-i386-Move-struct-ix86_frame-to-machine_function.patch
 	0002-i386-Use-reference-of-struct-ix86_frame-to-avoid-cop.patch
@@ -465,6 +517,7 @@ f4ef08454e28c8732db69115e4998ec153399e8d229dd27f923dbdcf57b68128a65640d026cc7f45
 34a818d5be67eb1f34e44a80b83c28a9b9c17d37fc9fac639f490d6bb5b53ebe3318140d09c236a17d7c98f5a7792ae3d6cefccda8067a5e942d6305b9d1f87c  fix-linux-header-use-in-libgcc.patch
 86be3338cc9c33089608bc4c5e3b7918c4e500a345c338f361b18c342119a6ed69af5495d72950de7106d760f003528b46ad14795e805f8a3331e206dcb234e3  gcc-pure64-mips.patch
 508f3bca214d88531d739d761d07affc953689b1540905c73420b34c246e1e6b72588cf89f0e1462752633f8ddc88da8c0238be2a1b6e1c213829cecee7924cf  ada-mips64.patch
+80084d4f5984ea1c62f813c3c1fe7ce033d41d6cd5e6df3b10c649c0bbc2544ad0a58e7076fa28bf71d691df0211b07fc11eb0d5c9f462ef28eed4c3fbeeb9ee  gcc-6.4-isl.patch
 7912964bf3a985e9f870250d6e068f715582a4fb04270849d697a50e6aad0cf50df3d483ff80a0eb777d9940fd85526dd8d0b85da9bc71a5f2fbc07616263866  0001-i386-Move-struct-ix86_frame-to-machine_function.patch
 baa27a4b912d8e27cd65a556b09cf45289a0e00e86dae3925f2923d1f3752080e80d80e159c996ef4156c4df1dfc3069114810a846672170ef3ae461ae0ab7e1  0002-i386-Use-reference-of-struct-ix86_frame-to-avoid-cop.patch
 6701d15000bdd7c4c98a8fece8c814f5e4e73603eecf84fe4dc5ac10f79b3074afba7c2cc9e51d08b2abade1c34cb0c944c08ead7a85db94e97158c752fd1aac  0003-i386-Use-const-reference-of-struct-ix86_frame-to-avo.patch

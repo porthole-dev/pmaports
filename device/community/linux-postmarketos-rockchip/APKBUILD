@@ -1,8 +1,8 @@
 # Maintainer: Sebastian Fleer <dev@dwurp.de>
 # Contributor: Quade Curry <qc8086@qc8086.com>
 pkgname=linux-postmarketos-rockchip
-pkgver=6.12.57
-pkgrel=3
+pkgver=6.12.59
+pkgrel=0
 pkgdesc="Mainline kernel for rockchip devices"
 arch="aarch64"
 _carch="arm64"
@@ -71,7 +71,7 @@ package() {
 }
 
 sha512sums="
-57ad723d2a8d9eb04b3ac7897f0b37cff3771e0be4420edb6bfd7fdf35f8317d4a9527ed7eac2b9e659a0e0ca899d8ec6b6be0ef80d2512d483152b4113ba2e0  linux-6.12.57.tar.xz
-8688021f4adbdbf24c39b0a41d8a112570e86722782f1d6f0428bdc59cbbedd00e90ae861f58f02bf8b249b943a3c68134cc2db7013c51973ee8eee55e33202e  config-postmarketos-rockchip.aarch64
+fe04f2b1d8c35b61efe1b57c0b923bc1a3e90d8fb469a9f3fe0bc78bb88a304a98d74475d93a7032c0aa9cf758023c703c34ce1a03169fa373f68dbfc784ae5f  linux-6.12.59.tar.xz
+b9b9abfb877071b15d2ed2ba74a5eba3ba1967d95c4b0226ba787c17687f6afb06b0f45d71409516b266acd5be9395c1ea0306ff4e69abaa63ad91454f55c5ae  config-postmarketos-rockchip.aarch64
 95e544656c26376703cd14b45a3c8f996d08f550e8e1963e5f25ac8437ebaa03511865307ca7b4862c06b61ea6706eb61b7ba76beddc6c38ed166e7b09f6d094  0001-drm-panel-kingdisplay-kd097d04-Disable-EoTp.patch
 "

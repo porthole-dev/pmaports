@@ -1,13 +1,13 @@
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=firmware-b43xx
 pkgver=6.30.163.46
-pkgrel=0
+pkgrel=1
 pkgdesc="Firmware for Broadcom B43xx WiFi chipsets"
 url="https://www.lwfinger.com/b43-firmware/"
 arch="x86_64"
 license="proprietary"
 options="!check !strip !archcheck !tracedeps pmb:cross-native"
-source="$pkgname-$pkgver.tar.bz2::https://www.lwfinger.com/b43-firmware/broadcom-wl-$pkgver.tar.bz2"
+source="$pkgname-$pkgver.tar.bz2::https://github.com/minios-linux/b43-firmware/releases/download/b43-firmware/broadcom-wl-$pkgver.tar.bz2"
 makedepends="b43-fwcutter"
 builddir="$srcdir"
 

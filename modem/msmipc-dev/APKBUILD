@@ -1,6 +1,6 @@
 pkgname=msmipc-dev
 pkgver=0.1
-pkgrel=1
+pkgrel=2
 pkgdesc="Headers for Qualcomm MSM IPC (AF_MSM_IPC and AF_QRTR)"
 url="https://android.googlesource.com/kernel/msm/+/e63c5a50c9379ccbee4c7f0e6ba43394e9d89db4/include/linux/msm_ipc.h"
 arch="noarch"
@@ -14,8 +14,7 @@ options="!check"
 
 unpack() {
 	default_unpack
-
-	base64 -d msm_ipc.h.base64 > msm_ipc.h
+	base64 -d "$srcdir"/msm_ipc.h.base64 > "$srcdir"/msm_ipc.h
 }
 
 package() {

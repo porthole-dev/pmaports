@@ -2,7 +2,7 @@
 pkgname=postmarketos-cros-common
 pkgdesc="Common package for Chrome OS devices"
 pkgver=2
-pkgrel=4
+pkgrel=5
 url="https://postmarketos.org"
 license="BSD-3-Clause"
 arch="aarch64 armv7 x86_64 x86" # there are no cros devices of other arches
@@ -41,7 +41,7 @@ package() {
 # is closer to regular keyboards and matches Chrome OS hotkey.
 gnome() {
 	install_if="$pkgname=$pkgver-r$pkgrel postmarketos-base-ui-gnome"
-	install -Dm644 "00_$subpkgname.gschema.override" \
+	install -Dm644 "$srcdir/00_$subpkgname.gschema.override" \
 		-t "$subpkgdir"/usr/share/glib-2.0/schemas
 }
 

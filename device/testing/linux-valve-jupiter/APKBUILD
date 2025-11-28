@@ -1,7 +1,7 @@
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=linux-valve-jupiter
 pkgver=6.13
-pkgrel=1
+pkgrel=2
 pkgdesc="Valve Steam Deck kernel fork"
 arch="x86_64"
 _flavor="valve-jupiter"
@@ -58,6 +58,8 @@ source="
 	0019-usb-dwc3-Fix-linux-extcon-name.patch
 	0020-pinctrl-amd-Add-quirk-to-timeout-irq-pin-reconfigura.patch
 	0021-mmc-core-add-safe_trim_quirk-attribute.patch
+	0022-x86-boot-Use-std-gnu11-to-fix-build.patch
+	0023-efi-libstub-Use-std-gnu11-to-fix-build.patch
 "
 builddir="$srcdir/linux-${_kernver//_/-}"
 
@@ -109,4 +111,6 @@ c8367ceeb6df3c1e16adc437d9391b1ebbda3226d56e3024d7d88efc1607d69c2e1920893da8cf99
 f35bec00711a5ed0328f2f55123cf1423dfe99fc3cfae38cc2963bf282f7b9150c0a6ff9903cba084b23a1ada0ca3f649e248a0564392fd7bf732e37f0c5e417  0019-usb-dwc3-Fix-linux-extcon-name.patch
 d2f8604f6ac7570639d6b59d0cb4f82adf75fd717233199dead881de8e5d485777a832f1f13b28bdadac318b00c89c221bbf8e252207df35b6e9b6579fa1ece3  0020-pinctrl-amd-Add-quirk-to-timeout-irq-pin-reconfigura.patch
 d32dd802487c9fefa7a822946289d069f867eb4ce5e3c11805f1c8b6285b4f9062555d0ce33fb4311633a52390e4adeee56e3e69da29bc4868935e3641a54558  0021-mmc-core-add-safe_trim_quirk-attribute.patch
+399083930ce457481cd229ca2fe3bb92c62bf9f76e6a2c1325e8af252f55b3908a129c3971593ecccc6e7248b96339310dff370c74be3fc06675c2805ed47e73  0022-x86-boot-Use-std-gnu11-to-fix-build.patch
+b1679d49fa914f70f82ab40ce7cfb6ccd8a5515e72a644320d128def8683a2d034baa84cae3fecf1971a227dcac087521d7e877be17f37956c1aaa8ceab0c3f4  0023-efi-libstub-Use-std-gnu11-to-fix-build.patch
 "

@@ -2,7 +2,7 @@
 
 pkgname=mt6735-bootshim
 pkgver=0.0.1
-pkgrel=1
+pkgrel=2
 pkgdesc="MT6735 AArch64 boot shim"
 url="https://gitlab.com/mt6735-mainline/bootshim/"
 arch="noarch"
@@ -11,7 +11,10 @@ makedepends="clang lld scons"
 options="!check pmb:cross-native"
 
 _commit="169b57cdf2ccbbe79dbca290b8ff789d0ca4e9b9"
-source="bootshim-$_commit.tar.gz::$url/-/archive/$_commit/bootshim-$_commit.tar.gz"
+source="
+	bootshim-$_commit.tar.gz::$url/-/archive/$_commit/bootshim-$_commit.tar.gz
+	0001-Use-LLD-to-link.patch
+"
 builddir="$srcdir/bootshim-$_commit"
 
 build() {
@@ -26,4 +29,5 @@ package() {
 }
 sha512sums="
 ddb35ec7b387b275ea62ad275742dfa5b5514544788b9a5aaa9bd10241f52f253f1c789d1fd7da739ac6ca39eb0a306fc9509324b4d494263beabd877d2d7aa0  bootshim-169b57cdf2ccbbe79dbca290b8ff789d0ca4e9b9.tar.gz
+745273308c0e711d0c08b8253ac9491e2382363df7d3acf0f59c461d3bef3d7d368fd47e338affc712fa52335aa588fc47ffbd948122637127836420fdc08708  0001-Use-LLD-to-link.patch
 "

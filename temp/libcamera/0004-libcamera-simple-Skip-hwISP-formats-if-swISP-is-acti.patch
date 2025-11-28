@@ -1,7 +1,7 @@
-From 39a3d481aabb6f92f4b3b846064d8bc6f049f36d Mon Sep 17 00:00:00 2001
+From 5e94fb4563b44ba1fd9c4d3109ddc5a0f35cfa2c Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Mon, 6 May 2024 21:21:57 +0200
-Subject: [PATCH 09/17] libcamera: simple: Skip hwISP formats if swISP is
+Subject: [PATCH 04/12] libcamera: simple: Skip hwISP formats if swISP is
  active
 
 On devices like the Pinephone libcamera will advertise support for
@@ -14,10 +14,10 @@ ISP when the SW ISP is enabled, to ensure we use the later.
  1 file changed, 1 insertion(+), 3 deletions(-)
 
 diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
-index f4b49b1ab..c19ce17d4 100644
+index cc3bdc84b..f44c2aa8e 100644
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
-@@ -721,9 +721,7 @@ void SimpleCameraData::tryPipeline(unsigned int code, const Size &size)
+@@ -736,9 +736,7 @@ void SimpleCameraData::tryPipeline(unsigned int code, const Size &size)
  			config.outputFormats = swIsp_->formats(pixelFormat);
  			config.outputSizes = swIsp_->sizes(pixelFormat, format.size);
  			if (config.outputFormats.empty()) {
@@ -29,5 +29,5 @@ index f4b49b1ab..c19ce17d4 100644
  		} else {
  			config.outputFormats = { pixelFormat };
 -- 
-2.50.1
+2.52.0
 

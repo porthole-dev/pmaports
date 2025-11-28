@@ -1,7 +1,7 @@
-From a03f8f4e44e5b6d794022f8de8f54f2f68692d64 Mon Sep 17 00:00:00 2001
+From 8e43d2a54de04dff85816fdcc1723b6abcd2fef8 Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Wed, 1 May 2024 18:12:02 +0200
-Subject: [PATCH 08/17] libcamera: simple: Enable softISP for the Pinephone
+Subject: [PATCH 03/12] libcamera: simple: Enable softISP for the Pinephone
 
 In theory the PP should be able to use the actual HW ISP, however in
 practice this does not work well yet - especially as the driver for the
@@ -15,10 +15,10 @@ improves, this can be dropped again.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
-index eb405e52c..f4b49b1ab 100644
+index a0aad052f..cc3bdc84b 100644
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
-@@ -257,7 +257,7 @@ static const SimplePipelineInfo supportedDevices[] = {
+@@ -262,7 +262,7 @@ static const SimplePipelineInfo supportedDevices[] = {
  	{ "mtk-seninf", { { "mtk-mdp", 3 } }, false },
  	{ "mxc-isi", {}, false },
  	{ "qcom-camss", {}, true },
@@ -28,5 +28,5 @@ index eb405e52c..f4b49b1ab 100644
  
  } /* namespace */
 -- 
-2.50.1
+2.52.0
 

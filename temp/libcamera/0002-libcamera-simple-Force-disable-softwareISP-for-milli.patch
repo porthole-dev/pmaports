@@ -1,7 +1,7 @@
-From cb0c4005f0303798c700352e00c9389e3e2f463b Mon Sep 17 00:00:00 2001
+From 125ab037a4395c1e9fffb0bd68fb2c3eeae95078 Mon Sep 17 00:00:00 2001
 From: Robert Mader <robert.mader@collabora.com>
 Date: Thu, 9 May 2024 21:07:07 +0200
-Subject: [PATCH 07/17] libcamera: simple: Force-disable softwareISP for
+Subject: [PATCH 02/12] libcamera: simple: Force-disable softwareISP for
  millipixels
 
 As the later uses libcamera and requires raw-streams to get passed
@@ -12,7 +12,7 @@ swIsp - at the same time.
  1 file changed, 9 insertions(+)
 
 diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
-index 74e0683f4..eb405e52c 100644
+index a62fa7b8c..a0aad052f 100644
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
 @@ -7,6 +7,7 @@
@@ -23,9 +23,9 @@ index 74e0683f4..eb405e52c 100644
  #include <iterator>
  #include <list>
  #include <map>
-@@ -1680,6 +1681,14 @@ bool SimplePipelineHandler::matchDevice(MediaDevice *media,
- 
- 	swIspEnabled_ = info.swIspEnabled;
+@@ -1773,6 +1774,14 @@ bool SimplePipelineHandler::matchDevice(std::shared_ptr<MediaDevice> media,
+ 		}
+ 	}
  
 +	std::string comm_string;
 +	std::ifstream("/proc/self/comm") >> comm_string;
@@ -36,8 +36,8 @@ index 74e0683f4..eb405e52c 100644
 +	}
 +
  	/* Locate the sensors. */
- 	std::vector<MediaEntity *> sensors = locateSensors(media);
+ 	std::vector<MediaEntity *> sensors = locateSensors(media.get());
  	if (sensors.empty()) {
 -- 
-2.50.1
+2.52.0
 

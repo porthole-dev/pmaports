@@ -4,8 +4,8 @@
 
 _flavor="postmarketos-qcom-sm7150"
 pkgname=linux-$_flavor
-pkgver=6.17.0_rc7
-pkgrel=3
+pkgver=6.18.0
+pkgrel=0
 pkgdesc="Mainline Kernel fork for SM7150 devices"
 arch="aarch64"
 _carch="arm64"
@@ -34,7 +34,6 @@ _tag="$pkgver"
 source="
 	$pkgname-v$_tag.tar.gz::$url/archive/v$_tag.tar.gz
 	config-$_flavor.$arch
-	0001-drm-panel-tianma-nt36672c-Fix-compatible-typo.patch
 "
 builddir="$srcdir/linux-$_tag"
 
@@ -50,15 +49,8 @@ build() {
 }
 
 package() {
-	if [ -e "$builddir/arch/$_carch/boot/vmlinuz.efi" ]; then
-		# ZBOOT EFI decompressor for EFI booting
-		install -Dm644 "$builddir/arch/$_carch/boot/vmlinuz.efi" \
-			"$pkgdir/boot/linux.efi"
-	else
-		echo "WARNING: CONFIG_ZBOOT not enabled!"
-		install -Dm644 "$builddir/arch/$_carch/boot/Image.gz" \
-			"$pkgdir/boot/vmlinuz"
-	fi
+	install -Dm644 "$builddir/arch/$_carch/boot/vmlinuz.efi" \
+		"$pkgdir/boot/linux.efi"
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
@@ -80,7 +72,6 @@ package() {
 
 
 sha512sums="
-3d920797ca8542c3a8004e430aa6efcabf5d38373af2b229ee981c6b693fda45c173df5d8e08a18b23661ac85e39171ae7fe6e15ce2835f8208c236e4ed82ed3  linux-postmarketos-qcom-sm7150-v6.17.0_rc7.tar.gz
-64b7ae7d7143239350faaf302174d7db00496e582f81175e398459fe511691e3c35abcf8249ce2c6e7944889045498c252c2c33a0547c3334f26ac149a017368  config-postmarketos-qcom-sm7150.aarch64
-bdc2f65e5bf2a3f718118791fece0aa8f35c555c35da470279ca531ee9100b6f289f3b8b53afcdaef17deff8a58822050d9a3d1b77e877fc160daa519b7adbd3  0001-drm-panel-tianma-nt36672c-Fix-compatible-typo.patch
+ddd996b60a67844fcf9e29bcfc951429eb687b1a643e930ba54f362dfe4fea7ee8a93bf9c30480f3c2559ffe594cfa596e62c007fb22b621285c26694e37cac6  linux-postmarketos-qcom-sm7150-v6.18.0.tar.gz
+1a76bc435cd56b56762e896cb9cfcebc269c2b70e96589726397af7c5c4baca739dab17fa92bd662c49489a4bd867a4171554909842cdc663e9dfdd96605c83a  config-postmarketos-qcom-sm7150.aarch64
 "

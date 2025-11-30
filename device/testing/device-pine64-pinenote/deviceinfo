@@ -9,11 +9,10 @@ deviceinfo_codename="pine64-pinenote"
 deviceinfo_year="2021"
 deviceinfo_dtb="rockchip/rk3566-pinenote-v1.2"
 deviceinfo_arch="aarch64"
-deviceinfo_gpu_accelerated="true"
+deviceinfo_drm="true"
 
 # Device related
 deviceinfo_chassis="tablet"
-deviceinfo_keyboard="false"
 deviceinfo_external_storage="false"
 deviceinfo_screen_width="1404"
 deviceinfo_screen_height="1872"
@@ -45,5 +44,6 @@ deviceinfo_flash_rk_partition_rootfs="os1"
 # deviceinfo_sd_embed_firmware="u-boot/pine64-pinenote/idbloader.img:64,u-boot/pine64-pinenote/u-boot.itb:16384"
 # deviceinfo_sd_embed_firmware_step_size="512
 
-deviceinfo_generate_extlinux_config="true"
+deviceinfo_boot_filesystem="fat32"
+deviceinfo_generate_systemd_boot="true"
 deviceinfo_kernel_cmdline="drm.debug=0x0 vt.color=0xf earlycon console=tty0 console=ttyS2,1500000n8 PMOS_FORCE_PARTITION_RESIZE"

@@ -219,6 +219,8 @@ deploy-docs:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PROJECT_NAMESPACE == "postmarketOS"
       changes:
         - docs/**
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
 
 auto-update:
   stage: autoupdate

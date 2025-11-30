@@ -4,22 +4,27 @@
 pkgname=linux-pine64-pinenote
 pkgver=6.17.9
 _kernver=${pkgver%.*}
-pkgrel=0
+pkgrel=1
 pkgdesc="Pine64 PineNote close to mainline fork"
 arch="aarch64"
 _carch="arm64"
 _flavor="pine64-pinenote"
 url="https://kernel.org"
 license="GPL-2.0-only"
-options="!strip !check !tracedeps pmb:cross-native"
+options="!strip !check !tracedeps pmb:cross-native pmb:kconfigcheck-community"
 makedepends="
 	bash
 	bc
 	bison
+	clang
 	findutils
 	flex
+	lld
+	llvm
 	openssl-dev
 	perl
+	python3
+	xz
 "
 
 # Source
@@ -41,7 +46,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -53,6 +58,7 @@ package() {
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -67,6 +73,6 @@ sha512sums="
 063999d7b819970657f6b7713fdb4173da2065ffdeed7cae197026dbb1edfd7f1d50374f073a1e19ef9686539594824ff6ecb8a930d97c4f272cb12f1c6d8355  linux-6.17.tar.xz
 35593bc973cc7f626aa7a41cf8b7dea1b46fe8922bd57194db363d26e8854af514d103e39d02c642c26748bd933d5e402ff89d2a20d2da5f8d901e4713eafc46  linux-pine64-pinenote-6.17.9.patch.xz
 e08bb4daa33fecf27a011fcf3389ef43162e3484d2e92450717049e5f6e88ed4d86f0126ef12a445603c42f3a009128a133806e1c7ce451f320aed9b5129786b  linux-pine64-pinenote-6.17-6f680296674101ffb7db7bd81c8cbd9f6a73fff1.patch
-522c7c38800ac0479f6e99e4e97ba88add5021fe6ab6eeba6e604a37635e48622c113919a425607edbe0abf2aa6bb95b2e824d5d2fe293e149fe588e05374122  pmos-kconfig-default.patch
-e6287437f9637e328c70be9c58dacd71555529b70bb9cb5888c8291af377476c57e88ad6aae14e674126a353f47960fdf5d795dbb73e7c925214bd73760bc1a4  config-pine64-pinenote.aarch64
+5736658563c76b5477a93024792fb00cbbe9d5b9952370c6e91c841c5042e39c3d6e572bfc8d52b6a2bf34d72ff681bb03a32b7a65a688381ff35c6c0ac9cad7  pmos-kconfig-default.patch
+e1f8db788d448bd7325ccd5b0bed92d7109f8ab5d68111d43cdb58b1cb697000209d0853189ea560ccf0d0847b4d8a0e93924c76312cf91429dbf3ee4fe09387  config-pine64-pinenote.aarch64
 "

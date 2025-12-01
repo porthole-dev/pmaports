@@ -3,7 +3,7 @@
 pkgname=iio-sensor-proxy
 pkgver=99993.8
 _pkgver=3.8
-pkgrel=0
+pkgrel=1
 pkgdesc="IIO sensors to D-Bus proxy"
 url="https://gitlab.freedesktop.org/hadess/iio-sensor-proxy"
 arch="aarch64"
@@ -17,7 +17,7 @@ makedepends="
 	polkit-dev
 	libssc-dev>=0.2.1
 	"
-subpackages="$pkgname-openrc"
+subpackages="$pkgname-openrc $pkgname-systemd $pkgname-udev"
 builddir="$srcdir/$pkgname-$_pkgver"
 source="https://gitlab.freedesktop.org/hadess/iio-sensor-proxy/-/archive/$_pkgver/iio-sensor-proxy-$_pkgver.tar.gz
 	iio-sensor-proxy.initd
@@ -38,7 +38,7 @@ build() {
 	abuild-meson \
 		-Db_lto=true \
 		-Dssc-support=true \
-		-Dsystemdsystemunitdir=/no \
+		-Dsystemdsystemunitdir=/usr/lib/systemd/system \
 		. output
 	meson compile -C output
 }
@@ -49,7 +49,6 @@ check() {
 
 package() {
 	DESTDIR="$pkgdir" meson install --no-rebuild -C output
-	rm -r "$pkgdir"/no
 
 	install -Dm755 "$srcdir"/$pkgname.initd "$pkgdir"/etc/init.d/$pkgname
 }

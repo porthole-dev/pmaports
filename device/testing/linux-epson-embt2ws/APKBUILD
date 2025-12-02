@@ -2,8 +2,8 @@
 # Kernel config based on: arch/arm/configs/embt2_defconfig
 
 pkgname=linux-epson-embt2ws
-pkgver=6.11.0
-pkgrel=1
+pkgver=6.18.0
+pkgrel=0
 pkgdesc="Epson Moverio BT-200 kernel fork, close to mainline"
 arch="armv7"
 _carch="arm"
@@ -13,51 +13,54 @@ license="GPL-2.0-only"
 options="!strip !check !tracedeps pmb:cross-native pmb:kconfigcheck-nftables"
 makedepends="
 	bash
-	bc
 	bison
-	devicepkg-dev
+	clang
 	findutils
 	flex
-	gmp-dev
-	lzop
-	mpc1-dev
-	mpfr-dev
+	lld
+	llvm
 	openssl-dev
 	perl
+	postmarketos-installkernel
+	xz
 "
 
 # Source
 _repository="linux"
-_commit="261b5c91978435326106a2e03ec2da0b8ae4a35f"
+_commit="464b5a7ccd9fa04dfe5d1be1d518f5eed8d77ea6"
 _config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/akemnade/$_repository/archive/$_commit.tar.gz
 	$_config
 "
 builddir="$srcdir/$_repository-$_commit"
-_outdir="out"
 
 prepare() {
-	REPLACE_GCCH=0
 	default_prepare
-	. downstreamkernel_prepare
+	cp -v "$srcdir"/$_config .config
 }
 
 build() {
 	unset LDFLAGS
-	make O="$_outdir" ARCH="$_carch" CC="${CC:-gcc}" \
-		KBUILD_BUILD_VERSION="$(( pkgrel + 1 ))-postmarketOS"
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
 package() {
-	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" "$_flavor" "$_outdir"
-	make modules_install dtbs_install \
-		O="$_outdir" ARCH="$_carch" \
+	mkdir -p "$pkgdir"/boot
+	make zinstall modules_install dtbs_install \
+		ARCH="$_carch" \
+		LLVM=1 \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_DTBS_PATH="$pkgdir/boot/dtbs"
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir/usr/share/kernel/$_flavor/kernel.release"
 }
 
 sha512sums="
-3b852fa6c2145432af339aa16c16078cc9c655f40e072e16f64ac03368b0d28e47b2971408ba3097225d4eea609b557fbdf8f207be0df572fbe6bd62c2529f56  linux-epson-embt2ws-261b5c91978435326106a2e03ec2da0b8ae4a35f.tar.gz
-d0a9910bca89b8d872acb391936f20b9db8c06f87076a9ac3dbbb6b50a1649b397db6c13b7f091a5e875ad916acbb2ef98a51fe3152a5a4667197c650ca8f777  config-epson-embt2ws.armv7
+89e430d50f558177e6b39d6636f31a216e4b3bcc95b69b7db359f3af40e0ac623c51532db87c032136ff15f13525b48f28afa2fa24a5df3c12f1c7e9134ba5f1  linux-epson-embt2ws-464b5a7ccd9fa04dfe5d1be1d518f5eed8d77ea6.tar.gz
+2a7689fe9ec9fbf5e8be1ae482633a7d854ccdbd650348e2a64fe30dda6a5bf4ef1049534def7b026345d57d8d29c90699ac4a1d5594796c5d9816677d6ab02c  config-epson-embt2ws.armv7
 "

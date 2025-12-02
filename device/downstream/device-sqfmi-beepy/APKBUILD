@@ -3,7 +3,7 @@
 pkgname=device-sqfmi-beepy
 pkgdesc="SQFMI Beepy"
 pkgver=1
-pkgrel=0
+pkgrel=2
 
 _kbdmodname=beepy-kbd
 _kbdmodver=2.11
@@ -62,6 +62,7 @@ prepare() {
 	built_modules=$_dispmodname.ko
 
 	build() {
+		KERNELRELEASE=\$(find /lib/modules -type d -iname '*-rpi' -mindepth 1 -maxdepth 1 -exec basename {} \;)
 		make
 	}
 	EOF
@@ -73,6 +74,7 @@ prepare() {
 	built_modules=$_kbdmodname.ko
 
 	build() {
+		KERNELRELEASE=\$(find /lib/modules -type d -iname '*-rpi' -mindepth 1 -maxdepth 1 -exec basename {} \;)
 		make
 	}
 	EOF

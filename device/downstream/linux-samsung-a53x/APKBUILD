@@ -3,7 +3,7 @@
 
 pkgname=linux-samsung-a53x
 pkgver=5.10.6
-pkgrel=0
+pkgrel=1
 pkgdesc="Samsung Galaxy A53 5G kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -15,13 +15,14 @@ makedepends="
 	bash
 	bc
 	bison
+	clang
 	devicepkg-dev
 	findutils flex
 	openssl-dev
 	perl
+	python3
 	xz
 	llvm
-	clang
 	lld
 	linux-headers
 "
@@ -36,7 +37,8 @@ builddir="$srcdir/gabriel2392_android_kernel_samsung_a53x_xy"
 _outdir="out"
 
 prepare() {
-	cd $builddir
+	default_prepare
+
 	local i
 	local makefiles="$(find $builddir -type f -name Makefile)
 		$(find . -type f -name Kbuild)"
@@ -48,13 +50,16 @@ prepare() {
 		sed -i 's/=implicit-int//g' $i
 		sed -i 's/=return-type//g' $i
 		sed -i 's/=date-time//g' $i
+		sed -i 's/=unknown-warning-option//g' $i
 	done
-	make PLATFORM_VERSION=12 ANDROID_MAJOR_VERSION=s ARCH=$_carch TARGET_SOC=$_repository $_repository-a53xxx_defconfig
+	make PLATFORM_VERSION=12 ANDROID_MAJOR_VERSION=s \
+		ARCH=$_carch TARGET_SOC=$_repository LLVM=1 \
+		$_repository-a53xxx_defconfig
 	echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $builddir/.config
 }
 
 build() {
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -66,6 +71,7 @@ package() {
 
 	make modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \

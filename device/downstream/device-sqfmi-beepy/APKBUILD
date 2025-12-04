@@ -3,7 +3,7 @@
 pkgname=device-sqfmi-beepy
 pkgdesc="SQFMI Beepy"
 pkgver=2
-pkgrel=0
+pkgrel=1
 
 _kbdmodname=beepy-kbd
 _kbdmodver=2.11
@@ -55,6 +55,7 @@ prepare() {
 
 	default_prepare
 
+	# setting KERNELRELEASE in akmbuild to ensure newest kernel is always used for building the module
 	# add an akmbuild to display driver
 	cat >$_dispdir/AKMBUILD <<-EOF
 	modname=$_dispmodname
@@ -62,8 +63,7 @@ prepare() {
 	built_modules=$_dispmodname.ko
 
 	build() {
-		KERNELRELEASE=\$(find /lib/modules -type d -iname '*-rpi' -mindepth 1 -maxdepth 1 -exec basename {} \;)
-		make
+		KERNELRELEASE=\$(find /lib/modules -type d -iname '*-rpi' -mindepth 1 -maxdepth 1 -exec basename {} \; -quit) make
 	}
 	EOF
 
@@ -74,8 +74,7 @@ prepare() {
 	built_modules=$_kbdmodname.ko
 
 	build() {
-		KERNELRELEASE=\$(find /lib/modules -type d -iname '*-rpi' -mindepth 1 -maxdepth 1 -exec basename {} \;)
-		make
+		KERNELRELEASE=\$(find /lib/modules -type d -iname '*-rpi' -mindepth 1 -maxdepth 1 -exec basename {} \; -quit) make
 	}
 	EOF
 }

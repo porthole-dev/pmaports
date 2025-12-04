@@ -1,0 +1,34 @@
+From 49c7fba8bfd5017a400b6395dc7874636215dfe3 Mon Sep 17 00:00:00 2001
+From: Tiandoufayale <45908670+tiandoufayale@users.noreply.github.com>
+Date: Sat, 24 Feb 2024 15:08:34 +0800
+Subject: [PATCH]  arm64:vdso: fix vdso_offset_sigtramp' undeclared
+
+---
+ arch/arm64/include/asm/vdso.h              | 3 +++
+ arch/arm64/kernel/vdso/gen_vdso_offsets.sh | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/include/asm/vdso.h b/arch/arm64/include/asm/vdso.h
+index 839ce0031..61e04da2f 100644
+--- a/arch/arm64/include/asm/vdso.h
++++ b/arch/arm64/include/asm/vdso.h
+@@ -29,6 +29,9 @@
+ 
+ #include <generated/vdso-offsets.h>
+ 
++
++#define vdso_offset_sigtramp
++
+ #define VDSO_SYMBOL(base, name)						   \
+ ({									   \
+ 	(void *)(vdso_offset_##name - VDSO_LBASE + (unsigned long)(base)); \
+diff --git a/arch/arm64/kernel/vdso/gen_vdso_offsets.sh b/arch/arm64/kernel/vdso/gen_vdso_offsets.sh
+index 0664acaf6..d7ff1fe19 100644
+--- a/arch/arm64/kernel/vdso/gen_vdso_offsets.sh
++++ b/arch/arm64/kernel/vdso/gen_vdso_offsets.sh
+@@ -13,4 +13,4 @@
+ 
+ LC_ALL=C
+ sed -n -e 's/^00*/0/' -e \
+-'s/^\([0-9a-fA-F]*\) . VDSO_\([a-zA-Z0-9_]*\)$/\#define vdso_offset_\2\t0x\1/p'
++'s/^\([0-9a-fA-F]*\) . VDSO_\([a-zA-Z0-9_]*\)$/\#define vdso_offset_\2 0x\1/p'

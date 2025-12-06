@@ -1,9 +1,9 @@
-# Maintainer: Joel Selvaraj <joelselvaraj.oss@gmail.com>
+# Maintainer: Joel Selvaraj <foss@joelselvaraj.com>
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-xiaomi-beryllium
 pkgdesc="Xiaomi Poco F1"
 pkgver=14
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"

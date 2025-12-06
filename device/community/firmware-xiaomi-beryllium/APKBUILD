@@ -1,8 +1,8 @@
-# Maintainer: Joel Selvaraj <joelselvaraj.oss@gmail.com>
+# Maintainer: Joel Selvaraj <foss@joelselvaraj.com>
 
 pkgname=firmware-xiaomi-beryllium
 pkgver=8
-pkgrel=0
+pkgrel=1
 pkgdesc="Firmware for Xiaomi Poco F1"
 url="https://gitlab.com/sdm845-mainline/firmware-xiaomi-beryllium"
 arch="aarch64"

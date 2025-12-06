@@ -1,5 +1,5 @@
 # Maintainer: Casey Connolly <kcxt@postmarketos.org>
-# Co-Maintainer: Joel Selvaraj <joelselvaraj.oss@gmail.com>
+# Co-Maintainer: Joel Selvaraj <foss@joelselvaraj.com>
 # Stable Linux kernel with patches for SDM845 devices
 # Kernel config based on: arch/arm64/configs/defconfig and sdm845.config
 

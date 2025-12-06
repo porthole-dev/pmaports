@@ -1,6 +1,6 @@
 # Reference: <https://postmarketos.org/devicepkg>
 # Maintainer: Victoria Brekenfeld <postmarketos@drakulix.de>
-# Co-Maintainer: Joel Selvaraj <joelselvaraj.oss@gmail.com>
+# Co-Maintainer: Joel Selvaraj <foss@joelselvaraj.com>
 # Co-Maintainer: Casey Connolly <kcxt@postmarketos.org>
 
 pkgname=device-google-blueline

@@ -4,7 +4,7 @@
 maintainer="Aelin <aelin@postmarketos.org>"
 pkgname=device-qemu-loongarch64
 pkgver=5
-pkgrel=0
+pkgrel=1
 pkgdesc="Simulated device in QEMU (loongarch64)"
 url="https://postmarketos.org"
 arch="loongarch64"
@@ -18,6 +18,7 @@ makedepends="devicepkg-dev"
 subpackages="
 	$pkgname-kernel-lts:kernel_lts
 	$pkgname-kernel-stable:kernel_stable
+	$pkgname-kernel-mainline:kernel_mainline
 	"
 
 source="
@@ -43,6 +44,12 @@ kernel_lts() {
 kernel_stable() {
 	pkgdesc="Alpine Stable kernel"
 	depends="linux-stable linux-firmware-none"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_mainline() {
+	pkgdesc="postmarketOS mainline kernel"
+	depends="linux-postmarketos-mainline linux-firmware-none"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 

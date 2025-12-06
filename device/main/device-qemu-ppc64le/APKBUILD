@@ -4,7 +4,7 @@
 maintainer="Aelin <aelin@postmarketos.org>"
 pkgname=device-qemu-ppc64le
 pkgver=7
-pkgrel=0
+pkgrel=1
 pkgdesc="Simulated device in QEMU (ppc64le)"
 url="https://postmarketos.org"
 arch="ppc64le"
@@ -19,6 +19,7 @@ subpackages="
 	$pkgname-kernel-lts:kernel_lts
 	$pkgname-kernel-virt:kernel_virt
 	$pkgname-kernel-stable:kernel_stable
+	$pkgname-kernel-mainline:kernel_mainline
 	"
 
 source="
@@ -50,6 +51,12 @@ kernel_virt() {
 kernel_stable() {
 	pkgdesc="Alpine Stable kernel"
 	depends="linux-stable linux-firmware-none"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_mainline() {
+	pkgdesc="postmarketOS Mainline kernel"
+	depends="linux-postmarketos-mainline linux-firmware-none"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 

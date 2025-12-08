@@ -8,7 +8,9 @@ rules, but with the following changes.
 
 Most MRs, those not considered critical or trivial require approval by the
 package maintainer, and by another team member with approval and merge
-rights. If there is no package maintainer, then 2 any approvals are required.
+rights. If there is no package maintainer or the package maintainer does not
+reply within 2 weeks from the time the MR was opened, then any 2 approvals are
+required.
 
 ## Move device from category
 

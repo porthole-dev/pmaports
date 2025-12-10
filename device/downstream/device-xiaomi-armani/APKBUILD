@@ -2,7 +2,7 @@
 pkgname=device-xiaomi-armani
 pkgdesc="Redmi 1S"
 pkgver=2
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armhf"
@@ -12,6 +12,7 @@ makedepends="devicepkg-dev"
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-openrc
+	$pkgname-udev
 	"
 source="deviceinfo
 	90-touchscreen.rules
@@ -27,8 +28,8 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
-	install -Dm644 "$srcdir"/90-touchscreen.rules "$pkgdir"/etc/udev/rules.d/90-touchscreen.rules
-	install -Dm644 "$srcdir"/100-charging.rules "$pkgdir"/etc/udev/rules.d/100-charging.rules
+	install -Dm644 "$srcdir"/90-touchscreen.rules "$pkgdir"/usr/lib/udev/rules.d/90-touchscreen.rules
+	install -Dm644 "$srcdir"/100-charging.rules "$pkgdir"/usr/lib/udev/rules.d/100-charging.rules
 	install -Dm744 "$srcdir"/armani_battery_charging.sh "$pkgdir"/usr/bin/armani_battery_charging.sh
 	install -Dm744 "$srcdir"/armani_battery_discharging.sh "$pkgdir"/usr/bin/armani_battery_discharging.sh
 	install -Dm755 "$srcdir"/wlanarmani "$pkgdir"/etc/init.d/wlanarmani

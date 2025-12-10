@@ -2,13 +2,14 @@
 pkgname=device-samsung-gts210vewifi
 pkgdesc="Galaxy Tab S2 9.7 WiFi (SM-T813)"
 pkgver=3
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
 options="!check !archcheck"
 depends="postmarketos-base linux-samsung-gts210vewifi mkbootimg mdss-fb-init-hack"
 makedepends="devicepkg-dev"
+subpackages="$pkgname-udev"
 source="deviceinfo 90-sec_touchscreen.rules"
 
 build() {
@@ -18,7 +19,7 @@ build() {
 package() {
 	devicepkg_package $startdir $pkgname
 	install -D -m644 "$srcdir"/90-sec_touchscreen.rules \
-		"$pkgdir"/etc/udev/rules.d/90-sec_touchscreen.rules
+		"$pkgdir"/usr/lib/udev/rules.d/90-sec_touchscreen.rules
 
 }
 

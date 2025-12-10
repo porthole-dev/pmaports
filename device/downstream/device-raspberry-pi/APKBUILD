@@ -2,7 +2,7 @@
 pkgname=device-raspberry-pi
 pkgdesc="Raspberry Pi"
 pkgver=5
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armhf"
@@ -17,6 +17,7 @@ subpackages="
 	$pkgname-openrc
 	$pkgname-sway
 	$pkgname-phosh
+	$pkgname-udev
 "
 source="deviceinfo
 	config.txt
@@ -33,7 +34,7 @@ package() {
 	install -Dm644 "$srcdir"/config.txt "$pkgdir"/boot/config.txt
 	install -Dm644 "$srcdir"/usercfg.txt "$pkgdir"/boot/usercfg.txt
 	install -Dm644 "$srcdir"/95-vchiq-permissions.rules \
-		"$pkgdir"/etc/udev/rules.d/95-vchiq-permissions.rules
+		"$pkgdir"/usr/lib/udev/rules.d/95-vchiq-permissions.rules
 }
 
 openrc() {

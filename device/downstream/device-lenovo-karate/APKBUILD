@@ -2,7 +2,7 @@
 pkgname=device-lenovo-karate
 pkgdesc="Lenovo K6 Power"
 pkgver=2
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -10,7 +10,10 @@ options="!check !archcheck"
 depends="postmarketos-base linux-lenovo-karate mkbootimg mdss-fb-init-hack"
 makedepends="devicepkg-dev"
 source="deviceinfo 90-android-touch-dev.rules"
-subpackages="$pkgname-nonfree-firmware:nonfree_firmware"
+subpackages="
+	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-udev
+"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -18,8 +21,8 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
-	install -Dm755 "$srcdir"/90-android-touch-dev.rules \
-		"$pkgdir"/etc/udev/rules.d/90-android-touch-dev.rules
+	install -Dm644 "$srcdir"/90-android-touch-dev.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/90-android-touch-dev.rules
 }
 
 nonfree_firmware() {

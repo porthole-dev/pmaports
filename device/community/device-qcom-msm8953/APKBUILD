@@ -5,7 +5,7 @@
 pkgname=device-qcom-msm8953
 pkgdesc="Generic device package for various Qualcomm MSM8953/SDM450/SDM632-based devices"
 pkgver=9
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -23,7 +23,10 @@ depends="
 	soc-qcom-msm8953-modem
 "
 makedepends="devicepkg-dev"
-subpackages="device-xiaomi-daisy-fake-goodix:xiaomi_daisy_fake_goodix"
+subpackages="
+	$pkgname-udev
+	device-xiaomi-daisy-fake-goodix:xiaomi_daisy_fake_goodix
+"
 source="
 	deviceinfo
 	modules-initfs
@@ -37,12 +40,25 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
-	install -Dm644 61-gmobile-wakeup-lenovo-cd18781y.hwdb -t "$pkgdir/usr/lib/udev/hwdb.d/"
+	install -Dm644 61-gmobile-wakeup-lenovo-cd18781y.hwdb \
+		-t "$pkgdir/usr/lib/udev/hwdb.d/"
+	install -Dm644 "$srcdir"/90-device-xiaomi-daisy.rules \
+		-t "$pkgdir/usr/lib/udev/rules.d/"
+}
+
+udev() {
+	pkgdesc="$pkgdesc (udev rules)"
+	install_if="$pkgname=$pkgver-r$pkgrel udev"
+
+	# default_udev isn't used here to allow also installing a udev rule in the
+	# xiaomi_daisy_fake_goodix function
+	amove usr/lib/udev/hwdb.d/61-gmobile-wakeup-lenovo-cd18781y.hwdb
 }
 
 xiaomi_daisy_fake_goodix() {
 	pkgdesc="Calibration data for replacement goodix touch controllers"
-	install -Dm644 "$srcdir"/90-device-xiaomi-daisy.rules -t "$subpkgdir/etc/udev/rules.d/"
+
+	amove usr/lib/udev/rules.d/90-device-xiaomi-daisy.rules
 }
 
 sha512sums="

@@ -2,7 +2,7 @@
 pkgname=device-sony-honami
 pkgdesc="Sony Xperia Z1"
 pkgver=3
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -11,6 +11,7 @@ depends="postmarketos-base linux-sony-honami msm-fb-refresher mkbootimg"
 makedepends="devicepkg-dev"
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-udev
 "
 source="
 	deviceinfo
@@ -24,7 +25,7 @@ build() {
 package() {
 	devicepkg_package $startdir $pkgname
 	install -Dm644 "$srcdir"/90-android-touch-dev.rules \
-		"$pkgdir"/etc/udev/rules.d/90-android-touch-dev.rules
+		"$pkgdir"/usr/lib/udev/rules.d/90-android-touch-dev.rules
 }
 
 nonfree_firmware() {

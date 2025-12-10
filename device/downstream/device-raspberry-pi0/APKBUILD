@@ -2,14 +2,14 @@
 pkgname=device-raspberry-pi0
 pkgdesc="Raspberry Pi Zero"
 pkgver=5
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armhf"
 options="!check !archcheck"
 depends="postmarketos-base raspberrypi-bootloader linux-rpi bluetooth-raspberry-pi"
 makedepends="devicepkg-dev"
-subpackages="$pkgname-openrc"
+subpackages="$pkgname-openrc $pkgname-udev"
 source="deviceinfo modules-initfs usercfg.txt 95-vchiq-permissions.rules"
 
 build() {
@@ -20,7 +20,7 @@ package() {
 	devicepkg_package $startdir $pkgname
 	install -Dm644 "$srcdir"/usercfg.txt "$pkgdir"/boot/usercfg.txt
 	install -Dm644 "$srcdir"/95-vchiq-permissions.rules \
-		"$pkgdir"/etc/udev/rules.d/95-vchiq-permissions.rules
+		"$pkgdir"/usr/lib/udev/rules.d/95-vchiq-permissions.rules
 }
 
 openrc() {

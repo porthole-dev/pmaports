@@ -1,7 +1,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-motorola-titan
 pkgver=3
-pkgrel=0
+pkgrel=1
 pkgdesc="Motorola Moto G 2014"
 url="https://postmarketos.org"
 arch="armv7"
@@ -15,7 +15,10 @@ depends="
 "
 makedepends="devicepkg-dev"
 install="$pkgname.post-install"
-subpackages="$pkgname-nonfree-firmware:nonfree_firmware"
+subpackages="
+	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-udev
+"
 source="deviceinfo 90-android-touch-dev.rules profile.sh"
 options="!check !archcheck"
 
@@ -26,7 +29,7 @@ build() {
 package() {
 	devicepkg_package $startdir $pkgname
 	install -Dm644 "$srcdir"/90-android-touch-dev.rules \
-		"$pkgdir"/etc/udev/rules.d/90-android-touch-dev.rules
+		"$pkgdir"/usr/lib/udev/rules.d/90-android-touch-dev.rules
 	install -Dm644 "$srcdir"/profile.sh \
 		"$pkgdir"/etc/profile.d/00-$pkgname.sh
 }

@@ -3,7 +3,7 @@
 pkgname=device-xiaomi-beryllium
 pkgdesc="Xiaomi Poco F1"
 pkgver=14
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -19,6 +19,7 @@ makedepends="devicepkg-dev"
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-nonfree-firmware-openrc:nonfree_firmware_openrc
+	$pkgname-nonfree-firmware-udev:nonfree_firmware_udev
 	$pkgname-kernel-tianma:kernel_tianma
 	$pkgname-kernel-ebbg:kernel_ebbg
 "
@@ -38,6 +39,13 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+
+	install -Dm644 "$srcdir"/81-libssc-xiaomi-beryllium.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/81-libssc-xiaomi-beryllium.rules
+	install -Dm644 "$srcdir"/q6voiced.conf \
+		"$pkgdir"/etc/conf.d/q6voiced
+	install -Dm644 "$srcdir"/hexagonrpcd.confd \
+		"$pkgdir"/usr/share/hexagonrpcd/hexagonrpcd-sdsp.conf
 }
 
 nonfree_firmware() {
@@ -49,12 +57,8 @@ nonfree_firmware() {
 		hexagonrpcd
 	"
 
-	install -Dm644 "$srcdir"/81-libssc-xiaomi-beryllium.rules \
-		"$subpkgdir"/etc/udev/rules.d/81-libssc-xiaomi-beryllium.rules
-	install -Dm644 "$srcdir"/q6voiced.conf \
-		"$subpkgdir"/etc/conf.d/q6voiced
-	install -Dm644 "$srcdir"/hexagonrpcd.confd \
-		"$subpkgdir"/usr/share/hexagonrpcd/hexagonrpcd-sdsp.conf
+	amove etc/conf.d/q6voiced
+	amove usr/share/hexagonrpcd/hexagonrpcd-sdsp.conf
 }
 
 nonfree_firmware_openrc() {
@@ -63,6 +67,12 @@ nonfree_firmware_openrc() {
 	depends="hexagonrpcd-openrc openrc"
 
 	mkdir -p "$subpkgdir"
+}
+
+nonfree_firmware_udev() {
+	install_if="$pkgname-nonfree-firmware=$pkgver-r$pkgrel udev"
+
+	default_udev
 }
 
 kernel_tianma() {

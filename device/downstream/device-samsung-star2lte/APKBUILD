@@ -2,7 +2,7 @@
 pkgname=device-samsung-star2lte
 pkgdesc="Samsung Galaxy S9+"
 pkgver=3
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -23,6 +23,8 @@ source="
 "
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-nonfree-firmware-openrc:nonfree_firmware_openrc
+	$pkgname-nonfree-firmware-udev:nonfree_firmware_udev
 	$pkgname-x11
 "
 
@@ -32,18 +34,29 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+
+	# hciattach service for Bluetooth
+	install -Dm755 "$srcdir"/hciattach \
+		-t "$pkgdir"/etc/init.d
+	install -Dm644 "$srcdir"/10-hciattach.rules \
+		-t "$pkgdir"/usr/lib/udev/rules.d
 }
 
 nonfree_firmware() {
-	pkgdesc="WiFi and BT firmware"
+	pkgdesc="$pkgdesc (WiFi and BT firmware)"
 	depends="firmware-samsung-crownlte bluez-deprecated"
 
-	# hciattach service for Bluetooth
-	mkdir "$subpkgdir"
-	install -Dm755 "$srcdir"/hciattach \
-		-t "$subpkgdir"/etc/init.d
-	install -Dm644 "$srcdir"/10-hciattach.rules \
-		-t "$subpkgdir"/etc/udev/rules.d
+	mkdir -p "$subpkgdir"
+}
+
+nonfree_firmware_openrc() {
+	default_openrc
+	install_if="$pkgname-nonfree-firmware=$pkgver-r$pkgrel openrc"
+}
+
+nonfree_firmware_udev() {
+	default_udev
+	install_if="$pkgname-nonfree-firmware=$pkgver-r$pkgrel udev"
 }
 
 x11() {

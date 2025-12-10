@@ -1,13 +1,14 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-sony-aries
 pkgver=2
-pkgrel=0
+pkgrel=1
 pkgdesc="Sony Xperia Z3 Compact"
 url="https://postmarketos.org"
 arch="armhf"
 license="MIT"
 depends="postmarketos-base linux-sony-aries mkbootimg"
 makedepends="devicepkg-dev"
+subpackages="$pkgname-udev"
 source="deviceinfo 90-android-touch-dev.rules fb-workaround.sh"
 options="!check !archcheck"
 
@@ -18,7 +19,7 @@ build() {
 package() {
 	devicepkg_package $startdir $pkgname
 	install -D -m644 "$srcdir"/90-android-touch-dev.rules \
-		"$pkgdir"/etc/udev/rules.d/90-android-touch-dev.rules
+		"$pkgdir"/usr/lib/udev/rules.d/90-android-touch-dev.rules
 	install -D -m644 "$srcdir"/fb-workaround.sh \
 		"$pkgdir"/etc/profile.d/fb-workaround.sh
 }

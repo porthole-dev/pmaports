@@ -3,7 +3,7 @@
 pkgname=device-cutiepi-tablet
 pkgdesc="CutiePi Tablet"
 pkgver=3
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -13,6 +13,7 @@ makedepends="devicepkg-dev dtc"
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-openrc
+	$pkgname-udev
 	"
 source="
 	deviceinfo
@@ -36,9 +37,9 @@ package() {
 	install -Dm644 "$srcdir"/mpu6050-i2c5.dtbo \
 		"$pkgdir"/boot/overlays/mpu6050-i2c5.dtbo
 	install -Dm644 "$srcdir"/95-vchiq-permissions.rules \
-		"$pkgdir"/etc/udev/rules.d/95-vchiq-permissions.rules
+		"$pkgdir"/usr/lib/udev/rules.d/95-vchiq-permissions.rules
 	install -Dm644 "$srcdir"/backlight.rules \
-		"$pkgdir"/etc/udev/rules.d/backlight.rules
+		"$pkgdir"/usr/lib/udev/rules.d/backlight.rules
 }
 
 nonfree_firmware() {

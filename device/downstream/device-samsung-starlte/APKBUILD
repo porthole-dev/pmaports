@@ -2,7 +2,7 @@
 pkgname=device-samsung-starlte
 pkgdesc="Samsung Galaxy S9"
 pkgver=3
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -23,6 +23,8 @@ source="
 "
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-nonfree-firmware-openrc:nonfree_firmware_openrc
+	$pkgname-nonfree-firmware-udev:nonfree_firmware_udev
 	$pkgname-x11
 "
 
@@ -32,18 +34,28 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+
+	install -Dm755 "$srcdir"/hciattach \
+		-t "$pkgdir"/etc/init.d
+	install -Dm644 "$srcdir"/10-hciattach.rules \
+		-t "$pkgdir"/usr/lib/udev/rules.d
 }
 
 nonfree_firmware() {
-	pkgdesc="WiFi and BT firmware"
+	pkgdesc="$pkgdesc (WiFi and BT firmware)"
 	depends="firmware-samsung-crownlte bluez-deprecated"
 
-	# hciattach service for Bluetooth
 	mkdir "$subpkgdir"
-	install -Dm755 "$srcdir"/hciattach \
-		-t "$subpkgdir"/etc/init.d
-	install -Dm644 "$srcdir"/10-hciattach.rules \
-		-t "$subpkgdir"/etc/udev/rules.d
+}
+
+nonfree_firmware_openrc() {
+	default_openrc
+	install_if="$pkgdir-nonfree-firmware openrc"
+}
+
+nonfree_firmware_udev() {
+	default_udev
+	install_if="$pkgname-nonfree-firmware udev"
 }
 
 x11() {
@@ -51,6 +63,7 @@ x11() {
 	depends="xf86-input-evdev"
 	mkdir "$subpkgdir"
 }
+
 sha512sums="
 3249e182b5f1b61a888ea07dbffb1e8bb8e94d19af097a661e0d40c69e0d95cc9883856f647f36c131ad209473c5e8dcec6547f7aa4839829601f98c1edf22ae  deviceinfo
 cec13a1cb076a249eb94d11fb122b1f6b0c3e9558a2ed3c8da3e73a8e2db633131ec8ce838e62da8f53b5500dcb77c6f4adf3c1d2f1cda6fd23cb2ca1ccf6abc  initfs-hook.sh

@@ -2,7 +2,7 @@
 pkgname=device-htc-k2ul
 pkgdesc="HTC One SV"
 pkgver=2
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -15,7 +15,10 @@ depends="
 	msm-fb-refresher
 "
 makedepends="devicepkg-dev"
-subpackages="$pkgname-nonfree-firmware:nonfree_firmware"
+subpackages="
+	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-udev
+"
 source="deviceinfo initfs-hook.sh 90-android-touch-dev.rules"
 
 build() {
@@ -26,7 +29,7 @@ package() {
 	devicepkg_package $startdir $pkgname
 
 	install -D -m644 "$srcdir"/90-android-touch-dev.rules \
-		"$pkgdir"/etc/udev/rules.d/90-android-touch-dev.rules
+		"$pkgdir"/usr/lib/udev/rules.d/90-android-touch-dev.rules
 }
 
 nonfree_firmware() {

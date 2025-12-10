@@ -1,7 +1,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-lg-dory
 pkgver=2
-pkgrel=0
+pkgrel=1
 pkgdesc="LG G Watch"
 url="https://postmarketos.org"
 arch="armhf"
@@ -13,7 +13,10 @@ depends="
 	postmarketos-base
 	"
 makedepends="devicepkg-dev"
-subpackages="$pkgname-asteroid"
+subpackages="
+	$pkgname-asteroid
+	$pkgname-udev
+"
 source="
 	90-touchscreen-dev.rules
 	deviceinfo
@@ -27,7 +30,7 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
-	install -Dm644 -t "$pkgdir"/etc/udev/rules.d \
+	install -Dm644 -t "$pkgdir"/usr/lib/udev/rules.d \
 		"$srcdir"/90-touchscreen-dev.rules
 }
 

@@ -2,7 +2,7 @@
 pkgname=device-jolla-sbj
 pkgdesc="Jolla phone"
 pkgver=2
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"
@@ -20,6 +20,7 @@ makedepends="devicepkg-dev"
 subpackages="
 	$pkgname-nonfree-firmware:nonfree_firmware
 	$pkgname-openrc
+	$pkgname-udev
 	"
 source="deviceinfo
 	load-wlan-module
@@ -47,7 +48,7 @@ package() {
 		"$pkgdir"/usr/lib/device-jolla-sbj/led-discharging-sbj.sh
 
 	install -Dm644 "$srcdir"/100-charging.rules \
-		"$pkgdir"/etc/udev/rules.d/100-charging.rules
+		"$pkgdir"/usr/lib/udev/rules.d/100-charging.rules
 
 	install -D -m644 "$srcdir"/pointercal \
 		"$pkgdir"/etc/pointercal

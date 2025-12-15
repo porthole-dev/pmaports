@@ -2,7 +2,7 @@
 # Kernel config based on: arch/arm/configs/sun8iw7p1smp_defconfig in downstream kernel for BPi M2 Zero
 
 pkgname=linux-bananapi-bpi-m2-zero
-pkgver=6.18.0_rc1
+pkgver=6.19.0_rc1
 pkgrel=0
 pkgdesc="Banana Pi BPI-M2 Zero mainline kernel fork"
 arch="armv7"
@@ -14,19 +14,19 @@ options="!strip !check !tracedeps pmb:cross-native"
 makedepends="bash
 	bc
 	bison
+	clang
 	devicepkg-dev
 	flex
+	lld
+	llvm
 	openssl-dev
 	perl
-	gmp-dev
-	mpc1-dev
-	mpfr-dev
 	findutils
 	postmarketos-installkernel
 "
 
 # Source
-_commit="3a8660878839faadb4f1a6dd72c3179c1df56787"
+_commit="8f0b4cce4481fb22653697cced8d0d04027cb1e8"
 _config="config-$_flavor.$arch"
 _repository="linux"
 source="
@@ -43,7 +43,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -51,6 +51,7 @@ package() {
 	mkdir -p "$pkgdir"/boot
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_MOD_STRIP=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
@@ -61,6 +62,6 @@ package() {
 }
 
 sha512sums="
-e76c72fcd27580ebf832f9957519e955bdac01073dcaa0a38f2f026d1997540c4eaea29c255cb03de9d5c3136ac3fb8a6fcd1d631a5c92fa7707dff52c3e2cde  linux-bananapi-bpi-m2-zero-3a8660878839faadb4f1a6dd72c3179c1df56787.tar.gz
-37d79146d11c15343d703ba0d76df24c905c7656b66fca68a155ac75e8384e7f291e8eb03bf5f3de11a33903e0b7b302d187a33f063587a87e71d5b75750f352  config-bananapi-bpi-m2-zero.armv7
+05ef6abe8a428d6ec0a68920b4376259e3e58aeb722c8b3df444abfc16ae3998a079b2cd464e46611d404b20d506057f3001ce14e7e15cdb43f2cc6d5bfe666c  linux-bananapi-bpi-m2-zero-8f0b4cce4481fb22653697cced8d0d04027cb1e8.tar.gz
+822bab24899dd4d653773562313a9b1bcee3b7801d6b83bca1a278f45f9ff40f0c9e17dc1700b168b99b4bd2c68610b366f8e878dd58571238fdfe30699dcf91  config-bananapi-bpi-m2-zero.armv7
 "

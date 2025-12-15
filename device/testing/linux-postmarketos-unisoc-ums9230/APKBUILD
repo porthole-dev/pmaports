@@ -1,7 +1,7 @@
 # Maintainer: Affe Null <affenull2345@gmail.com>
 _flavor="postmarketos-unisoc-ums9230"
 pkgname=linux-$_flavor
-pkgver=6.18.0_rc5_git20251114
+pkgver=6.19.0_rc1_git20251214
 pkgrel=0
 pkgdesc="Linux kernel with patches for Unisoc UMS9230 devices"
 arch="aarch64"
@@ -11,6 +11,7 @@ license="GPL-2.0-only"
 options="!strip !check !tracedeps
 	pmb:cross-native
 	pmb:kconfigcheck-nftables
+	pmb:kconfigcheck-community
 "
 makedepends="
 	bash
@@ -26,10 +27,10 @@ makedepends="
 	python3
 "
 
-_commit="b28ee5f9df4f88a1d06026d259aeb58964a804b2"
+_tag="v6.19-rc1-ums9230-0"
 _config="config-$_flavor.$arch"
 source="
-	linux-$_commit.tar.gz::https://codeberg.org/ums9230-mainline/linux/archive/$_commit.tar.gz
+	linux-$_tag.tar.gz::https://codeberg.org/ums9230-mainline/linux/archive/$_tag.tar.gz
 	$_config
 "
 builddir="$srcdir/linux"
@@ -60,6 +61,6 @@ package() {
 }
 
 sha512sums="
-cb9a6c23254c1bd2003f12849ba89b57b7e139a47f7cc4ab19ec803ec2afaed9c973041804b5e63d82d24f6bce5685b8524e666f2bf8b0051e6628c4f554baa9  linux-b28ee5f9df4f88a1d06026d259aeb58964a804b2.tar.gz
-240e45d8327881542379d73e22cc4738095b485792b464e9d0a529f286254306df492ba79e8111584ce130542a55ccab4638e506a8db90bd22c92f1a57f9b5a6  config-postmarketos-unisoc-ums9230.aarch64
+d37c4db542d9449d55095ef3584d31fd6aac5bcb7c71976ef2b8d5b345f289b29ce93d3b83fb37f7e477a80cf9c742ddd996556639352805d5cfe70c0fdd3cdc  linux-v6.19-rc1-ums9230-0.tar.gz
+d08eb9523e01373b81d4416fd8798763165fabfeac34317f9ea4851b5aea627a2a6b2cdd9fd80bc5388300572603ed7f733cc13841a7e8d30a74e66e3adf6833  config-postmarketos-unisoc-ums9230.aarch64
 "

@@ -17,10 +17,12 @@ package() {
 
 	pkgdesc="Firmware files for Realme X3"
 
+	# TODO: Replace with a dependency on firmware-qcom-adreno-a640
 	install -Dm644 "$builddir"/a630_sqe.fw -t \
 		"$pkgdir/lib/firmware/qcom/"
 	install -Dm644 "$builddir"/a640_gmu.bin -t \
 		"$pkgdir/lib/firmware/qcom/"
+
 	install -Dm644 "$builddir"/a640_zap.mbn -t \
 		"$pkgdir/lib/firmware/qcom/sm8150/realme/x3/"
 	install -Dm644 "$builddir"/adsp* -t \

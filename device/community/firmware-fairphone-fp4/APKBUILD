@@ -38,6 +38,8 @@ package() {
 adreno() {
 	pkgdesc="Fairphone 4 adreno firmware"
 
+	# TODO: replace with firmware-qcom-adreno-a619 when released to linux-firmware.
+	# The parent device package currently depends on a630-sqe
 	install -Dm644 "$builddir"/a619_gmu.bin -t \
 		"$subpkgdir/lib/firmware/qcom/"
 	install -Dm644 "$builddir"/a615_zap.mbn -t \

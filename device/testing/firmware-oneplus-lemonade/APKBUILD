@@ -6,6 +6,7 @@ _commit="338eca8f58f48a4ef60721c4eb65d0d950a6b394"
 pkgdesc="Firmware files for OnePlus lemonade and lemonadep"
 url="https://gitlab.com/sm8350-mainline/firmware-oneplus-lemonade"
 arch="aarch64"
+# TODO: Use firmware-qcom-adreno-a660 which provides a660_gmu.bin
 depends="linux-firmware-qcom linux-firmware-qca"
 license="proprietary"
 source="$pkgname-$_commit.tar.gz::$url/-/archive/$_commit/firmware-oneplus-lemonade.tar.gz 10-remoteproc-firmware.files 20-bluetooth-firmware.files 30-gpu-firmware.files 40-touchscreen-firmware.files"

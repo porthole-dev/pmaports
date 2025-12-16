@@ -17,9 +17,9 @@ depends="
 	"
 package() {
 
+	# TODO: Replace with a dependency on firmware-qcom-adreno-a640
 	install -Dm644 "$builddir"/a630_sqe.fw -t \
 		"$pkgdir"/lib/firmware/qcom/
-
 	install -Dm644 "$builddir"/a640_gmu.bin -t \
 		"$pkgdir"/lib/firmware/qcom/
 

@@ -3,7 +3,7 @@ maintainer="Luca Weiss <luca@lucaweiss.eu>"
 pkgname=device-fairphone-fp4
 pkgdesc="Fairphone 4"
 pkgver=8
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -18,7 +18,7 @@ depends="
 	firmware-fairphone-fp4-ipa
 	firmware-fairphone-fp4-modem
 	firmware-fairphone-fp4-wlan
-	firmware-qcom-adreno-a630
+	firmware-qcom-adreno-a630-sqe
 	hexagonrpcd>=0.3.2-r3
 	linux-firmware-ath10k
 	linux-postmarketos-qcom-sm6350

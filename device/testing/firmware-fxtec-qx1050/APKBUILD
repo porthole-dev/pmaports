@@ -1,7 +1,7 @@
 maintainer=""
 pkgname=firmware-fxtec-qx1050
 pkgver=1
-pkgrel=3
+pkgrel=4
 pkgdesc="Firmware for F(x)tec Pro1x (QX1050)"
 subpackages="
 	$pkgname-adreno
@@ -28,7 +28,7 @@ package() {
 
 adreno() {
 	pkgdesc="Fxtec Pro1x (QX1050) adreno firmware"
-	depends="firmware-qcom-adreno-a630"
+	depends="firmware-qcom-adreno-a610"
 
 	install -Dm644 "$builddir"/a610_zap.mbn -t \
 		"$subpkgdir/lib/firmware/qcom/sm6115/Fxtec/QX1050/"

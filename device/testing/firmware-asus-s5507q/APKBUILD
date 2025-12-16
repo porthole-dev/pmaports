@@ -1,16 +1,16 @@
 maintainer=""
 pkgname=firmware-asus-s5507q
 pkgver=2
-pkgrel=0
+pkgrel=1
 _commit="2f3f3b5cc679f88a6f672490778e19016e51a70b"
 pkgdesc="Firmware files for ASUS Vivobook S 15"
 url="https://github.com/binarycraft007/firmware-asus-s5507q"
 arch="aarch64"
+# TODO: Replace with a dependency on firmware-qcom-adreno-gen70500 (which is not .zst compressed though)
 depends="
 	linux-firmware-qcom
 	linux-firmware-qca
 	linux-firmware-ath12k
-	firmware-qcom-adreno
 "
 license="proprietary"
 source="$pkgname-$_commit.tar.gz::$url/archive/$_commit.tar.gz

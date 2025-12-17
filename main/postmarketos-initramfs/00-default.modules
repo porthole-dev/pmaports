@@ -23,4 +23,5 @@ usb_f_mass_storage
 usb_f_rndis
 usb-storage
 vfat
+xfs
 xts

@@ -104,7 +104,7 @@ unlock_root_partition() {
 	fi
 }
 
-# resize2fs and resize.f2fs are too big
+# resize2fs, resize.f2fs, and xfs_growfs are too big
 resize_root_filesystem() {
 	local partition
 
@@ -126,6 +126,10 @@ resize_root_filesystem() {
 		btrfs)
 			# Resize happens below after mount
 			;;
+		xfs)
+			# Resize happens below after mount
+			modprobe xfs
+			;;
 		*)	echo "WARNING: Can not resize '$type' filesystem ($partition)." ;;
 	esac
 }
@@ -144,6 +148,10 @@ resize_filesystem_after_mount() {
 		btrfs)
 			echo "Resize 'btrfs' filesystem ($mountpoint)"
 			btrfs filesystem resize max "$mountpoint"
+			;;
+		xfs)
+			echo "Resize 'xfs' root filesystem ($mountpoint)"
+			xfs_growfs -d "$mountpoint"
 			;;
 	esac
 }

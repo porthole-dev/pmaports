@@ -16,10 +16,12 @@
 /sbin/dmsetup
 /sbin/e2fsck
 /sbin/fsck.vfat
+/sbin/fsck.xfs
 # Full fat modprobe for compressed modules
 /sbin/modprobe
 /sbin/switch_root
 /sbin/udevd
+/sbin/xfs_repair
 /usr/bin/buffyboard
 /usr/bin/iskey
 /usr/lib/libz.so.1
@@ -27,6 +29,7 @@
 /usr/sbin/parted
 /usr/sbin/resize.f2fs
 /usr/sbin/resize2fs
+/usr/sbin/xfs_growfs
 /usr/share/consolefonts/ter-128n.psf.gz
 /usr/share/initramfs/init_2nd.sh:/init_2nd.sh
 /usr/share/initramfs/init_functions_2nd.sh:/init_functions_2nd.sh

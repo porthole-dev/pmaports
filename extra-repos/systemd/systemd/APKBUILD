@@ -9,7 +9,7 @@
 pkgname=systemd
 pkgver=259
 _pkgver="${pkgver/_/-}"
-pkgrel=0
+pkgrel=1
 pkgdesc="System and service manager"
 url="https://github.com/systemd/systemd"
 arch="all"
@@ -247,6 +247,7 @@ build() {
 		-Dntp-servers="0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org 4.pool.ntp.org" \
 		\
 		-Dbpf-framework=enabled \
+		-Dvmlinux-h=disabled \
 		build .
 	meson compile ${JOBS:+-j ${JOBS}} -C build
 }

@@ -2,7 +2,7 @@
 
 _flavor="postmarketos-qcom-milos"
 pkgname=linux-$_flavor
-pkgver=6.17.0
+pkgver=6.18.0
 pkgrel=0
 pkgdesc="Mainline Kernel fork for Qualcomm Milos SoC (SM7635, etc.) devices"
 arch="aarch64"
@@ -55,6 +55,6 @@ package() {
 }
 
 sha512sums="
-67a72ea70664c2521a33f2bae86b282b60226867ce858a335cf6df74de5e51244a7b814e2ff51a3da50fafcbf6678098524db5ea92ca2202517125cd40397fe3  linux-v6.17.0-milos.tar.gz
-dbe8fd52c1f9aede2b74d7bdf98372a30b72d96961520ade07fc5ad37b9d23b743b9c4f00c789b0455c7346778a689094c4291671d9a9f4d2d688d30af8d520d  config-postmarketos-qcom-milos.aarch64
+6614e0b553e0788097f75aeb08197b0a6404dfe4ec3359aefe9b26d200dd053248a8335796bba20eb72deea1e90960005dc3e63d90247e30ac68e9957919a461  linux-v6.18.0-milos.tar.gz
+1891e194ddd00de0f78994be45342852768c32897526e0acbd5744b6b6af320332e96c9f3e3a4edcb9046e1ccdc0060aaa42fc02ea87cb5cfb594c617a011f0e  config-postmarketos-qcom-milos.aarch64
 "

@@ -3,7 +3,7 @@
 # Co-Maintainer: exkc <exkc@exkc.moe>
 maintainer="Robert Eckelmann <longnoserob@postmarketos.org>"
 pkgname=linux-postmarketos-marvell
-pkgver=6.18.2
+pkgver=6.18.4
 pkgrel=0
 pkgdesc="mainline (stable) for Marvell SoC"
 arch="armv7"
@@ -30,8 +30,9 @@ replaces="linux-postmarketos-marvell-dove"
 # Source
 _config="config-$_flavor.$arch"
 source="
-	0001-dts-marvell-mmp3-dell-ariel-import-dts-from-linux-mm.patch
-	0002-dts-marvell-mmp3-add-changes.patch
+	0001-dts-marvell-mmp3-merge-parts-from-linux-mmp.patch
+	0002-dts-marvell-mmp3-dell-ariel-merge-parts-from-linux-m.patch
+	0003-dts-marvell-mmp-dell-ariel-add-framebuffer.patch
 	wd-glacier.patch
 	$pkgname-$pkgver.tar.xz::https://cdn.kernel.org/pub/linux/kernel/v${pkgver%%.*}.x/linux-$pkgver.tar.xz
 	$_config
@@ -69,10 +70,9 @@ package() {
 
 sha512sums="
 3ebc58600a07e07fba681c497b36a7f21de9f9034dab70988ad54e606affa33c49ba3580f92b8343e42b6cfad3b23531ac133d97c2c998878d96bd21d738475d  0001-dts-marvell-mmp3-merge-parts-from-linux-mmp.patch
-c5bd35a1077f4d6790be8c775040e7798ba708fd8797b10f9cbaf1b8a6a70a4071ec94caa7f78b9c1d4c37deae108134a7dc4f28f5fd3b71b501f4126e79f255  0002-dts-marvell-mmp3-dell-ariel-import-from-linux-mmp.patch
-72ba9314bbfe078e6375a863a67f71a63f799d181296d621616d9aea413f01942ddb0aad550c6698d22149eaecb6a5e15e68ee9f4305fe27779888ff3b584544  0003-dts-marvell-mmp3-dell-ariel-enable-pinctls.patch
-ebf84ccd65c27cc479ff655e3d9ff367c74df9b93c6e21ea452384f47db6d38c7693a9266632fcf10919825da6664922d21b5567182fa6638ef744e26f2af629  0004-fix-pinctrol-prefixes.patch
+ac8471bae424aa0e5835f8c6ed04834918ca665941910fe132353bc35735f1e848e3c34b11e3cd50a49487ba8b5e7cd2a22efb678f19aa85a584efa01d8b49b1  0002-dts-marvell-mmp3-dell-ariel-merge-parts-from-linux-m.patch
+109612e83948e49e02be4f3275504eb584f9146eba97f327995c8dc0d2a41f049f3976821206bc12087ff0059880a61c646e5cecdfbaf8441a0212f2e50ae93e  0003-dts-marvell-mmp-dell-ariel-add-framebuffer.patch
 4c26ffca58dbdb75f24670d0aee5115cc3dc96b09ba2bcbcdd435d3e1e49cc0672cb0c0934a357047f59f47e1d24846f46cdd0cdcd19c87e14ff1c045ddd21af  wd-glacier.patch
-15989d1a26c6a5200b8eab4ba348b308466398aa75dda3844b37e7eb320206236d47c94cbc0e0b1d7ead10385ca84d34d0f2aa02ba5c1bd65ca6a5aa71c57117  linux-postmarketos-marvell-6.18.2.tar.xz
-a9fe4de0c9a37facf099d908b36551ff8a4a1c0738aac042c8e3dea9b0bf5749a8bb1372179c6ec02b93324e0db47dbca632578f8bb97fa32c1b658b88f08690  config-postmarketos-marvell.armv7
+ad361094f27b8d5546a1c0a405fd2f081f39bf3e5eaf625a72019a5925d3c66c0e8eb1358904d4a0a47ead03e1098b25aaab6dd000f33c362b7cdab984cf4edf  linux-postmarketos-marvell-6.18.4.tar.xz
+f9b9af57e7a1a3b042d27ec4d63bc00a51e1aadbe6eb3eeab672ad49e8e2efd2ae2c06f88f5f5268105c2e85bb5d601a2a8452f361674ba242dc6c420031c150  config-postmarketos-marvell.armv7
 "

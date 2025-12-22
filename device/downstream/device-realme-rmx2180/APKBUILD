@@ -1,0 +1,30 @@
+# Reference: <https://postmarketos.org/devicepkg>
+pkgname=device-realme-rmx2180
+pkgdesc="Realme C15"
+pkgver=1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	linux-realme-rmx2180
+	mkbootimg
+	postmarketos-base
+"
+makedepends="devicepkg-dev"
+source="
+	deviceinfo
+"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+sha512sums="
+f7023ae2a45808ed1ebba33449ba9af9b58cbf5f0c63d1ae413d9c1a9655b6f4f7c71d13d8c5c6fb562f4f431941ec41e4566638932e5ff75533673c04e5c425  deviceinfo
+"

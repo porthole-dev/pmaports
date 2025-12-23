@@ -27,8 +27,8 @@
 	Replace space inside `[ ]` with `x` to fill the checkbox
 -->
 * [ ] edge (`master` branch)
-* [ ] `v25.12` (unreleased)
-* [ ] `v25.06`
+* [ ] `v25.12`
+* [ ] `v25.06` (supported until 2026-01-23)
 
 * [ ] I confirm that the issue still is present after running `sudo apk upgrade -a`
 

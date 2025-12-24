@@ -2,13 +2,12 @@
 
 maintainer="Jane Rachinger <jane400+pmaports@postmarketos.org>"
 pkgname=polkit
-pkgver=999126
-_pkgver=126
-pkgrel=4
+_pkgver=127
+pkgver=999$_pkgver
+pkgrel=0
 pkgdesc="Application development toolkit for controlling system-wide privileges"
 url="https://github.com/polkit-org/polkit"
-# armhf: pmb#2618
-arch="all !armhf"
+arch="all"
 license="GPL-2.0-or-later"
 # pmb:strict: force zap after building this package so we don't still have
 #             systemd-stage0 installed
@@ -110,6 +109,6 @@ dev() {
 }
 
 sha512sums="
-dbdbc31b7a231c963788b37cf1a138e30336466fb662225a812faaf58e45439925d9d39346cc8f07e54f22040c2f142435acb9fded315d33e24930e0abc736c7  polkit-126.tar.gz
+54b315f2ca05e957e7b9aafda16c1cddcc2266d6018c77dbf4cfe73b7d5b1569e6e07570884b9c5ecc4bdb3a29966169006aa727b089019d959208f2b53067e6  polkit-127.tar.gz
 f5102dc00d390b3a3c957b62e1712db778c7ffb7378f3d8e816c0757c11a308c5d5303e42595b0d6add9839247c773880cd34e56afacc89eb6efaadf9aae7826  alpine-polkit.pam
 "

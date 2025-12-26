@@ -1,0 +1,32 @@
+# Reference: <https://postmarketos.org/devicepkg>
+# Maintainer: bluebunny <kalorin.bok084@passinbox.com>
+pkgname=device-samsung-j7xelte
+pkgdesc="Samsung Galaxy J7 (2016)"
+pkgver=5
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	dtbtool-exynos
+	linux-postmarketos-exynos7870
+	mesa-dri-simpledrm
+	mkbootimg
+	postmarketos-base
+"
+makedepends="devicepkg-dev"
+_pmb_recommends="firmware-samsung-j7xelte"
+source="deviceinfo"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+sha512sums="
+6c3461f12be9081966f7ff9240d5b4d3447d66ae77673be86f126f69f718a4aa80a418811511f8aef4f92ff3d391de6eb6b4b370aeb1df9c61099e02fb5ed605  deviceinfo
+"

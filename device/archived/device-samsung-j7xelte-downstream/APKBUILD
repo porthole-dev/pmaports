@@ -1,6 +1,6 @@
+# Archived: Downstream port, only for testing. Use mainline port (samsung-j7xelte)!
 # Reference: <https://postmarketos.org/devicepkg>
-# Maintainer: bluebunny <kalorin.bok084@passinbox.com>
-pkgname=device-samsung-j7xelte
+pkgname=device-samsung-j7xelte-downstream
 pkgdesc="Samsung Galaxy J7 (2016)"
 pkgver=3
 pkgrel=0
@@ -28,5 +28,5 @@ nonfree_firmware() {
 }
 
 sha512sums="
-0ddf3e711951aac8c7361d9266d82896fc427def81b3d2ecb6fdfac8b3cf46804d558e158d11e68cc14311a6aed85dc9ecb509795dcdbfb761bdae045112c0ac  deviceinfo
+89a963f139b027affcbb39424be3c205ce352fa1242c34c07de185ff96591b3a2922bfdf57f9bdf4128eb4e08100c2e5dfc9cb86caebe726ad5b727a2bfe5dd1  deviceinfo
 "

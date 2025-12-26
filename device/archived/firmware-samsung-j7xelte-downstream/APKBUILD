@@ -1,5 +1,5 @@
-# Maintainer: bluebunny <kalorin.bok084@passinbox.com>
-pkgname=firmware-samsung-j7xelte
+# Archived: Downstream port, only for testing. Use mainline port (samsung-j7xelte)!
+pkgname=firmware-samsung-j7xelte-downstream
 pkgver=1
 pkgrel=0
 pkgdesc="Samsung Galaxy J7 (2016) Firmware"

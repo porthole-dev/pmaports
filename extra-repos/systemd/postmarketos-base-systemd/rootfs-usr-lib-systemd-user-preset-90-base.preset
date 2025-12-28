@@ -19,6 +19,7 @@ enable usb-moded-notify.service
 # GNOME
 enable gnome-keyring-daemon.service
 enable gnome-keyring-daemon.socket
+enable sm.puri.Chatty-daemon.service
 
 # xfce4
 enable xfce4-notifyd.service

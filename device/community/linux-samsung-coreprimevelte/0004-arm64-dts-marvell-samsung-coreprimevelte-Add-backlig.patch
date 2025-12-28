@@ -1,23 +1,24 @@
-From 2b235c5cfffe5c75902ae7d99dd160603d587be3 Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Duje=20Mihanovi=C4=87?= <duje.mihanovic@skole.hr>
-Date: Thu, 5 Oct 2023 20:15:34 +0200
-Subject: [PATCH 11/16] arm64: dts: samsung,coreprimevelte: Add KTD2801 binding
+From 28757d5a501827bfd0de7b10032365154beb0241 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Duje=20Mihanovi=C4=87?= <duje@dujemihanovic.xyz>
+Date: Sat, 13 Sep 2025 23:21:03 +0200
+Subject: [PATCH 04/21] arm64: dts: marvell: samsung,coreprimevelte: Add
+ backlight
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Add Kinetic KTD2801 backlight driver binding to samsung,coreprimevelte.
+Add a node for the KTD2801 backlight chip found on the board.
 
-Signed-off-by: Duje Mihanović <duje.mihanovic@skole.hr>
+Signed-off-by: Duje Mihanović <duje@dujemihanovic.xyz>
 ---
  .../boot/dts/marvell/mmp/pxa1908-samsung-coreprimevelte.dts | 6 ++++++
  1 file changed, 6 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/marvell/mmp/pxa1908-samsung-coreprimevelte.dts b/arch/arm64/boot/dts/marvell/mmp/pxa1908-samsung-coreprimevelte.dts
-index 758ae9785a39..89eedddabadd 100644
+index fadc34c13398..cc54ab874244 100644
 --- a/arch/arm64/boot/dts/marvell/mmp/pxa1908-samsung-coreprimevelte.dts
 +++ b/arch/arm64/boot/dts/marvell/mmp/pxa1908-samsung-coreprimevelte.dts
-@@ -115,6 +115,12 @@ key-voldown {
+@@ -116,6 +116,12 @@ key-voldown {
  			gpios = <&gpio 17 GPIO_ACTIVE_LOW>;
  		};
  	};
@@ -31,5 +32,5 @@ index 758ae9785a39..89eedddabadd 100644
  
  &smmu {
 -- 
-2.50.1
+2.52.0
 

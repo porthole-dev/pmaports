@@ -1,9 +1,9 @@
-# Maintainer: Duje Mihanović <duje.mihanovic@skole.hr>
+# Maintainer: Duje Mihanović <duje@dujemihanovic.xyz>
 
 _flavor=samsung-coreprimevelte
 pkgname=linux-$_flavor
-pkgver=6.15.8
-pkgrel=2
+pkgver=6.18.2
+pkgrel=0
 pkgdesc="Samsung Galaxy Core Prime VE LTE mainline kernel"
 arch="aarch64"
 _carch="arm64"
@@ -35,26 +35,27 @@ esac
 
 source="
 	https://cdn.kernel.org/pub/linux/kernel/v${_kernver%%.*}.x/linux-$_kernver.tar.xz
-	0001-dt-bindings-mmc-sdhci-pxa-restrict-pinctrl-to-pxav1.patch
-	0002-dt-bindings-marvell-Document-PXA1908-SoC-and-samsung.patch
-	0003-arm64-Kconfig.platforms-Add-config-for-Marvell-PXA19.patch
-	0004-arm64-dts-Add-DTS-for-Marvell-PXA1908-and-samsung-co.patch
-	0005-MAINTAINERS-add-myself-as-Marvell-PXA1908-maintainer.patch
-	0006-dt-bindings-mwifiex-document-use-with-the-SD8777-chi.patch
-	0007-net-mwifiex-add-support-for-the-SD8777-chipset.patch
-	0008-Bluetooth-btmrvl_sdio-Add-support-for-SD8777-chipset.patch
-	0009-DONOTMERGE-arm64-dts-samsung-coreprimevelte-add-PMIC.patch
-	0010-DONOTMERGE-arm64-dts-samsung-coreprimevelte-add-touc.patch
-	0011-arm64-dts-samsung-coreprimevelte-Add-KTD2801-binding.patch
-	0012-DONOTMERGE-arm64-dts-samsung-coreprimevelte-add-SDIO.patch
-	0013-arm64-dts-samsung-coreprimevelte-enable-eMMC.patch
-	0014-arm64-dts-samsung-coreprimevelte-add-vibrator.patch
-	0015-DONOTMERGE-mmc-host-Disable-Tuning-failed-message.patch
-	0016-mmc-sdhci-pxav3-add-pinctrl-setting.patch
-	touchscreen.patch
-
-	clang21.patch
-
+	0001-arm64-dts-samsung-coreprimevelte-add-PMIC.patch
+	0002-arm64-dts-samsung-coreprimevelte-add-touchscreen.patch
+	0003-arm64-dts-samsung-coreprimevelte-add-SDIO.patch
+	0004-arm64-dts-marvell-samsung-coreprimevelte-Add-backlig.patch
+	0005-arm64-dts-marvell-samsung-coreprimevelte-Correct-CD-.patch
+	0006-arm64-dts-marvell-samsung-coreprimevelte-Enable-eMMC.patch
+	0007-arm64-dts-marvell-pxa1908-Add-PWMs.patch
+	0008-arm64-dts-marvell-samsung-coreprimevelte-Add-vibrato.patch
+	0009-arm64-dts-marvell-pxa1908-Move-ramoops-to-SoC-dtsi.patch
+	0010-arm64-dts-marvell-samsung-coreprimevelte-Drop-some-r.patch
+	0011-arm64-dts-marvell-samsung-coreprimevelte-Fill-in-mem.patch
+	0012-arm64-dts-marvell-samsung-coreprimevelte-Add-USB-con.patch
+	0013-arm64-dts-marvell-pxa1908-Add-power-domains.patch
+	0014-dmaengine-mmp_pdma-fix-DMA-mask-handling.patch
+	0015-dt-bindings-mwifiex-document-use-with-the-SD8777-chi.patch
+	0016-net-mwifiex-add-support-for-the-SD8777-chipset.patch
+	0017-DONOTMERGE-net-mwifiex-fix-timeouts-with-the-SD8777-.patch
+	0018-arm64-dts-samsung-coreprimevelte-add-wifi-node.patch
+	0019-Bluetooth-btmrvl_sdio-Add-support-for-SD8777-chipset.patch
+	0020-arm64-dts-marvell-samsung-coreprimevelte-Use-memory-.patch
+	0021-arm64-dts-marvell-samsung-coreprimevelte-Increase-to.patch
 	$_config
 "
 builddir="$srcdir"/linux-"$_kernver"
@@ -79,29 +80,34 @@ package() {
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
 
+	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+
 	install -D "$builddir"/include/config/kernel.release \
 		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release
 }
 
 sha512sums="
-17c9231ed0d406383f09df6c29919455ce8b486f3b2e3cdf028b152b9b98a7800eab1d9b88992fe91f3e8ed80d29978fbd42cd466612a705d2756a7aa262ebd8  linux-6.15.8.tar.xz
-95a4a4498becc820ad83712fd295b56dfb9a6be0de6c5732043abc03ff708b205202aabca83c2812f043ff4e9616a5e765c7ae8ee9fc7b85a231b3bcd4b47567  0001-dt-bindings-mmc-sdhci-pxa-restrict-pinctrl-to-pxav1.patch
-76d810cc2699cda6c88974572b58f2701b1e0d666222a0f53fc7af78c1edd6fa2f6ab7eb7fc2e419b3e30e7a4d628266b36a61e2493a7e25458db9dfba282ec0  0002-dt-bindings-marvell-Document-PXA1908-SoC-and-samsung.patch
-c9a0342183bfa6f60a3a3c802e1b84d1a2b19abac2bb0a16f6ad7f092c3dc222b6ce18c1e5e0aac2769716156bee0f73028bcd7a1f5611c97906c41f08e22735  0003-arm64-Kconfig.platforms-Add-config-for-Marvell-PXA19.patch
-27a9f5d1230008bd54c3a6cd1ee54bf382ea8a70d1e5a558bb43d635401ff65a2b5b579bf97644da9d5c31b18819d645714a5356c37fdbc431fff3613b8c442c  0004-arm64-dts-Add-DTS-for-Marvell-PXA1908-and-samsung-co.patch
-5e854687dc3a4e26a4d7ecf313bd8eb9f0a0f40a862f2e3bba6503d103d7c8aaaf3263e8f5b4a961a0ab91e243f4c63157d14b7d740c5e8f6ae769a33c419508  0005-MAINTAINERS-add-myself-as-Marvell-PXA1908-maintainer.patch
-a38d88abbed4bf204bb74e0833c9897dae0936cd15c50198a4e5a1aae6a9088a67e836e7c119311b5ae8f7a98c3addea99097ef78aadb0e9a9ba1024db8d17ab  0006-dt-bindings-mwifiex-document-use-with-the-SD8777-chi.patch
-5f3ebed1471237939eeba674e52c879bad7b5c0f50c4a8154cd6686ae431d21ae351c7f6ffe710f4087c0632851ce39fca7fa12956c85f954df07686ddf38778  0007-net-mwifiex-add-support-for-the-SD8777-chipset.patch
-c92dc23c0db6ad1b8bbb02a49467f9a03acf77885374b519842a238b8cefb4156a90cc654fb45dca1ce7dc0f863f816d64c5d7966b2c311e849b3681537a114c  0008-Bluetooth-btmrvl_sdio-Add-support-for-SD8777-chipset.patch
-4cc7beb5dbf400674c174653a163063b162793cc6cfa94a6207fb2a60db422393fd59c9e5f3476ece03cf9213c2a52c891a06b0e9ce4042d52fdbab9bc2df0c7  0009-DONOTMERGE-arm64-dts-samsung-coreprimevelte-add-PMIC.patch
-9e68782990041fc3d1da450b138a7c358f93e0f1a4c3ee6a2e0419e1b9280e8516e9e5f427ebe8c737a69cc37218cad4959bdbfe95a88678c65b9e6fb9831c1b  0010-DONOTMERGE-arm64-dts-samsung-coreprimevelte-add-touc.patch
-7f20e776e9c5d8a9754db47703a683a30cb23baef52dd927688dd92e9f8fb3bb576e9da39740e88a47b2d190edf3591b35284ed0fa20a033ccb0f2c910a3aa4e  0011-arm64-dts-samsung-coreprimevelte-Add-KTD2801-binding.patch
-8dbd1ab2280e74125b45f732e7626eb36eada90d0697164589d3c5084ad98dfbbed9f6ea050b0b3a4fc5e08115d06d43b5119184b233ce9628ce24cf58093d1e  0012-DONOTMERGE-arm64-dts-samsung-coreprimevelte-add-SDIO.patch
-4580f5e0ad55ba7f0deda7f29699bcf88fd50f9218f9f0621ea5256982b42175bf7de4fdcc3b665079ac57fadcd13cf53be8b7049f9c48bfe64f8711dfb71486  0013-arm64-dts-samsung-coreprimevelte-enable-eMMC.patch
-ae16b59770cd76ab1777ef56a4888a073822a97ab6dbb5f18b3da7e3889c3b982c4b01930652cb68fae2082b566e1b5aacd1b81e536db71d58e7603e9cf04886  0014-arm64-dts-samsung-coreprimevelte-add-vibrator.patch
-5b3e3ba9b7ce6501bcd3b94c1e804e05ed5dbaa328c89b40f8cf466002efff704dd7c6d451cc336edf4cdac30489c416d08b13792344c3635c055a6a8b2ddcc6  0015-DONOTMERGE-mmc-host-Disable-Tuning-failed-message.patch
-782644892ae1237141431169ad3dcb5c1afad3461f8984909792fc5db9f0059403aba3a77b84867fbbffed541cccea4005169f1fe7cf38a5d81d6dab782f810b  0016-mmc-sdhci-pxav3-add-pinctrl-setting.patch
-ea754a553d5cd53d0056c72474b91ddc863960a8e3481609462e64b1bba202dd52f20310ce411973ce4965e6f07f955f0e4256c6511088ab79bdd63539750ad6  touchscreen.patch
-7db49d195e8034aca257d8d0673cfef2b9c2ce833332c9bae46274ef5d345da5af6fee46a3f3466a75e1771c4815794a87c8190aaccecdcd7c35195362234178  clang21.patch
-f3a1645e02edd45cd3465db395c3cd659549fd961317a3e75f46e8c863151a76781ac013bf809e2b8008bb39d27fcbf50e26eb42c27de79a5994e839d1ed95a8  config-samsung-coreprimevelte.aarch64
+15989d1a26c6a5200b8eab4ba348b308466398aa75dda3844b37e7eb320206236d47c94cbc0e0b1d7ead10385ca84d34d0f2aa02ba5c1bd65ca6a5aa71c57117  linux-6.18.2.tar.xz
+319b165b01814a13efb3c765440d031c1ba3b773434d5523c12d306c5450aa143ca942b15efaa1df7442c7f966c781b09d431acdb06295cf70a8daa90d890d71  0001-arm64-dts-samsung-coreprimevelte-add-PMIC.patch
+aa79d55f31fd2d5b8aec2a532a8b792eef07c5f57a7f3dbd5477047b1ce674b9a82ab057248807214383fd6441f08423acbcfe54c9e48aee5a2459afbd29743d  0002-arm64-dts-samsung-coreprimevelte-add-touchscreen.patch
+57935ec12875a8c543789f91c5839e8cdeef27bc909f8136e8bad3ab2e48347872916841a2e369140bf99e59bec85bec6b89458e6a98735730253b8df6c038df  0003-arm64-dts-samsung-coreprimevelte-add-SDIO.patch
+b7af2099b8ed4fbb1a6644cfbb798e86174802d61b96202e948a5695750f7b2ce9d271e53f8b2a414287fa30bb008a6ec603535ba2854e9fcbbeb3e38eaf3d10  0004-arm64-dts-marvell-samsung-coreprimevelte-Add-backlig.patch
+c8e107023208cc105737e3de383895cd8c978feddee321fb32772dad6ae43fa329ccaa2b40e63c6b5542500ecadeb4d11caa86d04c24b605ac2d0625cb49c9e2  0005-arm64-dts-marvell-samsung-coreprimevelte-Correct-CD-.patch
+e8e30b5f46c1d017db27edb1cf2812454a30701927957bf8248040c221892b610543792986c937e421430f662d18e2ab06456af0447cba3a8fddd3fe90d59a5f  0006-arm64-dts-marvell-samsung-coreprimevelte-Enable-eMMC.patch
+f89c2d44cd5233eac3d157957703585fa60aea96de98e12c3d3eb146108ec321a1bdfec539e9dabdb2fa7cc00dbbfef456182ee546d879864ce1aea10e8ada99  0007-arm64-dts-marvell-pxa1908-Add-PWMs.patch
+a02309ca372dcb551c21a8d98e80d8fc35da53b0aa06c09c05d812960aa60f431c473a9cae85a31bf67645da69e160ea9df8cb8a626e7e5a6eea7a59ba82f5a3  0008-arm64-dts-marvell-samsung-coreprimevelte-Add-vibrato.patch
+4151f51571fc94db8b2b5d48edfea4ea74d77d23d4a4676e4c2db482a63a70b7493ae3393d4a71bfc0f9941ebb70528dc0a23ae8734e1ceac1900a207e3bea4b  0009-arm64-dts-marvell-pxa1908-Move-ramoops-to-SoC-dtsi.patch
+46f17f2a2ee571b6d794a958d532f506e305f26c105a70fe5676d5fdf11823fe0fc364505fe3c9ee3fa5ac86d86032d1874b1c5d704b5c9ffaa47a9e30284f2e  0010-arm64-dts-marvell-samsung-coreprimevelte-Drop-some-r.patch
+a7d11b3fe58dd5349ba8307af77df75d3ed7d2a971872251eb8b4bcc3d4c9c80c15224fecac2d0c950da7a39e91a52bbd20c258c9b089c5fbdec6d684a94f21d  0011-arm64-dts-marvell-samsung-coreprimevelte-Fill-in-mem.patch
+db58b31fa35ab95d30a0132a419dacac1e35a6b7a7cc2b45d13c9878a74ca489512e67c3b5bf85c95428fbc905b3fcda945bcbf6080008d1760067f3e61f43d0  0012-arm64-dts-marvell-samsung-coreprimevelte-Add-USB-con.patch
+662aa29dd8e5d95ad4dbb7ad3c98761f9493d6713378f4b4a449d747241e6d6be63d363b9dd5f6ffc33f814ccd13fbed571f4082d864cf538ae89a1da55df8a1  0013-arm64-dts-marvell-pxa1908-Add-power-domains.patch
+61f5d7faef590c1fc87513d777b8fceed6502075589d5a4a49962647e7cdf6f75482bfd2ecdb48c66b8a1372604cd0189a97a1c8a36d05652d1f7c2178ee7597  0014-dmaengine-mmp_pdma-fix-DMA-mask-handling.patch
+2393932e4b91cd7ef59a9c1795cc5987e184e7d24199993df1d8d19af470acb1e7c7fd0c05d08fe5b8ad213f521077b7138d1eed8f12c23cab42aa91ef529c57  0015-dt-bindings-mwifiex-document-use-with-the-SD8777-chi.patch
+16ffff8c2eebee47db8298841ac5627a7a956711b7308fa8b1e24c97a3c84a596d0c8ef279d3c2d5e0a028859b4b10fc2fa3bf9b19609df92e3355ad5accbc70  0016-net-mwifiex-add-support-for-the-SD8777-chipset.patch
+0ccd19306ba8555673a85a491ee12bc5ed3d43ad1aa4548dbdfd58ea9b4ba81ff294f4cda4daabc5d7f0064e389b6b32d34c1e2a84c69b5241ae923baa2e643d  0017-DONOTMERGE-net-mwifiex-fix-timeouts-with-the-SD8777-.patch
+d93d9a3ad2c02b9df69dc5291cd1f038a35aa2af2156f2d0c79e43a7b24e9e97dbf183421a9a448df54d35144cb827115246617ad3e95b9a5589c528ba320630  0018-arm64-dts-samsung-coreprimevelte-add-wifi-node.patch
+b03f0cbbc5ec4d2bfeb1d021c5e91cc55c6d8742043e8e0e9754ec160571eb2ffc83f9811efa0c459dade1854b3fe51f7cb21ab3001a53e5db7651171ed784a5  0019-Bluetooth-btmrvl_sdio-Add-support-for-SD8777-chipset.patch
+560b45049530c5453dc7f51a2632fa390e9f7380ee142f17a311eb806d3a7275e7b8e6de7b5f956a76ea2e99210841098b83320e3db808d9f0aa2de7c1ada8e7  0020-arm64-dts-marvell-samsung-coreprimevelte-Use-memory-.patch
+95a6f5d31df6869dd36eb7397339ccecc1b40456159932071a19d76551de528970765230de09b733a4a51d4b6d501c3d77c20b1d052846626b624d5e079170b2  0021-arm64-dts-marvell-samsung-coreprimevelte-Increase-to.patch
+3fd69d4c87d72a472bc05669864d50b8c9fe5816e98faace31fc63b55c118eff8c30594e5e10c65b6f6e38ff99305dd3bf6e5fcfa91d3a6a08ba5e9e12e0b98d  config-samsung-coreprimevelte.aarch64
 "

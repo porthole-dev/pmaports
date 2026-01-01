@@ -1,9 +1,10 @@
-# Reference: <https://postmarketos.org/devicepkg>
-# Maintainer: Jenneron <jenneron@protonmail.com>
+# Maintainer: Ingo Reitz <9l@9lo.re>
+# Co-Maintainer: WeirdTreeThing <bradyn127@protonmail.com>
+# Co-Maintainer: Alicja Michalska <ellyqw@mainlining.org>
 pkgname=device-google-cherry
 pkgdesc="Google Cherry Chromebooks"
 pkgver=7
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"

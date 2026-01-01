@@ -1,7 +1,9 @@
-# Maintainer: Jenneron <jenneron@protonmail.com>
+# Maintainer: Alicja Michalska <ellyqw@mainlining.org>
+# Co-Maintainer: Ingo Reitz <9l@9lo.re>
+# Co-Maintainer: WeirdTreeThing <bradyn127@protonmail.com>
 pkgname=firmware-google-trogdor
 pkgver=1
-pkgrel=0
+pkgrel=1
 pkgdesc="Modem firmware for Google Trogdor chromebooks"
 url="https://gitlab.com/jenneron/firmware-google-trogdor"
 arch="aarch64"

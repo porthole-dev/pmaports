@@ -1,7 +1,9 @@
-# Maintainer: Alicja Michalska <alicja.michalska@9elements.com>
+# Maintainer: Alicja Michalska <ellyqw@mainlining.org>
+# Co-Maintainer: Ingo Reitz <9l@9lo.re>
+# Co-Maintainer: WeirdTreeThing <bradyn127@protonmail.com>
 pkgname=linux-postmarketos-qcom-sc7180
 pkgver=6.12.35
-pkgrel=11
+pkgrel=12
 pkgdesc="Mainline kernel fork for Qualcomm Snapdragon 7c devices"
 arch="aarch64"
 _carch="arm64"

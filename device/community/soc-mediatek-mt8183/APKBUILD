@@ -1,8 +1,10 @@
-# Maintainer: Jenneron <jenneron@protonmail.com>
+# Maintainer: WeirdTreeThing <bradyn127@protonmail.com>
+# Co-Maintainer: Alicja Michalska <ellyqw@mainlining.org>
+# Co-Maintainer: Ingo Reitz <9l@9lo.re>
 pkgname=soc-mediatek-mt8183
 pkgdesc="Common package for Mediatek MT8183 devices"
 pkgver=2
-pkgrel=2
+pkgrel=3
 url="https://postmarketos.org"
 license="BSD-3-Clause"
 arch="aarch64"

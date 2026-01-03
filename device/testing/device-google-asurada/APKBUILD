@@ -2,7 +2,7 @@
 # Maintainer: Jenneron <jenneron@protonmail.com>
 pkgname=device-google-asurada
 pkgdesc="Google Asurada Chromebooks"
-pkgver=6
+pkgver=7
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -15,7 +15,6 @@ depends="
 	postmarketos-base
 	postmarketos-cros-common
 	soc-mediatek-mt8183
-	systemd-boot
 "
 makedepends="devicepkg-dev"
 source="deviceinfo modules-initfs"
@@ -36,6 +35,6 @@ nonfree_firmware() {
 }
 
 sha512sums="
-8374c0e73e0f10f6f80d80fedbc5b731729c2bac0dc7d8ff4735a95229f7683efb2ae71f01f0d8aa07c5c6c82e88f25888afe44a19d26faa1ff49984268d4482  deviceinfo
+420b59230d28692ee8c72310d9de1e3ed6a89660b556d5019a63b6cf0a529900f135ddba75cec22e404616ad770313829cce5593202ef0ba6d4927a80aa8bae5  deviceinfo
 d90b91bd2bb409941878ebadf8d28ef66406edb64cbcac99443c3e0c072801ba94ec9fa3b551f59b8a27a33c7a34f511604bd30328195fc261f927d87138801d  modules-initfs
 "

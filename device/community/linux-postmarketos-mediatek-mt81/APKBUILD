@@ -1,7 +1,9 @@
 # Maintainer: WeirdTreeThing <bradyn127@protonmail.com>
+# Co-Maintainer: Alicja Michalska <ellyqw@mainlining.org>
+# Co-Maintainer: Ingo Reitz <9l@9lo.re>
 pkgname=linux-postmarketos-mediatek-mt81
 pkgver=6.12.57
-pkgrel=3
+pkgrel=4
 pkgdesc="Mainline kernel for mediatek mt8183/mt8192/mt8195/mt8186"
 arch="aarch64"
 _flavor="${pkgname#linux-}"

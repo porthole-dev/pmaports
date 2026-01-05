@@ -3,7 +3,7 @@
 pkgname=device-qcom-msm89x7
 pkgdesc="Generic device package for various Qualcomm MSM8917/MSM8937/MSM8940-based devices"
 pkgver=6
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -17,6 +17,7 @@ depends="
 	mkbootimg
 	msm-firmware-loader
 	postmarketos-base
+	qbootctl
 	soc-qcom-msm89x7
 "
 makedepends="devicepkg-dev"

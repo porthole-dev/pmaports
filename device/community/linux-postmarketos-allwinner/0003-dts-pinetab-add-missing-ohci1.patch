@@ -1,4 +1,4 @@
-From 5ca385ff51468c7953fa2940cd21f7f66399b060 Mon Sep 17 00:00:00 2001
+From 1506286d8c16d785be82821ec85f43dffa389b83 Mon Sep 17 00:00:00 2001
 From: Oliver Smith <ollieparanoid@postmarketos.org>
 Date: Tue, 20 Oct 2020 11:11:48 +0200
 Subject: [PATCH] dts: pinetab: add missing ohci1
@@ -28,5 +28,5 @@ index 419fe19b4a6f..e30034a1553b 100644
  	status = "okay";
  };
 -- 
-2.51.0
+2.52.0
 

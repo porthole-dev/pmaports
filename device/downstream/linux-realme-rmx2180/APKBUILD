@@ -3,7 +3,7 @@
 
 pkgname=linux-realme-rmx2180
 pkgver=4.9.190
-pkgrel=0
+pkgrel=1
 pkgdesc="Realme C15 kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -31,7 +31,7 @@ export HOSTCC="clang-18"
 
 # Source
 _repository="realmeC11_realmeC12_realmeC15_AndroidQ-kernel-source"
-_commit="3f54208986b6cbcd8c03049dd3e7c221347a76a8"
+_commit="d82b312baf4f5a95df870c551a43e89cc2372f48"
 _config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/fantom3031/$_repository/archive/$_commit.tar.gz
@@ -76,7 +76,7 @@ package() {
 }
 
 sha512sums="
-fc126b4467b7f733bcdea80b568cbaf431f26127f6645616814daa2f3d89fe442abd159a7ac092b43e260f879adc510bf313ee2e7c2e9e74fd7b348dbdfa02d5  linux-realme-rmx2180-3f54208986b6cbcd8c03049dd3e7c221347a76a8.tar.gz
+bb12c8694cbf5a811512966cb3d98b68e92f30b9ea51c33c3847bf9c45e9e1a0438cbd3b58013209ba21c7d4b6d519251e99f0dbd20f106ccbae2e51089261fa  linux-realme-rmx2180-d82b312baf4f5a95df870c551a43e89cc2372f48.tar.gz
 6e01dce27223c84c41d09b15b1ecd8c4e367ec60401317a1b647e50538b2fe72858be82dcc31d9c05a03a06f19f6cd5081d825b75d088eca943eac92faef3ef3  config-realme-rmx2180.aarch64
 182be3c596b9cc267ac108d7cf03fc8c328ccc6b36770800e4dcedea8d1bb65e3f5eacf590c2948f58b1418cc60a1670ba77dde8c259e428d158c31b6e1dbaf5  fix-check-lxdialog.patch
 4dec1b5bc8fac48785d4c98dde36913e2124dcdafb0c79c4f45437afcb202cbda3367a64f4c36a42ca7b5d5cdc50c4b3423a0d65b167d59faa56db8c7ecdeb53  0001-disable-cross-compile.patch

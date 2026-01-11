@@ -1,8 +1,8 @@
-# Maintainer: Jens Reidel <adrian@travitia.xyz>
+# Maintainer: Aelin <aelin@postmarketos.org>
 
 pkgname=firmware-xiaomi-sweet
 pkgver=1
-pkgrel=0
+pkgrel=1
 pkgdesc="Firmware for Xiaomi Redmi Note 10 Pro"
 url="https://github.com/sm7150-mainline/firmware-xiaomi-sweet"
 arch="aarch64"

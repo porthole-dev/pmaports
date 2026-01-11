@@ -1,4 +1,4 @@
-# Maintainer: Jens Reidel <adrian@travitia.xyz>
+# Maintainer: Aelin <aelin@postmarketos.org>
 # Co-Maintainer: Danila Tikhonov <danila@jiaxyga.com>
 # Co-Maintainer: David Wronek <david@mainlining.org>
 # Co-Maintainer: Arian Kulmer <arian.kulmer@web.de>
@@ -7,7 +7,7 @@
 pkgname=device-qcom-sm7150
 pkgdesc="Generic device package for Qualcomm SM7150 devices"
 pkgver=6
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"

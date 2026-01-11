@@ -1,7 +1,7 @@
 # Maintainer: Clayton Craft <clayton@craftyguy.net>
 pkgname=linux-postmarketos-asahi
 pkgver=6.18.4_p1
-pkgrel=0
+pkgrel=1
 _rel=${pkgver#*_p}
 _kver=${pkgver%_p*}
 _kver=${_kver//_/-}
@@ -97,6 +97,6 @@ f7846dae1d24091ea2b0e305ddb030f23345c533b75053bd7087a9d4ba3223f2f501aa3eab78148b
 c3efedc043588c9c23e69b82e97819f8d92f69e34aaa5223f340baa67f45f2e2acc0ad64fbdc646761ba263a70e068446286043878cb84ed2a5afb8f86a1e921  asahi.config
 0f9b91bcaf66a7004268e31a14d0e05a9d63da20a5a027cbcbaeb75453de4edf41abf34c422d04616a0f233cc86497a8939ab1f455e697990653a7a740ea46ef  misc.config
 e75e7e80cd26dc22cf34ef8b8c969de4b8c44c4d16b6b2c8e4a7d919f4688569675e428a9c2bbdaa22a6df0bfced04012d5645650c2383317e450a7da7662967  pmos.config
-5c07c59405356d1a14adbb98adbd9efde8352c1f07ab791d15a208c8fe262ce0dd47820694cb4b371b68b05917f19ec248c4c506d74b206e25a90acf7c070ded  0001-nvmem-apple-spmi-nvmem-Fix-CFI-failures.patch
+8d205300cfabe192b53ed1cc644b087e76421eb973e1b2a31d657e4f2676badebdfcf6b0865569c43b4b904935435f6e729c3a8d4a6221fb5792e40ec1017a0f  0001-nvmem-apple-spmi-nvmem-Fix-CFI-failures.patch
 d89ae23b1e51e3a928487a533ef22a61d9bb56a274d10f0f5fa9e92684b110a69be09cf9dffe33b8d55da7e550030a0de00c9fcd32927b9fe9e182752ca01787  0002-fixup-iio-common-Add-AOP-sensor-drivers.patch
 "

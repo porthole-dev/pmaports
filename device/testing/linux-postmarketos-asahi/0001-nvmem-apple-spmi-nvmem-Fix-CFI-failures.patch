@@ -1,15 +1,3 @@
-From 7db3ec97747fa7e92f11f4b4e610f2453d06663e Mon Sep 17 00:00:00 2001
-From: Jens Reidel <adrian@mainlining.org>
-Date: Tue, 18 Nov 2025 01:41:13 +0100
-Subject: [PATCH] nvmem: apple-spmi-nvmem: Fix CFI failures
-
-Signed-off-by: Jens Reidel <adrian@mainlining.org>
----
- drivers/nvmem/apple-spmi-nvmem.c | 22 ++++++++++++++++++++--
- 1 file changed, 20 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/nvmem/apple-spmi-nvmem.c b/drivers/nvmem/apple-spmi-nvmem.c
-index 88614005d5ce..acc2cddf3f3b 100644
 --- a/drivers/nvmem/apple-spmi-nvmem.c
 +++ b/drivers/nvmem/apple-spmi-nvmem.c
 @@ -18,6 +18,24 @@ static const struct regmap_config apple_spmi_regmap_config = {
@@ -48,7 +36,3 @@ index 88614005d5ce..acc2cddf3f3b 100644
  	};
 
  	regmap = devm_regmap_init_spmi_ext(sdev, &apple_spmi_regmap_config);
---
-2.51.1
-
-

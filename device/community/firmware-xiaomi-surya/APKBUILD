@@ -1,8 +1,8 @@
-# Maintainer: Jens Reidel <adrian@travitia.xyz>
+# Maintainer: Aelin <aelin@postmarketos.org>
 
 pkgname=firmware-xiaomi-surya
 pkgver=3
-pkgrel=0
+pkgrel=1
 pkgdesc="Firmware for Xiaomi POCO X3 NFC"
 url="https://github.com/sm7150-mainline/firmware-xiaomi-surya"
 arch="aarch64"

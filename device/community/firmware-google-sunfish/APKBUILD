@@ -1,8 +1,8 @@
-# Maintainer: Jens Reidel <adrian@travitia.xyz>
+# Maintainer: Aelin <aelin@postmarketos.org>
 
 pkgname=firmware-google-sunfish
 pkgver=1
-pkgrel=0
+pkgrel=1
 pkgdesc="Firmware for Google Pixel 4a"
 url="https://github.com/sm7150-mainline/firmware-google-sunfish"
 arch="aarch64"

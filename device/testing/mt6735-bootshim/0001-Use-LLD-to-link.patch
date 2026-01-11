@@ -1,15 +1,3 @@
-From 484711c80578ed4da6bf043e75481fa0ed004342 Mon Sep 17 00:00:00 2001
-From: Jens Reidel <adrian@postmarketos.org>
-Date: Fri, 28 Nov 2025 09:55:46 +0100
-Subject: [PATCH] Use LLD to link
-
-Signed-off-by: Jens Reidel <adrian@postmarketos.org>
----
- SConstruct | 1 +
- 1 file changed, 1 insertion(+)
-
-diff --git a/SConstruct b/SConstruct
-index ecf6d1d..ae1fbe2 100644
 --- a/SConstruct
 +++ b/SConstruct
 @@ -6,6 +6,7 @@ env = Environment(
@@ -20,6 +8,3 @@ index ecf6d1d..ae1fbe2 100644
  		"-mcpu=cortex-a53",
  		"-nostdlib",
  		"-DAARCH64_BASE=$aarch64_base",
--- 
-2.52.0
-

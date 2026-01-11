@@ -1,8 +1,8 @@
-# Maintainer: Jens Reidel <adrian@travitia.xyz>
+# Maintainer: Aelin <aelin@postmarketos.org>
 
 pkgname=firmware-qcom-sm7150
 pkgver=1
-pkgrel=1
+pkgrel=2
 url="https://github.com/sm7150-mainline"
 pkgdesc="Firmware for Qualcomm SM7150 devices"
 arch="aarch64"

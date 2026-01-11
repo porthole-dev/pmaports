@@ -1,3 +1,5 @@
+# Archived: depends on petitboot-motorola-smi
+
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-motorola-smi
 pkgdesc="Motorola RAZR i"

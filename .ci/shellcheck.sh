@@ -38,7 +38,6 @@ sh_files="
 
 	$(find . -name '*.trigger')
 	$(find . -path './main/devicepkg-dev/*.sh')
-	$(find . -path './main/postmarketos-mvcfg/*.sh')
 
 	$(find . -path './.ci/**.sh')
 	$(find . -path '**/tests/*.sh')

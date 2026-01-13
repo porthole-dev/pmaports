@@ -224,6 +224,7 @@ if __name__ == "__main__":
                 Arch.armhf: "qemu",
                 Arch.riscv64: "qemu",
                 Arch.ppc64le: "ppc64le",
+                Arch.loongarch64: "loongarch64",
             },
         )
         with open(child_pipeline, "w") as fw:

@@ -2,7 +2,7 @@ maintainer="Antoine Martin (ayakael) <dev@ayakael.net>"
 pkgname=device-pine64-pinenote
 pkgdesc="Pine64 PineNote"
 pkgver=8
-pkgrel=2
+pkgrel=3
 _commit="28d2c05ab4e80a7972611cd3188f3e8be4197f6a"
 url="https://postmarketos.org"
 license="GPL-3.0-only"
@@ -115,7 +115,7 @@ package() {
 hrdl() {
 	pkgdesc="Opinionated sway UI by hrdl optimized for the Pinenote"
 	install="$subpkgname.post-install $subpkgname.post-deinstall"
-	depends="postmarketos-ui-sway postmarketos-theme waybar squeekboard swayidle swaybg iio-sensor-proxy
+	depends="postmarketos-ui-sway waybar squeekboard swayidle swaybg iio-sensor-proxy
 	brightnessctl jq nwg-menu py3-i3ipc network-manager-applet rot8 papirus-icon-theme
 	ttf-font-awesome font-noto-emoji font-noto lisgd wtype coreutils wtype kitty
 	adwaita-icon-theme tinydm thunar py3-pillow py3-dbus-next py3-pydbus bash"

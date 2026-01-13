@@ -17,13 +17,10 @@ required.
 Moving devices from category is a special operation, see
 [device categorization](./device-categorization).
 
-## Enable kernel options across multiple kernels
+## Changing kconfigcheck requirements
 
-Enable kernel options across multiple kernels can be done in one merge request,
-and requires 2 any approvals from the team, but does not need approvals from
-package maintainers. The reason is that would be too much effort to enable
-kernel options across all kernels. It can be reverted afterwards if there is a
-good reason.
+Changes to `kconfigcheck.toml` are a special operation, see
+[kconfigcheck](./kconfigcheck).
 
 ## Testing requirements
 

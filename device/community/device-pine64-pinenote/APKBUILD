@@ -115,10 +115,36 @@ package() {
 hrdl() {
 	pkgdesc="Opinionated sway UI by hrdl optimized for the Pinenote"
 	install="$subpkgname.post-install $subpkgname.post-deinstall"
-	depends="postmarketos-ui-sway waybar squeekboard swayidle swaybg iio-sensor-proxy
-	brightnessctl jq nwg-menu py3-i3ipc network-manager-applet rot8 papirus-icon-theme
-	ttf-font-awesome font-noto-emoji font-noto lisgd wtype coreutils wtype kitty
-	adwaita-icon-theme tinydm thunar py3-pillow py3-dbus-next py3-pydbus bash"
+	depends="
+		adwaita-icon-theme
+		bash
+		brightnessctl
+		coreutils
+		font-noto
+		font-noto-emoji
+		iio-sensor-proxy
+		jq
+		kitty
+		lisgd
+		network-manager-applet
+		nwg-menu
+		papirus-icon-theme
+		postmarketos-ui-sway
+		py3-dbus-next
+		py3-i3ipc
+		py3-pillow
+		py3-pydbus
+		rot8
+		squeekboard
+		swaybg
+		swayidle
+		thunar
+		tinydm
+		ttf-font-awesome
+		waybar
+		wtype
+		wtype
+		"
 
 	# allows overwrite of menu-start.css
 	replaces="nwg-menu"

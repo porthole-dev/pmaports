@@ -1,7 +1,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 pkgname=device-samsung-a50
 pkgdesc="Samsung Galaxy A50"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -31,5 +31,5 @@ package() {
 
 sha512sums="
 9494395b9b0da1b5660ae19671dbe5e4e5211ae84121001f4d6ae1b9fbaf5ead29c30943f3a0eaf98c19c628ff6655e177ba481896ae325839ac6621fb95e8ee  deviceinfo
-bcd7d5f32f4c526d7f12da5d35ba460841459676b8108044f502bb6904cdddffe3f0b2485bd3d82c6cd6e4b61b16fd00503f367158609fa15e76db1e3a0061c9  initfs-hook.sh
+e944629da491f6fff12c30d4c2bf4736ac7d139d4f924b7f91ac8bc7b89794e7971898e450794cb0c1987489491b9d3b056e32c2f92ad102be5117e8e3ac928a  initfs-hook.sh
 "

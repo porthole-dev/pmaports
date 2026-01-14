@@ -1,7 +1,7 @@
 #!/bin/sh
 
-fbdebug -m 4
-fbdebug -m 0
+# Calls to fbdebug were removed because
+# they are the cause to the device's bootloop.
 
 p=/sys/class/graphics/fb0
 cat $p/modes > $p/mode

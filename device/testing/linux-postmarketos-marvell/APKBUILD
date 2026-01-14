@@ -3,7 +3,7 @@
 # Co-Maintainer: exkc <exkc@exkc.moe>
 maintainer="Robert Eckelmann <longnoserob@postmarketos.org>"
 pkgname=linux-postmarketos-marvell
-pkgver=6.18.4
+pkgver=6.18.5
 pkgrel=0
 pkgdesc="mainline (stable) for Marvell SoC"
 arch="armv7"
@@ -73,6 +73,6 @@ sha512sums="
 ac8471bae424aa0e5835f8c6ed04834918ca665941910fe132353bc35735f1e848e3c34b11e3cd50a49487ba8b5e7cd2a22efb678f19aa85a584efa01d8b49b1  0002-dts-marvell-mmp3-dell-ariel-merge-parts-from-linux-m.patch
 109612e83948e49e02be4f3275504eb584f9146eba97f327995c8dc0d2a41f049f3976821206bc12087ff0059880a61c646e5cecdfbaf8441a0212f2e50ae93e  0003-dts-marvell-mmp-dell-ariel-add-framebuffer.patch
 4c26ffca58dbdb75f24670d0aee5115cc3dc96b09ba2bcbcdd435d3e1e49cc0672cb0c0934a357047f59f47e1d24846f46cdd0cdcd19c87e14ff1c045ddd21af  wd-glacier.patch
-ad361094f27b8d5546a1c0a405fd2f081f39bf3e5eaf625a72019a5925d3c66c0e8eb1358904d4a0a47ead03e1098b25aaab6dd000f33c362b7cdab984cf4edf  linux-postmarketos-marvell-6.18.4.tar.xz
-f9b9af57e7a1a3b042d27ec4d63bc00a51e1aadbe6eb3eeab672ad49e8e2efd2ae2c06f88f5f5268105c2e85bb5d601a2a8452f361674ba242dc6c420031c150  config-postmarketos-marvell.armv7
+735c41f23846613cb52a4bc31820ee66251852d6a55c3a7aa29bd9a8e78634ea3042bff7090ef00652b35fa20523cb844c08f60486e6a0ee2cdef0e6b607e5fa  linux-postmarketos-marvell-6.18.5.tar.xz
+e8bfda126c95c44469c857e103564926950734d3717b5cd022fca742224187e27fe24e1ccb1421f5c281a51609b1ba0d2e38dee43db4b2ac118a2d358a2dd5cb  config-postmarketos-marvell.armv7
 "

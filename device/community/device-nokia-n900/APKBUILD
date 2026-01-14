@@ -2,7 +2,7 @@
 maintainer="Danct12 <danct12@disroot.org>"
 pkgname=device-nokia-n900
 pkgver=51
-pkgrel=3
+pkgrel=4
 pkgdesc="Nokia N900"
 url="https://postmarketos.org"
 arch="armv7"
@@ -93,7 +93,9 @@ build() {
 	mkimage -A arm -O linux -T script -C none -a 0 -e 0 -n postmarketos -d "$srcdir"/uboot-script.cmd "$srcdir"/boot.scr
 	cd "$srcdir"
 	mkdir keymaps
+
 	for i in ../keymaps/*.map; do
+		gzip -ck "$i" > keymaps/"${i%.*}.map.gz"
 		loadkeys -b $i > keymaps/"${i%.*}.bmap"
 		gzip keymaps/"${i%.*}.bmap"
 	done
@@ -144,6 +146,21 @@ package() {
 		"$pkgdir"/usr/share/bkeymaps/pt/rx51_pt.bmap.gz
 	install -D -m644 "$srcdir"/keymaps/rx51_ptes.bmap.gz \
 		"$pkgdir"/usr/share/bkeymaps/es/rx51_es.bmap.gz
+
+	install -D -m644 "$srcdir"/keymaps/rx51_us.map.gz \
+		"$pkgdir"/usr/share/keymaps/us/rx51_us.map.gz
+	install -D -m644 "$srcdir"/keymaps/rx51_ch.map.gz \
+		"$pkgdir"/usr/share/keymaps/ch/rx51_ch.map.gz
+	install -D -m644 "$srcdir"/keymaps/rx51_it.map.gz \
+		"$pkgdir"/usr/share/keymaps/it/rx51_it.map.gz
+	install -D -m644 "$srcdir"/keymaps/rx51_fise.map.gz \
+		"$pkgdir"/usr/share/keymaps/fi/rx51_fi.map.gz
+	install -D -m644 "$srcdir"/keymaps/rx51_fise.map.gz \
+		"$pkgdir"/usr/share/keymaps/se/rx51_se.map.gz
+	install -D -m644 "$srcdir"/keymaps/rx51_ptes.map.gz \
+		"$pkgdir"/usr/share/keymaps/pt/rx51_pt.map.gz
+	install -D -m644 "$srcdir"/keymaps/rx51_ptes.map.gz \
+		"$pkgdir"/usr/share/keymaps/es/rx51_es.map.gz
 
 	# Kernel module management
 	install -D -m644 "$srcdir"/modem-load.conf \

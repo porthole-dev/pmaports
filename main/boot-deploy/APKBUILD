@@ -1,6 +1,6 @@
 maintainer="Clayton Craft <clayton@craftyguy.net>"
 pkgname=boot-deploy
-pkgver=0.21.0
+pkgver=0.21.1
 pkgrel=0
 pkgdesc="tool for finalizing and deploying boot related files"
 url="https://gitlab.postmarketos.org/postmarketOS/boot-deploy"
@@ -28,6 +28,6 @@ package() {
 		"$pkgdir"/usr/share/mkinitfs-triggers/boot-deploy
 }
 sha512sums="
-8ac6c459eed740eae6463cb57585b58b66570f06995d749ec9660a31070395e02c298efb35ba1ae5f0716f40d0e495353aeccb1792c9f5c80c33ea7015fe8fe0  boot-deploy-0.21.0.tar.gz
+84d711d58234d41e2788dc8acf7d445105834f0eb71387a1c3c41987cb6d3502900d1aa260798a8a39eb232fd13d7bdcf15660c28cd0d396e704abc2cfdc5140  boot-deploy-0.21.1.tar.gz
 a243975b9850d9933e0f917f7eb38fc4a76ea658c3dcc56f035f60ee6c62d6740c1107143b8210bdc0231d4c9b6b2003e458120985604eb09649322d359ae89f  os-customization
 "

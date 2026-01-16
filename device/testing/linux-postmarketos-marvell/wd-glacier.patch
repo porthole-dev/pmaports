@@ -1,12 +1,12 @@
-From c7edbbc4c7a8d8cd2e773f1d7bb4b9d9ebeb9773 Mon Sep 17 00:00:00 2001
+From 775e76fabc69f67d430a594a876e2403614d9962 Mon Sep 17 00:00:00 2001
 From: exkc <exkc@exkc.moe>
 Date: Tue, 28 Oct 2025 08:25:19 +0800
 Subject: [PATCH] Add WD MyCloud Gen2 Device Tree
 
 ---
  arch/arm/boot/dts/marvell/Makefile            |   3 +-
- .../dts/marvell/armada-375-wd-glacier.dts     | 127 ++++++++++++++++++
- 2 files changed, 129 insertions(+), 1 deletion(-)
+ .../dts/marvell/armada-375-wd-glacier.dts     | 131 ++++++++++++++++++
+ 2 files changed, 133 insertions(+), 1 deletion(-)
  create mode 100644 arch/arm/boot/dts/marvell/armada-375-wd-glacier.dts
 
 diff --git a/arch/arm/boot/dts/marvell/Makefile b/arch/arm/boot/dts/marvell/Makefile
@@ -25,10 +25,10 @@ index 1e0f5ff49..d0e1fb72c 100644
  	armada-382-rd-ac3x-48g4x2xl.dtb \
 diff --git a/arch/arm/boot/dts/marvell/armada-375-wd-glacier.dts b/arch/arm/boot/dts/marvell/armada-375-wd-glacier.dts
 new file mode 100644
-index 000000000..ad1a932ae
+index 000000000..bb65e9f15
 --- /dev/null
 +++ b/arch/arm/boot/dts/marvell/armada-375-wd-glacier.dts
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,131 @@
 +// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 +/*
 + * Device Tree file for WD MyCloud Gen2
@@ -153,9 +153,13 @@ index 000000000..ad1a932ae
 +	status = "okay";
 +};
 +
++&usb1 {
++	status = "okay";
++};
++
 +&usb2 {
 +	status = "okay";
 +};
 -- 
-2.50.1
+2.52.0
 

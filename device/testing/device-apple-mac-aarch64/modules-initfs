@@ -59,6 +59,8 @@ rtc_macsmc
 sdhci
 sdhci-pci
 spi_apple
+spi_hid_apple
+spi_hid_apple_of
 spmi_apple_controller
 tg3
 tps6598x

@@ -1,0 +1,32 @@
+# Reference: <https://postmarketos.org/devicepkg>
+pkgname=device-semc-urushi
+pkgdesc="Sony Ericsson Xperia ray"
+pkgver=1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="armv7"
+options="!check !archcheck"
+depends="
+	linux-semc-urushi
+	mkbootimg
+	postmarketos-base
+	postmarketos-base-downstream
+	msm-fb-refresher
+"
+makedepends="devicepkg-dev"
+source="
+	deviceinfo
+"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+sha512sums="
+2e8fd57a64f48c4650336104aa77fa98697c00ed10cc50cff5fe8e8cac20cc4335dbc21eff6241104a16aa579540c3824824ba85ea03eee7e3ae50553c22c880  deviceinfo
+"

@@ -4,8 +4,8 @@ pkgver=6.5.5
 pkgrel=0
 pkgdesc="The KDE crash handler"
 # armhf blocked by qt6-qtdeclarative -> ki18n
-# riscv64, x86 and loongarch64 blocked by out-of-sync builder in Alpine
-arch="all !armhf !riscv64 !x86 !loongarch64"
+# riscv64 and x86 blocked by out-of-sync builder in Alpine
+arch="all !armhf !riscv64 !x86"
 url="https://kde.org/plasma-desktop/"
 license="GPL-2.0-or-later"
 depends="

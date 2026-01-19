@@ -1,0 +1,119 @@
+# Co-Maintainer: Achill Gilgenast <achill@achill.org>
+maintainer="Aelin <aelin@postmarketos.org>"
+pkgname=linux-postmarketos-mainline
+pkgver=6.19_rc6
+pkgrel=0
+_rel=${pkgver#*_p}
+_kver=${pkgver%_p*}
+_kver=${_kver//_/-}
+pkgdesc="Mainline Kernel"
+# armhf: pmbootstrap cannot dynamically choose a defconfig, so it ends up using multi_v7_defconfig which isn't correct
+# s390x: kconfigcheck is not ready for it yet
+arch="all !armhf !s390x"
+_flavor="mainline"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="
+	!check
+	!strip
+	!tracedeps
+	pmb:cross-native
+	pmb:generic-kernel
+	pmb:kconfigcheck-community
+	pmb:kconfigcheck-immutable
+	pmb:kconfigcheck-rust
+	pmb:kconfigcheck-uefi
+	pmb:kconfigcheck-virt
+"
+makedepends="
+	bison
+	clang
+	clang-libclang
+	diffutils
+	elfutils-dev
+	findutils
+	flex
+	linux-headers
+	lld
+	llvm
+	openssl-dev
+	pahole
+	perl
+	postmarketos-installkernel
+	python3
+	rust
+	rust-bindgen
+	rust-src
+	rustfmt
+	sed
+	zstd
+"
+
+# Source
+source="
+	$pkgname-$pkgver.tar.gz::https://git.kernel.org/torvalds/t/linux-${pkgver/_/-}.tar.gz
+
+	config-mainline.aarch64
+	config-mainline.armv7
+	config-mainline.loongarch64
+	config-mainline.ppc64le
+	config-mainline.riscv64
+	config-mainline.x86
+	config-mainline.x86_64
+"
+builddir="$srcdir/linux-${pkgver/_/-}"
+_defconfig="defconfig"
+
+case "$CARCH" in
+	aarch64*) _carch="arm64" ;;
+	arm*) _carch="arm" ;;
+	loongarch*) _carch="loongarch" ;;
+	ppc*) _carch="powerpc" ;;
+	riscv*) _carch="riscv" ;;
+	s390x) _carch="s390" ;;
+	x86) _carch="i386" ;;
+	x86_64) _carch="x86_64" ;;
+esac
+
+prepare() {
+	default_prepare
+	cp "$srcdir/config-$_flavor.$CARCH" .config
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
+}
+
+package() {
+	local _install
+	case "$CARCH" in
+		arm*|aarch64|riscv*) _install="zinstall dtbs_install" ;;
+		*) _install="install" ;;
+	esac
+
+	make modules_install $_install \
+		ARCH="$_carch" \
+		LLVM=1 \
+		INSTALL_PATH="$pkgdir"/boot/ \
+		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs-$_flavor
+
+	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release
+}
+
+sha512sums="
+7bf5103fb562ed61423be60bf7504fbdb19e67cc3a5288e30702da664aa81a4dc87501223d86fbdf2fa72ba1f1c56602719bcae581c6c6c529ebe7a889e89b53  linux-postmarketos-mainline-6.19_rc6.tar.gz
+96f0e51b93847e9e1b4faa2a8f7cfb04ff0040d362ead6c29606797dd31b14262d3cf198d9a3b4a45cfa4681931ccf0fe42b129c6eea2891540213fb9a2a29bb  config-mainline.aarch64
+0abc3306a05e2352035fc0fc02f3274b49d5aec7c5b0a6fa84de9faa9bc15295d71161b0f0b269c9f255a24e7e1ebb915649e484a114b5bfe3cd105a637c2188  config-mainline.armv7
+a94fdf843a4d1963c863b207909d2f362ad6902fadaacd91da03e1240430217659a0fc1a4a1c4a976a06ce389276b0ff45d8f44ef7d082f03efce40fcc165290  config-mainline.loongarch64
+e2992281fb8163c5ecdbf5999832d4193863d48783764e29baff9a0a25a8d9d9f531446e26e4804d5d0cc3e5df9b635b006d30642c29aa8514584c2b7ecc3874  config-mainline.ppc64le
+17d136db7a7fc809d2155eb145e361bed72d701edef5c1b9f1fa42432570567d475da68d6f9369305856c5317a1fc231e5199912c2c1f16d9e6b7ce8f691d9e9  config-mainline.riscv64
+7fae7e6ab0fa47249a5771708a8b7336e91c14f15a130dd25ec3852a0d9e09b1efe784a76aef2f0b6896f76d630c819745ae301a93d94d4fdc7c9fe9bf31bd41  config-mainline.x86
+d20d8b4475b241e210c46f6802e459ad99cd934bf0144259bb622d633dabffa8cef86428cd4bbad56444839305fb1ff8bd1a6a4ae4356bcd86a55c9127a42d9f  config-mainline.x86_64
+"

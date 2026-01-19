@@ -1,0 +1,51 @@
+# "pmbootstrap kconfig generate" will use the config options from this file
+# for kernel packages that have "pmb:generic-kernel" set in options, such as
+# linux-postmarketos-mainline, linux-postmarketos-stable and other generic
+# kernels that are not restricted to a specific subset of devices.
+#
+# The categorization in this file is purely for compatibility reasons and
+# for grouping things together, there is no filtering performed on them.
+#
+# This file is maintained by the maintainers of the generic kernel packages:
+# Aelin <aelin@postmarketos.org>
+# Achill Gilgenast <achill@achill.org>
+
+# localversion
+["category:localversion".">=0.0.0"."all"]
+LOCALVERSION_AUTO = "n"
+
+# virtio devices
+["category:virtio".">=0.0.0"."all"]
+NET_9P = "m"
+NET_9P_VIRTIO = "m"
+VIRTIO_BLK = "y"
+SCSI_VIRTIO = "y"
+VIRTIO_NET = "y"
+VIRTIO_CONSOLE = "y"
+HW_RANDOM_VIRTIO = "m"
+I2C_VIRTIO = "m"
+DRM_VIRTIO_GPU = "m"
+SND_VIRTIO = "m"
+VIRTIO_PCI = "y"
+VIRTIO_BALLOON = "m"
+VIRTIO_INPUT = "y"
+VIRTIO_MMIO = "y"
+VIRTIO_MMIO_CMDLINE_DEVICES = "y"
+RPMSG_VIRTIO = "m"
+VIRTIO_FS = "m"
+CRYPTO_DEV_VIRTIO = "m"
+
+# EFI framebuffer support is explicitly disabled in some close-to-mainline
+# kernels, so it cannot go in kconfigcheck
+["category:uefi".">=0.0.0"."aarch64 armv7 loongarch64 riscv64 x86 x86_64"]
+FB_EFI = "y"
+
+["category:virtio".">=0.0.0"."aarch64 x86 x86_64"]
+VIRTIO_IOMMU = "m"
+
+# useful ppc64le configs, taken from Alpine
+["category:misc".">=0.0.0"."ppc64le"]
+POWER8_CPU = "y"
+OPAL_PRD = "y"
+PPC_SUBPAGE_PROT = "y"
+

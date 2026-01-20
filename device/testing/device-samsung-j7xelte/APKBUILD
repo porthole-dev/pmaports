@@ -2,7 +2,7 @@
 maintainer="bluebunny <kalorin.bok084@passinbox.com>"
 pkgname=device-samsung-j7xelte
 pkgdesc="Samsung Galaxy J7 (2016)"
-pkgver=5
+pkgver=6
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -17,7 +17,10 @@ depends="
 "
 makedepends="devicepkg-dev"
 _pmb_recommends="firmware-samsung-j7xelte"
-source="deviceinfo"
+source="
+	deviceinfo
+	modules-initfs
+	"
 
 build() {
 	devicepkg_build $startdir $pkgname
@@ -29,4 +32,5 @@ package() {
 
 sha512sums="
 6c3461f12be9081966f7ff9240d5b4d3447d66ae77673be86f126f69f718a4aa80a418811511f8aef4f92ff3d391de6eb6b4b370aeb1df9c61099e02fb5ed605  deviceinfo
+15d03e90e5e70fd9120ad6a98b66ca980470465fc6e0548f8126aea2b692bc9ea9141d5efc2cddeebccb905204401a523d0b4b4ad544a1c264083309063ba403  modules-initfs
 "

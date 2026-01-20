@@ -1,9 +1,9 @@
 # Forked from Alpine to add systemd!
-maintainer=""
+maintainer="Bart Ribbers <bribbers@disroot.org>"
 pkgname=plasma-workspace
 _pkgver=6.5.5
 pkgver=9999$_pkgver
-pkgrel=0
+pkgrel=1
 pkgdesc="KDE Plasma Workspace"
 # armhf blocked by qt6-qtdeclarative
 # riscv64 and x86 blocked by out-of-sync builder in Alpine

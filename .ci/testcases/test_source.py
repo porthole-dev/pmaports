@@ -101,6 +101,9 @@ def test_aports_unreferenced_files():
             # Skip APKBUILDs and directories
             if rel_file_path in ["APKBUILD", "gitlab-ci.yml.j2"] or os.path.isdir(file):
                 continue
+            # Skip kernel fragments in linux-* packages
+            if os.path.basename(rel_file_path).endswith(".config") and apkbuild["pkgname"].startswith("linux-"):
+                continue
 
             if os.path.basename(rel_file_path) not in sources_chk \
                     and rel_file_path not in apkbuild["install"] \

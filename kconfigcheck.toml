@@ -548,6 +548,7 @@ HID_GOODIX_SPI = "m"
 ["category:usb".">=0.0.0"."all"]
 DRM_UDL = "m"  # DisplayLink - connecting displays via USB
 SND_USB_AUDIO = "m"  # USB audio devices
+USB_SERIAL = "m" # USB serial consoles
 USB_SERIAL_CP210X = "m"  # USB serial console
 USB_SERIAL_SIMPLE = "m" # USB serial console
 USB_STORAGE = "m"  # USB mass storage devices

@@ -6,9 +6,9 @@ maintainer="Newbyte <newbyte@postmarketos.org>"
 pkgname=gnome-keyring
 _pkgver=48.0
 pkgver=9999$_pkgver
-pkgrel=0
+pkgrel=1
 pkgdesc="GNOME keyring"
-url="https://wiki.gnome.org//Projects/GnomeKeyring"
+url="https://gitlab.gnome.org/GNOME/gnome-keyring"
 # armhf: pmb#2618
 arch="all !armhf"
 license="GPL-2.0-only LGPL-2.0-only"

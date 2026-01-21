@@ -22,6 +22,7 @@ community = [
 	"category:iwd",
 	"category:netboot",
 	"category:nftables",
+	"category:usb",
 	"category:usb_gadgets",
 	"category:waydroid",
 	"category:wine",

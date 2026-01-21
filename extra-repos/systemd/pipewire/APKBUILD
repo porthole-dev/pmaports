@@ -3,7 +3,7 @@ maintainer="Achill Gilgenast <achill@achill.org>"
 pkgname=pipewire
 _pkgver=1.4.9
 pkgver=9999$_pkgver
-pkgrel=0
+pkgrel=1
 _so_ver=0.3
 pkgdesc="Multimedia processing graphs"
 url="https://pipewire.org/"
@@ -18,6 +18,7 @@ makedepends="
 	bluez-dev
 	dbus-dev
 	doxygen
+	eudev-dev
 	fdk-aac-dev
 	glib-dev
 	graphviz
@@ -63,6 +64,7 @@ subpackages="
 	$pkgname-lang
 	$pkgname-echo-cancel:echo_cancel
 	$pkgname-systemd
+	$pkgname-udev
 	"
 install="$pkgname.post-upgrade $pkgname.post-install"
 source="https://gitlab.freedesktop.org/PipeWire/pipewire/-/archive/$_pkgver/pipewire-$_pkgver.tar.gz

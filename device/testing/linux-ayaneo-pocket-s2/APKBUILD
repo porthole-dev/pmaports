@@ -1,0 +1,90 @@
+# Kernel config based on: arch/arm64/configs/defconfig
+maintainer="Neil Armstrong <neil.armstrong@linaro.org>"
+pkgname=linux-ayaneo-pocket-s2
+pkgver=6.19_git20260121
+pkgrel=0
+pkgdesc="Ayaneo Pocket S2 kernel fork"
+arch="aarch64"
+_carch="arm64"
+_flavor="${pkgname#linux-}"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="!strip
+	!check
+	!tracedeps
+	pmb:cross-native
+	pmb:kconfigcheck-community
+	pmb:kconfigcheck-uefi
+	"
+makedepends="
+	bash
+	bc
+	bison
+	clang
+	clang-libclang
+	devicepkg-dev
+	elfutils-dev
+	findutils
+	flex
+	git
+	lld
+	llvm
+	openssl-dev
+	perl
+	postmarketos-installkernel
+	python3
+	rust
+	rust-bindgen
+	rust-src
+	rustfmt
+	zstd
+"
+
+# Source
+_url="https://gitlab.com/superna9999/"
+_repository="linux"
+_commit="33593705946a74248d292b1d753fc0aa60fd2902"
+_defconfig="defconfig"
+_config="config-$_flavor.$arch"
+source="
+	$pkgname-$_commit.tar.gz::$_url/$_repository/-/archive/$_commit/$_repository-$_commit.tar.gz
+	misc.config
+	$_config
+"
+builddir="$srcdir/$_repository-$_commit"
+
+prepare() {
+	default_prepare
+	cp "$srcdir/config-$_flavor.$arch" .config
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
+}
+
+package() {
+	mkdir -p "$pkgdir"/boot
+
+	install -Dm644 "$builddir/arch/$_carch/boot/vmlinuz.efi" \
+		"$pkgdir/boot/linux.efi"
+
+	make LLVM=1 zinstall modules_install dtbs_install \
+		ARCH="$_carch" \
+		INSTALL_PATH="$pkgdir"/boot/ \
+		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+
+	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release
+}
+
+sha512sums="
+0ec4962ce063014df004ce4294c0d04a45033a838e81eafc29e37057ba3f171b7ba9e1b84007d92e2057188b9af6bae13830d0e7a552277964c558ca0ec26939  linux-ayaneo-pocket-s2-33593705946a74248d292b1d753fc0aa60fd2902.tar.gz
+3f3b0741e418b4ed0991ffa8e53726dd0513ee1e0e0edcba744eb49f9cb54487e5b4d54b402eff08758aa3f547e94299763397e6e41c2050be62f979f1696df5  misc.config
+2a6f3e17daa955509739735f0a3f93eea213687e2805d00bdec197648c98db1d8dc54ae453eda8599b6d3b8f614e75333495a2aaeef27a1d086561a35637ce92  config-ayaneo-pocket-s2.aarch64
+"

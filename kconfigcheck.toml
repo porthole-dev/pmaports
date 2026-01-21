@@ -546,6 +546,7 @@ SPI = "y" # Required by HID_GOODIX_SPI
 HID_GOODIX_SPI = "m"
 
 ["category:usb".">=0.0.0"."all"]
+DRM = "y" # Dependency of DRM_UDL
 DRM_UDL = "m"  # DisplayLink - connecting displays via USB
 SND_USB_AUDIO = "m"  # USB audio devices
 USB_SERIAL = "m" # USB serial consoles

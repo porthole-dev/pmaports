@@ -3,7 +3,7 @@ maintainer="Pan Ortiz <panjeoc@proton.me>"
 _flavor="postmarketos-qcom-sm8150"
 pkgname=linux-$_flavor
 pkgver=6.17.0
-pkgrel=0
+pkgrel=1
 pkgdesc="Mainline Kernel fork for SM8150 devices"
 arch="aarch64"
 _carch="arm64"
@@ -30,6 +30,7 @@ source="
 	linux-$_tag.tar.gz::$url/-/archive/$_tag/linux-$_tag.tar.gz
 	config-$_flavor.$arch
 	0001-lid-switch-fix.patch
+	0002-enable-ufs.patch
 "
 builddir="$srcdir/linux-$_tag"
 
@@ -80,4 +81,5 @@ sha512sums="
 274270bb0391bca972b1dffae778ff6fc372457b658e9252104d9894c9f24739e25df7021378cf0ac9c650cc417d0cdcdf1baa88bfdcd494920ee183298e1f34  linux-v6.17.0-sm8150.tar.gz
 72aecca7ac7fb0d9a13d9f33be499673d676123e6fdfe0814b2d25f49d698cca614a4188f976ffa2fa5e94a7918a24ab079ab9091dadabcf70d068a13d4f8314  config-postmarketos-qcom-sm8150.aarch64
 15422195814314d8f9ce905408d1256bec753ca1b58babc59391c4cb8b4fbbc9034c622129d52964ccceb39e6f4326f0eae5ca9271496e1a0432416ecd09cc1d  0001-lid-switch-fix.patch
+316decafef4528b3d8fa9ce1f2c1588048ae0a99adf088d61372d84ff95ae7bf58e5cc0d03d73201f1735f3d523468d98113ac575714930229434a46385a5c3d  0002-enable-ufs.patch
 "

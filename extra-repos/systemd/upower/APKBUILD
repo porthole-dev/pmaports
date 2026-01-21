@@ -1,9 +1,9 @@
 # Forked from Alpine for systemd support
-maintainer=""
+maintainer="Achill Gilgenast <achill@achill.org>"
 pkgname=upower
 _pkgver=1.91.0
 pkgver=9999$_pkgver
-pkgrel=1
+pkgrel=2
 pkgdesc="Power Management Services"
 url="https://upower.freedesktop.org"
 # armhf: pmb#2618
@@ -28,6 +28,7 @@ checkdepends="
 	py3-packaging
 	umockdev-dev
 	"
+_repo_url="https://gitlab.freedesktop.org/upower/upower.git"
 subpackages="$pkgname-dev $pkgname-doc $pkgname-lang $pkgname-systemd $pkgname-zsh-completion"
 source="https://gitlab.freedesktop.org/upower/upower/-/archive/v$_pkgver/upower-v$_pkgver.tar.bz2
 	0001-fix-self-test-sleep-duration.patch

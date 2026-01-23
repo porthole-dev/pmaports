@@ -110,4 +110,11 @@ if grep -qr '/etc/modprobe.d' --exclude-dir='archived' \
 	exit_code=1
 fi
 
+# Disallow maintainer comments.
+if grep -qr '# Maintainer:' -- *; then
+	echo 'ERROR: Please use maintainer variables of the form maintainer="..." instead of maintainer comments of the form # Maintainer: ...'
+	grep --color=always -r '# Maintainer:' -- *
+	exit_code=1
+fi
+
 exit "$exit_code"

@@ -1,12 +1,13 @@
 maintainer="bluebunny <kalorin.bok084@passinbox.com>"
 pkgname=firmware-samsung-j7xelte
-pkgver=3
+pkgver=4
 pkgrel=0
-pkgdesc="Proprietary firmware blobs for Samsung Galaxy J7 (2016)"
+pkgdesc="Proprietary firmware files for Samsung Galaxy J7 (2016)"
 url="https://gitlab.com/android_samsung_universal7870/vendor"
 arch="aarch64"
 license="proprietary"
 options="!check !strip !archcheck !spdx !tracedeps pmb:cross-native"
+depends="linux-firmware-brcm"
 
 _device="j7xelte"
 _repo="android_vendor_samsung_$_device"
@@ -15,11 +16,9 @@ _commit="efc44605242a736d33aa261ee233e937932dcb27"
 source="$url/$_repo/-/archive/$_commit/$_repo-$_commit.tar.gz"
 
 package() {
-	# Wi-Fi SDIO firmware
-	install -Dm644 "$srcdir/$_repo-$_commit/proprietary/vendor/etc/wifi/bcmdhd_sta.bin" \
-		"$pkgdir"/lib/firmware/postmarketos/brcm/"brcmfmac43430-sdio.bin"
+	# Wi-Fi SDIO nvram.txt for BCM43430/0
 	install -Dm644 "$srcdir/$_repo-$_commit/proprietary/vendor/etc/wifi/nvram.txt" \
-		"$pkgdir"/lib/firmware/postmarketos/brcm/"brcmfmac43430-sdio.txt"
+		"$pkgdir"/lib/firmware/postmarketos/brcm/"brcmfmac43430a0-sdio.txt"
 }
 
 sha512sums="

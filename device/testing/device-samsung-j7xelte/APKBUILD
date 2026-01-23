@@ -20,7 +20,7 @@ _pmb_recommends="firmware-samsung-j7xelte"
 source="
 	deviceinfo
 	modules-initfs
-	"
+"
 
 build() {
 	devicepkg_build $startdir $pkgname

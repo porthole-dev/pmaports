@@ -2,7 +2,7 @@
 maintainer="Luca Weiss <luca@lucaweiss.eu>"
 pkgname=device-fairphone-fp5
 pkgdesc="Fairphone 5"
-pkgver=11
+pkgver=12
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -36,6 +36,7 @@ depends="
 makedepends="devicepkg-dev"
 subpackages="$pkgname-openrc"
 source="
+	52-fairphone-fp5.conf
 	81-libssc-fairphone-fp5.rules
 	deviceinfo
 	modules-initfs
@@ -49,6 +50,9 @@ package() {
 
 	install -Dm644 "$srcdir"/81-libssc-fairphone-fp5.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/81-libssc-fairphone-fp5.rules
+
+	install -Dm644 "$srcdir"/52-fairphone-fp5.conf \
+		-t "$pkgdir"/usr/share/wireplumber/wireplumber.conf.d
 }
 
 openrc() {
@@ -60,6 +64,7 @@ openrc() {
 }
 
 sha512sums="
+e338672f300eb98cbc27eacb13fe73e48f7d7a99ba14b2bb3a64a614c5f728d63f45b2c3b13503df4bfc050d8cef16352d19e21d9de6c7bb5e51932841c23dd9  52-fairphone-fp5.conf
 2c16ba75e0077b2b1eaefa4c73b287475505a1aeb291ec29316d41cc094277320f9d2aaabfd91eb1dc0f488ab2d61a94faef16e7afe0f1e226779113761b9a37  81-libssc-fairphone-fp5.rules
 8577d77e9e5fe4981f9800fb361ade934d724bd477b530f5f1c237b529704a450490fa9e045d3e5fb9e998260b89c10e8b633ccee4c411715bee932301b64e4b  deviceinfo
 6280b66b9d4843ef78d0029c31d267b0bf59ea669bc3f2c268edfddf4edb3cec62d40b97c8204c85d1350759ad56e1ac2a5ba8ddc691f73c35c7385350ef12ee  modules-initfs

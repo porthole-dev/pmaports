@@ -1,8 +1,7 @@
-
 maintainer="Luca Weiss <luca@lucaweiss.eu>"
 _flavor="postmarketos-qcom-sc7280"
 pkgname=linux-$_flavor
-pkgver=6.18.0
+pkgver=6.18.7
 pkgrel=0
 pkgdesc="Mainline Kernel fork for SC7280/SM7325/QCM6490 devices"
 arch="aarch64"
@@ -24,6 +23,7 @@ makedepends="
 	openssl-dev
 	perl
 	python3
+	zstd
 "
 
 _repo="linux"
@@ -66,6 +66,6 @@ package() {
 }
 
 sha512sums="
-3dbc737809dfae5c026671b565de71825f27d116bd311344a43295061e4a1a196eb72e98f88e375da6a20b1349d789e66e26fcf66129e9611349f459a76f0cce  linux-v6.18.0-sc7280.tar.gz
-b55604c5f2c0af069f942591290d7262671c8b7a2fccc86e51ad07c160ad218a67e7649b46077d1ca031f9eebac97ddbb28a267a1a365e57b119b89e4a24f41e  config-postmarketos-qcom-sc7280.aarch64
+9bed1987b47e38571fe966bb5cb632f604c434beafa8dacf2e21e7a4e5ad768b7feb417484ff5a6bdf837bdce6c88a024f9a6ee56df7016476e896129e1fa6c1  linux-v6.18.7-sc7280.tar.gz
+38e3ccde16400356c22dc9293cf6bebcb76eebbcdc3fcc30b33005469bb9867e56941992568492fb14d8609789117af8858fd07fbf4f60ece9c4bf634681a61d  config-postmarketos-qcom-sc7280.aarch64
 "

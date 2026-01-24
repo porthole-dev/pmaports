@@ -3,7 +3,7 @@
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=device-qemu-aarch64
 pkgver=15
-pkgrel=2
+pkgrel=3
 pkgdesc="Simulated device in QEMU (aarch64)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -15,6 +15,7 @@ depends="
 	"
 makedepends="devicepkg-dev"
 subpackages="
+	$pkgname-kernel-stable:kernel_stable
 	$pkgname-kernel-mainline:kernel_mainline
 	$pkgname-pmtest
 	"
@@ -50,6 +51,12 @@ x11() {
 	install_if="$pkgname=$pkgver-r$pkgrel xorg-server"
 	install -Dm644 "$srcdir"/resolution-qemu-X11.conf \
 		"$subpkgdir"/usr/share/X11/xorg.conf.d/10-resolution-qemu-X11.conf
+}
+
+kernel_stable() {
+	pkgdesc="postmarketOS Stable kernel"
+	depends="linux-postmarketos-stable linux-firmware-none"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 
 kernel_mainline() {

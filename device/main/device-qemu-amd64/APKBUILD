@@ -3,7 +3,7 @@
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=device-qemu-amd64
 pkgver=16
-pkgrel=2
+pkgrel=3
 pkgdesc="Simulated device in QEMU (x86_64)"
 url="https://postmarketos.org"
 arch="x86_64"
@@ -16,6 +16,7 @@ depends="
 makedepends="devicepkg-dev"
 # First kernel subpackage is default in pmbootstrap init!
 subpackages="
+	$pkgname-kernel-stable:kernel_stable
 	$pkgname-kernel-mainline:kernel_mainline
 	$pkgname-kernel-none:kernel_none
 	$pkgname-pmtest
@@ -36,6 +37,12 @@ package() {
 
 kernel_none() {
 	pkgdesc="No kernel (does not boot! can be used during pmbootstrap testing to save time)"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+kernel_stable() {
+	pkgdesc="postmarketOS Stable kernel"
+	depends="linux-postmarketos-stable linux-firmware-none"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 

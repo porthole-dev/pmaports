@@ -72,7 +72,7 @@ build:
 # boot. This will not work if your device uses boot images.
 .device-boot-flow-separate-artifacts:
   variables:
-    CI_TRON_KERNEL__URL: "glartifact://${CI_TRON__PMB_BUILD_JOB}/${CI_TRON__PMB_EXPORT_PATH}/${KERNEL_NAME}"
+    CI_TRON_KERNEL__URL: "glartifact://${CI_TRON__PMB_BUILD_JOB}/${CI_TRON__PMB_EXPORT_PATH}/vmlinuz"
     CI_TRON_INITRAMFS__INITRAMFS__URL: "glartifact://${CI_TRON__PMB_BUILD_JOB}/${CI_TRON__PMB_EXPORT_PATH}/initramfs"
 
 # Extends from this job if the target device boots using fastboot and boot images

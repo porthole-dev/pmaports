@@ -3,7 +3,7 @@
 maintainer="Luca Weiss <luca@lucaweiss.eu>"
 pkgname=device-qemu-riscv64
 pkgver=11
-pkgrel=1
+pkgrel=2
 pkgdesc="Simulated device in QEMU (riscv64)"
 url="https://postmarketos.org"
 arch="riscv64"
@@ -15,6 +15,7 @@ depends="
 	"
 makedepends="devicepkg-dev"
 subpackages="
+	$pkgname-kernel-stable:kernel_stable
 	$pkgname-kernel-mainline:kernel_mainline
 	"
 
@@ -30,6 +31,12 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
+}
+
+kernel_stable() {
+	pkgdesc="postmarketOS Stable kernel"
+	depends="linux-postmarketos-stable linux-firmware-none"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 
 kernel_mainline() {

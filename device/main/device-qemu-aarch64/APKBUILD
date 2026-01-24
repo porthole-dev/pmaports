@@ -3,7 +3,7 @@
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=device-qemu-aarch64
 pkgver=15
-pkgrel=1
+pkgrel=2
 pkgdesc="Simulated device in QEMU (aarch64)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -15,9 +15,6 @@ depends="
 	"
 makedepends="devicepkg-dev"
 subpackages="
-	$pkgname-kernel-lts:kernel_lts
-	$pkgname-kernel-virt:kernel_virt
-	$pkgname-kernel-stable:kernel_stable
 	$pkgname-kernel-mainline:kernel_mainline
 	$pkgname-pmtest
 	"
@@ -53,26 +50,6 @@ x11() {
 	install_if="$pkgname=$pkgver-r$pkgrel xorg-server"
 	install -Dm644 "$srcdir"/resolution-qemu-X11.conf \
 		"$subpkgdir"/usr/share/X11/xorg.conf.d/10-resolution-qemu-X11.conf
-}
-
-kernel_virt() {
-	pkgdesc="Alpine Virt kernel (minimal, no audio)"
-	depends="linux-virt"
-	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
-}
-
-kernel_lts() {
-	pkgdesc="Alpine LTS kernel"
-	depends="linux-lts linux-firmware-none"
-	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
-}
-
-kernel_stable() {
-	pkgdesc="Alpine Stable kernel"
-	depends="linux-stable linux-firmware-none"
-	provides="$pkgname-kernel-edge=$pkgver-r$pkgrel"
-	replaces="$pkgname-kernel-edge"
-	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 
 kernel_mainline() {

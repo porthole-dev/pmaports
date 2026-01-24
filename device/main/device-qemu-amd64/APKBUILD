@@ -3,7 +3,7 @@
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=device-qemu-amd64
 pkgver=16
-pkgrel=1
+pkgrel=2
 pkgdesc="Simulated device in QEMU (x86_64)"
 url="https://postmarketos.org"
 arch="x86_64"
@@ -16,9 +16,6 @@ depends="
 makedepends="devicepkg-dev"
 # First kernel subpackage is default in pmbootstrap init!
 subpackages="
-	$pkgname-kernel-lts:kernel_lts
-	$pkgname-kernel-virt:kernel_virt
-	$pkgname-kernel-stable:kernel_stable
 	$pkgname-kernel-mainline:kernel_mainline
 	$pkgname-kernel-none:kernel_none
 	$pkgname-pmtest
@@ -39,26 +36,6 @@ package() {
 
 kernel_none() {
 	pkgdesc="No kernel (does not boot! can be used during pmbootstrap testing to save time)"
-	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
-}
-
-kernel_virt() {
-	pkgdesc="Alpine Virt kernel (minimal, no audio/mouse/network)"
-	depends="linux-virt"
-	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
-}
-
-kernel_lts() {
-	pkgdesc="Alpine LTS kernel (recommended)"
-	depends="linux-lts linux-firmware-none"
-	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
-}
-
-kernel_stable() {
-	pkgdesc="Alpine Stable kernel"
-	depends="linux-stable linux-firmware-none"
-	provides="$pkgname-kernel-edge=$pkgver-r$pkgrel"
-	replaces="$pkgname-kernel-edge"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 

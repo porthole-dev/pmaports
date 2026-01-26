@@ -51,7 +51,7 @@ source="
 	kdewallet.salt
 	qtlogging.ini
 	"
-options="!check pmb:gpu-accel"
+options="!check"
 
 package() {
 	install -Dm644 \

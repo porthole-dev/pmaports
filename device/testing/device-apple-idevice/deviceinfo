@@ -12,7 +12,3 @@ deviceinfo_arch="aarch64"
 # Device related
 deviceinfo_external_storage="false"
 deviceinfo_rootfs_image_sector_size="4096"
-# Futureproofing since the size that can be passed to iBoot is a limitation.
-deviceinfo_create_initfs_extra="true"
-
-# Bootloader related

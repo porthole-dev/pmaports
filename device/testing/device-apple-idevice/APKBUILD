@@ -3,7 +3,7 @@
 maintainer="Aster Boese <asterboese@mailbox.org>"
 pkgname=device-apple-idevice
 pkgdesc="Apple Generic Apple iDevice"
-pkgver=4
+pkgver=5
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -44,6 +44,6 @@ kernel_16k() {
 }
 
 sha512sums="
-5632b97a46daa26d37d290d987f4667390479c6e525a5bd40786f5806a76c9bb94487f3094e1d17524ab4dcb006e878156056cc90c5387d104530860a5a14812  deviceinfo
+2afd687b9ab2e1d6c2a8c600d40119661527be4bd7518bca58fc6e6ccde9d46a6fb8812846b2dc6dac75bdb987b4b73e9782800b3e9f5a6edcb3360fc0df150d  deviceinfo
 f4df83d543efb5748743f56fbfeddc6734ad341fb623f796faa74b4f42cadfd9a7b1aea2bd3a6f7aa3f284bcb34c05b2ec2a1704ad6e88b043f92dc0de14a573  modules-initfs
 "

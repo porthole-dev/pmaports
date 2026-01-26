@@ -369,6 +369,7 @@ NETFILTER_XT_MATCH_TCPMSS = "m"  # change MTU e.g. for Wireguard
 NETFILTER_XT_TARGET_TCPMSS = "m"  # change MTU e.g. for Wireguard
 # TODO = Depends on SUSPEND which is not enabled for some devices
 # PM_WAKELOCKS = "y"  # Sxmo
+CPU_FREQ = "y"
 CPU_FREQ_GOV_SCHEDUTIL = "y" # Required by UCLAMP_TASK
 UCLAMP_TASK = "y"  # Scheduler hints
 UCLAMP_TASK_GROUP = "y"  # Scheduler hints

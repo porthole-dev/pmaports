@@ -1,5 +1,4 @@
 # Reference: <https://postmarketos.org/devicepkg>
-# Co-Maintainer: Alper Nebi Yasak <alpernebiyasak@gmail.com>
 maintainer="Aster Boese <asterboese@mailbox.org>"
 pkgname=device-google-x64cros
 pkgdesc="Google Chromebooks with x64 CPU"

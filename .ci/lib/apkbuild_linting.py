@@ -15,7 +15,6 @@ custom_valid_options = [
     "pmb:cross-native2",
     "pmb:drm",
     "pmb:generic-kernel",
-    "pmb:gpu-accel",  # deprecated
     "pmb:strict",
     "pmb:systemd",
     "pmb:systemd-never",

@@ -2,7 +2,7 @@
 maintainer="Casey Connolly <kcxt@postmarketos.org>"
 pkgname=device-oneplus-enchilada
 pkgdesc="OnePlus 6"
-pkgver=21
+pkgver=22
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -19,6 +19,7 @@ depends="
 	soc-qcom-modem
 	soc-qcom-pd-mapper
 	soc-qcom-qbootctl
+	systemd-boot
 	unl0kr-fbforcerefresh
 "
 makedepends="devicepkg-dev"
@@ -77,7 +78,7 @@ systemd() {
 }
 
 sha512sums="
-795ed41c8b47b3b2edeb9e3b6adc8892f0e52b0372cda32b08a50959a45157ea17afff0b5c1b86a375918b8749720bf1519f4ecb709a05ce257fcb8b23f28a9f  deviceinfo
+b7d2b8800061c8c608a09ce044772aee200289acfb92986b16c5f1942bb508001fa269218f0f51b3d267b434bca0cd1de096eea7098b3ff6b6926b17e76084ee  deviceinfo
 003e5228a2b2825f24cb8b4842e3c3f72b99225f0aef3cda5bb2de4e4beb5e1c84800ba48c6cf1b84fe042bd039912e67c545c00981b604db0c0f0bcb546f7c5  kernel-cmdline.conf
 c8d3026e9f803ea823e35f83dab66fa8545e99af9655576476c194567113084d78200feab46f84983a2dad608ca55c0a4a66e36406c6d64023c0aec59307d146  hexagonrpcd.confd
 ea8709aa214cffaefb1d486c0c47044537446faebff16efb3b015623f043f730b7121e401c676e43aa8868bd6c630fc8a2d7dbf5fb082490e9b5493e0405b66d  modules-initfs

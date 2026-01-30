@@ -3,7 +3,7 @@ maintainer="Barnabas Czeman <trabarni@gmail.com>"
 _flavor="postmarketos-qcom-msm8956"
 pkgname=linux-$_flavor
 pkgver=6.18.7
-pkgrel=0
+pkgrel=1
 pkgdesc="Close to mainline linux kernel for Qualcomm Snapdragon MSM8953"
 arch="aarch64"
 _carch="arm64"
@@ -51,6 +51,7 @@ package() {
 
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \

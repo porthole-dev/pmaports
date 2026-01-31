@@ -1,0 +1,37 @@
+# Reference: <https://postmarketos.org/devicepkg>
+maintainer="bluebunny <kalorin.bok084@passinbox.com>"
+pkgname=device-xiaomi-pipa
+pkgdesc="Xiaomi Pad 6"
+pkgver=1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	alsa-ucm-conf
+	firmware-qcom-adreno-a650
+	hexagonrpcd
+	linux-postmarketos-qcom-sm8250
+	make-dynpart-mappings
+	mkbootimg
+	postmarketos-base
+	soc-qcom
+	soc-qcom-qbootctl
+"
+makedepends="devicepkg-dev"
+source="
+	deviceinfo
+"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+sha512sums="
+0182ccbed27c712af51eacd5f72b5a5f8568ce3ea3f5ce30124673d1776f415d3cac54327d15306987b7b0a8879c3d8b698351b8d83cabfcb4c773eb828e3908  deviceinfo
+"

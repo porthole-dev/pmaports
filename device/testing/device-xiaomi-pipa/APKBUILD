@@ -2,7 +2,7 @@
 maintainer="bluebunny <kalorin.bok084@passinbox.com>"
 pkgname=device-xiaomi-pipa
 pkgdesc="Xiaomi Pad 6"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -33,5 +33,5 @@ package() {
 }
 
 sha512sums="
-0182ccbed27c712af51eacd5f72b5a5f8568ce3ea3f5ce30124673d1776f415d3cac54327d15306987b7b0a8879c3d8b698351b8d83cabfcb4c773eb828e3908  deviceinfo
+4e7afb0c324daed0679d8152d83a5de89357ef92c3152342db21179f5d71f18caae6464b121fe5e93e80430949f7be47e5ea67f1177549bbd0891017f458315a  deviceinfo
 "

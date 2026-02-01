@@ -2,7 +2,7 @@
 maintainer="Aelin <aelin@postmarketos.org>"
 pkgname=linux-postmarketos-stable
 pkgver=6.18.8
-pkgrel=0
+pkgrel=1
 _kver=${pkgver%.*}
 pkgdesc="Stable Kernel"
 # armhf: pmbootstrap cannot dynamically choose a defconfig, so it ends up using multi_v7_defconfig which isn't correct
@@ -46,6 +46,7 @@ makedepends="
 	sed
 	zstd
 "
+replaces="linux-stable"
 
 # Source
 source="
@@ -102,7 +103,7 @@ package() {
 		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
-		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs-$_flavor
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
 
 	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
 

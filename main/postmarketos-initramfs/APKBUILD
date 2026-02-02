@@ -1,7 +1,7 @@
 # Co-Maintainer: Clayton Craft <clayton@craftyguy.net>
 maintainer="Casey Connolly <kcxt@postmarketos.org>"
 pkgname=postmarketos-initramfs
-pkgver=3.8.11
+pkgver=3.8.12
 pkgrel=0
 pkgdesc="Base files for the postmarketOS initramfs / initramfs-extra"
 url="https://postmarketos.org"
@@ -45,6 +45,7 @@ makedepends="
 "
 source="
 	00-default.modules
+	00-default-extra.modules
 	00-initramfs-base.dirs
 	00-initramfs-base.files
 	00-initramfs-extra-base.files
@@ -94,6 +95,10 @@ package() {
 		-t "$pkgdir"/usr/share/mkinitfs/modules/
 	mkdir -p "$pkgdir"/etc/mkinitfs/modules
 
+	install -Dm644 "$srcdir"/00-default-extra.modules \
+		-t "$pkgdir"/usr/share/mkinitfs/modules-extra/
+	mkdir -p "$pkgdir"/etc/mkinitfs/modules-extra
+
 	install -Dm644 "$srcdir"/00-initramfs-base.files \
 		-t "$pkgdir"/usr/share/mkinitfs/files/
 	mkdir -p "$pkgdir"/etc/mkinitfs/files
@@ -109,7 +114,8 @@ package() {
 }
 
 sha512sums="
-9d1358886fc2d3eac27c13b11e998458da41ac222c1bfa986ae948970419775b5488ab8b8404a6aa0e21c47717316aa9717b5d5ddc53ec610ad875328ea18e9f  00-default.modules
+22cdd663c8d153781284511140b7c994cd60f0231a2819dafa67f5a11e2963ac6e392e8f7a9e3b75e7fe5d6d7b0b5e262e1ff1a695637354a124560a5ec3ed8d  00-default.modules
+ace852ba267b3408998970df6042603c8bec1d033066d1c30ed65f1be955fee8644b57882898f10228ec43b912f8f03718b34ddd741b431e5a5c2e76f060a494  00-default-extra.modules
 9c0e8f6f61d5da191e03a1aa9d5d0ceb5baf1eae6dbb9bfb0af59817783525119ac8394b135f303f7b6434a3eab0b49185fb90379e06823db847a4999c75ce33  00-initramfs-base.dirs
 e268094cbd25e063fdab2226f8cf93885bd8b90455991a53296231a3401a03669440333025ca44b2a8459df98787a5725f7b227ccb9750f8fcad17ef58ba21a1  00-initramfs-base.files
 1bb1930cb5bdb60a074195f772dc015b827487a3efd0d68b51ade52164b6371a756249753fbbdc56e975d18f24ada6a1339ea204d2d8fe7ecd95d7aec8647161  00-initramfs-extra-base.files

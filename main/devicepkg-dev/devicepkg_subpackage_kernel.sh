@@ -34,7 +34,7 @@ if [ -f "$srcdir/modules-initfs.$kernel" ]; then
 	install -Dm644 "$srcdir/modules-initfs.$kernel" \
 		"$subpkgdir/usr/share/mkinitfs/modules/00-$pkgname.modules"
 	mkdir -p "$subpkgdir/usr/share/mkinitfs/files"
-	echo "/usr/share/mkinitfs/modules/00-$pkgname.modules:/lib/modules/initramfs.load" \
+	echo "/usr/share/mkinitfs/modules/00-$pkgname.modules:/usr/lib/modules/initramfs.load" \
 	     > "$subpkgdir/usr/share/mkinitfs/files/00-$pkgname-modules.files"
 fi
 

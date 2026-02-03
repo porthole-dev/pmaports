@@ -6,7 +6,7 @@ exit_code=0
 
 if [ "$(id -u)" = 0 ]; then
 	set -x
-	apk -q add grep
+	apk -q add git grep
 	exec su "${TESTUSER:-build}" -c "sh -e $0"
 fi
 
@@ -115,6 +115,20 @@ if grep -qr '# Maintainer:' -- *; then
 	echo 'ERROR: Please use maintainer variables of the form maintainer="..." instead of maintainer comments of the form # Maintainer: ...'
 	grep --color=always -r '# Maintainer:' -- *
 	exit_code=1
+fi
+
+if [ -n "$CI_MERGE_REQUEST_DIFF_BASE_SHA" ]; then
+	# Find all moved or new kernel APKBUILDs in main, community or testing
+	MOVED_OR_NEW_MAINLINE_KERNEL_PACKAGES=$(git show --pretty="" --name-only --diff-filter=AR "$CI_MERGE_REQUEST_DIFF_BASE_SHA"..HEAD | grep "device/\(main\|community\|testing\)/linux-.*/APKBUILD" || true)
+
+	if [ -n "$MOVED_OR_NEW_MAINLINE_KERNEL_PACKAGES" ]; then
+		if [ -n "$(grep -L LLVM=1 $MOVED_OR_NEW_MAINLINE_KERNEL_PACKAGES || true)" ]; then
+			echo "ERROR: An added or moved close-to-mainline kernel package is not being built with LLVM."
+			echo "See https://postmarketos.org/edge/2025/11/11/kernels-llvm/ for more details"
+			grep --color=always -L LLVM=1 $MOVED_OR_NEW_MAINLINE_KERNEL_PACKAGES
+			exit_code=1
+		fi
+	fi
 fi
 
 exit "$exit_code"

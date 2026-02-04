@@ -1,4 +1,0 @@
-#!/bin/sh
-rc-update add hexagonrpcd-adsp-sensorspd
-rc-update add qbootctl
-rc-update add tqftpserv boot

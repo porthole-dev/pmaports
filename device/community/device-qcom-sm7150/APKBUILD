@@ -6,7 +6,7 @@ maintainer="Aelin <aelin@postmarketos.org>"
 pkgname=device-qcom-sm7150
 pkgdesc="Generic device package for Qualcomm SM7150 devices"
 pkgver=8
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -25,10 +25,6 @@ depends="
 	unl0kr-fbforcerefresh
 "
 makedepends="devicepkg-dev"
-install="$pkgname-openrc.post-install"
-subpackages="
-	$pkgname-openrc
-"
 
 source="
 	81-libssc-180-degrees.rules
@@ -45,18 +41,6 @@ package() {
 
 	install -Dm644 "$srcdir"/81-libssc-180-degrees.rules -t \
 		"$pkgdir"/usr/lib/udev/rules.d
-}
-
-openrc() {
-	install_if="$pkgname=$pkgver-r$pkgrel openrc"
-	depends="
-		hexagonrpcd-openrc
-		openrc
-		qbootctl-openrc
-		tqftpserv-openrc
-		"
-
-	mkdir -p "$subpkgdir"
 }
 
 sha512sums="

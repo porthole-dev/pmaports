@@ -30,6 +30,9 @@ kernel=$(echo "$subpkgname" | sed -n "s/.*-kernel-\(.*\)/\1/p" | tr - _)
 # a modules.$kernel file, it should instead be more than one modules.$kernel
 # files, with different $kernel values. The conflict between the package and
 # the subpackage aims to prevent the unsupported situation to slip through.
+# For modules in initramfs-extra, specified in modules-extra-initfs.$kernel,
+# they are handled by udev, so do not need to be specified in
+# initramfs.load.
 if [ -f "$srcdir/modules-initfs.$kernel" ]; then
 	install -Dm644 "$srcdir/modules-initfs.$kernel" \
 		"$subpkgdir/usr/share/mkinitfs/modules/00-$pkgname.modules"

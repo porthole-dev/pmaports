@@ -35,7 +35,10 @@ if [ -f "$srcdir/initfs-hook.sh" ]; then
 fi
 
 # All the installation paths for the modules conflict with those from
-# devicepkg_subpackage_kernel. See comment there for details
+# devicepkg_subpackage_kernel. See comment there for details.  For
+# modules in initramfs-extra, specified in modules-extra-initfs, they
+# are handled by udev, so do not need to be specified in
+# initramfs.load.
 if [ -f "$srcdir/modules-initfs" ]; then
 	install -Dm644 "$srcdir/modules-initfs" \
 		"$pkgdir/usr/share/mkinitfs/modules/00-$pkgname.modules"

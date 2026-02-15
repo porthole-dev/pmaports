@@ -3,20 +3,13 @@
 user=$( getent passwd 10000 | cut -d: -f1 )
 cmd=$( echo $0 | awk '{i=split($0,a,"/"); print a[i]}' )
 
-function adjust_keypad_bl {
-	for i in $(seq 1 6); do
-			echo $1 > /sys/class/leds/lp5523\:kb$i/brightness
-	done
-}
-
 case $cmd in
 	KP_SLIDE_OPEN)
-		adjust_keypad_bl 63
-		su $user -c 'DISPLAY=:0.0 /usr/bin/xset dpms force on'
-		su $user -c 'DISPLAY=:0.0 /usr/bin/xinput enable "TSC2005 touchscreen"'
+		su $user -c '/usr/bin/screenlock.sh unlock'
+		/usr/bin/screenlock.sh kbd_backlight 31
 		;;
 	KP_SLIDE_CLOSE)
-		adjust_keypad_bl 0
+		/usr/bin/screenlock.sh kbd_backlight 0
 		;;
 	CAM_BTN_DWN)
 		echo "Not implemented yet"

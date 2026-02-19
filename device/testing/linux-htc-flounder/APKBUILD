@@ -1,7 +1,7 @@
 maintainer=""
 pkgname=linux-htc-flounder
-pkgver=6.0.0
-pkgrel=7
+pkgver=6.19.0
+pkgrel=0
 pkgdesc="Google Nexus 9 kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -34,10 +34,10 @@ makedepends="
 
 # Source
 _repository="linux"
-_commit="1af7ece0542ef888433623a572ed8e19ca5e956a"
+_commit="38ff68627120b204b30d030e5f4dd7d1ee33acc3"
 _config="config-$_flavor.$arch"
 source="
-	$pkgname-$_commit.tar.gz::https://github.com/TuxThePenguin0/$_repository/archive/$_commit.tar.gz
+	$pkgname-$_commit.tar.gz::https://cyberchaos.dev/yuka/linux/-/archive/$_commit/linux-$_commit.tar.gz
 	$_config
 "
 builddir="$srcdir/$_repository-$_commit"
@@ -73,6 +73,6 @@ package() {
 }
 
 sha512sums="
-ee712d770cc863a6acff52ee32c5009657480864fcd748f0ccc7afb9edba912d727e56bd1d484bd391c5f3d0fed0d063ec8fca36af80c88572bcf85a6f00522e  linux-htc-flounder-1af7ece0542ef888433623a572ed8e19ca5e956a.tar.gz
-2862f537195da1dfc9ac9d36526e8aecc0183ac1bceec2905ef5663dd8daf048b4341282fcb005b60b1aa25718136ce5f3a0f6b2a49261df65322cf5d59dbee6  config-htc-flounder.aarch64
+c019acb38056e0f82c54de19447b1c398cb306b7e67a5797de7d3103d6a3f6949d6808acc75e613d7be56cd124e4c2ecf05764f75a3f54aa3979fccace0031d9  linux-htc-flounder-38ff68627120b204b30d030e5f4dd7d1ee33acc3.tar.gz
+8a6fa5a72e84026ab3647ea101e1879a6b8f3d6d7c78bb3cae931149d21fd0d64fedb5a0501040663b00152913489555b8f34901a90a0b70a426a848b6bcce4e  config-htc-flounder.aarch64
 "

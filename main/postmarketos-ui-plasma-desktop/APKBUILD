@@ -1,8 +1,8 @@
 # Reference: https://postmarketos.org/uipkg
 maintainer="Bart Ribbers <bribbers@disroot.org>"
 pkgname=postmarketos-ui-plasma-desktop
-pkgver=3
-pkgrel=6
+pkgver=4
+pkgrel=0
 pkgdesc="(Wayland) KDE Desktop Environment (works well with tablets)"
 url="https://www.kde.org"
 # armhf and riscv64 blocked by plasma
@@ -11,8 +11,8 @@ arch="noarch !armhf !riscv64 !x86"
 license="GPL-3.0-or-later"
 depends="
 	plasma
+	plasma-login-manager
 	postmarketos-base-ui-plasma
-	sddm
 	"
 _pmb_recommends="
 	ark

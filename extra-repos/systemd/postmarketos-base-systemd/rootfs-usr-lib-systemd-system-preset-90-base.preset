@@ -54,7 +54,8 @@ enable hfd-service.service
 enable urfkill.service
 
 enable plasma-mobile.service
-enable sddm.service
+disable sddm.service
+enable plasmalogin.service
 
 enable drkonqi-coredump-processor@.service
 

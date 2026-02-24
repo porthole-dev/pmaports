@@ -1,7 +1,7 @@
 maintainer=""
 pkgname=linux-htc-flounder
 pkgver=6.19.0
-pkgrel=0
+pkgrel=1
 pkgdesc="Google Nexus 9 kernel fork"
 arch="aarch64"
 _carch="arm64"
@@ -13,66 +13,53 @@ options="!strip !check !tracedeps pmb:cross-native
 	pmb:kconfigcheck-containers pmb:kconfigcheck-waydroid
 "
 makedepends="
-	bash
-	bc
 	bison
 	clang
-	devicepkg-dev
-	elfutils-dev
 	findutils
 	flex
-	gmp-dev
 	gzip
-	linux-headers
 	lld
 	llvm
 	openssl-dev
 	perl
-	sed
-	xz
+	postmarketos-installkernel
+	zstd
 "
 
 # Source
 _repository="linux"
 _commit="38ff68627120b204b30d030e5f4dd7d1ee33acc3"
-_config="config-$_flavor.$arch"
 source="
 	$pkgname-$_commit.tar.gz::https://cyberchaos.dev/yuka/linux/-/archive/$_commit/linux-$_commit.tar.gz
-	$_config
+	config-$_flavor.$arch
 "
 builddir="$srcdir/$_repository-$_commit"
-_outdir="out"
 
 prepare() {
 	default_prepare
-	. downstreamkernel_prepare
+	cp "$srcdir/config-$_flavor.$arch" .config
 }
 
 build() {
 	unset LDFLAGS
-
-	# V=1: workaround for pma#1990
-	make O="$_outdir" ARCH="$_carch" LLVM=1 LLVM_IAS=1 \
-		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS" V=1
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-$_flavor"
 }
 
 package() {
-	downstreamkernel_package "$builddir" "$pkgdir" "$_carch" "$_flavor" "$_outdir"
+	install -Dm644 "$builddir/arch/$_carch/boot/Image.gz" \
+		"$pkgdir/boot/vmlinuz"
 
 	make modules_install dtbs_install \
+		ARCH="$_carch" \
 		LLVM=1 \
-		LLVM_IAS=1 \
-		O="$_outdir" ARCH="$_carch" \
-		INSTALL_MOD_STRIP=1 \
+		INSTALL_PATH="$pkgdir"/boot/ \
 		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_STRIP=1 \
 		INSTALL_DTBS_PATH="$pkgdir/boot/dtbs"
-
-	# Flounder requires a gzip compressed kernel
-	gzip "$pkgdir"/boot/vmlinuz
-	mv "$pkgdir"/boot/vmlinuz.gz "$pkgdir"/boot/vmlinuz
 }
 
 sha512sums="
 c019acb38056e0f82c54de19447b1c398cb306b7e67a5797de7d3103d6a3f6949d6808acc75e613d7be56cd124e4c2ecf05764f75a3f54aa3979fccace0031d9  linux-htc-flounder-38ff68627120b204b30d030e5f4dd7d1ee33acc3.tar.gz
-8a6fa5a72e84026ab3647ea101e1879a6b8f3d6d7c78bb3cae931149d21fd0d64fedb5a0501040663b00152913489555b8f34901a90a0b70a426a848b6bcce4e  config-htc-flounder.aarch64
+03a05407977a77dce95976799be1c79ce00970d290c174ff8dbdb696fb79cc1f6af4179f25de92b63bc0dad2729ae663ac0dd2bdc8ea6eb44197911c2cba38bb  config-htc-flounder.aarch64
 "

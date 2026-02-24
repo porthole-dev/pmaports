@@ -4,7 +4,7 @@
 maintainer="Newbyte <newbyte@postmarketos.org>"
 pkgname=postmarketos-ui-phosh
 pkgver=27
-pkgrel=2
+pkgrel=3
 pkgdesc="(Wayland) Mobile UI using GNOME components and apps"
 url="https://phosh.mobi"
 arch="noarch !armhf"
@@ -19,6 +19,7 @@ depends="
 	cellbroadcastd
 	greetd-phrog
 	phosh
+	phosh-wallpapers
 	postmarketos-base-ui-gnome-mobile
 	postmarketos-base-ui-qt-tweaks
 	postmarketos-base-ui-qt-wayland

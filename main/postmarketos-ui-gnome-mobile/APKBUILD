@@ -4,7 +4,7 @@
 maintainer="Newbyte <newbyte@postmarketos.org>"
 pkgname=postmarketos-ui-gnome-mobile
 pkgver=4
-pkgrel=4
+pkgrel=5
 pkgdesc="(Wayland) Gnome Shell patched to adapt better to phones (Experimental)"
 url="https://gnome.org/"
 arch="noarch !armhf !riscv64" # gnome-shell / riscv64: mutter-mobile
@@ -13,7 +13,6 @@ depends="
 	bolt
 	dbus-x11
 	gdm
-	gnome-backgrounds
 	gnome-browser-connector
 	gnome-control-center
 	gnome-initial-setup

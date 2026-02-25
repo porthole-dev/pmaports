@@ -1,2 +1,1 @@
-. /usr/share/misc/source_deviceinfo
-export DEVICEINFO_DEVICE_NAME="$device_codename"
+export DEVICEINFO_DEVICE_NAME="$(. /usr/share/misc/source_deviceinfo; echo "$deviceinfo_codename")"

@@ -4,7 +4,7 @@ PartOf=graphical-session.target
 PartOf=lomiri-indicators.target
 
 [Service]
-ExecStart=/usr/libexec/indicator-location/indicator-location-service
+ExecStart=/usr/libexec/lomiri-indicator-location/lomiri-indicator-location-service
 Restart=on-failure
 
 [Install]

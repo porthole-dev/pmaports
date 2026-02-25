@@ -13,6 +13,8 @@ export WAYLAND_DISPLAY=wayland-0
 export LOMIRI_AS_SYSTEMD_UNIT=1
 # Applications require unthrottled touch input
 export QML_NO_TOUCH_COMPRESSION=1
+# Fix font rendering on some Adreno GPUs
+export QT_ENABLE_GLYPH_CACHE_WORKAROUND=1
 
 # Enable Xwayland
 export MIR_SERVER_ENABLE_X11=1

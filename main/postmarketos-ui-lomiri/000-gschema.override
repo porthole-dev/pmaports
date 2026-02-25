@@ -16,3 +16,4 @@ show-distro-help=false
 
 [com.lomiri.Shell.Launcher]
 logo-picture-uri='file:///usr/share/pixmaps/postmarketos-logo-monochrome.svg'
+home-button-background-color='#009900'

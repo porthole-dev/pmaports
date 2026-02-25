@@ -340,6 +340,15 @@ EXT4_FS = "y"
 F2FS_FS = "y"
 UDF_FS = "m"
 XFS_FS = "m"
+["category:filesystems".">=5.4"."all"]
+EROFS_FS = "m"
+EROFS_FS_ZIP = "y"
+["category:filesystems".">=5.16"."all"]
+EROFS_FS_ZIP_LZMA = "y"
+["category:filesystems".">=6.6"."all"]
+EROFS_FS_ZIP_DEFLATE = "y"
+["category:filesystems".">=6.10"."all"]
+EROFS_FS_ZIP_ZSTD = "y"
 
 # usb_gadgets
 ["category:usb_gadgets".">=0.0.0"."all"]
@@ -594,8 +603,6 @@ LEDS_GROUP_MULTICOLOR = "y"  # pma!5991
 EFIVAR_FS = "m"
 ["category:immutable".">=0.0.0"."all"]
 DM_VERITY = "m"
-EROFS_FS = "y"
-EROFS_FS_ZIP = "y"
 
 # In 6.18+, CFI_CLANG is CFI
 ["category:hardening".">=6.18_rc1"."x86_64 aarch64 armv7 riscv64"]

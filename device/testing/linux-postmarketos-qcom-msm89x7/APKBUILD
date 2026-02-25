@@ -1,7 +1,7 @@
 maintainer="Barnabas Czeman <barnabas.czeman@postmarketos.org>"
 _flavor="postmarketos-qcom-msm89x7"
 pkgname=linux-postmarketos-qcom-msm89x7
-pkgver=6.17.8
+pkgver=6.19.3
 pkgrel=0
 pkgdesc="Mainline kernel fork for Qualcomm QM215/MSM8917/MSM8937/MSM8940/SDM429/SDM439 devices"
 arch="aarch64"
@@ -11,19 +11,20 @@ license="GPL-2.0-only"
 options="!strip !check !tracedeps
 	pmb:cross-native
 	pmb:kconfigcheck-nftables
-	"
+"
 makedepends="
-	bash
-	bc
 	bison
-	devicepkg-dev
+	clang
 	findutils
 	flex
+	lld
+	llvm
 	openssl-dev
 	perl
 	postmarketos-installkernel
 	python3
-	"
+	zstd
+"
 _tag="$pkgver-r0"
 _config="config-$_flavor.$arch"
 source="
@@ -39,7 +40,7 @@ prepare() {
 
 build() {
 	unset LDFLAGS
-	make ARCH="$_carch" CC="${CC:-gcc}" \
+	make ARCH="$_carch" LLVM=1 \
 		KBUILD_BUILD_VERSION="$((pkgrel + 1 ))-postmarketOS"
 }
 
@@ -47,6 +48,7 @@ package() {
 	mkdir -p "$pkgdir"/boot
 	make zinstall modules_install dtbs_install \
 		ARCH="$_carch" \
+		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
 		INSTALL_MOD_PATH="$pkgdir" \
 		INSTALL_MOD_STRIP=1 \
@@ -57,6 +59,6 @@ package() {
 		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release
 }
 sha512sums="
-dda3550657673cd6f606c0cabed8c55d449a9e2110e1ab579bdef37ec04d346e0c953fd98c66970fe36c2a0599d260cae25ecefe644da6c95d4d1b5cc7b25d87  linux-postmarketos-qcom-msm89x7-v6.17.8-r0.tar.gz
-5fa02507dc15cf34253563946a7cfc47711573b8c2135bef88fd4895795b4c42e4eb6cbe0665a9523a6bab4977b7d9f97fc1432505307e7fd77b3cc6a6eeab1f  config-postmarketos-qcom-msm89x7.aarch64
+f80067d2d1ec39429bfc4a807fc4a6f8640216481e5544bed4894f2bb6c0625e58cf23b3088b0ecf23754b153e81cbd14bb9a704b0e8739b3f28d1437bcbcbe7  linux-postmarketos-qcom-msm89x7-v6.19.3-r0.tar.gz
+b31849704d81798736d6d33d04ea6e1e2b05b2019ae16a276dfa69144c65c9691701a0098aca711adc16241d863cb67f361165b585b977061713becf3afa08b3  config-postmarketos-qcom-msm89x7.aarch64
 "

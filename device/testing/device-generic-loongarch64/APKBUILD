@@ -3,7 +3,7 @@
 maintainer="Aelin <aelin@postmarketos.org>"
 pkgname=device-generic-loongarch64
 pkgver=7
-pkgrel=0
+pkgrel=1
 pkgdesc="Generic loongarch64 system"
 url="https://postmarketos.org"
 arch="loongarch64"
@@ -11,6 +11,7 @@ license="MIT"
 depends="
 	alsa-ucm-conf
 	hwdata
+	linux-firmware-rtl_nic
 	postmarketos-base
 	systemd-boot
 	"

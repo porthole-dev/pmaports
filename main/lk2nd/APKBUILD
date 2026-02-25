@@ -1,6 +1,6 @@
 maintainer="Alexey Minnekhanov <alexeymin@postmarketos.org>"
 pkgname=lk2nd
-pkgver=21.0
+pkgver=22.0
 pkgrel=0
 pkgdesc="Secondary little kernel (lk) bootloader for several Qualcomm devices"
 arch="armv7 aarch64"
@@ -147,5 +147,5 @@ msm8226_htc_memul() {
 }
 
 sha512sums="
-a5f1522c713cfe3f5b1ae3b31005327f5eea7c9e14031dec51e5c581fec97708984fcc1f7cdd3596faaa6f04bf2c4dfb2b5eab0ed36ceb2af5bb0551c7153d2d  lk2nd-21.0.tar.gz
+a09854fc967a42c0bcfa273e665839d101cd7ccfb66312f0f5f87109879578aad5875e699d745d04317a1a6c014ad9aae9f33485df09206e79523d88891de85b  lk2nd-22.0.tar.gz
 "

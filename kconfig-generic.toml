@@ -69,3 +69,6 @@ POWER8_CPU = "y"
 OPAL_PRD = "y"
 PPC_SUBPAGE_PROT = "y"
 
+# enable all loongarch64 CPU features
+["category:misc".">=0.0.0"."loongarch64"]
+CPU_HAS_LBT = "y"

@@ -3,7 +3,7 @@ maintainer="bluebunny <kalorin.bok084@passinbox.com>"
 pkgname=device-xiaomi-pipa
 pkgdesc="Xiaomi Pad 6"
 pkgver=5
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -25,7 +25,6 @@ subpackages="
 	$pkgname-kernel-soc-tianma:kernel_soc_tianma
 "
 _pmb_recommends="
-	firmware-qcom-adreno-a650
 	firmware-xiaomi-pipa-adreno
 	firmware-xiaomi-pipa-adsp
 	firmware-xiaomi-pipa-awinic
@@ -35,8 +34,8 @@ _pmb_recommends="
 	firmware-xiaomi-pipa-nuvolta
 	firmware-xiaomi-pipa-slpi
 	firmware-xiaomi-pipa-venus
-	linux-firmware-ath11k
 	linux-firmware-qca
+	linux-firmware-qcom
 "
 source="
 	81-libssc-xiaomi-pipa.rules

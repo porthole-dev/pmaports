@@ -5,7 +5,7 @@
 deviceinfo_format_version="0"
 deviceinfo_name="Nokia 4.2"
 deviceinfo_manufacturer="Nokia"
-deviceinfo_codename="nokia-panther"
+deviceinfo_codename="nokia-panther-downstream"
 deviceinfo_year="2019"
 deviceinfo_arch="aarch64"
 

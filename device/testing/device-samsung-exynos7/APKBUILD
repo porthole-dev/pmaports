@@ -2,7 +2,7 @@
 maintainer="methanal <baclofen@tuta.io>"
 pkgname=device-samsung-exynos7
 pkgdesc="Generic device package for Samsung Exynos7 devices"
-pkgver=1
+pkgver=2
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -46,5 +46,5 @@ kernel_mainline() {
 sha512sums="
 fe6a0ab189b72a78d4b6bff2b240effa978619a792895c1272643569b8c2968322dda21b513e2047d92136e6005f0066e509196b547da94e471d57b0bf25039c  deviceinfo
 d67b144c72e8d999b0913407a22b5c1e418a263cc87ae0aed0b5d5afbba0e027eb2504b034630cf6011a4f81d3e4a10790b23fce23a6a2b1b02f88271df59374  kernel-cmdline.conf
-f24de3972675d8013be7315229fc8b941801345eba3c632bb96a7206969b0e059b9cda2919df5185814226d4a59c61f88c3ade6d385ffdc01551aae1f300c825  modules-initfs
+09bcb90ee9544bf0f26503a3a54b7ac0f457c256d5b8a946877830a258c977b79b05d255f3a794e32be0cec85b79bce03e5c0767feae52730f1381d15deae40d  modules-initfs
 "

@@ -1,9 +1,9 @@
 # Reference: <https://postmarketos.org/vendorkernel>
 # Kernel config based on: arch/arm64/configs/pinetab2_defconfig
 # Co-Maintainer: Stefan Hansson <newbyte@postmarketos.org>
-maintainer="Danct12 <danct12@disroot.org>"
+maintainer="Dang Huynh <dang.huynh@mainlining.org>"
 pkgname=linux-pine64-pinetab2
-pkgver=6.17.8
+pkgver=6.18.10
 _danctnix_kernel_rel=1
 pkgrel=0
 pkgdesc="Pine64 PineTab 2 mainline"
@@ -66,6 +66,6 @@ package() {
 }
 
 sha512sums="
-8d2dc3222d1dac89996a3432c5b8fd5c2f21b1926a87b7bb2352f41722de46510f340e8972d1b29b077912a2ea7b82c869d42f866ec8ca2a1839a5a2fd6e88ff  linux-pine64-pinetab2-v6.17.8-danctnix1.tar.gz
-18ecd2da7a9668a71b6236641132bbffce527040c2d0e2268eb15900c932757020f87dda2bad0c0e4b3507f7b5b7e43b4b757320e6f9f5b1c69b6a4cc77c8977  config-pine64-pinetab2.aarch64
+96ff74bfe4070e6d01e8697f4e1fe76c003789cee68d3bc3bb5eabcfc356fe475707746121ddd9934a78d286f7c50f11955b4212179449f38d9d04ed600a9deb  linux-pine64-pinetab2-v6.18.10-danctnix1.tar.gz
+79c703b30bff1f386d7edb4417160d9d8ea0c6bb0fee9710f79e6dee65f09815254249c738564085ce3a07d21a8d6ba22bcfd931e94b4311dde779ad93f2f76a  config-pine64-pinetab2.aarch64
 "

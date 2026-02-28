@@ -1,6 +1,7 @@
+# Archived: replaced by firmware-nvida-tegra-armv7
 maintainer=""
 pkgname=firmware-acer-picasso
-pkgver=3
+pkgver=4
 pkgrel=0
 pkgdesc="Firmware for Acer Iconia Tab A500 (acer-picasso)"
 url="https://github.com/grate-driver/linux-firmware"

@@ -1,8 +1,9 @@
+# Archived: replaced by device-nvidia-tegra-armv7
 # Reference: <https://postmarketos.org/devicepkg>
 maintainer=""
 pkgname=device-acer-picasso
 pkgdesc="Acer Iconia Tab A500"
-pkgver=4
+pkgver=5
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"

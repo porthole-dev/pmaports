@@ -2,7 +2,7 @@
 # Kernel config based on: arch/arm64/configs/pinenote_defconfig
 maintainer="Antoine Martin (ayakael) <dev@ayakael.net>"
 pkgname=linux-pine64-pinenote
-pkgver=6.19.2
+pkgver=6.19.3
 _kernver=${pkgver%.*}
 pkgrel=0
 pkgdesc="Pine64 PineNote close to mainline fork"
@@ -82,6 +82,6 @@ package() {
 sha512sums="
 01b29c7f4e5bc0c9802794c2cd027fece825f90417be229a71e60eefce530010d5d301749c54ae744e9d4a483518e769e2bb7e6e9209687681ad7fff11c3ed86  linux-6.19.tar.xz
 468c7d0ab2463adc8b9a56448ddd0819d56a5914b99baa921e2989ec1fdc5c414c02ef72e55691acc9b75ddd1afff5c17953fc2d2e1ed81210e5f7c40cd01765  linux-pine64-pinenote-6.19-526524233b7156b194cf6f0869d2059dfa4c90e9.patch
-e3e37b71aeeb0e05b4e58d55fe52f96faaa094d00e09e6889e4488fc280359fd552c35aebadf71c1811e8e5cb8f368af5f3e6c0ad48b4716c5ab0d47f5732ab7  config-pine64-pinenote.aarch64
-2c3435d27715dcb635c0b17b0d26a764749820f4b473c05306b68fd8d647b809ff57d469cbf6cbd5a95894bb7d0fad794145298f1c3d3ebe975c7ba487b47481  linux-pine64-pinenote-6.19.2.patch.xz
+7e8071c98f94b6cc5c6dae72e9045a3956145cae4b25ac07868379ddda0d22b17413136bff4ff92700a728d07c520c878fad163693fa1e6c3258b7deb0bdc400  config-pine64-pinenote.aarch64
+42cf563be07254942e3873a91241f423753d4a4dc70e18bc8ac210519c0642aef45ea91fdd0e359b7e428a87c5e091e8be3e1199ebeaf679bfc7a09af5e1206e  linux-pine64-pinenote-6.19.3.patch.xz
 "

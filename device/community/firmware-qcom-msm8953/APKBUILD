@@ -2,7 +2,7 @@
 maintainer="Barnabas Czeman <barnabas.czeman@postmarketos.org>"
 pkgname=firmware-qcom-msm8953
 pkgver=3
-pkgrel=0
+pkgrel=1
 pkgdesc="Firmware files for Qualcomm MSM8953 devices"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -58,8 +58,8 @@ package() {
 	install -Dm644 "$asus_ze520kl_dir/a506_zap.mdt" -t "$pkgdir/$_fwdir/asus/ze552kl"
 
 	billion_rimob_dir="$srcdir/firmware-billion-rimob-$_billion_rimob_commit"
-	install -Dm644 "$billion_rimob_dir/a506_zap.b02" -t "$pkgdir/$_fwdir/billion/rimob"
-	install -Dm644 "$billion_rimob_dir/a506_zap.mdt" -t "$pkgdir/$_fwdir/billion/rimob"
+	install -Dm644 "$billion_rimob_dir/a506_zap.b02" -t "$pkgdir/$_fwdir/flipkart/rimob"
+	install -Dm644 "$billion_rimob_dir/a506_zap.mdt" -t "$pkgdir/$_fwdir/flipkart/rimob"
 
 	fairphone_fp3_dir="$srcdir/FP3-firmware-$_fairphone_fp3_commit"
 	install -Dm644 "$fairphone_fp3_dir/a506_zap.b02" -t "$pkgdir/$_fwdir/fairphone/fp3"

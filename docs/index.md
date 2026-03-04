@@ -17,6 +17,7 @@ in pmaports and the processes around device categorization.
    device-categorization
    deviceinfo-reference
    ci-tags
+   generic-device-packages
    generic-kernels
    kconfigcheck
    kernel-cmdline

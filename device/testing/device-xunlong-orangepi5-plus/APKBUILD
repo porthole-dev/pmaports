@@ -2,7 +2,7 @@
 maintainer="WeirdTreeThing <bradyn127@protonmail.com>"
 pkgname=device-xunlong-orangepi5-plus
 pkgdesc="Xunlong Orange Pi 5 Plus"
-pkgver=6
+pkgver=7
 pkgrel=0
 url="https://postmarketos.org"
 license="MIT"
@@ -56,5 +56,5 @@ kernel_mainline() {
 sha512sums="
 3bed41bae1a8cf93b2418eda7bbf218a715bae1b33a2c3a10487ef153f4833ad9627126d3bcc7cbd3f06523ac5fb338b28d3134c94f486f9e8aa0b6680323ffe  deviceinfo
 97e88eaa9b8e7989a20d2572479fe5d1fe0284de862da11c91b1f347099d5704673837db01a6b0c289fee0a2d7236f64fba31fd6001475f957c23203e34fd6fb  kernel-cmdline.conf
-7f673ffb788c07b5ce0d596f36fa1601343f13a01c845f629b585460050958223b88004159cd39fb2ccbfcdff092f5884fa2bbb483d4c7fab98f2f2ca5afd243  modules-initfs
+8aa5ce9115d5181744a6d2ea2e0e7b312dede29673f1ecd205f5a8067a18f33d834ea018f9df7e69ca23268b2434ddcc78e0890f1158e3ae97b1a09439c2764a  modules-initfs
 "

@@ -3,9 +3,9 @@
 # scripts.
 
 deviceinfo_format_version="0"
-deviceinfo_name="Generic Zhihe series LTE dongles"
-deviceinfo_manufacturer="Generic"
-deviceinfo_codename="generic-zhihe"
+deviceinfo_name="Zhihe series LTE dongles"
+deviceinfo_manufacturer="Zhihe"
+deviceinfo_codename="zhihe-generic"
 deviceinfo_year="2021"
 deviceinfo_dtb_uz801="qcom/msm8916-yiming-uz801v3"
 deviceinfo_dtb_ufi001c="qcom/msm8916-thwc-ufi001c"

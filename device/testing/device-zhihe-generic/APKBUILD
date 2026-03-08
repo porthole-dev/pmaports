@@ -2,14 +2,15 @@
 
 # Reference: <https://postmarketos.org/devicepkg>
 maintainer="Yang Xiwen <forbidden405@outlook.com>"
-pkgname=device-generic-zhihe
+pkgname=device-zhihe-generic
 pkgdesc="A generic device package for various MSM8916-based dongles(namely zhihe)"
-pkgver=6
+pkgver=7
 pkgrel=0
 url="https://postmarketos.org"
 license="GPL"
 arch="aarch64"
 options="!check !archcheck"
+provides="device-generic-zhihe=$pkgver-r$pkgrel"
 depends="
 	mkbootimg
 	postmarketos-base
@@ -59,6 +60,6 @@ kernel_uz801() {
 }
 
 sha512sums="
-659053375813c4efd4ca8476dfc7ff38d1d54bdb0f01df156bd2fcd7dae6c06358201c37aaa094544eb99c921db94fb92b8bacfd89d20421bd564ceb0b7a7a73  deviceinfo
+c8540cfb5f2e9bf9d5b2736762ef7dceb2243e8a4d439f4ca9382c670818dd4641ea3559dc0054901a37070a05576f6dccb279f4de4e36513af00cf41c17a7b3  deviceinfo
 37e1e5f8839b624ab3eb850a24ed4daeb61a651257a1fb593f49cb869323e5d1b339c831a18eb26a9d7bd0a618ea9eb2bb9bf3882133af5f2606a878e6d39c67  kernel-cmdline.conf
 "

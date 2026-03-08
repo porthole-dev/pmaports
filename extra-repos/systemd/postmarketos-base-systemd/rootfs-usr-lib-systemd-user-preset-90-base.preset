@@ -27,6 +27,7 @@ enable xfconfd.service
 
 # phosh
 enable cellbroadcastd.service
+enable mobi.phosh.PhoshTour-first-login.service
 
 # Plasma
 enable drkonqi-coredump-launcher.socket

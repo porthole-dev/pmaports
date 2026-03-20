@@ -1,7 +1,7 @@
 # Reference: <https://postmarketos.org/devicepkg>
 maintainer="Danct12 <danct12@disroot.org>"
 pkgname=device-nokia-n900
-pkgver=54
+pkgver=55
 pkgrel=0
 pkgdesc="Nokia N900"
 url="https://postmarketos.org"
@@ -201,7 +201,7 @@ xkeyboard_config() {
 
 i3wm() {
 	install_if="$pkgname=$pkgver-r$pkgrel postmarketos-ui-i3wm"
-	depends="brightnessctl i3blocks rxvt-unicode sxmo-dmenu upower"
+	depends="brightnessctl i3blocks rxvt-unicode sxmo-dmenu"
 	install -D -m644 "$srcdir"/i3wm.conf \
 		"$subpkgdir"/etc/xdg/i3/config
 	install -D -m755 "$srcdir"/config-checker \
@@ -218,7 +218,7 @@ openrc() {
 }
 
 sway() {
-	depends="brightnessctl foot i3blocks jq upower"
+	depends="brightnessctl foot i3blocks jq"
 	install_if="$pkgname=$pkgver-r$pkgrel postmarketos-ui-sway"
 	replaces="postmarketos-ui-sway"
 	install -D -m644 "$srcdir"/etc-sway-config.d-nokia-n900.conf \
@@ -271,7 +271,7 @@ b1ebed32232ca1890ed6a47372ce45f4ee004fcb76defc6f67048cfa7361d6e02ebd365a6370ba7c
 1c7499eb84948eb5b73d58474b1b71a5f2f63116a2a3e1f9a4238064dcf6c152ccefa108bd4ab1074712a2319111c8fdd4bfcf0dbe4d26b5a319404def1b11d2  etc-profile.d-25wlr-pixman.sh
 4efca73b4053e00b2a24ef3e79ead3da43b0e6db4f3447721fa9084b1c280e65f1ddaadd390d6073e26b6c635bb14f804fcf3c54d8ebf9df73eff80deff59d80  modules-initfs
 a8152e94262629e11abdd8809d187c3b7ed1866a6128fb1f435e17e72120536ac8114262e66df6decb2627743027f2b923ddbe8a94e3e844099b6fad02ec252b  i3blocks.conf
-6c6a70667f37807089adbb343c09d1f62d47b8e6c9c0a54f44790b822f8bff3dccae73341ef736b799fd6740bbd6e1f48e6e122c2e08520f71f6ad7434a47d2c  battery-bq27200
+8a35a4ea9de9a30a5c1a5f01f8a8d211a7dbd43b77773eaf904fe633d4f9d1b0641c0b81493599af2b5cefefb6947c9c9d7a4d633d041f3503394dbfa90cf4f5  battery-bq27200
 d9ef88c714e9fce8822f63b7a9d7fc3e1ed472c8c876b44ba524d44efea322839f13ddd2fa652420608427ecf7279bfaac302c9b67667f32796ca21da332164d  calendar
 82038d38f94cb975a8d38914afca49b64957446bef7490ab684efa1df47ede2ea1c769045789bb9fded673345eea01911fbbf85fdb54c28685cad8022bfaafac  ofono
 d7f79fa0887110b85dfb676bd426fa76764fbbb8093df89184552838ddb703b62500f61d7cfa8decdb75a542e3ef577cc71ee4c12ed14d6a76827a3f5aa13073  wifi

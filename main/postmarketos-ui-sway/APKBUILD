@@ -1,7 +1,7 @@
 # Reference: https://postmarketos.org/uipkg
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=postmarketos-ui-sway
-pkgver=3.2
+pkgver=4
 pkgrel=0
 pkgdesc="(Wayland) Tiling WM, drop-in replacement for i3wm"
 url="https://postmarketos.org"
@@ -36,6 +36,7 @@ _pmb_groups="
 source="
 	etc-sway-config
 	etc-sway-config.d-00-logo-key.conf
+	etc-sway-config.d-01-status-bar.conf
 	"
 options="!check pmb:drm" # no testsuite
 replaces="sway"
@@ -43,6 +44,8 @@ replaces="sway"
 package() {
 	install -Dm644 "$srcdir"/etc-sway-config \
 		"$pkgdir"/etc/sway/config
+	install -Dm644 "$srcdir"/etc-sway-config.d-01-status-bar.conf \
+		"$pkgdir"/etc/sway/config.d/01-status-bar.conf
 }
 
 logo_key_alt() {
@@ -67,6 +70,7 @@ openrc() {
 }
 
 sha512sums="
-e68719d5ee99e4df9e23de0b1e1a33df20f0cbb46cd3767ebd2d6d524a831defea8e0145877a26bce161ca1ec020de7356ab25374402e1886fa0c60e53c61025  etc-sway-config
+9ba294550546d06f17515bce6e8e4b8ff855c5fcec971224f1284bbad2915582265bc7f47cc5aa5760b16940ffe64d11852c474986e777cc638f6019406218b2  etc-sway-config
 889f10fb247396a11375057f7e81eae0f0b21ec90cd47964e02ba24fc0f6db8bb7678545e3272149535cf0bb6a2019456cc59d06a9564ce4a1797bb434013b78  etc-sway-config.d-00-logo-key.conf
+8aaabb05db401c03ea7e2f1c44c3ccc641770a49db3e9163db9793ed15cb5e33fbf5827fffad7b5c205510dc9844f07f0e5c20e0e846868acd8c527dc22958e1  etc-sway-config.d-01-status-bar.conf
 "

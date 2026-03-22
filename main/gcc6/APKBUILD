@@ -2,7 +2,7 @@ maintainer=""
 pkgname=gcc6
 pkgver=9999
 _pkgver=6.4.0
-pkgrel=13
+pkgrel=14
 pkgdesc="Old GCC for old vendor kernels (C compiler only)"
 url="http://gcc.gnu.org"
 # loongarch64: not relevant
@@ -197,7 +197,6 @@ source="http://gcc.gnu.org/pub/gcc/releases/gcc-${_pkgbase:-$_pkgver}/gcc-${_pkg
 
 	001_all_default-ssp-strong.patch
 	002_all_default-relro.patch
-	003_all_default-fortify-source.patch
 	005_all_default-as-needed.patch
 	011_all_default-warn-format-security.patch
 	012_all_default-warn-trampolines.patch
@@ -215,7 +214,6 @@ source="http://gcc.gnu.org/pub/gcc/releases/gcc-${_pkgbase:-$_pkgver}/gcc-${_pkg
 	207-static-pie.patch
 
 	libgcc-always-build-gcceh.a.patch
-	gcc-4.9-musl-fortify.patch
 	gcc-6.1-musl-libssp.patch
 	boehm-gc-musl.patch
 	gcc-pure64.patch
@@ -482,7 +480,6 @@ sha512sums="
 28f8c6fdbcb19e950b1d0bafb3bcc7a8cba87bc673aa6027cece116599cdee80f0cf5e95a1440544890239f5c754e8a93ab46d9daedd937faef445d7ea33b226  ecj-4.9.jar
 a1335adc2fbee98e36c4437ff2587771b98ed4180726779020f65039498235626a411cdb0100dbd20cd19d12f0d94f9a21af179ff624676c28cead9d60598b5d  001_all_default-ssp-strong.patch
 e36e95b81489163abd6fe9d58f7867bdca43e61143afacbfb17f4698c0b16ec5fd0061d8fab7b2ae615540bebd721c2e2227f80401b4e7fc253da9da62e6b513  002_all_default-relro.patch
-f86466c62b8291fac46f9c250c7ad8fa5ab7b1cce2504442fd07ddc4543665b317ae28951f244e39aba29aeaf3fff252ec4f6a147aa16adb2b7aed747dd89188  003_all_default-fortify-source.patch
 51282fea54c7e616367bbeb2479ba13fec6f24eb47bd04e2071907b3b36273b2ff24676f46ef8d22f241c8ab4857307861eee076eab66797c3a50a8ecaa1809a  005_all_default-as-needed.patch
 3398386dd1e079d6545dd9799adc799c6b80e3984fac6899d0e1a7ee21b66d0c7e53cddf17a65d590c883db750f9f79aaedd857355a8b9f7fb9476c906237919  011_all_default-warn-format-security.patch
 9adb0d2b9b67dd957df6c609b8714c7c078efb52cd88770905c37c67827be8fc83d1125037b9c29d77db21ce78756aa2bb0bacdb0b98d869ac126da76a298e21  012_all_default-warn-trampolines.patch
@@ -498,7 +495,6 @@ fc0de05b36613b732a0222ea005c90653c6a40d6761b6894af2419272f4e74875f37e26af33a9b99
 98473bcaa77903a223ca9b0d2087c0921b287a2816d308cc32c8fe009e6cbf5dd1ae7fba27794ab8d9c09e117fe534413d91a464d1218474fc123ce0adfdc2c1  205-nopie.patch
 3287d5b443bea8ec64132bcabe869c738ae98ea8f1a86df1c5d18c927f8816edbfcefeefc47792dbbb2bcacf50319af00e01b3735d34525913b64350770ad453  207-static-pie.patch
 d08d7ead2de0429e5c9055d5b029ec2be9a8c821d22cecaf9b51f633652c493333f98963d9267fa2fa63850c50ae5eefd5f59e5910ec10d20044dac082182a8b  libgcc-always-build-gcceh.a.patch
-600fe5098dc54edaa9808fd5717af9dec058953f9ad37d49cfba1db4f7e9a7a8f02019342f75157fc575946fa693259422184de27b7ecc8386d9f3ecc0f7cc5d  gcc-4.9-musl-fortify.patch
 dbe0ee917fc7668571722364ab7c806731e3a31e8bfa30b4941b28b16b877d2a32b4a3897ef533399a28f82d43cac9b28e92de0493f0e779046db56584e07fa4  gcc-6.1-musl-libssp.patch
 bda845a6aa1854d2c883910b115f79ccfa93dfc2b5eac69a3a236d83eb34cadc140731d616ffc24698c7abc8878dd15f231bcc5119f1860e575a120b311706c7  boehm-gc-musl.patch
 fa62556719449caec6b2b434355bfbcaa5ae55ffe017b3e1f827f66a2aae21b79c571ee7a4ce723ea69169bc3a6447e73650991a200cc372adf2f102677518d7  gcc-pure64.patch

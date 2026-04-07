@@ -1,7 +1,7 @@
 maintainer="Jan Jasper de Kroon <jajadekroon@gmail.com>"
 pkgname=linux-pine64-pinephonepro
-pkgver=6.17.7
-_pkgver=6.17
+pkgver=7.0
+_pkgver=7.0
 _tagdate=20251104-2007
 pkgrel=1
 pkgdesc="Mainline kernel for the pinephone pro"
@@ -32,6 +32,7 @@ makedepends="
 	postmarketos-installkernel
 	rsync
 	xz
+	zstd
 	"
 
 case "$CARCH" in
@@ -39,17 +40,26 @@ case "$CARCH" in
 	arm*) _carch="arm" ;;
 esac
 
+# Currently, the megi kernel is the most up-to-date pinephone pro kernel. As postmarketOS doesn't want to use the Megi kernel directly, we can strip the Megi kernel down to it's essentials by doing the following:
+#
+#    git reset --hard v7.0
+#    git merge megi/fusb302-7.0 megi/imx258-7.0 megi/rk818-7.0 megi/rt5640-7.0 megi/rk3399-typec-7.0 megi/typec-extcon-7.0 megi/tcpm-7.0 megi/arasan-7.0 megi/ppp-7.0
+#    git cherry-pick ebc624f4    # `arm64: dts: rockchip: rk3399-s: Add DMC table `
+#    git rebase v7.0
+#
+# This reduces the massive amount of patches that megi has, down to the ones that the pinephone pro needs and also bubbles them up to be on top of whatever tag we want.
+
 # Source
 _config="config-$_flavor.$CARCH"
 source="
-	https://gitlab.com/pine64-org/linux/-/archive/ppp-$_pkgver-$_tagdate/linux-ppp-$_pkgver-$_tagdate.tar.gz
+	https://codeberg.org/LogicalErzor/linux/archive/ppp-megi-7.0-stripped.tar.gz
 	config-$_flavor.aarch64
 	"
-builddir="$srcdir/linux-ppp-$_pkgver-$_tagdate"
+builddir="$srcdir/linux"
 
 prepare() {
 	default_prepare
-	cp "$srcdir/config-$_flavor.$CARCH" .config
+	cp "$srcdir/config-$_flavor.$CARCH" "$builddir"/.config
 }
 
 build() {
@@ -76,6 +86,6 @@ package() {
 
 
 sha512sums="
-e3036a458a2fc418307683d0041ef592baed5ca4556074ff72861a1d37d44503e75565dc3074385d80656d239f97c3b0297b71574f3e48fef89c160949f93267  linux-ppp-6.17-20251104-2007.tar.gz
-5431de420ea64c8e93781739ae3cbf7ef98c6c8c25c3dd9de535e7f3b4caec32a30eed3456b5a1900a8fc8ad57feb511149f1b4124e043672e36fd7a7e296eb8  config-pine64-pinephonepro.aarch64
+60b6b72b01b4c842569655e35a826dd1249e8584b670e102ac26eea8a76bd5b8b29cc87240e30b765273d459cc2114ad6f904750245ef3d2e5f5619ea2fa340c  ppp-megi-7.0-stripped.tar.gz
+19661756049d5db085b453a3539c268ed3a6956e69cd19856f41385aa7491c19f0c11582f6168a64edfbe250746bab3f7ffa0b8f2891f9736c53136b7f272c15  config-pine64-pinephonepro.aarch64
 "

@@ -1,6 +1,5 @@
-# Co-Maintainer: Jethrob <jeybee@hotmail.com>
-# Co-Maintainer: Robert Eckelmann <longnoserob@postmarketos.org>
-maintainer="Svyatoslav Ryhel <clamor95@gmail.com>"
+# Co-Maintainer: Svyatoslav Ryhel <clamor95@gmail.com>
+maintainer="Robert Eckelmann <longnoserob@postmarketos.org>"
 pkgname=linux-postmarketos-grate
 pkgver=7.0.1
 pkgrel=0

@@ -19,6 +19,7 @@ makedepends="
 	openssl-dev
 	perl
 	postmarketos-installkernel
+	xz
 	zstd
 "
 

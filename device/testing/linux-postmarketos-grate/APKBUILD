@@ -25,9 +25,10 @@ makedepends="
 # Source
 _flavor="${pkgname#linux-}"
 _tag="stable"
+_commit="bfffc6d6656e87f3de3aa4c09d852849081ef088"
 _carch="arm"
 _config="config-$_flavor.$arch"
-source="$pkgname-$_tag.tar.gz::$url/archive/$_tag.tar.gz
+source="$pkgname-$_tag.tar.gz::$url/archive/$_commit.tar.gz
 	$_config
 "
 builddir="$srcdir/linux"

@@ -73,6 +73,8 @@ STK3310 = "m"
 LOCALVERSION_AUTO = "n"
 
 # power supplies, fuel gauges, etc.
+["category:power"."<6.19"."aarch64"]
+EC_LENOVO_YOGA_C630 = "m"
 ["category:power".">=0.0.0"."aarch64"]
 BATTERY_LENOVO_YOGA_C630 = "m"
 

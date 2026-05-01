@@ -7,3 +7,6 @@
 
 # touchscreen calibration
 /usr/lib/udev/rules.d/90-touchscreen-dev.rules
+
+# volume key remapping
+/etc/udev/hwdb.bin

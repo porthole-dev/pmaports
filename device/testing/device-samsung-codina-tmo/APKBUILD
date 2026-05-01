@@ -1,9 +1,9 @@
 # Reference: <https://postmarketos.org/devicepkg>
-maintainer=""
+maintainer="Linus Walleij <linusw@kernel.org>"
 pkgname=device-samsung-codina-tmo
 pkgdesc="Samsung Galaxy Exhibit (SGH-T599)"
 pkgver=4
-pkgrel=0
+pkgrel=1
 url="https://postmarketos.org"
 license="MIT"
 arch="armv7"

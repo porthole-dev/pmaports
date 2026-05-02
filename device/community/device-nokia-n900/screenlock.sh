@@ -28,6 +28,8 @@ sway_unlock() {
 	SWAYSOCK="$(find /run/user/ -name "*sway-ipc*")"
 	export SWAYSOCK
 	swaymsg output DPI-1 power on
+	# Workaround wlroots bug, https://gitlab.freedesktop.org/wlroots/wlroots/-/work_items/4026
+	swaymsg output DPI-1 power on
 	swaymsg exec "swayidle timeout 120 'swaymsg exec screenlock.sh lock'"
 	swaymsg input "0:2005:TSC2005_touchscreen" events enabled
 }

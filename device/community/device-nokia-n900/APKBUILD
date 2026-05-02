@@ -2,7 +2,7 @@
 maintainer="Danct12 <danct12@disroot.org>"
 pkgname=device-nokia-n900
 pkgver=56
-pkgrel=0
+pkgrel=1
 pkgdesc="Nokia N900"
 url="https://postmarketos.org"
 arch="armv7"
@@ -82,7 +82,6 @@ source="
 	usr-lib-udev-hwdb.d-99-n900-volume-keys.hwdb
 	usr-share-mkinitfs-hooks-01-omap-disable-idle.sh
 	xkb-keymap
-	xorg.conf
 	xresources
 "
 options="!check !archcheck"
@@ -192,8 +191,6 @@ x11() {
 		"$pkgdir"/etc/acpi.map
 	install -D -m644 "$srcdir"/40-xkb.conf \
 		"$subpkgdir"/usr/share/X11/xorg.conf.d/40-xkb.conf
-	install -D -m644 "$srcdir"/xorg.conf \
-		"$subpkgdir"/usr/share/X11/xorg.conf.d/11-n900.conf
 	install -Dm644 "$srcdir"/xresources \
 		"$subpkgdir"/usr/share/X11/Xresources-mobile
 }
@@ -306,6 +303,5 @@ c6012aef28b096141b924fced226ec99fb93eb53b69c064a8887d8fecdf8dc08a3ba3db399e18d88
 662d00f1ea0874037ccb573eb36ac0ed715f057ae40adb52319c358d06e81a4d8764dd39542374006546f66196d13262b5d7f66b0540c367469f003981dfb53a  usr-lib-udev-hwdb.d-99-n900-volume-keys.hwdb
 73dc0f29a97994e7efe0a2c8906f75099b2bca1d660f58ae50b44d3f00eec0cee2a89541a80a4de0f276605ef36a576dd757f0cd9a9a4fd47b535b9400a83526  usr-share-mkinitfs-hooks-01-omap-disable-idle.sh
 4de54d007bd354461fe4d6d455fe3f29694c132a3996c79b68070d606b5ca1839f9027202ebb731035f0bf6504b42fbd5ab15c7b47b7f308ce768a84d45024c4  xkb-keymap
-a91f98daa60efa2beb2ff6b405097f92edca5f1bbb9e7675499139be52ca2570712f8f06f9032ef29f636f99c8f8da8b992f746eab6424aac04260c16158bcc2  xorg.conf
 183dfdd545ba05e216209b1abe45e4af4e0ee16b2e73cff0e7ea7b9524ee35a1cf85213a77f32a1a94287aee6546885dbd71c6de1f4f1a1e2961e638ff27cdf6  xresources
 "

@@ -4,7 +4,7 @@ _flavor=postmarketos-allwinner
 _config="config-$_flavor.$CARCH"
 pkgname=linux-$_flavor
 pkgver=6.18.3_git20260105
-pkgrel=1
+pkgrel=2
 _tag="orange-pi-6.18-20260105-0049"
 pkgdesc="Kernel fork with Pine64 patches (megi's tree, slightly patched)"
 arch="aarch64 armv7"
@@ -29,6 +29,7 @@ makedepends="
 	bash
 	"
 options="!strip !check !tracedeps
+	pmb:cross-native
 	pmb:kconfigcheck-community
 	"
 source="$pkgname-$_tag.tar.gz::https://codeberg.org/megi/linux/archive/$_tag.tar.gz

@@ -1,7 +1,6 @@
 # Automatically generated aport, do not edit!
 # Generator: pmbootstrap aportgen gcc6-aarch64
 # Based on: main/gcc6 (from postmarketOS)
-
 CTARGET_ARCH=aarch64
 CTARGET="$(arch_to_hostspec ${CTARGET_ARCH})"
 LANG_D=false
@@ -23,19 +22,23 @@ CBUILDROOT="/"
 
 _cross_configure="--disable-bootstrap --with-sysroot=/usr/$CTARGET"
 
+maintainer=""
 pkgname=gcc6-aarch64
 pkgver=9999
 _pkgver=6.4.0
-pkgrel=12
+pkgrel=15
 pkgdesc="Stage2 cross-compiler for aarch64"
 url="http://gcc.gnu.org"
+# loongarch64: not relevant
+# ppc64le: not relevant
+# riscv64: doesn't build
 arch="x86_64"
-license="GPL LGPL"
+license="GPL-2.0-or-later AND LGPL-2.1-or-later"
 _gccrel=$_pkgver-r$pkgrel
-depends="binutils-aarch64 mpc1"
+depends="binutils-aarch64 mpc1 so:libc.musl-x86_64.so.1 so:libgcc_s.so.1 so:libgmp.so.10 so:libisl.so.23 so:libmpc.so.3 so:libmpfr.so.6 so:libstdc++.so.6 so:libz.so.1"
 makedepends_build="gcc g++ bison flex texinfo gawk zip gmp-dev mpfr-dev mpc1-dev zlib-dev"
 makedepends_host="linux-headers gmp-dev mpfr-dev mpc1-dev isl-dev zlib-dev musl-dev-aarch64 binutils-aarch64"
-options="!strip"
+options="!strip !tracedeps toolchain"
 
 # We only care about C, so we can compile old Linux kernels
 LANG_CXX=false
@@ -67,11 +70,23 @@ if [ "$CHOST" != "$CTARGET" ]; then
 	LIBATOMIC=false
 	LIBITM=false
 
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 6
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
 	# reset target flags (should be set in crosscreate abuild)
 	# fixup flags. seems gcc treats CPPFLAGS as global without
 	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
-	export CFLAGS="$CPPFLAGS $CFLAGS"
-	export CXXFLAGS="$CPPFLAGS $CXXFLAGS"
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS"
 	unset CPPFLAGS
 	export CFLAGS_FOR_TARGET=" "
 	export CXXFLAGS_FOR_TARGET=" "
@@ -79,10 +94,23 @@ if [ "$CHOST" != "$CTARGET" ]; then
 
 	STRIP_FOR_TARGET="$CTARGET-strip"
 elif [ "$CBUILD" != "$CHOST" ]; then
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 6
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
+	# reset target flags (should be set in crosscreate abuild)
 	# fixup flags. seems gcc treats CPPFLAGS as global without
 	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
-	export CFLAGS="$CPPFLAGS $CFLAGS"
-	export CXXFLAGS="$CPPFLAGS $CXXFLAGS"
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS"
 	unset CPPFLAGS
 
 	# reset flags and cc for build
@@ -106,6 +134,31 @@ elif [ "$CBUILD" != "$CHOST" ]; then
 else
 	STRIP_FOR_TARGET=${CROSS_COMPILE}strip
 	_builddir="$srcdir/build"
+
+	# format-sec: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=100431
+	CFLAGS="${CFLAGS/-Werror=format-security/}"
+	CXXFLAGS="${CXXFLAGS/-Werror=format-security/}"
+	CPPFLAGS="${CPPFLAGS/-Werror=format-security/}"
+	# fstack-clash-protection is not known to GCC 6
+	CFLAGS="${CFLAGS/-fstack-clash-protection/}"
+	CXXFLAGS="${CXXFLAGS/-fstack-clash-protection/}"
+	CPPFLAGS="${CPPFLAGS/-fstack-clash-protection/}"
+	# and neither is -fno-plt
+	CFLAGS="${CFLAGS/-fno-plt/}"
+	CXXFLAGS="${CXXFLAGS/-fno-plt/}"
+	CPPFLAGS="${CPPFLAGS/-fno-plt/}"
+	# reset target flags (should be set in crosscreate abuild)
+	# fixup flags. seems gcc treats CPPFLAGS as global without
+	# _FOR_xxx variants. wrap it in CFLAGS and CXXFLAGS.
+	export CFLAGS="$CPPFLAGS -g0 $CFLAGS -O2"
+	export CXXFLAGS="$CPPFLAGS -g0 $CXXFLAGS -O2"
+	unset CPPFLAGS
+	# https://gcc.gnu.org/install/build.html
+	export CFLAGS_FOR_TARGET="$CFLAGS"
+	export CXXFLAGS_FOR_TARGET="$CXXFLAGS"
+	export LDFLAGS_FOR_TARGET="$LDFLAGS"
+	export BOOT_CFLAGS="$CFLAGS"
+	export BOOT_LDFLAGS="$LDFLAGS"
 fi
 
 # Go needs {set,make,swap}context, unimplemented in musl
@@ -166,7 +219,6 @@ source="http://gcc.gnu.org/pub/gcc/releases/gcc-${_pkgbase:-$_pkgver}/gcc-${_pkg
 
 	001_all_default-ssp-strong.patch
 	002_all_default-relro.patch
-	003_all_default-fortify-source.patch
 	005_all_default-as-needed.patch
 	011_all_default-warn-format-security.patch
 	012_all_default-warn-trampolines.patch
@@ -184,7 +236,6 @@ source="http://gcc.gnu.org/pub/gcc/releases/gcc-${_pkgbase:-$_pkgver}/gcc-${_pkg
 	207-static-pie.patch
 
 	libgcc-always-build-gcceh.a.patch
-	gcc-4.9-musl-fortify.patch
 	gcc-6.1-musl-libssp.patch
 	boehm-gc-musl.patch
 	gcc-pure64.patch
@@ -207,6 +258,8 @@ source="http://gcc.gnu.org/pub/gcc/releases/gcc-${_pkgbase:-$_pkgver}/gcc-${_pkg
 	fix-linux-header-use-in-libgcc.patch
 	gcc-pure64-mips.patch
 	ada-mips64.patch
+
+	gcc-6.4-isl.patch
 
 	0001-i386-Move-struct-ix86_frame-to-machine_function.patch
 	0002-i386-Use-reference-of-struct-ix86_frame-to-avoid-cop.patch
@@ -446,7 +499,6 @@ sha512sums="
 28f8c6fdbcb19e950b1d0bafb3bcc7a8cba87bc673aa6027cece116599cdee80f0cf5e95a1440544890239f5c754e8a93ab46d9daedd937faef445d7ea33b226  ecj-4.9.jar
 a1335adc2fbee98e36c4437ff2587771b98ed4180726779020f65039498235626a411cdb0100dbd20cd19d12f0d94f9a21af179ff624676c28cead9d60598b5d  001_all_default-ssp-strong.patch
 e36e95b81489163abd6fe9d58f7867bdca43e61143afacbfb17f4698c0b16ec5fd0061d8fab7b2ae615540bebd721c2e2227f80401b4e7fc253da9da62e6b513  002_all_default-relro.patch
-f86466c62b8291fac46f9c250c7ad8fa5ab7b1cce2504442fd07ddc4543665b317ae28951f244e39aba29aeaf3fff252ec4f6a147aa16adb2b7aed747dd89188  003_all_default-fortify-source.patch
 51282fea54c7e616367bbeb2479ba13fec6f24eb47bd04e2071907b3b36273b2ff24676f46ef8d22f241c8ab4857307861eee076eab66797c3a50a8ecaa1809a  005_all_default-as-needed.patch
 3398386dd1e079d6545dd9799adc799c6b80e3984fac6899d0e1a7ee21b66d0c7e53cddf17a65d590c883db750f9f79aaedd857355a8b9f7fb9476c906237919  011_all_default-warn-format-security.patch
 9adb0d2b9b67dd957df6c609b8714c7c078efb52cd88770905c37c67827be8fc83d1125037b9c29d77db21ce78756aa2bb0bacdb0b98d869ac126da76a298e21  012_all_default-warn-trampolines.patch
@@ -462,7 +514,6 @@ fc0de05b36613b732a0222ea005c90653c6a40d6761b6894af2419272f4e74875f37e26af33a9b99
 98473bcaa77903a223ca9b0d2087c0921b287a2816d308cc32c8fe009e6cbf5dd1ae7fba27794ab8d9c09e117fe534413d91a464d1218474fc123ce0adfdc2c1  205-nopie.patch
 3287d5b443bea8ec64132bcabe869c738ae98ea8f1a86df1c5d18c927f8816edbfcefeefc47792dbbb2bcacf50319af00e01b3735d34525913b64350770ad453  207-static-pie.patch
 d08d7ead2de0429e5c9055d5b029ec2be9a8c821d22cecaf9b51f633652c493333f98963d9267fa2fa63850c50ae5eefd5f59e5910ec10d20044dac082182a8b  libgcc-always-build-gcceh.a.patch
-600fe5098dc54edaa9808fd5717af9dec058953f9ad37d49cfba1db4f7e9a7a8f02019342f75157fc575946fa693259422184de27b7ecc8386d9f3ecc0f7cc5d  gcc-4.9-musl-fortify.patch
 dbe0ee917fc7668571722364ab7c806731e3a31e8bfa30b4941b28b16b877d2a32b4a3897ef533399a28f82d43cac9b28e92de0493f0e779046db56584e07fa4  gcc-6.1-musl-libssp.patch
 bda845a6aa1854d2c883910b115f79ccfa93dfc2b5eac69a3a236d83eb34cadc140731d616ffc24698c7abc8878dd15f231bcc5119f1860e575a120b311706c7  boehm-gc-musl.patch
 fa62556719449caec6b2b434355bfbcaa5ae55ffe017b3e1f827f66a2aae21b79c571ee7a4ce723ea69169bc3a6447e73650991a200cc372adf2f102677518d7  gcc-pure64.patch
@@ -482,6 +533,7 @@ f4ef08454e28c8732db69115e4998ec153399e8d229dd27f923dbdcf57b68128a65640d026cc7f45
 34a818d5be67eb1f34e44a80b83c28a9b9c17d37fc9fac639f490d6bb5b53ebe3318140d09c236a17d7c98f5a7792ae3d6cefccda8067a5e942d6305b9d1f87c  fix-linux-header-use-in-libgcc.patch
 86be3338cc9c33089608bc4c5e3b7918c4e500a345c338f361b18c342119a6ed69af5495d72950de7106d760f003528b46ad14795e805f8a3331e206dcb234e3  gcc-pure64-mips.patch
 508f3bca214d88531d739d761d07affc953689b1540905c73420b34c246e1e6b72588cf89f0e1462752633f8ddc88da8c0238be2a1b6e1c213829cecee7924cf  ada-mips64.patch
+80084d4f5984ea1c62f813c3c1fe7ce033d41d6cd5e6df3b10c649c0bbc2544ad0a58e7076fa28bf71d691df0211b07fc11eb0d5c9f462ef28eed4c3fbeeb9ee  gcc-6.4-isl.patch
 7912964bf3a985e9f870250d6e068f715582a4fb04270849d697a50e6aad0cf50df3d483ff80a0eb777d9940fd85526dd8d0b85da9bc71a5f2fbc07616263866  0001-i386-Move-struct-ix86_frame-to-machine_function.patch
 baa27a4b912d8e27cd65a556b09cf45289a0e00e86dae3925f2923d1f3752080e80d80e159c996ef4156c4df1dfc3069114810a846672170ef3ae461ae0ab7e1  0002-i386-Use-reference-of-struct-ix86_frame-to-avoid-cop.patch
 6701d15000bdd7c4c98a8fece8c814f5e4e73603eecf84fe4dc5ac10f79b3074afba7c2cc9e51d08b2abade1c34cb0c944c08ead7a85db94e97158c752fd1aac  0003-i386-Use-const-reference-of-struct-ix86_frame-to-avo.patch

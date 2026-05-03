@@ -40,13 +40,17 @@ url="https://gcc.gnu.org"
 arch="x86_64"
 license="GPL-2.0-or-later AND LGPL-2.1-or-later"
 _gccrel=$pkgver-r$pkgrel
-depends="binutils-aarch64 mpc1 so:libc.musl-x86_64.so.1 so:libgcc_s.so.1 so:libgmp.so.10 so:libisl.so.23 so:libmpc.so.3 so:libmpfr.so.6 so:libstdc++.so.6 so:libz.so.1"
+depends="binutils-aarch64 mpc1 so:libgcc_s.so.1 so:libgmp.so.10 so:libisl.so.23 so:libmpc.so.3 so:libmpfr.so.6 so:libstdc++.so.6 so:libz.so.1"
+
+case "$CARCH" in
+x86_64) depends="$depends so:libc.musl-x86_64.so.1" ;;
+esac
 makedepends_build="gcc g++ bison flex texinfo gawk zip gmp-dev mpfr-dev mpc1-dev zlib-dev"
 makedepends_host="linux-headers gmp-dev mpfr-dev mpc1-dev isl-dev zlib-dev musl-dev-aarch64 binutils-aarch64"
 subpackages="g++-aarch64:gpp libstdc++-dev-aarch64:libcxx_dev"
 [ "$CHOST" = "$CTARGET" ] && subpackages="gcc-gdb gcc-doc"
 replaces="libstdc++ binutils"
-options="!strip !tracedeps"
+options="!strip !tracedeps toolchain"
 
 : "${LANG_CXX:=true}"
 : "${LANG_D:=true}"
@@ -581,7 +585,11 @@ gpp() {
 	depends="libstdc++-dev$_target=$_gccrel gcc$_target=$_gccrel musl-dev"
 	[ "$CHOST" = "$CTARGET" ] && depends="$depends libstdc++=$_gccrel"
 
-	depends="$depends so:libc.musl-x86_64.so.1 so:libgmp.so.10 so:libisl.so.23 so:libmpc.so.3 so:libmpfr.so.6 so:libz.so.1"
+	depends="$depends so:libgmp.so.10 so:libisl.so.23 so:libmpc.so.3 so:libmpfr.so.6 so:libz.so.1"
+
+	case "$CARCH" in
+	x86_64) depends="$depends so:libc.musl-x86_64.so.1" ;;
+	esac
 
 	amove $_gcclibexec/cc1plus
 	amove usr/bin/*++

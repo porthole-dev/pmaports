@@ -1,10 +1,10 @@
 # Forked from Alpine to build with systemd support.
 # integrates with logind for sleepmonitor and sessionmonitor.
-maintainer="Jane Rachinger <jane400+pmaports@postmarketos.org>"
+maintainer=""
 pkgname=networkmanager
 _pkgver=1.52.2
 pkgver=9999$_pkgver
-pkgrel=0
+pkgrel=1
 pkgdesc="Network Management daemon"
 url="https://wiki.gnome.org/Projects/NetworkManager"
 # armhf: pmb#2618

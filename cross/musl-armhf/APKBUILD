@@ -10,7 +10,7 @@ maintainer=""
 pkgname=musl-armhf
 pkgver=1.2.6
 pkgrel=2
-arch="x86_64"
+arch="aarch64 x86_64"
 subpackages="musl-dev-armhf:package_dev"
 
 _arch="armhf"

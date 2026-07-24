@@ -1,0 +1,41 @@
+# Reference: <https://postmarketos.org/devicepkg>
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
+pkgname=device-google-taimen
+pkgdesc="Google Pixel 2 XL"
+pkgver=0.1
+pkgrel=0
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	mkbootimg
+	postmarketos-base
+"
+makedepends="devicepkg-dev"
+source="
+	deviceinfo
+	kernel-cmdline.mainline.conf
+	modules-initfs.mainline
+"
+subpackages="$pkgname-kernel-mainline:kernel_mainline"
+
+build() {
+	devicepkg_build $startdir $pkgname
+}
+
+package() {
+	devicepkg_package $startdir $pkgname
+}
+
+kernel_mainline() {
+	pkgdesc="Close to mainline kernel"
+	depends="linux-postmarketos-qcom-msm8998 soc-qcom-msm8998"
+	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
+}
+
+sha512sums="
+6aadb523e0e8c523b202aff0630b778c832b4a7b3dbad6bc1223e88cee98b3ca3c3a9e2c2b7d5383b0562c1c28202c5b7d5411f907f34fe3d8f7e3e0381b665d  deviceinfo
+515b7a75cf7cfc9c3e9d122140a32fd14f84fe99456145686a93ed04de3977d07272ba4dc9b05d213461e62733530a0ea6def83c48621f5c0b2d10f2254ed359  kernel-cmdline.mainline.conf
+aa78a5c1c0210e3ddda324b709600ba05e1ca2eff0a7a6dfaab60537e37e34a3c4ec18212e744e318ea8761afbe338a53760405bff8b6b7aff3344a99f53f9d3  modules-initfs.mainline
+"

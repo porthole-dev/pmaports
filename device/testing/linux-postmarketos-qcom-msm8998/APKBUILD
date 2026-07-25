@@ -5,7 +5,7 @@ maintainer=""
 _flavor="postmarketos-qcom-msm8998"
 pkgname=linux-$_flavor
 pkgver=6.0
-pkgrel=3
+pkgrel=8
 _commit="90169e6e9fee29fae14aeac0a905246be5ce6304"
 pkgdesc="Mainline Kernel fork for MSM8998 devices"
 arch="aarch64"
@@ -64,5 +64,5 @@ package() {
 
 sha512sums="
 e1d75369d58f823da5fe0cde17314a4ec2dc9dbab57452b7b8af6b97e91797720162e78f9ca7da2cbb533833b38be86743b8bf0084af1b36b5d23c9207a5248e  linux-90169e6e9fee29fae14aeac0a905246be5ce6304.tar.gz
-8fec183df26817cf7d8886c64a3c1b7a677584867920d6a54b108ddd2a11d49b163371384169a561912c118c423999ed61280cd99ce6e509a3389ab8d984d0b6  config-postmarketos-qcom-msm8998.aarch64
+7795f899a7825130c28ad45bdd724d563cc0e1b4034c7c421fe948cd954b4b382119815e7e6a74fac346930c06a7e7aae343cb3a24336a81074f206d36d2084b  config-postmarketos-qcom-msm8998.aarch64
 "

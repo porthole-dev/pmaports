@@ -14,6 +14,14 @@ deviceinfo_chassis="handset"
 deviceinfo_screen_width="1440"
 deviceinfo_screen_height="2880"
 
+# The panel is DSI *command* mode with DSC compression (confirmed from stock
+# dtbo entry 12: "SW43402 cmd mode dsc dsi panel"), so there is no continuously
+# scanned-out bootloader framebuffer to reuse -- simplefb cannot work here and
+# nothing creates /dev/fb0. Without this, setup_framebuffer() blocks for 10s
+# waiting for a framebuffer that never appears before the debug shell starts.
+# Same reasoning as device-google-crosshatch. Revisit once MDSS/DSI+DSC works.
+deviceinfo_no_framebuffer="true"
+
 # Bootloader related
 deviceinfo_flash_method="fastboot"
 deviceinfo_generate_bootimg="true"

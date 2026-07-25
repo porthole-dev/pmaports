@@ -1,0 +1,49 @@
+# Reference: <https://postmarketos.org/devicepkg>
+# Maintainer: Giuseppe Maggio <jertlok@proton.me>
+#
+# Proprietary firmware for the Google Pixel 2 XL (taimen), lifted out of the
+# factory image. The tarball is NOT in git -- it is Google/Qualcomm's to
+# redistribute, not ours -- so regenerate it before building on a fresh checkout:
+#
+#   1. Fetch taimen-rp1a.201005.004.a1-factory-2f5c4987.zip from
+#      https://developers.google.com/android/images  (Android 11, the last taimen build)
+#   2. taimen/docs/BLOBS.md documents the extraction; in short:
+#        unzip -p <factory>.zip '*/image-*.zip' > image.zip
+#        unzip -p image.zip vendor.img > vendor.sparse
+#        python3 taimen/blobs/unsparse.py vendor.sparse vendor.raw
+#        debugfs -R "ls -l /firmware" vendor.raw        # to browse
+#   3. Vendor ships the PIL images SPLIT as foo.mdt + foo.b00..bNN, while our DT
+#      asks for a single foo.mbn. Weld them with taimen/tools/pil-squash.py.
+#      Where vendor already ships a combined image (a540_zap.elf, wlanmdsp.mbn)
+#      prefer that verbatim over a reconstruction.
+#
+# Not included, deliberately:
+#   mba.mbn / modem.mbn  live on the modem_a/b partition, not in vendor.img.
+#                        Pull them off the device when the modem is attempted
+#                        (back up modemst1/2, fsg and fsc first).
+#   ath10k firmware-5.bin / board-2.bin come from linux-firmware-ath10k.
+#   a530_* GPU firmware comes from firmware-qcom-adreno-a530.
+pkgname=firmware-google-taimen
+pkgver=20201005
+pkgrel=0
+pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap)"
+url="https://postmarketos.org"
+arch="aarch64"
+license="proprietary"
+options="!check !archcheck !strip !tracedeps !spdx"
+depends="
+	firmware-qcom-adreno-a530
+	linux-firmware-ath10k
+	linux-firmware-qca
+"
+source="$pkgname-$pkgver.tar.gz"
+
+package() {
+	install -d "$pkgdir"/lib/firmware
+	cp -a "$srcdir"/qcom "$srcdir"/qca "$pkgdir"/lib/firmware/
+	find "$pkgdir"/lib/firmware -type f -exec chmod 644 {} +
+}
+
+sha512sums="
+c658bf187092f241096b1fb1e9c6c6a86620a31154a575e20f64bf717ebce3a88d9b56391f3aa8b279962f3c66d51a06062e6302e34efc3b50be3631db0cefe7  firmware-google-taimen-20201005.tar.gz
+"

@@ -17,16 +17,37 @@
 #      Where vendor already ships a combined image (a540_zap.elf, wlanmdsp.mbn)
 #      prefer that verbatim over a reconstruction.
 #
+#   4. mba.mbn and modem.{mdt,bNN} are NOT in vendor.img -- they live on the
+#      modem_a/b partition, which is readable straight off a booted device once
+#      UFS works (no TWRP needed):
+#        mount -o ro /dev/disk/by-partlabel/modem_a /mnt/modem   # files in image/
+#      Back up modemst1/2, fsg and fsc before anything ever writes there.
+#   5. The two PD maps pd-mapper needs are in DIFFERENT places:
+#        modemr.jsn   modem partition image/   -- modem ROOT pd
+#        modemuw.jsn  vendor.img /firmware     -- modem USER pd (subdomain
+#                     wlan_pd), which advertises provider=wlan service=fw. This
+#                     is the service ath10k_snoc blocks on, so WiFi needs it.
+#      pd-mapper looks for *.jsn NEXT TO the firmware named in
+#      /sys/class/remoteproc/*/firmware, honouring firmware_class.path -- not in
+#      /lib/firmware root.
+#   6. ath10k board-2.bin / firmware-5.bin are GENERATED from vendor's
+#      bdwlan.bin + bdwlan.b09 with qca-swiss-army-knife:
+#        ath10k-bdencoder -c board-2.json -o board-2.bin
+#          # names: bus=snoc,qmi-board-id=ff for bdwlan.bin, =9 for bdwlan.b09
+#        ath10k-fwencoder -c --timestamp=0 --set-fw-api=5 \
+#          --features=wowlan,mgmt-tx-by-ref,non-bmi,single-chan-info-per-channel \
+#          --set-wmi-op-version=tlv --set-htt-op-version=tlv -o firmware-5.bin
+#      linux-firmware-ath10k ships generic WCN3990 board-2.bin.zst/firmware-5.bin.zst
+#      in the same directory. There is no file conflict (different names) and ours
+#      win: the firmware loader tries the uncompressed name across every search
+#      path before it tries any .zst (drivers/base/firmware_loader/main.c).
+#
 # Not included, deliberately:
-#   mba.mbn / modem.mbn  live on the modem_a/b partition, not in vendor.img.
-#                        Pull them off the device when the modem is attempted
-#                        (back up modemst1/2, fsg and fsc first).
-#   ath10k firmware-5.bin / board-2.bin come from linux-firmware-ath10k.
 #   a530_* GPU firmware comes from firmware-qcom-adreno-a530.
 pkgname=firmware-google-taimen
 pkgver=20201005
-pkgrel=0
-pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap)"
+pkgrel=1
+pkgdesc="Firmware for Google Pixel 2 XL (modem, adsp, slpi, wlan, bluetooth, gpu zap)"
 url="https://postmarketos.org"
 arch="aarch64"
 license="proprietary"
@@ -40,10 +61,10 @@ source="$pkgname-$pkgver.tar.gz"
 
 package() {
 	install -d "$pkgdir"/lib/firmware
-	cp -a "$srcdir"/qcom "$srcdir"/qca "$pkgdir"/lib/firmware/
+	cp -a "$srcdir"/qcom "$srcdir"/qca "$srcdir"/ath10k "$pkgdir"/lib/firmware/
 	find "$pkgdir"/lib/firmware -type f -exec chmod 644 {} +
 }
 
 sha512sums="
-c658bf187092f241096b1fb1e9c6c6a86620a31154a575e20f64bf717ebce3a88d9b56391f3aa8b279962f3c66d51a06062e6302e34efc3b50be3631db0cefe7  firmware-google-taimen-20201005.tar.gz
+e11fdff317c90468e889927c246ac25a5f6235fd18399dbf35177de6f4f6b632e2ffdb856e5a19a71223fac9e169cdade5563cc4d2f442281cfc45c20990ef2e  firmware-google-taimen-20201005.tar.gz
 "

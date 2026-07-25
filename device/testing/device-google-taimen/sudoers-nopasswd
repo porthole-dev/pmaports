@@ -1,0 +1,9 @@
+# LOCAL BRING-UP CONVENIENCE -- DO NOT UPSTREAM.
+#
+# Lets the host drive dmesg/modprobe/etc over ssh without an interactive TTY,
+# which is most of what debugging this device consists of. postmarketOS puts the
+# main user in `wheel`, so key off the group rather than a hardcoded username.
+#
+# Only defensible because this is a bring-up device reachable solely over USB.
+# Drop this file before the device package goes anywhere near pmaports proper.
+%wheel ALL=(ALL) NOPASSWD: ALL

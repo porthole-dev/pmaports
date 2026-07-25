@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=4
+pkgrel=5
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -36,6 +36,6 @@ kernel_mainline() {
 
 sha512sums="
 5c15f1defd852305de0396bcbfc7540032dde06975d2a2cd3363158fef1414af0aec0b0adc45934ef9f2afaa438bb87dd3ff100c57186894f612644e3cb96c54  deviceinfo
-2b8e51a3e3479d1612159e2a1805af924abd931511f0ca9bb260ede1665bd691d54d334766d27087ab8278994f19acc41d564df9d86440e70030a1a63e0b7428  kernel-cmdline.mainline.conf
+3d9d7fc0640948692bf6ced0d1a767336c5ba7e85c4f5948db6a6711b377c6a23ae9db6255a921b4b5207f54702e6d0b71452f51b28dcd0376440604d607ad3a  kernel-cmdline.mainline.conf
 2caa643431db69a76f62b8ac489d1a3842d34b32750682da88c359918ca7a0899ed7206bb7faa8e311dc7fc66806e77411f63c3d1ac5b2aba840d336aaed1a61  modules-initfs.mainline
 "

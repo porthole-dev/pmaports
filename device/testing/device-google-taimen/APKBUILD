@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=7
+pkgrel=8
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -15,8 +15,10 @@ depends="
 makedepends="devicepkg-dev"
 source="
 	deviceinfo
+	diag-router.service
 	kernel-cmdline.mainline.conf
 	modules-initfs.mainline
+	rmtfs.service
 	sudoers-nopasswd
 "
 subpackages="
@@ -43,14 +45,37 @@ kernel_mainline() {
 }
 
 nonfree_firmware() {
-	pkgdesc="Firmware for GPU zap shader, WiFi, Bluetooth, ADSP and SLPI"
-	depends="firmware-google-taimen"
-	mkdir "$subpkgdir"
+	pkgdesc="Firmware for modem, GPU zap shader, WiFi, Bluetooth, ADSP and SLPI"
+	# rmtfs and qcom-diag are named explicitly rather than pulled in via
+	# soc-qcom-msm8998-nonfree-firmware: both are required for the modem, and
+	# neither ships a systemd unit, so the units below are ours to provide.
+	depends="
+		firmware-google-taimen
+		pd-mapper
+		qcom-diag
+		rmtfs
+		tqftpserv
+	"
+
+	install -Dm644 "$srcdir"/rmtfs.service \
+		"$subpkgdir"/usr/lib/systemd/system/rmtfs.service
+	install -Dm644 "$srcdir"/diag-router.service \
+		"$subpkgdir"/usr/lib/systemd/system/diag-router.service
+
+	# No systemctl at build time, so enable them by shipping the .wants links.
+	local unit
+	for unit in rmtfs diag-router; do
+		install -d "$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants
+		ln -s ../$unit.service \
+			"$subpkgdir"/usr/lib/systemd/system/multi-user.target.wants/$unit.service
+	done
 }
 
 sha512sums="
 5c15f1defd852305de0396bcbfc7540032dde06975d2a2cd3363158fef1414af0aec0b0adc45934ef9f2afaa438bb87dd3ff100c57186894f612644e3cb96c54  deviceinfo
+39a818e4e6ad39fa940fc202d232da5ca80cfc676ca4310d50db74093cd56ee8a9e59330b314f1cdb9375cad3b1aab7773ff91e3edce1f5b8dff7fd8396a5885  diag-router.service
 3d9d7fc0640948692bf6ced0d1a767336c5ba7e85c4f5948db6a6711b377c6a23ae9db6255a921b4b5207f54702e6d0b71452f51b28dcd0376440604d607ad3a  kernel-cmdline.mainline.conf
 2caa643431db69a76f62b8ac489d1a3842d34b32750682da88c359918ca7a0899ed7206bb7faa8e311dc7fc66806e77411f63c3d1ac5b2aba840d336aaed1a61  modules-initfs.mainline
+6fabb728ae2646c2dd82053a289f8225a2669822917c53e55383d86fe46b4feb640d95d1eb41da3c0aaea5af349b2bfe0aa8655f8f495dd968e3903669b7545d  rmtfs.service
 c3fbad8037d656e2f24efcc08fbac593ea4076d03bb9398bb650667b8c09d8798769c6f58cad25b1ce3263a6607e01c7b2b196f3aaa354335ab7255c2b560789  sudoers-nopasswd
 "

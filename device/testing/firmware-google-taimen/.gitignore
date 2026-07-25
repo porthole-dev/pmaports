@@ -1,3 +1,4 @@
-# Proprietary Google/Qualcomm firmware extracted from the factory image -- 9 MB,
-# not ours to redistribute, and regenerable. See APKBUILD header for how.
+# Proprietary Google/Qualcomm firmware, assembled from the factory image and the
+# device's own modem partition -- ~39 MB, not ours to redistribute, and fully
+# regenerable. See the APKBUILD header for how to rebuild it.
 *.tar.gz

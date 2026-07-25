@@ -1,0 +1,3 @@
+# Proprietary Google/Qualcomm firmware extracted from the factory image -- 9 MB,
+# not ours to redistribute, and regenerable. See APKBUILD header for how.
+*.tar.gz

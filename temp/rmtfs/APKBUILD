@@ -1,0 +1,65 @@
+# TEMPORARY FORK of community/rmtfs.
+#
+# Upstream rejects any storage path missing from its partition_table. taimen's
+# modem asks for /boot/modem_fsg_oem_1 and _2 on every boot, the device has no
+# such partition, and the rejection is followed by the modem taking a fatal
+# error a fixed 40s later. The patch serves those two from files under
+# /var/lib/rmtfs (which must exist and be pre-created - rmtfs opens O_RDWR
+# without O_CREAT).
+#
+# Drop this fork if the entries land upstream.
+maintainer="Aelin <aelin@postmarketos.org>"
+pkgname=rmtfs
+pkgver=1.3
+pkgrel=1
+pkgdesc="Qualcomm Remote Filesystem Service Implementation"
+url="https://github.com/linux-msm/rmtfs"
+arch="all"
+license="BSD-3-Clause"
+makedepends="
+	eudev-dev
+	qrtr-dev
+	"
+subpackages="
+	$pkgname-doc
+	$pkgname-openrc
+	$pkgname-systemd
+	$pkgname-udev
+	"
+source="https://github.com/linux-msm/rmtfs/archive/v$pkgver/rmtfs-v$pkgver.tar.gz
+	rmtfs.confd
+	rmtfs.initd
+	udev.rules
+	0001-serve-wahoo-oem-fsg-from-files.patch
+	"
+options="!check" # no tests
+
+build() {
+	make rmtfs
+}
+
+package() {
+	DESTDIR="$pkgdir" make prefix=/usr install
+
+	install -Dm755 "$srcdir"/rmtfs.initd \
+		"$pkgdir"/etc/init.d/rmtfs
+	install -Dm644 "$srcdir"/rmtfs.confd \
+		"$pkgdir"/etc/conf.d/rmtfs
+	install -Dm644 "$srcdir"/udev.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/65-rmtfs.rules
+	install -Dm644 LICENSE \
+		"$pkgdir"/usr/share/licenses/$pkgname/COPYING
+
+	# Backing store for the file-backed OEM entries added by our patch.
+	# rmtfs opens O_RDWR without O_CREAT, so the files themselves still have
+	# to exist before the modem asks for them.
+	install -dm755 "$pkgdir"/var/lib/rmtfs
+}
+
+sha512sums="
+0cd4dfe00e9a679563a631d8f28f7336c79b016e0c15f1bf20529243944b86b31a01a82a0ddb244d13aafbf04fc31ea9d82d8055d49d843cfba0739f7a802e95  rmtfs-v1.3.tar.gz
+48d6fed02ecc6ae967f4040f1aec1b57df7851306e30bc03fe570233690b0eaf14aa2fc478aeac3f96189b7c5d8f5e846690967faf7de32ba8cefba03acd50c3  rmtfs.confd
+712672f289b8b44072732a1ad6eceb567f0c5bc0e21c936381bc9e7175ae2fb7cf75cee86cec9989d50ff5b6b32354f1886eb7e2a4b48689b9eba4d2c5a8a670  rmtfs.initd
+cb2435c159d81d3a40d30e1355c82a3d560dc2df7d05fee95085bc80e492ac93a728258f2f1b463c04a964979760990c8c9176b22cb585cbec19ab285cd45440  udev.rules
+2722108ac51856a7c08da7893f176cbf5253709134d5b84cf6135ab4c64d5e50ec6bc613a5064f0cf2a8939a78e65d72220c9f6f5fef8f75e2534d1858add0c3  0001-serve-wahoo-oem-fsg-from-files.patch
+"

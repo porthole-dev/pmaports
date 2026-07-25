@@ -1,0 +1,79 @@
+--- a/storage.c
++++ b/storage.c
+@@ -12,6 +12,7 @@
+ #define STORAGE_MAX_SIZE (16 * 1024 * 1024)
+ 
+ #define BY_PARTLABEL_PATH "/dev/disk/by-partlabel"
++#define RMTFS_FILE_DIR "/var/lib/rmtfs"
+ 
+ #define MIN(x, y) ((x) < (y) ? (x) : (y))
+ 
+@@ -19,6 +20,12 @@
+ 	const char *path;
+ 	const char *actual;
+ 	const char *partlabel;
++	/*
++	 * Some OEM images ask for storage that has no partition of its own.
++	 * Back those with a plain file under RMTFS_FILE_DIR instead, even in
++	 * -P (partition) mode.
++	 */
++	int file_backed;
+ };
+ 
+ struct rmtfd {
+@@ -49,6 +56,14 @@
+ 	{ "/oem/nvbk/dynamic", "oem_dycnvbk", "oem_dycnvbk" },
+ 	/* Some OxygenOS firmware versions request this alternative path */
+ 	{ "/oppo/oem_partion", "oem_stanvbk", "oem_stanvbk" },
++	/*
++	 * Google wahoo (Pixel 2 / 2 XL) modem firmware asks for these two on
++	 * every boot. There is no matching partition on the device, so serve
++	 * them from files; rejecting them leaves the modem taking a fatal
++	 * error a fixed 40s after it comes up.
++	 */
++	{ "/boot/modem_fsg_oem_1", "modem_fsg_oem_1", NULL, 1 },
++	{ "/boot/modem_fsg_oem_2", "modem_fsg_oem_2", NULL, 1 },
+ 	{}
+ };
+ 
+@@ -112,6 +127,7 @@
+ struct rmtfd *storage_open(unsigned node, const char *path, const char *slot_suffix)
+ {
+ 	char *fspath;
++	const char *dir;
+ 	const struct partition *part;
+ 	struct rmtfd *rmtfd = NULL;
+ 	const char *file;
+@@ -147,21 +163,27 @@
+ 		return NULL;
+ 	}
+ 
+-	if (storage_use_partitions)
++	if (part->file_backed) {
++		dir = RMTFS_FILE_DIR;
++		file = part->actual;
++	} else if (storage_use_partitions) {
++		dir = storage_dir;
+ 		file = part->partlabel;
+-	else
++	} else {
++		dir = storage_dir;
+ 		file = part->actual;
++	}
+ 
+-	pathlen = strlen(storage_dir) + strlen(file) + 2 + strnlen(slot_suffix, SLOT_SUFFIX_LEN);
++	pathlen = strlen(dir) + strlen(file) + 2 + strnlen(slot_suffix, SLOT_SUFFIX_LEN);
+ 	fspath = alloca(pathlen);
+-	snprintf(fspath, pathlen, "%s/%s", storage_dir, file);
++	snprintf(fspath, pathlen, "%s/%s", dir, file);
+ 	ret = fd_open(rmtfd, fspath, part);
+ 	if (ret) {
+ 		/* Try again with the slot suffix before giving up */
+ 		if (!slot_suffix)
+ 			return NULL;
+ 
+-		snprintf(fspath, pathlen, "%s/%s%s", storage_dir, file, slot_suffix);
++		snprintf(fspath, pathlen, "%s/%s%s", dir, file, slot_suffix);
+ 		ret = fd_open(rmtfd, fspath, part);
+ 		if (ret)
+ 			return NULL;

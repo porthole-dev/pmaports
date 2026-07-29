@@ -42,4 +42,10 @@ ln -sf /etc/init.d/taimen-wifi-country \
 ln -sf /usr/lib/systemd/system/taimen-wifi-country.service \
 	/etc/systemd/system/multi-user.target.wants/taimen-wifi-country.service
 
+# Bluetooth controller re-probe workaround.
+ln -sf /etc/init.d/taimen-bt-reload \
+	/etc/runlevels/default/taimen-bt-reload
+ln -sf /usr/lib/systemd/system/taimen-bt-reload.service \
+	/etc/systemd/system/multi-user.target.wants/taimen-bt-reload.service
+
 exit 0

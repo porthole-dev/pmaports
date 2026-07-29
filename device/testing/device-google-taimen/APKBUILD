@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=13
+pkgrel=14
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -32,6 +32,9 @@ source="
 	taimen-wifi-country.initd
 	taimen-wifi-country.service
 	ath-regd-override.conf
+	taimen-bt-reload
+	taimen-bt-reload.initd
+	taimen-bt-reload.service
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -73,6 +76,16 @@ package() {
 		"$pkgdir"/etc/init.d/taimen-wifi-country
 	install -Dm644 "$srcdir"/taimen-wifi-country.service \
 		"$pkgdir"/usr/lib/systemd/system/taimen-wifi-country.service
+
+	# Bluetooth workaround: on a cold boot the controller initialises fine
+	# but never reaches the mgmt index list, so BlueZ cannot adopt it. See
+	# the script header -- root cause not yet understood.
+	install -Dm755 "$srcdir"/taimen-bt-reload \
+		"$pkgdir"/usr/bin/taimen-bt-reload
+	install -Dm755 "$srcdir"/taimen-bt-reload.initd \
+		"$pkgdir"/etc/init.d/taimen-bt-reload
+	install -Dm644 "$srcdir"/taimen-bt-reload.service \
+		"$pkgdir"/usr/lib/systemd/system/taimen-bt-reload.service
 }
 
 kernel_mainline() {
@@ -114,4 +127,7 @@ ad74b92797625af0c67aaa616d0dbaeb348c6b69728f3b81c7e54222f460014dcdc93572a1e34a7e
 8c0d5d52d4e9e8ae1875d294e0a33fd794067f5e701315104edf36b5c0c8c7a0d775a24792af8cd4be51334fb2ab34e9b962b5091f0fd437b71342f4dc9747b2  taimen-wifi-country.initd
 4c12fc58fb858b4f062ef69c27c3c49e66775ce4b6d9e959c524ccedad36ac3d53eda653c255c62ff48ce978d10f41aa5f00be8a298ced3fa0841f4e775a1d3c  taimen-wifi-country.service
 8399745f7b4ffd740c6d24a60598fd26ecfdc89afa59df6d65009a2ed100f94c36316968927ac1661469b455fcce1dafba2ea881953949f7404bef94099e364e  ath-regd-override.conf
+13cf6d300bb95fa2a63d9cfcf67a85687c23d0030b306821282fc5a17a1465f3ad9f327646daddad944ff0c4cba8bb96c6c98a7c9bc327523f6d5ec66d29478c  taimen-bt-reload
+864305ef79fbc9592bc2abd03af7ae2ad87c79cd59bba0bda6af832ba29a250cb9c4bdcfebb84182eb7963bb99f7131030229ae97f047f7b11f3069a1015678c  taimen-bt-reload.initd
+9b777a6401667d2038b390e4a913a567d2df1d4cea2a281a1fb5d57dfe797de3e5432e3b21fef690144d8bec5451c9350b9e3e873c1eb4b40f7af6d353168eab  taimen-bt-reload.service
 "

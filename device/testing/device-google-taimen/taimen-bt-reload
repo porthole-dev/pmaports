@@ -1,0 +1,56 @@
+#!/bin/sh
+# WORKAROUND, not a fix: re-probe hci_uart when the controller never reaches
+# the mgmt index list.
+#
+# Measured on taimen (2026-07-29). On a cold boot the WCN3990 controller
+# initialises perfectly -- "QCA setup on UART is completed", hci0 is UP RUNNING
+# with real traffic counters -- but mgmt never learns about it:
+#
+#   btmgmt info            -> "Index list with 0 items"
+#   btmgmt --index 0 info  -> Invalid Index (0x11)
+#   btmon at boot          -> Read Controller Index List returns Controllers: 0
+#                             and no Index Added event ever arrives
+#
+# mgmt_control() returns Invalid Index only while HCI_SETUP, HCI_CONFIG or
+# HCI_USER_CHANNEL is set, and mgmt_index_added() is only reached in
+# hci_power_on() once HCI_SETUP is cleared -- so the device is stuck in setup.
+# BlueZ therefore never adopts it and the UI toggle cannot turn it on.
+#
+# Re-probing the driver makes hci_register_dev() run again from scratch, and
+# that path completes: Index Added fires, bluetoothd powers the adapter, and
+# scanning works (verified: LE scan returns real devices).
+#
+# Root cause is NOT understood yet -- pinning down which branch hci_power_on()
+# takes needs a printk in bluetooth.ko. Remove this file once that is fixed.
+set -u
+
+log() { echo "taimen-bt-reload: $*"; }
+
+command -v btmgmt >/dev/null 2>&1 || { log "btmgmt not installed, skipping"; exit 0; }
+
+# Only act if the controller exists but mgmt cannot see it.
+[ -d /sys/class/bluetooth/hci0 ] || { log "no hci0, nothing to do"; exit 0; }
+
+if btmgmt info 2>/dev/null | grep -q "^hci0:"; then
+	log "controller already visible to mgmt, nothing to do"
+	exit 0
+fi
+
+log "hci0 present but not in the mgmt index list; re-probing hci_uart"
+modprobe -r hci_uart 2>/dev/null || { log "rmmod hci_uart failed"; exit 0; }
+sleep 2
+modprobe hci_uart 2>/dev/null || { log "modprobe hci_uart failed"; exit 1; }
+
+# Give the controller time to re-init and bluetoothd time to adopt it.
+i=0
+while [ $i -lt 20 ]; do
+	sleep 1
+	if btmgmt info 2>/dev/null | grep -q "^hci0:"; then
+		log "controller adopted by mgmt after ${i}s"
+		exit 0
+	fi
+	i=$((i + 1))
+done
+
+log "controller still not visible after re-probe"
+exit 0

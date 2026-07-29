@@ -3,21 +3,35 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=9
+pkgrel=13
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
 options="!check !archcheck"
+# qbootctl marks each boot successful in the Android A/B interface. Without it
+# the bootloader decrements the slot's retry counter every boot and eventually
+# refuses the slot, even though pmOS booted fine -- see the post-install. The
+# -openrc/-systemd subpackages come in on their own via install_if, exactly as
+# rmtfs's do, so do NOT list them here.
 depends="
 	mkbootimg
 	postmarketos-base
+	qbootctl
 "
+install="$pkgname.post-install"
 makedepends="devicepkg-dev"
 source="
 	deviceinfo
 	kernel-cmdline.mainline.conf
 	modules-initfs.mainline
 	sudoers-nopasswd
+	taimen-modem-bringup
+	taimen-modem-bringup.initd
+	taimen-modem-bringup.service
+	taimen-wifi-country
+	taimen-wifi-country.initd
+	taimen-wifi-country.service
+	ath-regd-override.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -34,6 +48,31 @@ package() {
 	# See the file's header: local bring-up convenience, not for upstream.
 	install -Dm440 "$srcdir"/sudoers-nopasswd \
 		"$pkgdir"/etc/sudoers.d/50-pmos-dev-nopasswd
+
+	# WLAN/modem bring-up ordering. This used to live in /etc/local.d on the
+	# device only, which meant every clean install silently came up with no
+	# working modem. Ship it, and ship both init wrappers: the matching one is
+	# enabled by the post-install, the other is an inert file.
+	install -Dm755 "$srcdir"/taimen-modem-bringup \
+		"$pkgdir"/usr/bin/taimen-modem-bringup
+	install -Dm755 "$srcdir"/taimen-modem-bringup.initd \
+		"$pkgdir"/etc/init.d/taimen-modem-bringup
+	install -Dm644 "$srcdir"/taimen-modem-bringup.service \
+		"$pkgdir"/usr/lib/systemd/system/taimen-modem-bringup.service
+
+	# WiFi regulatory. The board data pins this device to the US, which
+	# disables 2.4 ch 12-13 and the whole ETSI 5 GHz midband; see the conf
+	# file's header. regd_override only opens the channel superset -- the
+	# country itself is applied at runtime from the SIM MCC (or the country
+	# IE in beacons), never hardcoded.
+	install -Dm644 "$srcdir"/ath-regd-override.conf \
+		"$pkgdir"/etc/modprobe.d/ath-regd-override.conf
+	install -Dm755 "$srcdir"/taimen-wifi-country \
+		"$pkgdir"/usr/bin/taimen-wifi-country
+	install -Dm755 "$srcdir"/taimen-wifi-country.initd \
+		"$pkgdir"/etc/init.d/taimen-wifi-country
+	install -Dm644 "$srcdir"/taimen-wifi-country.service \
+		"$pkgdir"/usr/lib/systemd/system/taimen-wifi-country.service
 }
 
 kernel_mainline() {
@@ -65,7 +104,14 @@ nonfree_firmware() {
 
 sha512sums="
 5c15f1defd852305de0396bcbfc7540032dde06975d2a2cd3363158fef1414af0aec0b0adc45934ef9f2afaa438bb87dd3ff100c57186894f612644e3cb96c54  deviceinfo
-3d9d7fc0640948692bf6ced0d1a767336c5ba7e85c4f5948db6a6711b377c6a23ae9db6255a921b4b5207f54702e6d0b71452f51b28dcd0376440604d607ad3a  kernel-cmdline.mainline.conf
+8363fa3c9d5836c50f08d72c1a904fc3b58181442df13c423022a88274f964bde242d14d8399a6b9c3230f6bbada6c778cab3014dd055eacd2225ed7b9413e97  kernel-cmdline.mainline.conf
 2caa643431db69a76f62b8ac489d1a3842d34b32750682da88c359918ca7a0899ed7206bb7faa8e311dc7fc66806e77411f63c3d1ac5b2aba840d336aaed1a61  modules-initfs.mainline
 c3fbad8037d656e2f24efcc08fbac593ea4076d03bb9398bb650667b8c09d8798769c6f58cad25b1ce3263a6607e01c7b2b196f3aaa354335ab7255c2b560789  sudoers-nopasswd
+108f6f0b06c935355a3aa74cd21ccb04499fc5e7128050dd86bbfb9756b4b05fe86be90b4e6ffedab49b6accad387deec87eeb29fcbe609bd4b32cea5b0fc722  taimen-modem-bringup
+bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd87e6a44b2814973e9dc849e275695e203a5516b6e4d665a5f  taimen-modem-bringup.initd
+ad74b92797625af0c67aaa616d0dbaeb348c6b69728f3b81c7e54222f460014dcdc93572a1e34a7e472eaf27ffbc629dda1efa4bf3fd7738c44e112e952971e1  taimen-modem-bringup.service
+008acd5882993a35e216375be8a2ebef55c2c2b763ff92848548d8067fc8873a122e8eb1f72d747b926bb1dbe6022f858723549cb423c8a2427e6b945e0d3a78  taimen-wifi-country
+8c0d5d52d4e9e8ae1875d294e0a33fd794067f5e701315104edf36b5c0c8c7a0d775a24792af8cd4be51334fb2ab34e9b962b5091f0fd437b71342f4dc9747b2  taimen-wifi-country.initd
+4c12fc58fb858b4f062ef69c27c3c49e66775ce4b6d9e959c524ccedad36ac3d53eda653c255c62ff48ce978d10f41aa5f00be8a298ced3fa0841f4e775a1d3c  taimen-wifi-country.service
+8399745f7b4ffd740c6d24a60598fd26ecfdc89afa59df6d65009a2ed100f94c36316968927ac1661469b455fcce1dafba2ea881953949f7404bef94099e364e  ath-regd-override.conf
 "

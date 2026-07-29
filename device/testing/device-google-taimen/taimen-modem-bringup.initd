@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+
+name="taimen-modem-bringup"
+description="Order IPA, rmtfs and diag-router around the MSS boot (WiFi + modem)"
+
+command="/usr/bin/taimen-modem-bringup"
+
+depend() {
+	# rmtfs must be up and settled before MSS starts, or the modem boots
+	# without EFS. The script waits for it too, but ask OpenRC first.
+	after rmtfs tqftpserv pd-mapper
+	before networkmanager
+}
+
+start() {
+	ebegin "Bringing up WLAN/modem in the required order"
+	$command
+	eend $?
+}

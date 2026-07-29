@@ -1,0 +1,15 @@
+[Unit]
+Description=Set the WiFi regulatory country from the SIM MCC (Android-style)
+Wants=ModemManager.service taimen-modem-bringup.service
+After=ModemManager.service taimen-modem-bringup.service
+Before=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/taimen-wifi-country
+# waits up to ~60s for the modem to register before giving up
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+#!/sbin/openrc-run
+
+name="taimen-wifi-country"
+description="Set the WiFi regulatory country from the SIM (Android-style)"
+
+command="/usr/bin/taimen-wifi-country"
+
+depend() {
+	# needs a registered modem to read the MCC from
+	after modemmanager taimen-modem-bringup
+	before networkmanager
+}
+
+start() {
+	ebegin "Setting WiFi regulatory country from SIM MCC"
+	$command
+	eend 0
+}

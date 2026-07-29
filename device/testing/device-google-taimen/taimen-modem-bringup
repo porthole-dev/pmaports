@@ -1,0 +1,82 @@
+#!/bin/sh
+# taimen WLAN + modem bring-up. Init-agnostic: driven by an OpenRC init script
+# or a systemd unit, both of which just exec this.
+#
+# THE ORDERING IS THE WHOLE POINT (all of it measured, 2026-07-27..29):
+#
+#  1. IPA must be loaded BEFORE the MSS boots. Without its AP-side IPA peer the
+#     WLAN PD starves modem tasks and the modem crashloops on
+#     `halphy_caldb.c:2822 Assertion 0 failed` every ~10 s forever. That is a
+#     boot-ORDERING failure, not broken hardware -- with IPA up first it does
+#     not happen at all.
+#  2. tqftpserv's readwrite root is /tmp/tqftpserv (tmpfs), so the ota_firewall
+#     ruleset has to be recreated every boot or the modem gets fetch rejects.
+#  3. rmtfs must be running AND settled before MSS starts, or the modem comes up
+#     with no EFS -- a "deaf radio": empty firmware version and an invalid MAC.
+#  4. diag-router must be attached before the WLAN PD's ~11 s starvation window
+#     or the modem's diag task starves and dog_hb kills the PD every ~19 s.
+#
+# Nothing here is idempotency-sensitive: every step is a no-op if already done,
+# so it is safe to re-run.
+set -u
+
+log() { echo "taimen-modem-bringup: $*"; }
+
+# Prefer the real service manager; fall back to running the daemon directly so
+# this still works on a half-configured rootfs.
+ensure_running() {
+	svc=$1
+	shift
+	pgrep -x "$svc" >/dev/null 2>&1 && return 0
+
+	if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+		systemctl start "$svc" >/dev/null 2>&1 && return 0
+	elif [ -e "/etc/init.d/$svc" ] && command -v rc-service >/dev/null 2>&1; then
+		rc-service "$svc" start >/dev/null 2>&1 && return 0
+	fi
+
+	log "starting $svc directly"
+	setsid "$@" >"/tmp/$svc.log" 2>&1 </dev/null &
+}
+
+# 1. IPA before the modem.
+#
+# The explicit modprobe is deliberate: older images carry a stale
+# modprobe.blacklist=ipa on the kernel cmdline, and a blacklist only blocks
+# AUTOMATIC loading -- loading by name still works. On current images IPA
+# autoloads and this is a harmless no-op.
+modprobe ipa 2>/dev/null
+
+# 2. tqftpserv ruleset on tmpfs.
+mkdir -p /tmp/tqftpserv/ota_firewall
+touch /tmp/tqftpserv/ota_firewall/ruleset
+
+# 3. rmtfs running, then settled, before MSS.
+ensure_running rmtfs rmtfs -s -P -r
+i=0
+while [ $i -lt 30 ] && ! pgrep -x rmtfs >/dev/null 2>&1; do
+	sleep 1
+	i=$((i + 1))
+done
+pgrep -x rmtfs >/dev/null 2>&1 || log "WARNING: rmtfs never appeared; modem will boot without EFS"
+sleep 8
+
+# Start the MSS remoteproc if something has not already done it.
+R=$(grep -l 4080000.remoteproc /sys/class/remoteproc/*/name 2>/dev/null | head -1)
+if [ -n "$R" ]; then
+	D=$(dirname "$R")
+	if [ "$(cat "$D/state" 2>/dev/null)" != "running" ]; then
+		log "starting MSS"
+		echo start >"$D/state" 2>/dev/null || log "MSS start failed (already running?)"
+	fi
+fi
+
+# 4. diag-router as soon as the WLAN PD gives us wlan0.
+i=0
+while [ $i -lt 60 ] && [ ! -e /sys/class/net/wlan0 ]; do
+	sleep 1
+	i=$((i + 1))
+done
+ensure_running diag-router diag-router
+
+exit 0

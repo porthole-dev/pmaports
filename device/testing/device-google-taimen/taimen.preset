@@ -1,0 +1,21 @@
+# systemd preset policy for this device's bring-up unit.
+#
+# Why this file has to exist: postmarketOS ships
+# /usr/lib/systemd/system-preset/99-default.preset containing "disable *", and
+# something in the install path runs `systemctl preset-all`. That wipes any
+# multi-user.target.wants symlink whose unit is not explicitly enabled by a
+# preset rule -- so the symlink the post-install creates was silently removed
+# and the device booted with NO modem, while `systemctl status` reported the
+# unit as merely "disabled; preset: disabled".
+#
+# qbootctl survived exactly because pmOS lists it in 90-base.preset. This is
+# the same treatment for ours.
+#
+# Preset files are read in lexicographic order and the FIRST matching rule
+# wins, so this must sort before 99-default.preset -- hence the 91- prefix at
+# install time. Do not renumber it above 99.
+#
+# taimen-wifi-country.service used to be listed here too. It was deleted in
+# pkgrel 18: the kernel learns the regulatory country from the AP beacon
+# country IE on its own. See the APKBUILD's ath-regd-override.conf comment.
+enable taimen-modem-bringup.service

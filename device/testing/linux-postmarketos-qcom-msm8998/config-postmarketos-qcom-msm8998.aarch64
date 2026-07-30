@@ -1457,6 +1457,9 @@ CONFIG_DEV_COREDUMP=y
 CONFIG_GENERIC_CPU_AUTOPROBE=y
 CONFIG_GENERIC_CPU_VULNERABILITIES=y
 CONFIG_REGMAP=y
+# Makes /sys/kernel/debug/regmap/*/registers writable, so a codec register
+# hypothesis costs one echo instead of a kernel build. Debug config only.
+CONFIG_REGMAP_ALLOW_WRITE_DEBUGFS=y
 CONFIG_REGMAP_I2C=y
 CONFIG_REGMAP_SLIMBUS=m
 CONFIG_REGMAP_SPMI=y
@@ -2048,7 +2051,12 @@ CONFIG_SERIAL_DEV_CTRL_TTYPORT=y
 # CONFIG_VIRTIO_CONSOLE is not set
 # CONFIG_IPMI_HANDLER is not set
 # CONFIG_HW_RANDOM is not set
-# CONFIG_DEVMEM is not set
+# Physical memory access from userspace: how you read an LPASS/DPU/GPU
+# register or a DMA buffer without a kernel build. STRICT_DEVMEM off so RAM
+# is readable too, not just MMIO. DEBUG CONFIG ONLY -- root can read and
+# write all of physical memory through this.
+CONFIG_DEVMEM=y
+# CONFIG_STRICT_DEVMEM is not set
 # CONFIG_TCG_TPM is not set
 # CONFIG_XILLYBUS is not set
 # CONFIG_XILLYUSB is not set
@@ -4376,7 +4384,9 @@ CONFIG_EXTCON_USB_GPIO=y
 # CONFIG_EXTCON_USBC_TUSB320 is not set
 # CONFIG_MEMORY is not set
 CONFIG_IIO=y
-# CONFIG_IIO_BUFFER is not set
+CONFIG_IIO_BUFFER=y
+CONFIG_IIO_KFIFO_BUF=y
+CONFIG_IIO_QCOM_SMGR=m
 # CONFIG_IIO_CONFIGFS is not set
 # CONFIG_IIO_TRIGGER is not set
 # CONFIG_IIO_SW_DEVICE is not set

@@ -1,0 +1,67 @@
+# Maintainer: Giuseppe Maggio <jertlok@proton.me>
+#
+# Convergence Shell -- a GNOME Shell extension that turns vanilla GNOME into a
+# usable phone shell (app drawer, status bar, notification panel, gesture bar,
+# OSK) and switches back to a desktop layout when docked.
+#
+# Why this is packaged instead of git-cloned into ~/.local/share as upstream's
+# README says: a user-local clone does not survive `pmbootstrap zap` or a
+# rootfs reinstall, and on this device those happen constantly. Packaged, the
+# extension is part of the image and a reinstall brings it back.
+#
+# We deliberately run vanilla gnome-shell (50.x) rather than gnome-shell-mobile
+# (48.x): upstream's own README says "Gnome-Shell-Mobile 48 has several
+# limitations that create bugs" and recommends vanilla Gnome 50, which is also
+# the combination the author tested on a postmarketOS OnePlus 6.
+#
+# Upstream also ships patches/mutter-ignore-min-size-for-maximized-wayland.patch
+# to let apps with a minimum window size maximize on a phone-width screen. The
+# README does not ask you to apply it, so we do not patch mutter -- but the file
+# is installed under /usr/share/doc so it is there if GNOME apps turn out to
+# overflow the 720px logical width.
+pkgname=gnome-shell-extension-convergence
+pkgver=0_git20260510
+pkgrel=0
+_commit="111880b1f2144644506cb643c9750aca83122e1b"
+_uuid="convergence@daniel-blandford.github.io"
+pkgdesc="GNOME Shell extension adapting the shell to phone, tablet and desktop"
+url="https://github.com/Daniel-Blandford/convergence-shell"
+arch="noarch"
+license="GPL-3.0-or-later"
+# gnome-shell 48/49/50 per metadata.json; we ship 50.x.
+depends="gnome-shell"
+# glib-compile-schemas runs on the build host, and nothing is compiled for the
+# target (pure JS + one gschema), so this is a build-only dependency. Declaring
+# it as plain makedepends makes abuild install it into the target sysroot too
+# and warn about unsplit makedepends on a cross build.
+makedepends_build="glib-dev"
+options="!check" # no test suite upstream
+source="$pkgname-$_commit.tar.gz::https://github.com/Daniel-Blandford/convergence-shell/archive/$_commit/convergence-shell-$_commit.tar.gz"
+builddir="$srcdir/convergence-shell-$_commit"
+
+build() {
+	# Upstream's only documented build step. There is no Makefile or meson;
+	# the extension loads its own schemas/gschemas.compiled at runtime, so the
+	# compiled schema stays inside the extension dir rather than going into
+	# the system schema cache.
+	glib-compile-schemas schemas/
+}
+
+package() {
+	local dest="$pkgdir/usr/share/gnome-shell/extensions/$_uuid"
+
+	install -dm755 "$dest"
+	# The extension tree as gnome-shell expects to find it. Everything else in
+	# the repo root (.gitignore, README, LICENSE, patches/) is repo furniture.
+	cp -a extension.js prefs.js appDrawer.js widgetSettings.js \
+		metadata.json stylesheet.css schemas icons src "$dest"/
+
+	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+	install -Dm644 patches/mutter-ignore-min-size-for-maximized-wayland.patch \
+		"$pkgdir/usr/share/doc/$pkgname/mutter-ignore-min-size-for-maximized-wayland.patch"
+}
+
+sha512sums="
+d7de6f0819efe14fbbfb05f4d69ce36638a5a5bc217bea7d2ab8e55e4dee5e4fb94dbdab4d5c8d793b5a374983830b1a7d83ce67a1600500f15cc623043975cb  gnome-shell-extension-convergence-111880b1f2144644506cb643c9750aca83122e1b.tar.gz
+"

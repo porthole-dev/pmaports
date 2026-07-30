@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=15
+pkgrel=19
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -17,6 +17,7 @@ depends="
 	mkbootimg
 	postmarketos-base
 	qbootctl
+	sns-reg
 "
 install="$pkgname.post-install"
 makedepends="devicepkg-dev"
@@ -28,10 +29,12 @@ source="
 	taimen-modem-bringup
 	taimen-modem-bringup.initd
 	taimen-modem-bringup.service
-	taimen-wifi-country
-	taimen-wifi-country.initd
-	taimen-wifi-country.service
 	ath-regd-override.conf
+	taimen.preset
+	swclock-wait-for-rtc.conf
+	groups.conf
+	sns-reg-registry.conf
+	taimen-sns-reg-prepare
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -60,19 +63,45 @@ package() {
 	install -Dm644 "$srcdir"/taimen-modem-bringup.service \
 		"$pkgdir"/usr/lib/systemd/system/taimen-modem-bringup.service
 
-	# WiFi regulatory. The board data pins this device to the US, which
-	# disables 2.4 ch 12-13 and the whole ETSI 5 GHz midband; see the conf
-	# file's header. regd_override only opens the channel superset -- the
-	# country itself is applied at runtime from the SIM MCC (or the country
-	# IE in beacons), never hardcoded.
+	# WiFi regulatory. The board data pins this device to the US, which disables
+	# 2.4 ch 12-13 and the whole ETSI 5 GHz midband; see the conf file's header.
+	# This module param is ALL that is needed: it opens the permissive world SKU
+	# channel superset, and cfg80211 then adopts the actual country from the AP
+	# beacon country IE by itself -- verified in dmesg:
+	#   ath: regdomain 0x817c dynamically updated by country element
+	#   ath: Country alpha2 being used: IT
+	# taimen-wifi-country (the SIM-MCC helper) was deleted in pkgrel 18: it had
+	# never run at all (it exits early without `iw`, which was never a dependency),
+	# and once `iw` was installed it did nothing except burn ~11 s of boot waiting
+	# for a modem operator id that a PIN-locked SIM never provides.
 	install -Dm644 "$srcdir"/ath-regd-override.conf \
 		"$pkgdir"/etc/modprobe.d/ath-regd-override.conf
-	install -Dm755 "$srcdir"/taimen-wifi-country \
-		"$pkgdir"/usr/bin/taimen-wifi-country
-	install -Dm755 "$srcdir"/taimen-wifi-country.initd \
-		"$pkgdir"/etc/init.d/taimen-wifi-country
-	install -Dm644 "$srcdir"/taimen-wifi-country.service \
-		"$pkgdir"/usr/lib/systemd/system/taimen-wifi-country.service
+
+	# systemd preset policy -- see the file's header. Without this,
+	# `systemctl preset-all` obeys pmOS's 99-default.preset "disable *" and
+	# deletes the multi-user.target.wants symlink the post-install makes, so
+	# the device boots with no modem. Must sort before 99-default.preset.
+	install -Dm644 "$srcdir"/taimen.preset \
+		"$pkgdir"/usr/lib/systemd/system-preset/91-taimen.preset
+
+	# swclock-offset-boot loses a probe race with rtc-pm8xxx, so the software
+	# clock is never restored and the machine boots days behind; NTP then steps
+	# the clock and takes NetworkManager's DHCP lease (and DNS) down with it.
+	# See the drop-in's header.
+	install -Dm644 "$srcdir"/swclock-wait-for-rtc.conf \
+		"$pkgdir"/usr/lib/systemd/system/swclock-offset-boot.service.d/10-wait-for-rtc.conf
+
+	# Sensors. Every sensor sits behind the SLPI island and is reachable only
+	# through the SSC Sensor Manager, which will not publish its QMI service
+	# until the AP answers its registry reads -- see the prepare script's
+	# header. groups.conf maps each registry group to a byte range of
+	# /persist/sensors/sns.reg and was extracted from the stock
+	# /vendor/bin/sensors.qcom by tools/tk-sns-groups.py.
+	install -Dm644 "$srcdir"/groups.conf "$pkgdir"/etc/sns-reg.d/groups.conf
+	install -Dm755 "$srcdir"/taimen-sns-reg-prepare \
+		"$pkgdir"/usr/bin/taimen-sns-reg-prepare
+	install -Dm644 "$srcdir"/sns-reg-registry.conf \
+		"$pkgdir"/usr/lib/systemd/system/sns-reg.service.d/10-registry.conf
 }
 
 kernel_mainline() {
@@ -103,15 +132,17 @@ nonfree_firmware() {
 }
 
 sha512sums="
-5c15f1defd852305de0396bcbfc7540032dde06975d2a2cd3363158fef1414af0aec0b0adc45934ef9f2afaa438bb87dd3ff100c57186894f612644e3cb96c54  deviceinfo
+51b7e9f3edf05d774b4477aa5e978831407a25295e3f451b2cb746b4a508caba529672404061c6147f812978cbb87172e2bacb0d2bd0094aa5a3c4b4017ff9ce  deviceinfo
 8363fa3c9d5836c50f08d72c1a904fc3b58181442df13c423022a88274f964bde242d14d8399a6b9c3230f6bbada6c778cab3014dd055eacd2225ed7b9413e97  kernel-cmdline.mainline.conf
 2caa643431db69a76f62b8ac489d1a3842d34b32750682da88c359918ca7a0899ed7206bb7faa8e311dc7fc66806e77411f63c3d1ac5b2aba840d336aaed1a61  modules-initfs.mainline
 c3fbad8037d656e2f24efcc08fbac593ea4076d03bb9398bb650667b8c09d8798769c6f58cad25b1ce3263a6607e01c7b2b196f3aaa354335ab7255c2b560789  sudoers-nopasswd
-108f6f0b06c935355a3aa74cd21ccb04499fc5e7128050dd86bbfb9756b4b05fe86be90b4e6ffedab49b6accad387deec87eeb29fcbe609bd4b32cea5b0fc722  taimen-modem-bringup
+f009e13cda9afd30267061b944e9c1ec3105ab9e2ce4de7f0e39cff55ac5523d3418d1cc03283a61bd7b6e848dd5cbb25c024803301b15e31d5f0415d49790dd  taimen-modem-bringup
 bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd87e6a44b2814973e9dc849e275695e203a5516b6e4d665a5f  taimen-modem-bringup.initd
-ad74b92797625af0c67aaa616d0dbaeb348c6b69728f3b81c7e54222f460014dcdc93572a1e34a7e472eaf27ffbc629dda1efa4bf3fd7738c44e112e952971e1  taimen-modem-bringup.service
-008acd5882993a35e216375be8a2ebef55c2c2b763ff92848548d8067fc8873a122e8eb1f72d747b926bb1dbe6022f858723549cb423c8a2427e6b945e0d3a78  taimen-wifi-country
-8c0d5d52d4e9e8ae1875d294e0a33fd794067f5e701315104edf36b5c0c8c7a0d775a24792af8cd4be51334fb2ab34e9b962b5091f0fd437b71342f4dc9747b2  taimen-wifi-country.initd
-4c12fc58fb858b4f062ef69c27c3c49e66775ce4b6d9e959c524ccedad36ac3d53eda653c255c62ff48ce978d10f41aa5f00be8a298ced3fa0841f4e775a1d3c  taimen-wifi-country.service
-8399745f7b4ffd740c6d24a60598fd26ecfdc89afa59df6d65009a2ed100f94c36316968927ac1661469b455fcce1dafba2ea881953949f7404bef94099e364e  ath-regd-override.conf
+cb7d96d5d0f2153ab76556100053162b0a4c90e2301723303b07e39559df762f4c6f5fc4cf3ef572a3212682d983c8daabd8cf1f349396517ab1c00309ecb75e  taimen-modem-bringup.service
+259349fe19752f3d9aac9651acdad3499058030e63587c6af68e1df1c0ddf602096fbccc892893ce02437e67c19b046522c1e80f604a68b48563e486ced143ca  ath-regd-override.conf
+eaff4eceb706c06c00dc7578ceda0742ab4fffa6f02948928cdefbb75ace942999a54582ee23e51d165812ad1203b548fc79c4f723f082024766e8e69ad6b720  taimen.preset
+640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
+2690c1a30952b293a5e3b46b6e07c54e3b03c759a3b83d3c04b77d2ff2d886fd930625fdca7f5bea5254dd418d2cfa7765e5ebbeca2064542a70c4ee5592e6a8  groups.conf
+cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7d8476548b3d9c4d6cb24ff9fd289d00b2ca8a06c82afe3c2  sns-reg-registry.conf
+b66ac735d7948333749d64afd5852212c64ff6bed413643b69dde3804de82dd8fffcb16d41cb4a0f4c4e7b5d9860659cc13cfc7d53ba42669f0cb08b7a0e4213  taimen-sns-reg-prepare
 "

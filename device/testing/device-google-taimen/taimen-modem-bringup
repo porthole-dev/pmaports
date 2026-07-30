@@ -2,19 +2,31 @@
 # taimen WLAN + modem bring-up. Init-agnostic: driven by an OpenRC init script
 # or a systemd unit, both of which just exec this.
 #
-# THE ORDERING IS THE WHOLE POINT (all of it measured, 2026-07-27..29):
+# WHAT IS LEFT HERE IS IRREDUCIBLY USERSPACE. A Qualcomm modem on mainline
+# depends on three userspace daemons that the kernel cannot substitute for:
 #
-#  1. IPA must be loaded BEFORE the MSS boots. Without its AP-side IPA peer the
-#     WLAN PD starves modem tasks and the modem crashloops on
-#     `halphy_caldb.c:2822 Assertion 0 failed` every ~10 s forever. That is a
-#     boot-ORDERING failure, not broken hardware -- with IPA up first it does
-#     not happen at all.
-#  2. tqftpserv's readwrite root is /tmp/tqftpserv (tmpfs), so the ota_firewall
-#     ruleset has to be recreated every boot or the modem gets fetch rejects.
-#  3. rmtfs must be running AND settled before MSS starts, or the modem comes up
-#     with no EFS -- a "deaf radio": empty firmware version and an invalid MAC.
-#  4. diag-router must be attached before the WLAN PD's ~11 s starvation window
-#     or the modem's diag task starves and dog_hb kills the PD every ~19 s.
+#   rmtfs        serves the modem's EFS. Without it the modem boots "deaf":
+#                empty firmware version and an invalid MAC.
+#   tqftpserv    serves modem config over TFTP; its readwrite root is on tmpfs,
+#                so the ota_firewall ruleset must be recreated every boot or the
+#                modem gets fetch rejects.
+#   diag-router  drains the DIAG QRTR channel. Without it the modem's diag task
+#                starves and dog_hb kills the WLAN PD every ~19 s.
+#
+# So this is not a workaround for a missing driver -- it is the ordering those
+# daemons require. Do not try to move it into the kernel.
+#
+# REMOVED in pkgrel 18:
+#   * `modprobe ipa`. It predated enabling &ipa in the wahoo dtsi; IPA now
+#     autoloads. The comment it carried ("IPA must be loaded BEFORE the MSS or
+#     the WLAN PD starves") was also already disproved -- see the dtsi's own
+#     note: "That theory is WRONG -- measured both ways on 2026-07-28, the
+#     dog_hb cadence is identical with the driver loaded and not. The starvation
+#     was the modem's diag task with nothing draining the DIAG QRTR channel."
+#   * `sleep 8` after starting rmtfs. Replaced with a real readiness condition:
+#     rmtfs opens /dev/qcom_rmtfs_mem* once it is actually serving, so wait for
+#     that instead of guessing. A sleep standing in for a condition is exactly
+#     the bug class that made swclock-offset-boot lose its race with rtc-pm8xxx.
 #
 # Nothing here is idempotency-sensitive: every step is a no-op if already done,
 # so it is safe to re-run.
@@ -39,29 +51,37 @@ ensure_running() {
 	setsid "$@" >"/tmp/$svc.log" 2>&1 </dev/null &
 }
 
-# 1. IPA before the modem.
-#
-# The explicit modprobe is deliberate: older images carry a stale
-# modprobe.blacklist=ipa on the kernel cmdline, and a blacklist only blocks
-# AUTOMATIC loading -- loading by name still works. On current images IPA
-# autoloads and this is a harmless no-op.
-modprobe ipa 2>/dev/null
+# True once rmtfs has the shared-memory device open, i.e. it is serving rather
+# than merely started.
+rmtfs_serving() {
+	p=$(pgrep -x rmtfs 2>/dev/null | head -1)
+	[ -n "$p" ] || return 1
+	for fd in /proc/"$p"/fd/*; do
+		case "$(readlink "$fd" 2>/dev/null)" in
+			/dev/qcom_rmtfs_mem*) return 0 ;;
+		esac
+	done
+	return 1
+}
 
-# 2. tqftpserv ruleset on tmpfs.
+# 1. tqftpserv ruleset on tmpfs.
 mkdir -p /tmp/tqftpserv/ota_firewall
 touch /tmp/tqftpserv/ota_firewall/ruleset
 
-# 3. rmtfs running, then settled, before MSS.
+# 2. rmtfs running AND serving before the MSS boots.
 ensure_running rmtfs rmtfs -s -P -r
 i=0
-while [ $i -lt 30 ] && ! pgrep -x rmtfs >/dev/null 2>&1; do
-	sleep 1
+while [ $i -lt 60 ] && ! rmtfs_serving; do
+	sleep 0.5
 	i=$((i + 1))
 done
-pgrep -x rmtfs >/dev/null 2>&1 || log "WARNING: rmtfs never appeared; modem will boot without EFS"
-sleep 8
+if rmtfs_serving; then
+	log "rmtfs serving after $(awk "BEGIN{print $i/2}")s"
+else
+	log "WARNING: rmtfs never opened qcom_rmtfs_mem; modem will boot without EFS"
+fi
 
-# Start the MSS remoteproc if something has not already done it.
+# 3. Start the MSS remoteproc if something has not already done it.
 R=$(grep -l 4080000.remoteproc /sys/class/remoteproc/*/name 2>/dev/null | head -1)
 if [ -n "$R" ]; then
 	D=$(dirname "$R")

@@ -1,0 +1,32 @@
+# Maintainer: Yassine Oudjana (Tooniis) <y.oudjana@protonmail.com>
+pkgname=sns-reg
+pkgver=0.1_git20250706
+pkgrel=2
+_commit="4d238e5f0baba3fb77456fe2bffbf8e8f18a71a0"
+pkgdesc="Qualcomm Sensor Registry Server"
+url="https://gitlab.com/msm8996-mainline/sns-reg"
+arch="armv7 aarch64"
+license="GPL-3.0-or-later"
+makedepends="scons qrtr-dev"
+source="$pkgname-$_commit.tar.gz::$url/-/archive/$_commit/$pkgname-$_commit.tar.gz
+	0001-Serve-raw-sns.reg-slices.patch
+	"
+builddir="$srcdir/$pkgname-$_commit"
+options="!check"
+
+build() {
+	scons
+}
+
+package() {
+	# ponytail: systemd only -- the upstream OpenRC initd is not installed,
+	# and its unit hardcodes /usr/bin, so the binary goes there.
+	install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
+	install -Dm644 "$pkgname.service" -t "$pkgdir/usr/lib/systemd/system"
+	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+}
+
+sha512sums="
+5174bd26f74a1a332c526823c661592b831ee0719c2eb373ed6d40863214f24bea92a4d51567333187a05815a35243a25f5d7b4e174f3995c5c00d70afcad83e  sns-reg-4d238e5f0baba3fb77456fe2bffbf8e8f18a71a0.tar.gz
+aab37e6a488782e965f47c6d4d7eae46942364ef3aaa5f571c3e742a89a5c06440aa0b0f925a8c7ef77237ff0b84bada0fb60425de167660665e21fd031a15ca  0001-Serve-raw-sns.reg-slices.patch
+"

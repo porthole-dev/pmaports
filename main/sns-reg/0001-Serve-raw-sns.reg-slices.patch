@@ -1,0 +1,176 @@
+diff --git a/main.c b/main.c
+index c34e6f1..12f8d95 100644
+--- a/main.c
++++ b/main.c
+@@ -24,6 +24,82 @@
+ #define LINE_SIZE	0x100
+ #define BUFFER_LEN	0x1000
+ 
++#define REG_BIN		"/etc/sns-reg.d/sns.reg"
++#define REG_MAP		"/etc/sns-reg.d/groups.conf"
++#define SLOT_MAX	256
++
++/*
++ * ponytail: serve raw slices of the stock sns.reg instead of reassembling
++ * groups from per-key values. The (group, offset, size) table below is the
++ * one sensors.qcom itself uses, so every group SSC asks for is covered --
++ * the hand-derived key map in map.c is missing 15 of the 53 groups taimen's
++ * SMGR reads, and a short/failed answer makes it assert in sns_smgr_reg.c.
++ */
++struct slot {
++	unsigned short id;
++	unsigned short addr;
++	unsigned short size;
++};
++
++static struct slot slots[SLOT_MAX];
++static int slot_count;
++static unsigned char *reg_blob;
++static size_t reg_blob_len;
++
++static const struct slot *slot_by_id(unsigned short id)
++{
++	int i;
++
++	for (i = 0; i < slot_count; i++)
++		if (slots[i].id == id)
++			return &slots[i];
++
++	return NULL;
++}
++
++static int load_registry(void)
++{
++	char line[LINE_SIZE];
++	struct stat st;
++	FILE *file;
++	int fd;
++
++	fd = open(REG_BIN, O_RDONLY);
++	if (fd < 0 || fstat(fd, &st) < 0) {
++		fprintf(stderr, "Failed to open " REG_BIN ": %s\n", strerror(errno));
++		return -1;
++	}
++	reg_blob_len = st.st_size;
++	reg_blob = mmap(NULL, reg_blob_len, PROT_READ, MAP_PRIVATE, fd, 0);
++	close(fd);
++	if (reg_blob == MAP_FAILED) {
++		fprintf(stderr, "Failed to map " REG_BIN ": %s\n", strerror(errno));
++		return -1;
++	}
++
++	file = fopen(REG_MAP, "r");
++	if (!file) {
++		fprintf(stderr, "Failed to open " REG_MAP ": %s\n", strerror(errno));
++		return -1;
++	}
++	while (fgets(line, LINE_SIZE, file) && slot_count < SLOT_MAX) {
++		struct slot *s = &slots[slot_count];
++
++		if (sscanf(line, "%hu %hu %hu", &s->id, &s->addr, &s->size) != 3)
++			continue;
++		if ((size_t)s->addr + s->size > reg_blob_len) {
++			fprintf(stderr, "Group %u overruns the registry, dropped\n", s->id);
++			continue;
++		}
++		slot_count++;
++	}
++	fclose(file);
++
++	printf("Loaded %zu byte registry, %d groups\n", reg_blob_len, slot_count);
++
++	return slot_count ? 0 : -1;
++}
++
+ struct qmi_header {
+ 	unsigned char type;
+ 	unsigned short txn_id;
+@@ -55,15 +131,12 @@ unsigned long *parse_registry(int fd)
+ 	return registry;
+ }
+ 
+-int handle_group_request(int sock, struct qrtr_packet *packet, unsigned long *registry)
++int handle_group_request(int sock, struct qrtr_packet *packet)
+ {
+ 	unsigned int txn_id;
+ 	struct sns_reg_group_req request;
+ 	struct sns_reg_group_resp response = { };
+-	const struct group *group = NULL;
+-	size_t index = 0;
+-	size_t size = 0;
+-	struct key key;
++	const struct slot *slot;
+ 	struct qrtr_packet out_packet;
+ 	int ret;
+ 
+@@ -80,27 +153,18 @@ int handle_group_request(int sock, struct qrtr_packet *packet, unsigned long *re
+ 		return ret;
+ 	}
+ 
+-	group = group_by_id(request.id);
++	slot = slot_by_id(request.id);
+ 
+-	printf("Requested group %04d%s\n", request.id, !group ? " unmapped!" : "");
++	printf("Requested group %04d%s\n", request.id, !slot ? " unmapped!" : "");
+ 
+ 	response.id = request.id;
+ 
+-	if (!group) {
++	if (!slot) {
+ 		response.result = QMI_RESULT_FAILURE_V01;
+ 	} else {
+ 		response.result = QMI_RESULT_SUCCESS_V01;
+-
+-		index = 0;
+-
+-		while ((key = group->keys[index++]).len) {
+-			if (key.id != -1)
+-				memcpy(response.data + size, &registry[key.id], key.len);
+-
+-			size += key.len;
+-		}
+-
+-		response.data_len = size;
++		response.data_len = slot->size;
++		memcpy(response.data, reg_blob + slot->addr, slot->size);
+ 	}
+ 
+ 	out_packet.data = malloc(BUFFER_LEN);
+@@ -131,9 +195,6 @@ out:
+ 
+ int main(int argc, const char **argv)
+ {
+-	int fd;
+-	struct stat stat;
+-	unsigned long *registry;
+ 	int sock;
+ 	int pollfds;
+ 	struct sockaddr_qrtr sq;
+@@ -143,17 +204,8 @@ int main(int argc, const char **argv)
+ 	struct sns_reg_group_req request;
+ 	int ret;
+ 
+-	fd = open("/etc/sns-reg.d/registry.conf", O_RDONLY);
+-	if (fd < 0) {
+-		fprintf(stderr, "Failed to open registry: %s\n", strerror(errno));
++	if (load_registry())
+ 		return 1;
+-	}
+-	registry = parse_registry(fd);
+-	close(fd);
+-	if (!registry) {
+-		fprintf(stderr, "Failed to parse registry\n");
+-		return 1;
+-	}
+ 
+ 	sock = socket(AF_QIPCRTR, SOCK_DGRAM, 0);
+ 	if (sock < 0) {
+@@ -197,7 +249,7 @@ int main(int argc, const char **argv)
+ 		packet.data_len = sizeof(struct qmi_header) + header->msg_len;
+ 
+ 		if (header->msg_id == SNS_REG_GROUP_MSG_ID)
+-			handle_group_request(sock, &packet, registry);
++			handle_group_request(sock, &packet);
+ 	}
+ 
+ 	return 0;

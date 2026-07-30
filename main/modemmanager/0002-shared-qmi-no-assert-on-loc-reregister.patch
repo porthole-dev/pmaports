@@ -1,0 +1,62 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Subject: [PATCH] shared-qmi: don't assert when the LOC inject-request handlers
+ are already connected
+
+loc_register_event_inject_req_ready() asserts that the two
+inject-{time,position}-request handler ids are unset before connecting them.
+But `priv` is per-modem-object qdata (get_private()) and those ids are only
+ever cleared in dispose(). The Location interface can be initialized more than
+once on the same modem object -- unlocking the SIM PIN takes the modem
+locked -> initializing, which is a second pass -- and the assertion then aborts
+the daemon:
+
+  ModemManager: Bail out! ERROR:../src/mm-shared-qmi.c:7061:
+    loc_register_event_inject_req_ready: assertion failed:
+    (!priv->loc_assistance_inject_time_req_indication_id)
+  ModemManager.service: Failed with result 'core-dump'.
+
+To the user the modem appears to crash: ModemManager dies, the modem vanishes
+from the desktop's network settings and any active bearer drops. The modem
+firmware is fine -- on the affected device the MSS remoteproc stays running
+throughout.
+
+Reproduced on demand three times on a Qualcomm MSM8998 (Google Pixel 2 XL),
+under both GNOME and phosh, simply by running `mmcli -i any --pin=****`.
+
+Disconnect any handler left over from a previous initialization instead of
+asserting. priv->loc_client is used as the instance, matching what dispose()
+already does, which also covers the case where re-initialization handed us a
+fresh QmiClientLoc.
+
+--- a/src/mm-shared-qmi.c
++++ b/src/mm-shared-qmi.c
+@@ -7058,14 +7058,27 @@
+     self = g_task_get_source_object (task);
+     priv = get_private (self);
+ 
+-    g_assert (!priv->loc_assistance_inject_time_req_indication_id);
++    /* The Location interface can be initialized more than once on the same
++     * modem object -- a SIM lock state change is enough -- and these ids are
++     * only cleared in dispose(), so they may still be set from a previous
++     * pass. Drop the stale handlers instead of asserting; the client may be a
++     * different one this time round, so disconnect from the stored one. */
++    if (priv->loc_assistance_inject_time_req_indication_id) {
++        g_signal_handler_disconnect (priv->loc_client,
++                                     priv->loc_assistance_inject_time_req_indication_id);
++        priv->loc_assistance_inject_time_req_indication_id = 0;
++    }
+     priv->loc_assistance_inject_time_req_indication_id =
+         g_signal_connect (client,
+                           "inject-time-request",
+                           G_CALLBACK (loc_location_inject_time_req_indication_cb),
+                           self);
+ 
+-    g_assert (!priv->loc_assistance_inject_position_req_indication_id);
++    if (priv->loc_assistance_inject_position_req_indication_id) {
++        g_signal_handler_disconnect (priv->loc_client,
++                                     priv->loc_assistance_inject_position_req_indication_id);
++        priv->loc_assistance_inject_position_req_indication_id = 0;
++    }
+     priv->loc_assistance_inject_position_req_indication_id =
+         g_signal_connect (client,
+                           "inject-position-request",

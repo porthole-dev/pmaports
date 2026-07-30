@@ -40,6 +40,15 @@ deviceinfo_flash_sparse="true"
 # UFS storage
 deviceinfo_rootfs_image_sector_size="4096"
 
+# zram swap. pmOS's zramstart defaults to zstd, but this kernel is built with
+# CONFIG_ZRAM_DEF_COMP_LZ4 and no CONFIG_CRYPTO_ZSTD, so /sys/block/zram0/
+# comp_algorithm only offers [lz4] and zramctl fails with "failed to set
+# algorithm: Invalid argument". The service then dies and the device runs GNOME
+# on 3.6 GB with *no* swap at all -- and also without the vm.swappiness=180 /
+# vm.page-cluster=0 / vm.min_free_kbytes=100000 tuning zramstart would apply.
+# lz4 is the better pick on this SoC anyway: cheaper than zstd per page.
+deviceinfo_zram_swap_algo="lz4"
+
 # Mainline kernel
 deviceinfo_flash_kernel_on_update="true"
 deviceinfo_dtb="qcom/msm8998-google-taimen"

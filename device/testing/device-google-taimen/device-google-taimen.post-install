@@ -36,11 +36,15 @@ ln -sf /etc/init.d/taimen-modem-bringup \
 ln -sf /usr/lib/systemd/system/taimen-modem-bringup.service \
 	/etc/systemd/system/multi-user.target.wants/taimen-modem-bringup.service
 
-# WiFi regulatory country, derived from the SIM MCC at runtime.
-ln -sf /etc/init.d/taimen-wifi-country \
-	/etc/runlevels/default/taimen-wifi-country
-ln -sf /usr/lib/systemd/system/taimen-wifi-country.service \
-	/etc/systemd/system/multi-user.target.wants/taimen-wifi-country.service
+# Sensors: sns-reg serves the SNS_REG QMI service that SLPI's Sensor Manager
+# reads its configuration from. Without it SMGR never publishes and there are
+# no IIO devices at all.
+mkdir -p /etc/systemd/system/basic.target.wants
+ln -sf /usr/lib/systemd/system/sns-reg.service \
+	/etc/systemd/system/basic.target.wants/sns-reg.service
 
+# NOTE: taimen-wifi-country was removed in pkgrel 18. The WiFi regulatory fix is
+# now purely the ath.regd_override module param in /etc/modprobe.d -- cfg80211
+# adopts the country from the AP beacon country IE on its own.
 
 exit 0

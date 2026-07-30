@@ -1,0 +1,29 @@
+#!/bin/sh
+# Put the stock sensor registry where sns-reg expects to find it.
+#
+# Every sensor on this device (LSM6DSM accel+gyro, AK09915 mag, BMP280,
+# AMS TMx490x prox/ALS) hangs off the SLPI island, not off any AP bus, so the
+# only way to reach them is the SSC's QMI Sensor Manager. SMGR will not publish
+# its service until it has read its configuration from the SNS_REG service that
+# sns-reg serves on the AP side -- and if the answers are wrong it asserts in
+# sns_smgr_reg.c and SSR-loops instead.
+#
+# The registry itself is /persist/sensors/sns.reg, which carries this unit's
+# factory calibration. That partition is not in fstab and nothing else needs
+# it, so mount it read-only, take a copy, and get out again. Copying rather
+# than shipping a file keeps per-device calibration intact.
+#
+# groups.conf, which tells sns-reg which byte range of sns.reg each group is,
+# comes from the device package -- see tools/tk-sns-groups.py in the bring-up
+# repo for where that table was extracted from.
+set -e
+
+if [ -e /etc/sns-reg.d/sns.reg ]; then
+	exit 0
+fi
+
+mnt=$(mktemp -d)
+mount -o ro /dev/disk/by-partlabel/persist "$mnt"
+cp "$mnt/sensors/sns.reg" /etc/sns-reg.d/sns.reg
+umount "$mnt"
+rmdir "$mnt"

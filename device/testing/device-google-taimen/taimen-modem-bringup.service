@@ -1,18 +1,19 @@
 [Unit]
-Description=taimen WLAN/modem bring-up ordering (IPA before MSS, rmtfs settled, diag-router)
-# rmtfs must be running and settled before the MSS boots or the modem comes up
-# with no EFS. The script waits as well, but let systemd order it properly.
+Description=taimen modem bring-up ordering (rmtfs serving before MSS, diag-router)
+# rmtfs must be running and SERVING before the MSS boots or the modem comes up
+# with no EFS. The script now waits on a real condition (rmtfs holding
+# /dev/qcom_rmtfs_mem* open) rather than a fixed sleep, but let systemd order
+# it properly too.
 Wants=rmtfs.service tqftpserv.service
 After=rmtfs.service tqftpserv.service
-# NetworkManager can only see the modem once rmnet_ipa0 exists, which requires
-# IPA to be loaded -- which this unit does.
+# NetworkManager can only see the modem once rmnet_ipa0 exists.
 Before=NetworkManager.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/bin/taimen-modem-bringup
-# The bring-up deliberately sleeps (rmtfs settle, waiting for wlan0).
+# Bounded waits: rmtfs serving (30s max) and wlan0 appearing (60s max).
 TimeoutStartSec=180
 
 [Install]

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Toggle the NFC adapter.
+#
+# This exists because there is no NFC control anywhere in phosh or GNOME
+# Settings -- no panel, no quick setting -- and phosh's quick settings are not
+# user-extensible without writing a plugin. The hardware works (PN553 via
+# neard); it was simply unreachable without a terminal.
+#
+# No polkit rule or privilege escalation is needed: neard's D-Bus policy already
+# lets a session user set Powered, verified on the device.
+set -eu
+
+ADAPTER=/org/neard/nfc0
+
+note() {
+	# Best effort -- the toggle must still work on a system without libnotify.
+	command -v notify-send >/dev/null 2>&1 && notify-send -a NFC "$1" "${2:-}" || :
+}
+
+state=$(busctl get-property org.neard "$ADAPTER" org.neard.Adapter Powered \
+	2>/dev/null | awk '{print $2}') || state=""
+
+if [ -z "$state" ]; then
+	note "NFC unavailable" "neard is not running, or no adapter was found."
+	exit 1
+fi
+
+if [ "$state" = "true" ]; then
+	new=false
+else
+	new=true
+fi
+
+busctl call org.neard "$ADAPTER" org.freedesktop.DBus.Properties \
+	Set ssv org.neard.Adapter Powered b "$new" >/dev/null
+
+if [ "$new" = "true" ]; then
+	note "NFC on"
+else
+	note "NFC off"
+fi

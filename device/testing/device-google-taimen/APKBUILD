@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=22
+pkgrel=23
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -43,6 +43,8 @@ source="
 	ucm/taimen.conf
 	iio-sensor-proxy-wait-for-ssc.conf
 	neard-install.conf
+	taimen-nfc-toggle
+	taimen-nfc-toggle.desktop
 	taimen-sns-reg-prepare
 "
 subpackages="
@@ -146,6 +148,17 @@ package() {
 	# start itself -- see the drop-in's header.
 	install -Dm644 "$srcdir"/neard-install.conf \
 		"$pkgdir"/usr/lib/systemd/system/neard.service.d/10-install.conf
+
+	# There is no NFC control anywhere in phosh or GNOME Settings -- no
+	# panel, no quick setting -- and phosh's quick settings are not
+	# user-extensible without writing a plugin, so the hardware was only
+	# reachable from a terminal. This is a launcher, which is the one
+	# extension point that does exist. No polkit rule is needed: neard's
+	# D-Bus policy already lets a session user set Powered.
+	install -Dm755 "$srcdir"/taimen-nfc-toggle \
+		"$pkgdir"/usr/bin/taimen-nfc-toggle
+	install -Dm644 "$srcdir"/taimen-nfc-toggle.desktop \
+		"$pkgdir"/usr/share/applications/taimen-nfc-toggle.desktop
 }
 
 kernel_mainline() {
@@ -195,5 +208,7 @@ f02475ca892917edad96fd803a6b882a8e8e837443755f96f27cabfd5ee6c6b852194bffc43b6a43
 af25abcbe127f1c6f4256acec83b0d25addd0f1140fc449d8ce645f04057c4dc31cb3855640acd0c4b194f4028a037f0527fdfe00c69290e713e5fe92a9cce91  taimen.conf
 0c4b35807a836c2fbbc78afcdb12e10c439ef9ce76e01304657b542a8b48f30a084f954c9441e809ea2fd42e3b2100c779bc2312676924572068a68297705236  iio-sensor-proxy-wait-for-ssc.conf
 6d4726bbacfc929980dc46d15eef534f51e742a56a18354c7a74a4ec8cdd4eea02263e6afb09fd6dd1d25201c5b08e2f8817a392744d73782e13335aab529bcc  neard-install.conf
+9ad10623be9fd5f4454c69bf0061424169c355cba8530fb6a6dad0c5cb9a4a424e0f5579b3a3231f28ce4038b732ec283cf600dd71125a1ad29761753ddd5359  taimen-nfc-toggle
+e52aa8f71334fae23a9901975fe82c7345ffaa5b79cd484177a75ce305f292ec3abdde9add4ffb9d683b29acc5a1047fcf5f9eb320289b1da0c8e6631239754c  taimen-nfc-toggle.desktop
 b66ac735d7948333749d64afd5852212c64ff6bed413643b69dde3804de82dd8fffcb16d41cb4a0f4c4e7b5d9860659cc13cfc7d53ba42669f0cb08b7a0e4213  taimen-sns-reg-prepare
 "

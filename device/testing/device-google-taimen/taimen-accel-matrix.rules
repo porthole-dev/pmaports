@@ -1,0 +1,33 @@
+# iio-sensor-proxy's accelerometer frame is NOT the IIO/Android one.
+#
+# The kernel's in_mount_matrix (0,1,0; 1,0,0; 0,0,-1) is measured and correct:
+# it puts the accelerometer in the Android/IIO device frame, +x right, +y top,
+# +z out of the screen, reading +1 g along whichever axis points at the ceiling.
+# Measured with tools/tk-mount-cal.py, with the physical pose proven by the
+# proximity sensor rather than assumed.
+#
+# iio-sensor-proxy wants +x LEFT, +y DOWN, +z out of the screen -- a perfectly
+# good right-handed frame, but rotated 180 degrees about z from the Android one.
+# Measured on this device, with each pose confirmed by proximity:
+#
+#   top edge at the ceiling    kernel frame +y   proxy said "bottom-up"  (want normal)
+#   left edge at the ceiling   kernel frame -x   proxy said "right-up"   (want left-up)
+#   right edge at the ceiling  kernel frame +x   proxy said "left-up"    (want right-up)
+#
+# Every one exactly 180 degrees out, while z agreed -- flat and screen up gave
+# "face-up" from the kernel's +z, so only the in-plane axes disagree.
+#
+# So this is a consumer convention mismatch, not a mounting error, and it does
+# NOT belong in the kernel: in_mount_matrix is shared with everything else that
+# reads these axes, including the driver's own compass heading. ACCEL_MOUNT_MATRIX
+# is the per-consumer knob iio-sensor-proxy provides for exactly this, so the
+# adjustment lives here and the kernel stays physically honest.
+#
+# The value is the FULL matrix, not just the 180 degree correction: the udev
+# property REPLACES in_mount_matrix, it does not compose with it. Verified by
+# setting it with the phone flat and screen up -- composing would have flipped z
+# and reported "face-down"; it still reported "face-up".
+#
+# Matched on ATTR{name}, not iio:deviceN: IIO device numbering depends on the
+# order the SSC sensors register and is not a stable identifier.
+SUBSYSTEM=="iio", ATTR{name}=="qcom-smgr-accel", ENV{ACCEL_MOUNT_MATRIX}="0, -1, 0; -1, 0, 0; 0, 0, -1"

@@ -43,6 +43,11 @@ mkdir -p /etc/systemd/system/basic.target.wants
 ln -sf /usr/lib/systemd/system/sns-reg.service \
 	/etc/systemd/system/basic.target.wants/sns-reg.service
 
+# NFC. neard's own [Install] has no WantedBy (see the drop-in we ship), so it
+# would never start; the drop-in adds one but the symlink still has to exist.
+ln -sf /usr/lib/systemd/system/neard.service \
+	/etc/systemd/system/multi-user.target.wants/neard.service
+
 # NOTE: taimen-wifi-country was removed in pkgrel 18. The WiFi regulatory fix is
 # now purely the ath.regd_override module param in /etc/modprobe.d -- cfg80211
 # adopts the country from the AP beacon country IE on its own.

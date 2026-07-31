@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=19
+pkgrel=20
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -15,6 +15,7 @@ options="!check !archcheck"
 # rmtfs's do, so do NOT list them here.
 depends="
 	mkbootimg
+	neard
 	postmarketos-base
 	qbootctl
 	sns-reg
@@ -34,6 +35,10 @@ source="
 	swclock-wait-for-rtc.conf
 	groups.conf
 	sns-reg-registry.conf
+	taimen-sensors.gschema.override
+	taimen-proximity.rules
+	iio-sensor-proxy-wait-for-ssc.conf
+	neard-install.conf
 	taimen-sns-reg-prepare
 "
 subpackages="
@@ -102,6 +107,23 @@ package() {
 		"$pkgdir"/usr/bin/taimen-sns-reg-prepare
 	install -Dm644 "$srcdir"/sns-reg-registry.conf \
 		"$pkgdir"/usr/lib/systemd/system/sns-reg.service.d/10-registry.conf
+
+	# Making the sensors reachable from the SHELL, which is a separate problem
+	# from making them work. Each file's header says what is broken without it;
+	# in short: the ALS is hidden by a gschema override, proximity is refused
+	# without a udev property, and iio-sensor-proxy races the SSC sensors at
+	# boot.
+	install -Dm644 "$srcdir"/taimen-sensors.gschema.override \
+		"$pkgdir"/usr/share/glib-2.0/schemas/99-taimen-sensors.gschema.override
+	install -Dm644 "$srcdir"/taimen-proximity.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-proximity.rules
+	install -Dm644 "$srcdir"/iio-sensor-proxy-wait-for-ssc.conf \
+		"$pkgdir"/usr/lib/systemd/system/iio-sensor-proxy.service.d/10-wait-for-ssc.conf
+
+	# NFC. The PN553 works and neard drives it, but the Alpine package cannot
+	# start itself -- see the drop-in's header.
+	install -Dm644 "$srcdir"/neard-install.conf \
+		"$pkgdir"/usr/lib/systemd/system/neard.service.d/10-install.conf
 }
 
 kernel_mainline() {
@@ -144,5 +166,9 @@ eaff4eceb706c06c00dc7578ceda0742ab4fffa6f02948928cdefbb75ace942999a54582ee23e51d
 640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
 2690c1a30952b293a5e3b46b6e07c54e3b03c759a3b83d3c04b77d2ff2d886fd930625fdca7f5bea5254dd418d2cfa7765e5ebbeca2064542a70c4ee5592e6a8  groups.conf
 cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7d8476548b3d9c4d6cb24ff9fd289d00b2ca8a06c82afe3c2  sns-reg-registry.conf
+a3389ff3bdcbe6dc9d3436c6bfd9c358a55039c57a044228f7cc7bc861e5adbc7d0320e208eec904f9150c59d76b1831d248600a96b2fb9ffd5d018919f7f6c9  taimen-sensors.gschema.override
+0561f724126f5828def7064626fe596f55f86a4206bb234538757efafe9143ea78205543b14624ee8b42c8a8e2acbefd2d8df941cff29c565eb94b47914f072f  taimen-proximity.rules
+0c4b35807a836c2fbbc78afcdb12e10c439ef9ce76e01304657b542a8b48f30a084f954c9441e809ea2fd42e3b2100c779bc2312676924572068a68297705236  iio-sensor-proxy-wait-for-ssc.conf
+6d4726bbacfc929980dc46d15eef534f51e742a56a18354c7a74a4ec8cdd4eea02263e6afb09fd6dd1d25201c5b08e2f8817a392744d73782e13335aab529bcc  neard-install.conf
 b66ac735d7948333749d64afd5852212c64ff6bed413643b69dde3804de82dd8fffcb16d41cb4a0f4c4e7b5d9860659cc13cfc7d53ba42669f0cb08b7a0e4213  taimen-sns-reg-prepare
 "

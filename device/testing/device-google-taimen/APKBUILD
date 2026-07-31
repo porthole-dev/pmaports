@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=25
+pkgrel=26
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -39,6 +39,7 @@ source="
 	taimen-sensors.gschema.override
 	taimen-proximity.rules
 	taimen-accel-matrix.rules
+	phosh-desktop-env.conf
 	ucm/HiFi.conf
 	ucm/taimen.conf
 	iio-sensor-proxy-wait-for-ssc.conf
@@ -126,6 +127,11 @@ package() {
 	install -Dm644 "$srcdir"/taimen-accel-matrix.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-accel-matrix.rules
 
+	# XDG_CURRENT_DESKTOP -- see the file's header. Without it there is no
+	# Settings app on the device at all.
+	install -Dm644 "$srcdir"/phosh-desktop-env.conf \
+		"$pkgdir"/usr/lib/environment.d/60-phosh-desktop.conf
+
 	install -Dm644 "$srcdir"/iio-sensor-proxy-wait-for-ssc.conf \
 		"$pkgdir"/usr/lib/systemd/system/iio-sensor-proxy.service.d/10-wait-for-ssc.conf
 
@@ -205,6 +211,7 @@ cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7
 a3389ff3bdcbe6dc9d3436c6bfd9c358a55039c57a044228f7cc7bc861e5adbc7d0320e208eec904f9150c59d76b1831d248600a96b2fb9ffd5d018919f7f6c9  taimen-sensors.gschema.override
 0561f724126f5828def7064626fe596f55f86a4206bb234538757efafe9143ea78205543b14624ee8b42c8a8e2acbefd2d8df941cff29c565eb94b47914f072f  taimen-proximity.rules
 e9a8ad48c0b9e250ace1e6cea004f628ebf741fcdfe6d767f1fc4da953c8205c87f84b4e61a15a6a82582790e241b06ce20e220c2165c365062c293d0335de7d  taimen-accel-matrix.rules
+6cb9e6ebcc0cd5677afa99372405b24f56b3b854885917fcf344d8ccce0b42bf9488144893dacb5bb52b0deef3103f01755fff14a5a318e0a0151875363e5a46  phosh-desktop-env.conf
 f02475ca892917edad96fd803a6b882a8e8e837443755f96f27cabfd5ee6c6b852194bffc43b6a4398ab43713cd06a7938575bcc48c0665b9dc5f6df952882ad  HiFi.conf
 af25abcbe127f1c6f4256acec83b0d25addd0f1140fc449d8ce645f04057c4dc31cb3855640acd0c4b194f4028a037f0527fdfe00c69290e713e5fe92a9cce91  taimen.conf
 0c4b35807a836c2fbbc78afcdb12e10c439ef9ce76e01304657b542a8b48f30a084f954c9441e809ea2fd42e3b2100c779bc2312676924572068a68297705236  iio-sensor-proxy-wait-for-ssc.conf

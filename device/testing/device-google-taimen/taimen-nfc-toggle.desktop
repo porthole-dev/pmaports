@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NFC Toggle
+Comment=Turn the NFC adapter on or off
+Exec=taimen-nfc-toggle
+Icon=nfc-symbolic
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=NFC;

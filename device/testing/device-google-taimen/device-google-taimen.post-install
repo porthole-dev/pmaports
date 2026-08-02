@@ -48,6 +48,15 @@ ln -sf /usr/lib/systemd/system/sns-reg.service \
 ln -sf /usr/lib/systemd/system/neard.service \
 	/etc/systemd/system/multi-user.target.wants/neard.service
 
+# PAM-free rescue channel. It has to already be RUNNING before the PID-1 freeze
+# it exists to diagnose, so it is enabled by default; its [Install] is
+# WantedBy=sysinit.target. See taimen-rescue.py's header for why nothing on the
+# normal login path can be used when PID 1 is frozen, and for why it binds the
+# USB-gadget address only and must never be widened.
+mkdir -p /etc/systemd/system/sysinit.target.wants
+ln -sf /usr/lib/systemd/system/taimen-rescue.service \
+	/etc/systemd/system/sysinit.target.wants/taimen-rescue.service
+
 # NOTE: taimen-wifi-country was removed in pkgrel 18. The WiFi regulatory fix is
 # now purely the ath.regd_override module param in /etc/modprobe.d -- cfg80211
 # adopts the country from the AP beacon country IE on its own.

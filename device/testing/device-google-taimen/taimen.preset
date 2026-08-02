@@ -19,3 +19,11 @@
 # pkgrel 18: the kernel learns the regulatory country from the AP beacon
 # country IE on its own. See the APKBUILD's ath-regd-override.conf comment.
 enable taimen-modem-bringup.service
+
+# taimen-rescue.service, added in pkgrel 28. CONFIRMED the hard way on the
+# r24->r28 upgrade: the post-upgrade hook created
+# /etc/systemd/system/sysinit.target.wants/taimen-rescue.service, then
+# postmarketos-base-systemd's trigger applied presets and printed
+#   * Removed '/etc/systemd/system/sysinit.target.wants/taimen-rescue.service'.
+# ANY unit this package ships without a line here WILL be silently disabled.
+enable taimen-rescue.service

@@ -1,0 +1,24 @@
+# See taimen-rescue.py's header. This must already be RUNNING before the freeze
+# it diagnoses, so it starts early and restarts forever.
+#
+# DefaultDependencies=no on purpose: the point is to survive a broken userspace,
+# so it must not be ordered behind the targets that break.
+[Unit]
+Description=taimen PAM-free rescue channel (USB-gadget only, port 2323)
+DefaultDependencies=no
+After=network.target
+Before=shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/taimen-rescue.py
+Restart=always
+# The USB gadget address may not exist yet at first start; just keep trying.
+RestartSec=2
+# Do not let the rescue channel itself be the thing that dies under memory
+# pressure -- it is the last way in.
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=sysinit.target

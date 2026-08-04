@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=31
+pkgrel=32
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -59,6 +59,8 @@ source="
 	taimen-rescue.service
 	taimen-powerkey.conf
 	taimen-watchdog.conf
+	taimen-ambient-nudge
+	taimen-ambient-nudge.service
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -173,6 +175,10 @@ package() {
 		"$pkgdir"/usr/lib/systemd/logind.conf.d/10-taimen-powerkey.conf
 	install -Dm644 "$srcdir"/taimen-watchdog.conf \
 		"$pkgdir"/usr/lib/systemd/system.conf.d/10-taimen-watchdog.conf
+	install -Dm755 "$srcdir"/taimen-ambient-nudge \
+		"$pkgdir"/usr/libexec/taimen-ambient-nudge
+	install -Dm644 "$srcdir"/taimen-ambient-nudge.service \
+		"$pkgdir"/usr/lib/systemd/user/taimen-ambient-nudge.service
 
 	install -Dm644 "$srcdir"/iio-sensor-proxy-wait-for-ssc.conf \
 		"$pkgdir"/usr/lib/systemd/system/iio-sensor-proxy.service.d/10-wait-for-ssc.conf
@@ -267,4 +273,6 @@ b66ac735d7948333749d64afd5852212c64ff6bed413643b69dde3804de82dd8fffcb16d41cb4a0f
 a7717a37898a1fa330ac7216fe024c0d15359e11cdce6e5ffb74cfb7f7acfb92ad78afdaa017203a6ba4d24fcecbd1c86fe3a569f4e7cb3811d277eea27f1ebb  taimen-rescue.service
 e275c99030b79d51b59ca8cca0c6acad6319ced0dd4c2e8c0f72c2fce3acea6fbe6d6c4ac461eaaa2dce467e4d0943d0e339a588f226c53fb675bf2c48d080d8  taimen-powerkey.conf
 bd062d51a14f3d1cba58bf1f25cc93cdc9c23d851fe6ae9e96cbd8f3ca43b45e8bcca49124196a58b8879797267b55e2678ee4424cf3a9781f6fc3dd3c338d25  taimen-watchdog.conf
+2a6129c0b1e75eb5ee4b3b5eee4e323777635383181725861e636d791af961b7f2c541ef08f449810e3f6ec14d5c22325dcba78b76e456e5c3047f6ef7ae9bef  taimen-ambient-nudge
+fe7a7ea7bc5410ce6076ba12252ce43f5f26c24d9c92d98f5969ca861c45dad109e3e75dfe7a647a268aa5a5e15dfdf63d87e2f46b63b071d3110933a0f96e3c  taimen-ambient-nudge.service
 "

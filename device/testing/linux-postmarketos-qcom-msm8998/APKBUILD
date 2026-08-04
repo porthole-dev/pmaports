@@ -5,7 +5,7 @@ maintainer=""
 _flavor="postmarketos-qcom-msm8998"
 pkgname=linux-$_flavor
 pkgver=6.0
-pkgrel=8
+pkgrel=9
 _commit="90169e6e9fee29fae14aeac0a905246be5ce6304"
 pkgdesc="Mainline Kernel fork for MSM8998 devices"
 arch="aarch64"
@@ -32,6 +32,7 @@ makedepends="
 source="
 	https://gitlab.com/msm8998-mainline/linux/-/archive/$_commit/linux-$_commit.tar.gz
 	$_config
+	1000-taimen-camera-audio-easel-bringup.patch
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -64,5 +65,6 @@ package() {
 
 sha512sums="
 e1d75369d58f823da5fe0cde17314a4ec2dc9dbab57452b7b8af6b97e91797720162e78f9ca7da2cbb533833b38be86743b8bf0084af1b36b5d23c9207a5248e  linux-90169e6e9fee29fae14aeac0a905246be5ce6304.tar.gz
-7795f899a7825130c28ad45bdd724d563cc0e1b4034c7c421fe948cd954b4b382119815e7e6a74fac346930c06a7e7aae343cb3a24336a81074f206d36d2084b  config-postmarketos-qcom-msm8998.aarch64
+5f36703cc81e28446646c05f7045e3ec9839ab9bac90f7ac9580e7086cf2d718513a9e25226098095eb0ede75c780f6dcd105ab474b94e1b417bc7604560a5b7  config-postmarketos-qcom-msm8998.aarch64
+1a34a905f5668d4d2fbc4a623f1cda9f37037e090839b27f7ce5bcdb883658e072726cf462cb6e427f8d43e5131031130631c60c00a016e3b1ca2818722d5aea  1000-taimen-camera-audio-easel-bringup.patch
 "

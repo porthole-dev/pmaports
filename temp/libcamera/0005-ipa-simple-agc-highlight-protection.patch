@@ -1,0 +1,33 @@
+From: taimen camera bring-up
+Subject: [PATCH] ipa: simple: agc: protect highlights like vendor AE
+
+The MSV controller exposes for the histogram mean alone, so a lamp or a
+window in the frame gets blown out while the mean sits comfortably at
+target -- the single biggest visible difference from the vendor AE.
+When a meaningful share of pixels lands in the top histogram bin, bias
+the measurement upward so the controller backs off and recovers the
+highlights. Threshold 2% of pixels, proportional gain 12, capped at
++1.5 MSV so a genuinely bright scene cannot crash the exposure.
+
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -190,5 +190,19 @@
+ 	}
+ 
+ 	float exposureMSV = (denom == 0 ? 0 : static_cast<float>(num) / denom);
++
++	/*
++	 * Highlight protection, vendor-style: if a meaningful share of the
++	 * scene sits in the top bin, bias the measurement upward so the
++	 * controller backs off and recovers the highlights rather than
++	 * exposing for the mean alone.
++	 */
++	if (denom != 0) {
++		float topFrac = static_cast<float>(
++			exposureBins[kExposureBinsCount - 1]) / denom;
++		if (topFrac > 0.02f)
++			exposureMSV += std::min((topFrac - 0.02f) * 12.0f, 1.5f);
++	}
++
+ 	updateExposure(context, frameContext, exposureMSV);
+ }

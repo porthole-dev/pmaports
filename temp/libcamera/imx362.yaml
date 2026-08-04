@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: CC0-1.0
+%YAML 1.1
+---
+# Google Pixel 2 XL (taimen) rear camera.
+# Colour correction matrices extracted from the vendor chromatix
+# (libchromatix_imx362_pixel_res0_snapshot_isp.so, .data float scan).
+# CT keys assigned by blue-diagonal ordering: H/A/TL84/D65.
+# Black level: Sony pedestal 64 at 10 bits.
+version: 1
+algorithms:
+  - BlackLevel:
+      blackLevel: 4096
+  - Awb:
+  - Ccm:
+      ccms:
+        - ct: 2300
+          ccm: [ 1.4925, -0.3314, -0.1612,
+                -0.1679,  1.0461,  0.1218,
+                -0.0178, -0.9580,  1.9758 ]
+        - ct: 2850
+          ccm: [ 1.2599, -0.2695,  0.0096,
+                -0.1156,  1.0444,  0.0712,
+                 0.2392, -1.0526,  1.8134 ]
+        - ct: 4000
+          ccm: [ 1.6559, -0.5974, -0.0585,
+                -0.1350,  1.1831, -0.0481,
+                 0.0284, -0.6398,  1.6114 ]
+        - ct: 6500
+          ccm: [ 1.4521, -0.4407, -0.0114,
+                -0.1014,  1.1466, -0.0452,
+                 0.0516, -0.5695,  1.5179 ]
+  - Adjust:
+  - Agc:
+...

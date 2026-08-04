@@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
 pkgname=libcamera
 _pkgver=0.7.2
 pkgver=9999$_pkgver
-pkgrel=1
+pkgrel=2
 pkgdesc="Linux camera framework"
 url="https://libcamera.org/"
 arch="all"
@@ -47,7 +47,9 @@ subpackages="
 	"
 _tuning_files="
 	hi846.yaml
+	imx179.yaml
 	imx355.yaml
+	imx362.yaml
 	imx363.yaml
 	imx371.yaml
 	imx376.yaml
@@ -59,6 +61,7 @@ _tuning_files="
 source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libcamera-v$_pkgver.tar.gz
 	0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
 	0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
+	0003-libipa-add-imx179-imx362-sensor-helpers.patch
 	qcam.desktop
 	$_tuning_files
 	"
@@ -174,9 +177,12 @@ sha512sums="
 b317cdc96f61682ee0bf26dfb7c4d6441db9a9c5b93ab53528121a8cd44862b3d59cbaa3881bb0837e3e381564c184c7b742124aef4267eea754c6083de353c1  libcamera-v0.7.2.tar.gz
 eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef917e3f85bc7b6a6991152e42c8efd8c7f5bff69829a518826  0001-libcamera-simple-Enable-softISP-for-the-Pinephone.patch
 191dfa09cfd08bcdf0d0d07410d17af590cf78b8bc8f8b7587fd2dc1c645a9ca07f2926b5d98381c011319b1f4e1d6195dd0d6dba65fd8c723882e6be0d6117d  0002-libcamera-simple-Skip-hwISP-formats-if-swISP-is-acti.patch
+61b332890b8d63f5a6d9c440945b3ee7c42c27b29c3ff7f51380e9497701e4f0a698621890c39750a50bf04dde0ae42316f459ed0823cb638c25266666476c25  0003-libipa-add-imx179-imx362-sensor-helpers.patch
 22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
 2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
+ef165f8cf26f96f926e72600d162f8a797afdbd999a1020b104330e675a1e27ef7249e7f1a8d3e6bdab4f85cc2e1d16407c5f83f3c7e3b0ebae69a36be4dc8c7  imx179.yaml
 55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx355.yaml
+da6af8c765b049ef2ff8fa660c36b1bd3afb675bababbb8bb99bf89a048699eefeba5db3f7533d75bea8155bbcea70c960cdfc5d19f9e5165967edafe8d6ec6f  imx362.yaml
 285c6d0d712df341c0117c3762ddc139f53f44e6be36c3388d1a62696429175e2916f392163131e21f410c3676f02f5d125f375171f45f8d82ad278aa5076c62  imx363.yaml
 2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  imx371.yaml
 55dab9dcb9b1982143b9d63e4e51138c5bffd7c8f4a8e4e122750b3ad9d475446956bc297d9f564819ade4be75a575d06633a064e14f8ba3ef77986783c5f067  imx376.yaml

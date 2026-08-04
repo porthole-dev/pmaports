@@ -107,10 +107,10 @@ index 0460aabf1b59..a3292ae8e28c 100644
  dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-mtp.dtb
 diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
 new file mode 100644
-index 000000000000..eb6f398cb161
+index 000000000000..f13e645e16ad
 --- /dev/null
 +++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
-@@ -0,0 +1,1237 @@
+@@ -0,0 +1,1249 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (c) 2020, Caleb Connolly <caleb@connolly.tech>
@@ -1194,12 +1194,24 @@ index 000000000000..eb6f398cb161
 +
 +&cci_i2c0 {
 +	/*
++	 * Rear AF actuator. Vendor slave 0xE4 (8-bit) -> 0x72; closed-loop
++	 * part that self-initialises from internal EEPROM on standby release.
++	 * Verified live over CCI i2c 2026-08-04: ACKs at 0x72, target regs
++	 * 0xA0/0xA1 move the lens (sharpness sweep responded).
++	 */
++	af_lens: lens@72 {
++		compatible = "onnn,lc898214xd";
++		reg = <0x72>;
++	};
++
++	/*
 +	 * Vendor slave_info: 8-bit addr 0x34 -> 7-bit 0x1a. Same MCLK-rate and
 +	 * CAMSS_TOP-domain traps as the front sensor -- see the imx179 node.
 +	 */
 +	imx362: camera@1a {
 +		compatible = "sony,imx362";
 +		reg = <0x1a>;
++		lens-focus = <&af_lens>;
 +
 +		/*
 +		 * libcamera reads both of these (v4l2_fwnode_device_parse) and
@@ -15453,7 +15465,7 @@ index 000000000000..a73d3ea5c97a
 +MODULE_DESCRIPTION("QCOM Flash LED driver");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
-index 7806d4b81716..0b92b698bdb1 100644
+index 7806d4b81716..960a373c5e68 100644
 --- a/drivers/media/i2c/Kconfig
 +++ b/drivers/media/i2c/Kconfig
 @@ -86,6 +86,19 @@ config VIDEO_HI847
@@ -15476,11 +15488,37 @@ index 7806d4b81716..0b92b698bdb1 100644
  config VIDEO_IMX208
  	tristate "Sony IMX208 sensor support"
  	depends on I2C && VIDEO_DEV
+@@ -809,6 +822,17 @@ config VIDEO_AK7375
+ 	  capability. This is designed for linear control of
+ 	  voice coil motors, controlled via I2C serial interface.
+ 
++config VIDEO_LC898214XD
++	tristate "LC898214XD lens voice coil support"
++	depends on I2C && VIDEO_DEV
++	select MEDIA_CONTROLLER
++	select VIDEO_V4L2_SUBDEV_API
++	select V4L2_ASYNC
++	help
++	  ON Semi LC898214XD closed-loop VCM controller (Pixel 2 XL rear
++	  camera AF). The part self-calibrates from internal EEPROM; the
++	  driver exposes V4L2_CID_FOCUS_ABSOLUTE.
++
+ config VIDEO_DW9714
+ 	tristate "DW9714 lens voice coil support"
+ 	depends on I2C && VIDEO_DEV
 diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
-index 0a2933103dd9..74fc4ee59896 100644
+index 0a2933103dd9..62f4c237dcc9 100644
 --- a/drivers/media/i2c/Makefile
 +++ b/drivers/media/i2c/Makefile
-@@ -37,6 +37,9 @@ obj-$(CONFIG_VIDEO_HI556) += hi556.o
+@@ -30,6 +30,7 @@ obj-$(CONFIG_VIDEO_CS5345) += cs5345.o
+ obj-$(CONFIG_VIDEO_CS53L32A) += cs53l32a.o
+ obj-$(CONFIG_VIDEO_CX25840) += cx25840/
+ obj-$(CONFIG_VIDEO_DW9714) += dw9714.o
++obj-$(CONFIG_VIDEO_LC898214XD) += lc898214xd.o
+ obj-$(CONFIG_VIDEO_DW9768) += dw9768.o
+ obj-$(CONFIG_VIDEO_DW9807_VCM) += dw9807-vcm.o
+ obj-$(CONFIG_VIDEO_ET8EK8) += et8ek8/
+@@ -37,6 +38,9 @@ obj-$(CONFIG_VIDEO_HI556) += hi556.o
  obj-$(CONFIG_VIDEO_HI846) += hi846.o
  obj-$(CONFIG_VIDEO_HI847) += hi847.o
  obj-$(CONFIG_VIDEO_I2C) += video-i2c.o
@@ -17812,6 +17850,183 @@ index 000000000000..1a5de98451f9
 +
 +MODULE_DESCRIPTION("Sony IMX362 sensor driver");
 +MODULE_LICENSE("GPL");
+diff --git a/drivers/media/i2c/lc898214xd.c b/drivers/media/i2c/lc898214xd.c
+new file mode 100644
+index 000000000000..1f8d4cbd540d
+--- /dev/null
++++ b/drivers/media/i2c/lc898214xd.c
+@@ -0,0 +1,171 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * ON Semiconductor LC898214XD closed-loop VCM lens driver.
++ *
++ * Google Pixel 2 XL (taimen) rear camera AF actuator, addr 0xE4 (8-bit) on
++ * CCI master 0. The part self-initialises from its internal EEPROM on
++ * standby release (0xE0 = 0x01); the host then only writes 16-bit target
++ * positions to 0xA0/0xA1 and the internal servo drives the coil. Register
++ * map and gain/range values from the vendor libactuator_lc898214xd.so
++ * (slave/init table at .data+0x80) and verified live over CCI i2c:
++ * current position reads back from 0x3C/0x3D and tracks the target.
++ *
++ * ponytail: no runtime PM ties to the camera rails -- the actuator shares
++ * the sensor's always-on cam_vio; standby release is idempotent and cheap,
++ * so it is re-issued on every first control write after probe.
++ */
++
++#include <linux/delay.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-subdev.h>
++
++#define LC898214XD_REG_STANDBY		0xe0	/* write 1: release, reads 0 when ready */
++#define LC898214XD_REG_TARGET_MSB	0xa0
++#define LC898214XD_REG_TARGET_LSB	0xa1
++#define LC898214XD_REG_POS_MSB		0x3c
++#define LC898214XD_REG_POS_LSB		0x3d
++
++/*
++ * Vendor af_tuning region params: infinity 0x144, macro 0xeff. Expose the
++ * full span; userspace (libcamera) normalises.
++ */
++#define LC898214XD_POS_MIN		0
++#define LC898214XD_POS_MAX		0x0fff
++#define LC898214XD_POS_DEFAULT		0x0144
++
++struct lc898214xd {
++	struct v4l2_subdev sd;
++	struct v4l2_ctrl_handler ctrls;
++	struct i2c_client *client;
++	bool awake;
++};
++
++static int lc898214xd_wake(struct lc898214xd *lens)
++{
++	int ret;
++
++	if (lens->awake)
++		return 0;
++
++	ret = i2c_smbus_write_byte_data(lens->client, LC898214XD_REG_STANDBY, 1);
++	if (ret < 0)
++		return ret;
++
++	usleep_range(5000, 6000);
++	lens->awake = true;
++
++	return 0;
++}
++
++static int lc898214xd_set_pos(struct lc898214xd *lens, u16 pos)
++{
++	int ret;
++
++	ret = lc898214xd_wake(lens);
++	if (ret)
++		return ret;
++
++	ret = i2c_smbus_write_byte_data(lens->client, LC898214XD_REG_TARGET_MSB,
++					pos >> 8);
++	if (ret < 0)
++		return ret;
++
++	return i2c_smbus_write_byte_data(lens->client, LC898214XD_REG_TARGET_LSB,
++					 pos & 0xff);
++}
++
++static int lc898214xd_s_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct lc898214xd *lens =
++		container_of(ctrl->handler, struct lc898214xd, ctrls);
++
++	if (ctrl->id == V4L2_CID_FOCUS_ABSOLUTE)
++		return lc898214xd_set_pos(lens, ctrl->val);
++
++	return -EINVAL;
++}
++
++static const struct v4l2_ctrl_ops lc898214xd_ctrl_ops = {
++	.s_ctrl = lc898214xd_s_ctrl,
++};
++
++static const struct v4l2_subdev_ops lc898214xd_subdev_ops = { };
++
++static int lc898214xd_probe(struct i2c_client *client)
++{
++	struct lc898214xd *lens;
++	int ret;
++
++	lens = devm_kzalloc(&client->dev, sizeof(*lens), GFP_KERNEL);
++	if (!lens)
++		return -ENOMEM;
++
++	lens->client = client;
++
++	v4l2_i2c_subdev_init(&lens->sd, client, &lc898214xd_subdev_ops);
++	lens->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
++	lens->sd.entity.function = MEDIA_ENT_F_LENS;
++
++	v4l2_ctrl_handler_init(&lens->ctrls, 1);
++	v4l2_ctrl_new_std(&lens->ctrls, &lc898214xd_ctrl_ops,
++			  V4L2_CID_FOCUS_ABSOLUTE,
++			  LC898214XD_POS_MIN, LC898214XD_POS_MAX, 1,
++			  LC898214XD_POS_DEFAULT);
++	if (lens->ctrls.error) {
++		ret = lens->ctrls.error;
++		goto err_free_ctrls;
++	}
++	lens->sd.ctrl_handler = &lens->ctrls;
++
++	ret = media_entity_pads_init(&lens->sd.entity, 0, NULL);
++	if (ret < 0)
++		goto err_free_ctrls;
++
++	ret = v4l2_async_register_subdev(&lens->sd);
++	if (ret < 0)
++		goto err_clean_entity;
++
++	return 0;
++
++err_clean_entity:
++	media_entity_cleanup(&lens->sd.entity);
++err_free_ctrls:
++	v4l2_ctrl_handler_free(&lens->ctrls);
++
++	return ret;
++}
++
++static int lc898214xd_remove(struct i2c_client *client)
++{
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct lc898214xd *lens = container_of(sd, struct lc898214xd, sd);
++
++	v4l2_async_unregister_subdev(&lens->sd);
++	media_entity_cleanup(&lens->sd.entity);
++	v4l2_ctrl_handler_free(&lens->ctrls);
++
++	return 0;
++}
++
++static const struct of_device_id lc898214xd_of_table[] = {
++	{ .compatible = "onnn,lc898214xd" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, lc898214xd_of_table);
++
++static struct i2c_driver lc898214xd_i2c_driver = {
++	.driver = {
++		.name = "lc898214xd",
++		.of_match_table = lc898214xd_of_table,
++	},
++	.probe_new = lc898214xd_probe,
++	.remove = lc898214xd_remove,
++};
++module_i2c_driver(lc898214xd_i2c_driver);
++
++MODULE_AUTHOR("taimen camera bring-up");
++MODULE_DESCRIPTION("LC898214XD closed-loop VCM lens driver");
++MODULE_LICENSE("GPL");
 diff --git a/drivers/media/platform/qcom/camss/camss-csid-4-7.c b/drivers/media/platform/qcom/camss/camss-csid-4-7.c
 index e7436ec6d02b..c93c03d42aa0 100644
 --- a/drivers/media/platform/qcom/camss/camss-csid-4-7.c
@@ -19205,7 +19420,7 @@ index 7e6b62c930ac..45747cfb5977 100644
  	.halt_request = vfe_halt_request,
  	.set_camif_cfg = vfe_set_camif_cfg,
 diff --git a/drivers/media/platform/qcom/camss/camss-vfe-gen1.c b/drivers/media/platform/qcom/camss/camss-vfe-gen1.c
-index 4fd265d01883..fe0511912054 100644
+index 4fd265d01883..0de0debbbcca 100644
 --- a/drivers/media/platform/qcom/camss/camss-vfe-gen1.c
 +++ b/drivers/media/platform/qcom/camss/camss-vfe-gen1.c
 @@ -42,6 +42,72 @@ static int vfe_disable_output(struct vfe_line *line)
@@ -19311,7 +19526,7 @@ index 4fd265d01883..fe0511912054 100644
  static void vfe_output_frame_drop(struct vfe_device *vfe,
  				  struct vfe_output *output,
  				  u32 drop_pattern)
-@@ -157,6 +239,24 @@ static void vfe_output_frame_drop(struct vfe_device *vfe,
+@@ -157,6 +239,27 @@ static void vfe_output_frame_drop(struct vfe_device *vfe,
  	output->drop_update_idx %= VFE_FRAME_DROP_UPDATES;
  	drop_period = VFE_FRAME_DROP_VAL + output->drop_update_idx;
  
@@ -19321,11 +19536,14 @@ index 4fd265d01883..fe0511912054 100644
 +	 * tears the frame (and flips the Bayer row phase -> gray output). Write
 +	 * every frame unconditionally; pattern 0 (stop) passes through. Proven
 +	 * on hardware 2026-08-04: mainline's 3/31 dance tears the rear camera
-+	 * under any consumer lag, period=1/pattern=1 streams clean.
++	 * under any consumer lag. The pattern is a 32-bit rolling mask indexed
++	 * by frame counter mod (period+1) -- a lone bit 0 writes only one frame
++	 * per cycle (pattern=1/period=1 measured exactly 15 fps); all-ones is
++	 * downstream's NO_SKIP and measured a steady 30 fps.
 +	 */
 +	if (drop_pattern) {
-+		drop_pattern = 1;
-+		drop_period = 1;
++		drop_pattern = 0xffffffff;
++		drop_period = 31;
 +	}
 +
 +	if (tk_drop_period)
@@ -19336,7 +19554,7 @@ index 4fd265d01883..fe0511912054 100644
  	for (i = 0; i < output->wm_num; i++) {
  		vfe->ops_gen1->wm_set_framedrop_period(vfe, output->wm_idx[i], drop_period);
  		vfe->ops_gen1->wm_set_framedrop_pattern(vfe, output->wm_idx[i], drop_pattern);
-@@ -241,8 +341,30 @@ static int vfe_enable_output(struct vfe_line *line)
+@@ -241,8 +344,30 @@ static int vfe_enable_output(struct vfe_line *line)
  		vfe->ops_gen1->bus_connect_wm_to_rdi(vfe, output->wm_idx[0], line->id);
  		vfe->ops_gen1->wm_set_subsample(vfe, output->wm_idx[0]);
  		vfe->ops_gen1->set_rdi_cid(vfe, line->id, 0);

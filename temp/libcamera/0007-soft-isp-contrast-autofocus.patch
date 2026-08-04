@@ -1,13 +1,10 @@
 From: taimen camera bring-up
 Subject: [PATCH] soft ISP: contrast autofocus
 
-Add a sharpness statistic (sum of absolute horizontal green gradients)
-to the CPU stats for 10-bit packed Bayer, and a contrast hill-climb Af
-algorithm in the soft IPA: coarse scan, fine scan, lock, rescan on a
-sustained sharpness drop. The Af drives the lens through the existing
-sensor-controls path with V4L2_CID_FOCUS_ABSOLUTE; the simple pipeline
-splits that control out to the CameraLens. Enabled per sensor via the
-tuning file (imx362 only; the front imx179 is fixed-focus).
+Sharpness stat + hill-climb Af (brightness-normalised, AE warm-up
+before scanning). The Af reports its target as LensPosition metadata;
+the simple pipeline drives the CameraLens from it. Enabled via the
+imx362 tuning file.
 
 --- a/include/libcamera/internal/software_isp/swisp_stats.h
 +++ b/include/libcamera/internal/software_isp/swisp_stats.h
@@ -114,24 +111,6 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
  		uint8_t level;
  		int32_t lastExposure;
  		double lastGain;
---- a/src/ipa/simple/soft_simple.cpp
-+++ b/src/ipa/simple/soft_simple.cpp
-@@ -325,6 +325,15 @@
- 	ctrls.set(V4L2_CID_ANALOGUE_GAIN,
- 		  static_cast<int32_t>(camHelper_ ? camHelper_->gainCode(againNew) : againNew));
- 
-+	/*
-+	 * The Af algorithm, when active, drives the focus lens through the
-+	 * same control path; the pipeline handler routes this control to the
-+	 * CameraLens instead of the sensor.
-+	 */
-+	if (context_.activeState.af.enabled)
-+		ctrls.set(V4L2_CID_FOCUS_ABSOLUTE,
-+			  context_.activeState.af.position);
-+
- 	setSensorControls.emit(ctrls);
- }
- 
 --- a/src/ipa/simple/algorithms/meson.build
 +++ b/src/ipa/simple/algorithms/meson.build
 @@ -2,6 +2,7 @@
@@ -144,50 +123,26 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
      'blc.cpp',
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
-@@ -1059,7 +1059,28 @@
+@@ -1052,6 +1052,16 @@
+ 	if (!info)
+ 		return;
  
- void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
- {
--	delayedCtrls_->push(sensorControls);
-+	ControlList ctrls(sensorControls);
-+
 +	/*
-+	 * The soft IPA drives the focus lens through the sensor-controls
-+	 * path; V4L2_CID_FOCUS_ABSOLUTE belongs to the lens subdev, not the
-+	 * sensor, so split it out here.
++	 * The soft IPA's Af algorithm reports its target as LensPosition
++	 * metadata; drive the focus lens from it. Manual positions set via
++	 * request controls take the queueRequestDevice() path instead.
 +	 */
-+	const ControlValue focus = ctrls.get(V4L2_CID_FOCUS_ABSOLUTE);
-+	if (!focus.isNone()) {
-+		CameraLens *lens = sensor_->focusLens();
-+		if (lens)
-+			lens->setFocusPosition(focus.get<int32_t>());
++	const auto lensPos = metadata.get(controls::LensPosition);
++	if (lensPos && sensor_->focusLens())
++		sensor_->focusLens()->setFocusPosition(
++			static_cast<int32_t>(*lensPos));
 +
-+		ControlList sensorOnly;
-+		for (const auto &[id, value] : ctrls) {
-+			if (id != V4L2_CID_FOCUS_ABSOLUTE)
-+				sensorOnly.set(id, value);
-+		}
-+		ctrls = sensorOnly;
-+	}
-+
-+	delayedCtrls_->push(ctrls);
- 	/*
- 	 * Directly apply controls now if there is no frameStart signal.
- 	 *
-@@ -1069,8 +1090,8 @@
- 	 * Both problems should be fixed.
- 	 */
- 	if (!frameStartEmitter_) {
--		ControlList ctrls(sensorControls);
--		sensor_->setControls(&ctrls);
-+		ControlList directCtrls(ctrls);
-+		sensor_->setControls(&directCtrls);
- 	}
- }
- 
+ 	info->request->_d()->metadata().merge(metadata);
+ 	info->metadataProcessed = true;
+ 	tryCompleteRequest(info->request);
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.h
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,45 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Contrast-based autofocus
@@ -227,6 +182,7 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
 +	uint64_t lockedSharpness_ = 0;
 +	unsigned int lowFrames_ = 0;
 +	bool settle_ = false;
++	unsigned int warmup_ = 0;
 +};
 +
 +} /* namespace ipa::soft::algorithms */
@@ -234,7 +190,7 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
 +} /* namespace libcamera */
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.cpp
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,175 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Contrast-based autofocus for the software ISP.
@@ -253,6 +209,8 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
 +
 +#include <libcamera/base/log.h>
 +
++#include "control_ids.h"
++
 +namespace libcamera {
 +
 +LOG_DEFINE_CATEGORY(IPASoftAf)
@@ -267,6 +225,8 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
 +/* Rescan when sharpness stays below this fraction of the locked value. */
 +static constexpr float kRescanRatio = 0.55f;
 +static constexpr unsigned int kRescanFrames = 6;
++/* Valid-stats frames to wait for AE before (re)scanning. */
++static constexpr unsigned int kWarmupFrames = 10;
 +
 +int Af::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
 +{
@@ -279,6 +239,7 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
 +
 +void Af::startScan(int32_t from)
 +{
++	warmup_ = kWarmupFrames;
 +	state_ = State::Scan;
 +	scanPos_ = from;
 +	bestPos_ = from;
@@ -290,12 +251,29 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
 +		 [[maybe_unused]] const uint32_t frame,
 +		 [[maybe_unused]] IPAFrameContext &frameContext,
 +		 const SwIspStats *stats,
-+		 [[maybe_unused]] ControlList &metadata)
++		 ControlList &metadata)
 +{
++	auto &af = context.activeState.af;
++
++	/*
++	 * Always report the target position; the pipeline handler drives the
++	 * lens from this metadata.
++	 */
++	metadata.set(controls::LensPosition, static_cast<float>(af.position));
++
 +	if (!stats->valid)
 +		return;
 +
-+	auto &af = context.activeState.af;
++	/*
++	 * Let AE settle before judging sharpness: the raw gradient metric
++	 * scales with scene brightness, so comparing positions while the
++	 * exposure is still ramping picks whichever position AE happened to
++	 * be brightest at.
++	 */
++	if (warmup_ > 0) {
++		warmup_--;
++		return;
++	}
 +
 +	/*
 +	 * Skip the first valid stats after every lens move: the frame that
@@ -307,7 +285,18 @@ tuning file (imx362 only; the front imx179 is fixed-focus).
 +		return;
 +	}
 +
-+	const uint64_t sharpness = stats->sharpness;
++	/*
++	 * Normalise the gradient sum by mean luminance so the measure tracks
++	 * focus, not exposure.
++	 */
++	uint64_t num = 0;
++	uint64_t den = 0;
++	for (unsigned int i = 0; i < SwIspStats::kYHistogramSize; i++) {
++		num += static_cast<uint64_t>(stats->yHistogram[i]) * i;
++		den += stats->yHistogram[i];
++	}
++	const uint64_t meanY = den ? std::max<uint64_t>(num / den, 1) : 1;
++	const uint64_t sharpness = stats->sharpness * 32 / meanY;
 +
 +	switch (state_) {
 +	case State::Scan:

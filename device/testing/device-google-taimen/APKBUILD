@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=33
+pkgrel=34
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -63,6 +63,7 @@ source="
 	taimen-ambient-nudge.service
 	taimen-perf.rules
 	taimen-perf.conf
+	taimen-gsk.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -183,6 +184,8 @@ package() {
 		"$pkgdir"/usr/lib/udev/rules.d/90-taimen-perf.rules
 	install -Dm644 "$srcdir"/taimen-perf.conf \
 		"$pkgdir"/usr/lib/tmpfiles.d/taimen-perf.conf
+	install -Dm644 "$srcdir"/taimen-gsk.conf \
+		"$pkgdir"/usr/lib/environment.d/60-taimen-gsk.conf
 	install -Dm644 "$srcdir"/taimen-ambient-nudge.service \
 		"$pkgdir"/usr/lib/systemd/user/taimen-ambient-nudge.service
 
@@ -283,4 +286,5 @@ bd062d51a14f3d1cba58bf1f25cc93cdc9c23d851fe6ae9e96cbd8f3ca43b45e8bcca49124196a58
 fe7a7ea7bc5410ce6076ba12252ce43f5f26c24d9c92d98f5969ca861c45dad109e3e75dfe7a647a268aa5a5e15dfdf63d87e2f46b63b071d3110933a0f96e3c  taimen-ambient-nudge.service
 d224523a48311d2fe470b026be546ed032dea096c6e67380b7cd8185b5ac160e41f85966dd759bda4c00aba3d9b0a86577a9c223f17ca415d52b72a724b7ce86  taimen-perf.rules
 5bcbf22127022156474137719b3381ad49e6c8e6d213b5794c7251737d0344d5179c9220cc175c94ffbad9cc0e44203c99457cc6334d9bdf14255d3db62db209  taimen-perf.conf
+51918a0be58c993d27648d081f9239270ef7220bea5d0f666fa47e4ae273cf623d9fb615fc55fb12a76f4171f5f127dd24e488b89f8f6f7365cc048cb5726459  taimen-gsk.conf
 "

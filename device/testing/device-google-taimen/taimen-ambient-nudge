@@ -1,0 +1,12 @@
+#!/bin/sh
+# The SSC/SLPI sensors enumerate well after the session starts, and phosh's
+# ambient module only claims the light sensor when ambient-enabled changes
+# or the proxy appears -- with the proxy up early but HasAmbientLight
+# flipping late, no claim ever happens and auto-brightness stays dead until
+# the setting is toggled. Nudge it once after the session settles.
+sleep 20
+if [ "$(gsettings get org.gnome.settings-daemon.plugins.power ambient-enabled)" = "true" ]; then
+	gsettings set org.gnome.settings-daemon.plugins.power ambient-enabled false
+	sleep 1
+	gsettings set org.gnome.settings-daemon.plugins.power ambient-enabled true
+fi

@@ -31,4 +31,5 @@ algorithms:
                  0.0516, -0.5695,  1.5179 ]
   - Adjust:
   - Agc:
+  - Af:
 ...

@@ -3,7 +3,7 @@ maintainer="Robert Mader <robert.mader@collabora.com>"
 pkgname=libcamera
 _pkgver=0.7.2
 pkgver=9999$_pkgver
-pkgrel=4
+pkgrel=5
 pkgdesc="Linux camera framework"
 url="https://libcamera.org/"
 arch="all"
@@ -64,6 +64,7 @@ source="https://gitlab.freedesktop.org/camera/libcamera/-/archive/v$_pkgver/libc
 	0003-libipa-add-imx179-imx362-sensor-helpers.patch
 	0004-ipa-simple-awb-temporal-smoothing.patch
 	0005-ipa-simple-agc-highlight-protection.patch
+	0006-pipeline-simple-lens-position.patch
 	qcam.desktop
 	$_tuning_files
 	"
@@ -182,6 +183,7 @@ eef5e38efc874f2049d17f08b04d9f21c3e4616f66873358cd2c446e651f78d6952ae25ee13a6ef9
 61b332890b8d63f5a6d9c440945b3ee7c42c27b29c3ff7f51380e9497701e4f0a698621890c39750a50bf04dde0ae42316f459ed0823cb638c25266666476c25  0003-libipa-add-imx179-imx362-sensor-helpers.patch
 cb28edf5b80179eaba375a27e90d8f7aa3e96676479bf8dbd5d15306a4a9991e8dcce407b69eea42c8575c197aec227b2946912a4de853665970742dd2545e8d  0004-ipa-simple-awb-temporal-smoothing.patch
 a5dcfcd0edd390d0e860919886d797887e61ad0f608e49e296730dd840defe678aaa318150c63668f02f9bff77ff2082912e54a4fd20f0dc501a47ea38f16abe  0005-ipa-simple-agc-highlight-protection.patch
+0c670a1efae28bfefe1c363a26e5ce3ab567bf2f8163e50f18d23786581961cde4d9dc9494c2bcdd3a984d2e58b30fdb253e67d7bb5554e90740dbfe34a96c9a  0006-pipeline-simple-lens-position.patch
 22167a4eceb6d1b40b0b7c45fdf116c71684f5340de7f767535cb8e160ad9d2ae0f00cb3d461f73a344520a48a4641cf46226841d78bee06bfbfd2a91337f754  qcam.desktop
 2ee566653b17d565d2c0de67cbe6ebad25df5aac6051cad78e6bae52016fa2ca0247e964d735ac776b3e0bd447ead9c4fcb26cd7629228cdba3ceb91b46f378f  hi846.yaml
 ef165f8cf26f96f926e72600d162f8a797afdbd999a1020b104330e675a1e27ef7249e7f1a8d3e6bdab4f85cc2e1d16407c5f83f3c7e3b0ebae69a36be4dc8c7  imx179.yaml

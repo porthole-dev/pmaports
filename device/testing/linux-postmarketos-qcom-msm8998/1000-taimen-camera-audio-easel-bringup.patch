@@ -9070,6 +9070,28 @@ index 382fb7f9e497..a5fa1f842ad8 100644
  		ret = devm_pm_opp_of_add_table(dev);
  		if (ret)
  			DRM_DEV_ERROR(dev, "Unable to set the OPP table\n");
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
+index 781dcd3fb283..c273a2f6774d 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
+@@ -664,6 +664,17 @@ static void dpu_crtc_frame_event_cb(void *data, u32 event)
+ 	if (event & DPU_ENCODER_FRAME_EVENT_IDLE)
+ 		return;
+ 
++	/*
++	 * Frame latched into the panel transfer (cmd mode): the previous
++	 * framebuffer is released, send the pending pageflip event now so
++	 * userspace can pipeline the next frame into the ongoing transfer.
++	 * complete_commit()'s later call is a no-op once the event is sent.
++	 */
++	if (event & DPU_ENCODER_FRAME_EVENT_STARTED) {
++		_dpu_crtc_complete_flip((struct drm_crtc *)data);
++		return;
++	}
++
+ 	dpu_crtc = to_dpu_crtc(crtc);
+ 	priv = crtc->dev->dev_private;
+ 	crtc_id = drm_crtc_index(crtc);
 diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
 index 52a626117f70..53d97f0c185b 100644
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
@@ -9151,6 +9173,43 @@ index 52a626117f70..53d97f0c185b 100644
  	/* All phys encs are ready to go, trigger the kickoff */
  	_dpu_encoder_kickoff_phys(dpu_enc);
  
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.h b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.h
+index d4d1ecd416e3..8da628f92279 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.h
+@@ -16,6 +16,7 @@
+ #define DPU_ENCODER_FRAME_EVENT_ERROR			BIT(1)
+ #define DPU_ENCODER_FRAME_EVENT_PANEL_DEAD		BIT(2)
+ #define DPU_ENCODER_FRAME_EVENT_IDLE			BIT(3)
++#define DPU_ENCODER_FRAME_EVENT_STARTED			BIT(4)
+ 
+ #define IDLE_TIMEOUT	(66 - 16/2)
+ 
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c
+index ae28b2b93e69..9a8172d30358 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c
+@@ -128,6 +128,20 @@ static void dpu_encoder_phys_cmd_ctl_start_irq(void *arg, int irq_idx)
+ 
+ 	atomic_add_unless(&phys_enc->pending_ctlstart_cnt, -1, 0);
+ 
++	/*
++	 * The frame just latched into the panel transfer: the previous
++	 * framebuffer is no longer referenced, which is exactly the pageflip
++	 * event semantic on video-mode outputs. Signalling the flip here
++	 * instead of at transfer *completion* lets the compositor render the
++	 * next frame while this one is still being pushed over DSI --
++	 * without it the whole session is locked to half the panel rate
++	 * (measured: 14.6 ms transfer inside a 16.7 ms TE slot, flip at
++	 * +14.6 ms serialized everything to 33.4 ms cycles).
++	 */
++	if (phys_enc->parent_ops->handle_frame_done)
++		phys_enc->parent_ops->handle_frame_done(phys_enc->parent,
++				phys_enc, DPU_ENCODER_FRAME_EVENT_STARTED);
++
+ 	/* Signal any waiting ctl start interrupt */
+ 	wake_up_all(&phys_enc->pending_kickoff_wq);
+ 	DPU_ATRACE_END("ctl_start_irq");
 diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
 index 0239a811d5ec..cb4ed2ea9aa2 100644
 --- a/drivers/gpu/drm/msm/disp/dpu1/dpu_hw_catalog.c
@@ -9727,6 +9786,84 @@ index 56dfa2d24be1..f89b1c25618e 100644
  	DBG("%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
  		timing->shared_timings.clk_pre, timing->shared_timings.clk_post,
  		timing->shared_timings.clk_pre_inc_by_2, timing->clk_zero,
+diff --git a/drivers/gpu/drm/msm/msm_atomic.c b/drivers/gpu/drm/msm/msm_atomic.c
+index 1686fbb611fd..0f93ba58fbf2 100644
+--- a/drivers/gpu/drm/msm/msm_atomic.c
++++ b/drivers/gpu/drm/msm/msm_atomic.c
+@@ -4,6 +4,8 @@
+  * Author: Rob Clark <robdclark@gmail.com>
+  */
+ 
++#include <linux/module.h>
++
+ #include <drm/drm_atomic_uapi.h>
+ #include <drm/drm_vblank.h>
+ 
+@@ -12,6 +14,16 @@
+ #include "msm_gem.h"
+ #include "msm_kms.h"
+ 
++/*
++ * Pipelined commits: skip the post-kickoff flush wait so userspace can
++ * prepare the next frame while the current one is still being transferred
++ * (command-mode panels). Safety is preserved by the pre-kickoff wait at the
++ * top of the next commit_tail.
++ */
++static bool tail_pipeline = true;
++module_param(tail_pipeline, bool, 0644);
++MODULE_PARM_DESC(tail_pipeline, "pipeline atomic commits (skip post-kickoff flush wait)");
++
+ /*
+  * Helpers to control vblanks while we flush.. basically just to ensure
+  * that vblank accounting is switched on, so we get valid seqn/timestamp
+@@ -85,11 +97,19 @@ static void msm_atomic_async_commit(struct msm_kms *kms, int crtc_idx)
+ 	kms->funcs->flush_commit(kms, crtc_mask);
+ 
+ 	/*
+-	 * Wait for flush to complete:
++	 * Wait for flush to complete -- unless pipelining is enabled: the
++	 * next commit_tail already waits for any in-progress flush at its
++	 * top before programming (the same safety, one frame later), and on
++	 * command-mode panels this post-kickoff wait is what serializes the
++	 * whole session to half the panel rate (the DSI transfer occupies
++	 * most of a TE slot, and blocking here stalls the next nonblocking
++	 * commit ioctl behind hw_done).
+ 	 */
+-	trace_msm_atomic_wait_flush_start(crtc_mask);
+-	kms->funcs->wait_flush(kms, crtc_mask);
+-	trace_msm_atomic_wait_flush_finish(crtc_mask);
++	if (!tail_pipeline) {
++		trace_msm_atomic_wait_flush_start(crtc_mask);
++		kms->funcs->wait_flush(kms, crtc_mask);
++		trace_msm_atomic_wait_flush_finish(crtc_mask);
++	}
+ 
+ 	vblank_put(kms, crtc_mask);
+ 
+@@ -268,11 +288,19 @@ void msm_atomic_commit_tail(struct drm_atomic_state *state)
+ 	kms->funcs->flush_commit(kms, crtc_mask);
+ 	unlock_crtcs(kms, crtc_mask);
+ 	/*
+-	 * Wait for flush to complete:
++	 * Wait for flush to complete -- unless pipelining is enabled: the
++	 * next commit_tail already waits for any in-progress flush at its
++	 * top before programming (the same safety, one frame later), and on
++	 * command-mode panels this post-kickoff wait is what serializes the
++	 * whole session to half the panel rate (the DSI transfer occupies
++	 * most of a TE slot, and blocking here stalls the next nonblocking
++	 * commit ioctl behind hw_done).
+ 	 */
+-	trace_msm_atomic_wait_flush_start(crtc_mask);
+-	kms->funcs->wait_flush(kms, crtc_mask);
+-	trace_msm_atomic_wait_flush_finish(crtc_mask);
++	if (!tail_pipeline) {
++		trace_msm_atomic_wait_flush_start(crtc_mask);
++		kms->funcs->wait_flush(kms, crtc_mask);
++		trace_msm_atomic_wait_flush_finish(crtc_mask);
++	}
+ 
+ 	vblank_put(kms, crtc_mask);
+ 
 diff --git a/drivers/gpu/drm/msm/msm_drv.h b/drivers/gpu/drm/msm/msm_drv.h
 index b3689a2d27d7..6f31b6a1de3b 100644
 --- a/drivers/gpu/drm/msm/msm_drv.h

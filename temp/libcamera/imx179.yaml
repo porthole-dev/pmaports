@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: CC0-1.0
+%YAML 1.1
+---
+# Google Pixel 2 XL (taimen) front camera.
+# Single colour correction matrix extracted from the vendor chromatix
+# (libchromatix_imx179_pixel_res0_snapshot_isp.so); the vendor tuning
+# uses one matrix for all illuminants. Black level: Sony pedestal 64
+# at 10 bits.
+version: 1
+algorithms:
+  - BlackLevel:
+      blackLevel: 4096
+  - Awb:
+  - Ccm:
+      ccms:
+        - ct: 4500
+          ccm: [ 1.7387, -0.8114,  0.0727,
+                -0.1948,  1.4452, -0.2504,
+                 0.0844, -0.7789,  1.6945 ]
+  - Adjust:
+  - Agc:
+...

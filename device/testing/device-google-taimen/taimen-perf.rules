@@ -1,0 +1,4 @@
+# Adreno 540 devfreq: default simple_ondemand polls every 50 ms, so the first
+# frames of any animation render at the 257 MHz floor before the governor
+# reacts -- up to three dropped frames at 60 Hz. 10 ms reacts within one frame.
+ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="5000000.gpu", ATTR{polling_interval}="10"

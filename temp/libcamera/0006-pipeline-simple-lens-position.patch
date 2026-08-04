@@ -1,11 +1,9 @@
 From: taimen camera bring-up
-Subject: [PATCH] pipeline: simple: forward LensPosition to the focus lens
+Subject: [PATCH] pipeline: simple: advertise LensPosition for focus-lens cameras
 
-The simple pipeline discovers a CameraLens via the sensor's lens-focus
-ancillary link but never exposes or forwards any focus control. Expose
-LensPosition in raw actuator units and forward it per request, enabling
-manual focus (and app-level AF loops) on cameras like taimen's imx362 +
-LC898214XD.
+Expose LensPosition (raw actuator units) when the sensor has a
+lens-focus link. The control is consumed by the soft IPA's Af
+algorithm; the pipeline does not drive the lens directly.
 
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
@@ -18,20 +16,22 @@ LC898214XD.
  #include "libcamera/internal/camera_sensor_properties.h"
  #include "libcamera/internal/converter.h"
  #include "libcamera/internal/delayed_controls.h"
-@@ -664,6 +666,20 @@
+@@ -664,6 +666,22 @@
  
  	properties_ = sensor_->properties();
  
 +	/*
 +	 * If the sensor has an associated focus lens, expose LensPosition in
-+	 * raw actuator units so applications can implement manual focus and
-+	 * simple autofocus until the soft ISP grows a real AF algorithm.
++	 * raw actuator units. The control is consumed by the soft IPA's Af
++	 * algorithm (manual override / auto), which is the single writer of
++	 * the lens via its metadata; the pipeline deliberately does not set
++	 * the lens directly to avoid competing writers.
 +	 */
 +	if (sensor_->focusLens()) {
 +		ControlInfoMap::Map ctrls(controlInfo_.begin(),
 +					  controlInfo_.end());
 +		ctrls[&controls::LensPosition] = ControlInfo(0.0f, 4095.0f,
-+							     324.0f);
++							     0.0f);
 +		controlInfo_ = ControlInfoMap(std::move(ctrls),
 +					      controls::controls);
 +	}
@@ -39,15 +39,3 @@ LC898214XD.
  	/* Find the first subdev that can generate a frame start signal, if any. */
  	frameStartEmitter_ = nullptr;
  	for (const Entity &entity : entities_) {
-@@ -1739,6 +1755,11 @@
- 	SimpleCameraData *data = cameraData(camera);
- 	int ret;
- 
-+	const auto lensPos = request->controls().get(controls::LensPosition);
-+	if (lensPos && data->sensor_->focusLens())
-+		data->sensor_->focusLens()->setFocusPosition(
-+			static_cast<int32_t>(*lensPos));
-+
- 	std::map<const Stream *, FrameBuffer *> buffers;
- 	bool metadataRequired = false;
- 

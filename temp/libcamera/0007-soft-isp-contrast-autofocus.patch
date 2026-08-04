@@ -1,10 +1,10 @@
 From: taimen camera bring-up
-Subject: [PATCH] soft ISP: contrast autofocus
+Subject: [PATCH] soft ISP: contrast autofocus with manual override
 
-Sharpness stat + hill-climb Af (brightness-normalised, AE warm-up
-before scanning). The Af reports its target as LensPosition metadata;
-the simple pipeline drives the CameraLens from it. Enabled via the
-imx362 tuning file.
+Sharpness stat + hill-climb Af, all state in the algorithm instance
+(IPAActiveState is re-zeroed at configure, after init). Af is the
+single lens writer via LensPosition metadata. Request LensPosition
+> 0 = manual focus, 0 = continuous AF.
 
 --- a/include/libcamera/internal/software_isp/swisp_stats.h
 +++ b/include/libcamera/internal/software_isp/swisp_stats.h
@@ -97,20 +97,6 @@ imx362 tuning file.
  			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
  				sharedStats_->yHistogram[j] += s.yHistogram[j];
  		}
---- a/src/ipa/simple/ipa_context.h
-+++ b/src/ipa/simple/ipa_context.h
-@@ -43,6 +43,11 @@
- 	} agc;
- 
- 	struct {
-+		int32_t position;
-+		bool enabled;
-+	} af;
-+
-+	struct {
- 		uint8_t level;
- 		int32_t lastExposure;
- 		double lastGain;
 --- a/src/ipa/simple/algorithms/meson.build
 +++ b/src/ipa/simple/algorithms/meson.build
 @@ -2,6 +2,7 @@
@@ -123,14 +109,14 @@ imx362 tuning file.
      'blc.cpp',
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
-@@ -1052,6 +1052,16 @@
+@@ -1054,6 +1054,16 @@
  	if (!info)
  		return;
  
 +	/*
-+	 * The soft IPA's Af algorithm reports its target as LensPosition
-+	 * metadata; drive the focus lens from it. Manual positions set via
-+	 * request controls take the queueRequestDevice() path instead.
++	 * The soft IPA's Af algorithm (auto or manual override) reports the
++	 * lens target as LensPosition metadata; it is the single writer of
++	 * the focus lens.
 +	 */
 +	const auto lensPos = metadata.get(controls::LensPosition);
 +	if (lensPos && sensor_->focusLens())
@@ -142,7 +128,7 @@ imx362 tuning file.
  	tryCompleteRequest(info->request);
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.h
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,51 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Contrast-based autofocus
@@ -163,6 +149,10 @@ imx362 tuning file.
 +	~Af() = default;
 +
 +	int init(IPAContext &context, const ValueNode &tuningData) override;
++	void queueRequest(IPAContext &context,
++			  const uint32_t frame,
++			  IPAFrameContext &frameContext,
++			  const ControlList &controls) override;
 +	void process(IPAContext &context,
 +		     const uint32_t frame,
 +		     IPAFrameContext &frameContext,
@@ -183,6 +173,8 @@ imx362 tuning file.
 +	unsigned int lowFrames_ = 0;
 +	bool settle_ = false;
 +	unsigned int warmup_ = 0;
++	bool manualMode_ = false;
++	int32_t position_ = 0;
 +};
 +
 +} /* namespace ipa::soft::algorithms */
@@ -190,7 +182,7 @@ imx362 tuning file.
 +} /* namespace libcamera */
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.cpp
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,202 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Contrast-based autofocus for the software ISP.
@@ -228,10 +220,10 @@ imx362 tuning file.
 +/* Valid-stats frames to wait for AE before (re)scanning. */
 +static constexpr unsigned int kWarmupFrames = 10;
 +
-+int Af::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningData)
++int Af::init([[maybe_unused]] IPAContext &context,
++	     [[maybe_unused]] const ValueNode &tuningData)
 +{
-+	context.activeState.af.enabled = true;
-+	context.activeState.af.position = kPosMin;
++	position_ = kPosMin;
 +	startScan(kPosMin);
 +
 +	return 0;
@@ -247,19 +239,46 @@ imx362 tuning file.
 +	settle_ = true;
 +}
 +
-+void Af::process(IPAContext &context,
++void Af::queueRequest([[maybe_unused]] IPAContext &context,
++		      [[maybe_unused]] const uint32_t frame,
++		      [[maybe_unused]] IPAFrameContext &frameContext,
++		      const ControlList &controls)
++{
++	/*
++	 * Manual focus: any explicit LensPosition disables the continuous
++	 * scan (the pipeline applies the raw position to the lens directly);
++	 * LensPosition = 0 hands control back to the autofocus.
++	 */
++	const auto &pos = controls.get(controls::LensPosition);
++	if (!pos)
++		return;
++
++	if (*pos <= 0.0f) {
++		if (manualMode_) {
++			manualMode_ = false;
++			startScan(kPosMin);
++		}
++	} else {
++		manualMode_ = true;
++		position_ = static_cast<int32_t>(*pos);
++	}
++}
++
++void Af::process([[maybe_unused]] IPAContext &context,
 +		 [[maybe_unused]] const uint32_t frame,
 +		 [[maybe_unused]] IPAFrameContext &frameContext,
 +		 const SwIspStats *stats,
 +		 ControlList &metadata)
 +{
-+	auto &af = context.activeState.af;
-+
 +	/*
-+	 * Always report the target position; the pipeline handler drives the
-+	 * lens from this metadata.
++	 * Always report the position; the pipeline drives the lens from this
++	 * metadata (single writer). In manual mode the scan is idle and the
++	 * requested position is republished.
 +	 */
-+	metadata.set(controls::LensPosition, static_cast<float>(af.position));
++	metadata.set(controls::LensPosition, static_cast<float>(position_));
++
++	if (manualMode_)
++		return;
 +
 +	if (!stats->valid)
 +		return;
@@ -308,30 +327,30 @@ imx362 tuning file.
 +		if (scanPos_ >= kPosMax) {
 +			state_ = State::Fine;
 +			fineStep_ = -kFineStep;
-+			af.position = bestPos_ + fineStep_;
++			position_ = bestPos_ + fineStep_;
 +			settle_ = true;
 +			break;
 +		}
 +
 +		scanPos_ = std::min(scanPos_ + kCoarseStep, kPosMax);
-+		af.position = scanPos_;
++		position_ = scanPos_;
 +		settle_ = true;
 +		break;
 +
 +	case State::Fine:
 +		if (sharpness > bestSharpness_) {
 +			bestSharpness_ = sharpness;
-+			bestPos_ = af.position;
++			bestPos_ = position_;
 +		}
 +
 +		if (fineStep_ < 0) {
 +			/* Tried below best; now try above. */
 +			fineStep_ = kFineStep;
-+			af.position = bestPos_ + fineStep_;
++			position_ = bestPos_ + fineStep_;
 +			settle_ = true;
 +		} else {
 +			/* Done: settle on the best position found. */
-+			af.position = bestPos_;
++			position_ = bestPos_;
 +			lockedSharpness_ = bestSharpness_;
 +			lowFrames_ = 0;
 +			state_ = State::Locked;
@@ -349,7 +368,7 @@ imx362 tuning file.
 +				LOG(IPASoftAf, Debug)
 +					<< "Sharpness dropped, rescanning";
 +				startScan(kPosMin);
-+				af.position = kPosMin;
++				position_ = kPosMin;
 +			}
 +		} else {
 +			lowFrames_ = 0;

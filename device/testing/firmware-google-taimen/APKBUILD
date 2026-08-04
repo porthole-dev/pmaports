@@ -46,7 +46,7 @@
 #   a530_* GPU firmware comes from firmware-qcom-adreno-a530.
 pkgname=firmware-google-taimen
 pkgver=20201005
-pkgrel=1
+pkgrel=2
 pkgdesc="Firmware for Google Pixel 2 XL (modem, adsp, slpi, wlan, bluetooth, gpu zap)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -57,14 +57,23 @@ depends="
 	linux-firmware-ath10k
 	linux-firmware-qca
 "
-source="$pkgname-$pkgver.tar.gz"
+source="$pkgname-$pkgver.tar.gz
+	tas2557s_PG21_uCDSP.bin
+	tas2557s_uCDSP.bin
+	"
 
 package() {
 	install -d "$pkgdir"/lib/firmware
 	cp -a "$srcdir"/qcom "$srcdir"/qca "$srcdir"/ath10k "$pkgdir"/lib/firmware/
+	# TAS2557 speaker amp uCDSP firmware -- without it the codec probe fails
+	# and the whole sound card defers forever (silent phone).
+	install -Dm644 "$srcdir"/tas2557s_PG21_uCDSP.bin "$srcdir"/tas2557s_uCDSP.bin \
+		-t "$pkgdir"/lib/firmware/
 	find "$pkgdir"/lib/firmware -type f -exec chmod 644 {} +
 }
 
 sha512sums="
 e11fdff317c90468e889927c246ac25a5f6235fd18399dbf35177de6f4f6b632e2ffdb856e5a19a71223fac9e169cdade5563cc4d2f442281cfc45c20990ef2e  firmware-google-taimen-20201005.tar.gz
+5e99f0f8b6f672c46d96fa05a0459a2908e3b8167973f4ff64629c393f3984bfe719d87443a890d04c4d5908ade82e1ded696d13f02d413c9e520038aa30cf75  tas2557s_PG21_uCDSP.bin
+9b387aa40ae558aeba2cee9991264783ab0401addddfe542e60f9e46d228b291553be2719863f0541cfe468877b985b55084e75154017081eca7c9a7e4dd0f43  tas2557s_uCDSP.bin
 "

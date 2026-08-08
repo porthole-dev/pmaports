@@ -11267,10 +11267,10 @@ index 000000000000..84554cedd2e5
 +obj-$(CONFIG_IIO_QCOM_SMGR)	+= qcom_smgr.o
 diff --git a/drivers/iio/common/qcom_smgr/qcom_smgr.c b/drivers/iio/common/qcom_smgr/qcom_smgr.c
 new file mode 100644
-index 000000000000..82a60db29a3d
+index 000000000000..bb906d71cdd4
 --- /dev/null
 +++ b/drivers/iio/common/qcom_smgr/qcom_smgr.c
-@@ -0,0 +1,1727 @@
+@@ -0,0 +1,1757 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Qualcomm Sensor Manager driver
@@ -11962,20 +11962,36 @@ index 000000000000..82a60db29a3d
 +		 * step". The real fix is in the subscription's report rate,
 +		 * which is set for continuous sensors.
 +		 */
++		mutex_lock(&sensor->lock);
 +		if (sensor->last_event_ns &&
 +		    now - sensor->last_event_ns < 100 * NSEC_PER_MSEC) {
 +			sensor->have_report = true;
 +			complete(&sensor->report[is_secondary]);
++			mutex_unlock(&sensor->lock);
 +			return;
 +		}
 +		sensor->last_event_ns = now;
++		mutex_unlock(&sensor->lock);
 +
 +		iio_push_event(sensor->iio_dev, code, now);
 +
++		mutex_lock(&sensor->lock);
 +		sensor->have_report = true;
 +		complete(&sensor->report[is_secondary]);
++		mutex_unlock(&sensor->lock);
 +		return;
 +	}
++
++	/*
++	 * last_values is read by qcom_smgr_read_one() under sensor->lock, so
++	 * the merge-and-publish below has to run under it too, or a reader
++	 * can observe a torn or stale value. qcom_smgr_buffering_report_handler()
++	 * runs on the QMI handle's own workqueue (process context, see
++	 * qmi_data_ready_work() in qmi_interface.c) -- not atomic context --
++	 * so a mutex is valid here, and it is the same lock already used for
++	 * this field everywhere else in the file.
++	 */
++	mutex_lock(&sensor->lock);
 +
 +	sec = qcom_smgr_secondary_scan_index(sensor->type);
 +	if (sec >= 0) {
@@ -11996,17 +12012,19 @@ index 000000000000..82a60db29a3d
 +			iio_data.values[j] = cpu_to_le32(merged[j]);
 +	}
 +
++	memcpy(sensor->last_values, iio_data.values,
++	       sizeof(sensor->last_values));
++	sensor->have_report = true;
++	complete(&sensor->report[is_secondary]);
++
++	mutex_unlock(&sensor->lock);
++
 +	/*
 +	 * Not iio_push_to_buffers(): the struct is laid out for a 3-axis
 +	 * sensor, but pressure and prox/light have fewer channels and so a
 +	 * shorter scan, which puts their timestamp somewhere else entirely.
 +	 * The _with_timestamp() helper places it per the device's own scan.
 +	 */
-+	memcpy(sensor->last_values, iio_data.values,
-+	       sizeof(sensor->last_values));
-+	sensor->have_report = true;
-+	complete(&sensor->report[is_secondary]);
-+
 +	iio_push_to_buffers_with_timestamp(sensor->iio_dev, &iio_data,
 +					   iio_get_time_ns(sensor->iio_dev));
 +}
@@ -12209,13 +12227,19 @@ index 000000000000..82a60db29a3d
 +				  int *val2, long mask)
 +{
 +	struct qcom_smgr_iio_priv *priv = iio_priv(iio_dev);
++	struct qcom_smgr_sensor *sensor = priv->sensor;
++	int sec, data_type;
 +
 +	switch (mask) {
 +	case IIO_CHAN_INFO_RAW:
 +	case IIO_CHAN_INFO_PROCESSED:
 +		return qcom_smgr_read_one(iio_dev, chan, val);
 +	case IIO_CHAN_INFO_SAMP_FREQ:
-+		*val = priv->sensor->data_types[0].cur_sample_rate;
++		/* sec == -1 for event-only sensors too; both PRIMARY then. */
++		sec = qcom_smgr_secondary_scan_index(sensor->type);
++		data_type = (sec >= 0 && sec == chan->scan_index)
++			    ? SNS_SMGR_DATA_TYPE_SECONDARY : SNS_SMGR_DATA_TYPE_PRIMARY;
++		*val = sensor->data_types[data_type].cur_sample_rate;
 +		return IIO_VAL_INT;
 +	case IIO_CHAN_INFO_CALIBBIAS:
 +		*val = priv->sensor->calibbias[chan->scan_index];
@@ -12248,13 +12272,19 @@ index 000000000000..82a60db29a3d
 +				   int val2, long mask)
 +{
 +	struct qcom_smgr_iio_priv *priv = iio_priv(iio_dev);
++	struct qcom_smgr_sensor *sensor = priv->sensor;
++	int sec, data_type;
 +
 +	switch (mask) {
 +	case IIO_CHAN_INFO_SAMP_FREQ:
 +		if (iio_device_claim_direct_mode(iio_dev))
 +			return -EBUSY;
 +
-+		priv->sensor->data_types[0].cur_sample_rate = val;
++		/* sec == -1 for event-only sensors too; both PRIMARY then. */
++		sec = qcom_smgr_secondary_scan_index(sensor->type);
++		data_type = (sec >= 0 && sec == chan->scan_index)
++			    ? SNS_SMGR_DATA_TYPE_SECONDARY : SNS_SMGR_DATA_TYPE_PRIMARY;
++		sensor->data_types[data_type].cur_sample_rate = val;
 +
 +		iio_device_release_direct_mode(iio_dev);
 +		return 0;

@@ -3,8 +3,8 @@
 # property" and reports HasProximity=false. Phosh needs it to blank the screen
 # during a call.
 #
-# The driver reports 0 when something is within range and the sensor range
-# (3277, i.e. 0.05 m at the channel's scale) when clear, and iio-sensor-proxy
+# The driver reports 0 when clear and the sensor range (3277, i.e. 0.05 m at
+# the channel's scale) when something is within range, and iio-sensor-proxy
 # calls it "near" when the raw value is >= this level. Half the range is the
 # threshold.
 #

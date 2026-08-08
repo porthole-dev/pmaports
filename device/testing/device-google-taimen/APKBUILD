@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=35
+pkgrel=36
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -64,6 +64,8 @@ source="
 	taimen-perf.rules
 	taimen-perf.conf
 	taimen-gsk.conf
+	taimen-display-panel.json
+	taimen-gmobile-overlay.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -186,6 +188,18 @@ package() {
 		"$pkgdir"/usr/lib/tmpfiles.d/taimen-perf.conf
 	install -Dm644 "$srcdir"/taimen-gsk.conf \
 		"$pkgdir"/usr/lib/environment.d/60-taimen-gsk.conf
+
+	# Rounded display corners. gmobile (linked into phoc/phosh) ships no
+	# panel data for "google,taimen" -- see taimen-gmobile-overlay.conf's
+	# header for how that was confirmed and why an environment.d
+	# G_RESOURCE_OVERLAYS is the only override point that exists. The JSON
+	# goes under the overlay's real directory, mirroring gmobile's resource
+	# path minus the prefix consumed by the overlay.
+	install -Dm644 "$srcdir"/taimen-display-panel.json \
+		"$pkgdir"/usr/share/taimen-gmobile-overlay/display-panels/google,taimen.json
+	install -Dm644 "$srcdir"/taimen-gmobile-overlay.conf \
+		"$pkgdir"/usr/lib/environment.d/60-taimen-gmobile-overlay.conf
+
 	install -Dm644 "$srcdir"/taimen-ambient-nudge.service \
 		"$pkgdir"/usr/lib/systemd/user/taimen-ambient-nudge.service
 
@@ -294,4 +308,6 @@ fe7a7ea7bc5410ce6076ba12252ce43f5f26c24d9c92d98f5969ca861c45dad109e3e75dfe7a647a
 d224523a48311d2fe470b026be546ed032dea096c6e67380b7cd8185b5ac160e41f85966dd759bda4c00aba3d9b0a86577a9c223f17ca415d52b72a724b7ce86  taimen-perf.rules
 5bcbf22127022156474137719b3381ad49e6c8e6d213b5794c7251737d0344d5179c9220cc175c94ffbad9cc0e44203c99457cc6334d9bdf14255d3db62db209  taimen-perf.conf
 51918a0be58c993d27648d081f9239270ef7220bea5d0f666fa47e4ae273cf623d9fb615fc55fb12a76f4171f5f127dd24e488b89f8f6f7365cc048cb5726459  taimen-gsk.conf
+c7f0c202c6ef02bf9dfff5797c380519a3970791b891591988d8cc8cadfb947ba1728e1c76f69b4b87a57ac5d1fbcbb00ebafa687a9a979f9129c9ad5b00d65a  taimen-display-panel.json
+1e38dd25be7d52f9065647a2f0248746670417c2a94221129b74aff26a7a606149fa0c7e59c735e2f1e6b77e3102941e9f6b13874445991da90b2bd40bb7f9d6  taimen-gmobile-overlay.conf
 "

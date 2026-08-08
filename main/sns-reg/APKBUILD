@@ -1,7 +1,7 @@
 # Maintainer: Yassine Oudjana (Tooniis) <y.oudjana@protonmail.com>
 pkgname=sns-reg
 pkgver=0.1_git20250706
-pkgrel=2
+pkgrel=3
 _commit="4d238e5f0baba3fb77456fe2bffbf8e8f18a71a0"
 pkgdesc="Qualcomm Sensor Registry Server"
 url="https://gitlab.com/msm8996-mainline/sns-reg"
@@ -19,11 +19,16 @@ build() {
 }
 
 package() {
-	# ponytail: systemd only -- the upstream OpenRC initd is not installed,
-	# and its unit hardcodes /usr/bin, so the binary goes there.
 	install -Dm755 "$pkgname" "$pkgdir/usr/bin/$pkgname"
 	install -Dm644 "$pkgname.service" -t "$pkgdir/usr/lib/systemd/system"
 	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+
+	# OpenRC parity. Upstream ships sns-reg.initd too, but it points at
+	# /usr/sbin/sns-reg -- this package installs the binary to /usr/bin (see
+	# above, matching sns-reg.service's ExecStart), so fix the path rather
+	# than shipping an initd that can never find its own command.
+	install -Dm755 "$pkgname.initd" "$pkgdir/etc/init.d/$pkgname"
+	sed -i "s#/usr/sbin/$pkgname#/usr/bin/$pkgname#" "$pkgdir/etc/init.d/$pkgname"
 }
 
 sha512sums="

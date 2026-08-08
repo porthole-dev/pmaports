@@ -18,32 +18,69 @@
 # CONFIG_UCLAMP_TASK_GROUP exists to expose (see kernel
 # Documentation/admin-guide/cgroup-v2.rst, "cpu.uclamp.min").
 #
-# The target is session.slice, not a phoc.service/phosh.service -- neither
-# exists. phosh-session execs `phoc -E gnome-session --session=phosh`
-# directly with no systemd unit of its own (verified: `apk info -L phoc`,
-# `apk info -L phosh` ship no unit at all, just the binaries + a session
-# script). Every login session's scope is a descendant of the user
-# manager's session.slice (systemd.special(7): "the display server ...
-# should use this slice"), which is exactly phoc + gnome-session + the
-# phosh shell + XDG portals -- and only those, not user-launched apps
-# (those land in app.slice) or background daemons (background.slice).
+# The target is user-<uid>.slice, NOT session.slice. session.slice was tried
+# first and is WRONG: it was measured live on-device (read-only) that phoc
+# (the compositor -- the process actually doing frame submission) runs in
+#     0::/user.slice/user-10000.slice/session-c1.scope
+# a SIBLING branch of
+#     0::/user.slice/user-10000.slice/user@10000.service/session.slice/mobi.phosh.Shell.service
+# where phosh (the shell) lives. session.slice only ever covers phosh, never
+# phoc. user-<uid>.slice is the nearest common ancestor of both, so it is
+# the smallest single write that actually reaches the compositor. This is
+# broader than "just the compositor + shell" -- it covers everything the
+# user runs, including app.slice/background.slice under user@.service -- but
+# on a single-user phone the interactive session more or less IS the
+# workload, and this is still far narrower than the global scaling_min_freq
+# pin this fix exists to avoid.
+#
+# For cpu.uclamp.min to exist at user-<uid>.slice at all, the "cpu"
+# cgroup-v2 controller must be enabled in user.slice's cgroup.subtree_control
+# (a cgroup's own controller-interface files exist only if its PARENT pushed
+# that controller down to it). Measured live: it currently is NOT --
+# `cat /sys/fs/cgroup/user.slice/user-10000.slice/cgroup.controllers` reads
+# "memory pids", no cpu. taimen-user-cpu-delegate.conf (a drop-in on the
+# system unit user@.service, see its own header) adds "cpu" to that unit's
+# Delegate=, which is what causes systemd to push "cpu" up through every
+# ancestor -- user.slice and user-<uid>.slice included -- exactly the same
+# mechanism that already makes "memory pids" show up there today. Once that
+# lands, the value written here to user-<uid>.slice applies to every
+# descendant task, including phoc in session-c1.scope, even though
+# session-c1.scope never separately enables "cpu" itself: a cgroup with no
+# controller of its own is scheduled as part of the nearest ancestor that
+# has one.
 #
 # 25 is a conservative opening value (20-30% was judged reasonable to keep
 # the big cluster off its floor during interaction without pinning it high).
 # It is a tuning knob, not a validated constant: it needs an on-device A/B
 # against tools/tk-fps.py before being trusted as final.
 #
-# The path below is derived from this script's own /proc/self/cgroup rather
-# than a hardcoded UID, so it keeps working under any UID and any cgroup
-# nesting depth. It relies on Slice=session.slice in the matching .service
-# file, which puts this script's own cgroup one level *inside*
-# session.slice -- stripping the last path component lands on session.slice
-# itself.
+# The uid is read with `id -u`, never hardcoded, so this keeps working for
+# whatever user actually owns the session.
+#
+# FAILS LOUDLY on purpose: this device does not have the uclamp kernel
+# flashed yet, so cpu.uclamp.min will not exist until it is, and the cpu
+# delegation above is unconfirmed until then too. A silent no-op here would
+# be the exact failure mode this fix exists to avoid, so a missing file or a
+# failed write is reported to stderr (systemd journals it under this unit's
+# name) and the unit is left FAILED -- `systemctl --user status
+# taimen-uclamp-session.service` / `journalctl --user -u
+# taimen-uclamp-session.service` must be checked after the kernel is flashed
+# to confirm this actually applied.
 set -e
 
 UCLAMP_MIN_PCT=25
 
-self_cgroup=$(sed -n 's/^0::\(.*\)$/\1/p' /proc/self/cgroup)
-session_slice="/sys/fs/cgroup${self_cgroup%/*}"
+uid=$(id -u)
+target="/sys/fs/cgroup/user.slice/user-${uid}.slice/cpu.uclamp.min"
 
-echo "$UCLAMP_MIN_PCT" > "$session_slice/cpu.uclamp.min"
+if [ ! -e "$target" ]; then
+	echo "taimen-uclamp-session: $target does not exist -- cpu controller not delegated to user-${uid}.slice (needs the uclamp kernel + taimen-user-cpu-delegate.conf) or the cgroup layout changed. uclamp_min NOT applied." >&2
+	exit 1
+fi
+
+if ! echo "$UCLAMP_MIN_PCT" > "$target"; then
+	echo "taimen-uclamp-session: write to $target failed. uclamp_min NOT applied." >&2
+	exit 1
+fi
+
+echo "taimen-uclamp-session: uclamp_min=$UCLAMP_MIN_PCT applied to user-${uid}.slice ($target)"

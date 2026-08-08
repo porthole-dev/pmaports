@@ -2114,10 +2114,18 @@ index 000000000000..ed90c0427c80
 +	qcom,battery-capacity-ua = <2700000>;
 +};
 diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
-index 5a623a9c1624..1e2f53416dca 100644
+index 5a623a9c1624..a76f56812c2b 100644
 --- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
 +++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
-@@ -41,6 +41,25 @@ reserved-memory {
+@@ -9,6 +9,7 @@
+ #include <dt-bindings/interconnect/qcom,msm8998.h>
+ #include <dt-bindings/power/qcom-rpmpd.h>
+ #include <dt-bindings/soc/qcom,apr.h>
++#include <dt-bindings/thermal/thermal.h>
+ #include <dt-bindings/gpio/gpio.h>
+ 
+ /* Macro for CPR-Hardened OPP entries - Example phandle: cprh_opp0 */
+@@ -41,6 +42,25 @@ reserved-memory {
  		#size-cells = <2>;
  		ranges;
  
@@ -2143,7 +2151,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  		hyp_mem: memory@85800000 {
  			reg = <0x0 0x85800000 0x0 0x600000>;
  			no-map;
-@@ -119,6 +138,19 @@ wlan_msa_mem: memory@95700000 {
+@@ -119,6 +139,19 @@ wlan_msa_mem: memory@95700000 {
  			reg = <0x0 0x95700000 0x0 0x100000>;
  			no-map;
  		};
@@ -2163,7 +2171,269 @@ index 5a623a9c1624..1e2f53416dca 100644
  	};
  
  	clocks {
-@@ -1924,6 +1956,20 @@ blsp1_i2c5_sleep: blsp1-i2c5-sleep {
+@@ -150,6 +183,7 @@ CPU0: cpu@0 {
+ 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_0>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 0>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 0>;
+@@ -169,6 +203,7 @@ CPU1: cpu@1 {
+ 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_0>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 0>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 0>;
+@@ -184,6 +219,7 @@ CPU2: cpu@2 {
+ 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_0>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 0>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 0>;
+@@ -199,6 +235,7 @@ CPU3: cpu@3 {
+ 			cpu-idle-states = <&LITTLE_CPU_SLEEP_0 &LITTLE_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_0>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 0>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 0>;
+@@ -214,6 +251,7 @@ CPU4: cpu@100 {
+ 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_1>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 1>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 1>;
+@@ -233,6 +271,7 @@ CPU5: cpu@101 {
+ 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_1>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 1>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 1>;
+@@ -248,6 +287,7 @@ CPU6: cpu@102 {
+ 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_1>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 1>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 1>;
+@@ -263,6 +303,7 @@ CPU7: cpu@103 {
+ 			cpu-idle-states = <&BIG_CPU_SLEEP_0 &BIG_CPU_SLEEP_1>;
+ 			next-level-cache = <&L2_1>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
++			#cooling-cells = <2>;
+ 			power-domains = <&apc_cprh 1>;
+ 			power-domain-names = "cprh";
+ 			qcom,freq-domain = <&cpufreq_hw 1>;
+@@ -914,6 +955,16 @@ cpu0_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu0_alert0>;
++					cooling-device = <&CPU0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu1-thermal {
+@@ -935,6 +986,16 @@ cpu1_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu1_alert0>;
++					cooling-device = <&CPU0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu2-thermal {
+@@ -956,6 +1017,16 @@ cpu2_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu2_alert0>;
++					cooling-device = <&CPU0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu3-thermal {
+@@ -977,6 +1048,16 @@ cpu3_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu3_alert0>;
++					cooling-device = <&CPU0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu4-thermal {
+@@ -998,6 +1079,16 @@ cpu4_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu4_alert0>;
++					cooling-device = <&CPU4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu5-thermal {
+@@ -1019,6 +1110,16 @@ cpu5_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu5_alert0>;
++					cooling-device = <&CPU4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu6-thermal {
+@@ -1040,6 +1141,16 @@ cpu6_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu6_alert0>;
++					cooling-device = <&CPU4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu7-thermal {
+@@ -1061,6 +1172,16 @@ cpu7_crit: cpu_crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu7_alert0>;
++					cooling-device = <&CPU4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&CPU7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		gpu-bottom-thermal {
+@@ -1070,11 +1191,30 @@ gpu-bottom-thermal {
+ 			thermal-sensors = <&tsens0 12>;
+ 
+ 			trips {
++				/*
++				 * The pre-existing 90C trip is type "hot", and
++				 * of_thermal_ops has no .hot member -- it executes
++				 * nothing. Keep it for parity with the other zones and
++				 * add a passive trip that a cooling map can bind to.
++				 */
+ 				gpu1_alert0: trip-point0 {
+ 					temperature = <90000>;
+ 					hysteresis = <2000>;
+ 					type = "hot";
+ 				};
++
++				gpu1_throttle: trip-point1 {
++					temperature = <85000>;
++					hysteresis = <3000>;
++					type = "passive";
++				};
++			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu1_throttle>;
++					cooling-device = <&adreno_gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 
+@@ -1085,11 +1225,30 @@ gpu-top-thermal {
+ 			thermal-sensors = <&tsens0 13>;
+ 
+ 			trips {
++				/*
++				 * The pre-existing 90C trip is type "hot", and
++				 * of_thermal_ops has no .hot member -- it executes
++				 * nothing. Keep it for parity with the other zones and
++				 * add a passive trip that a cooling map can bind to.
++				 */
+ 				gpu2_alert0: trip-point0 {
+ 					temperature = <90000>;
+ 					hysteresis = <2000>;
+ 					type = "hot";
+ 				};
++
++				gpu2_throttle: trip-point1 {
++					temperature = <85000>;
++					hysteresis = <3000>;
++					type = "passive";
++				};
++			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu2_throttle>;
++					cooling-device = <&adreno_gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 
+@@ -1924,6 +2083,20 @@ blsp1_i2c5_sleep: blsp1-i2c5-sleep {
  				bias-pull-up;
  			};
  
@@ -2184,7 +2454,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  			blsp1_i2c6_default: blsp1-i2c6-default {
  				pins = "gpio43", "gpio44";
  				function = "blsp_i2c6";
-@@ -2021,6 +2067,58 @@ blsp2_i2c6_sleep: blsp2-i2c6-sleep {
+@@ -2021,6 +2194,58 @@ blsp2_i2c6_sleep: blsp2-i2c6-sleep {
  				drive-strength = <2>;
  				bias-pull-up;
  			};
@@ -2243,7 +2513,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  		};
  
  		remoteproc_mss: remoteproc@4080000 {
-@@ -2072,6 +2170,10 @@ mpss {
+@@ -2072,6 +2297,10 @@ mpss {
  				memory-region = <&mpss_mem>;
  			};
  
@@ -2254,9 +2524,11 @@ index 5a623a9c1624..1e2f53416dca 100644
  			glink-edge {
  				interrupts = <GIC_SPI 452 IRQ_TYPE_EDGE_RISING>;
  				label = "modem";
-@@ -2106,10 +2208,34 @@ adreno_gpu: gpu@5000000 {
+@@ -2105,11 +2334,36 @@ adreno_gpu: gpu@5000000 {
+ 			operating-points-v2 = <&gpu_opp_table>;
  			power-domains = <&rpmpd MSM8998_VDDMX>;
  			status = "disabled";
++			#cooling-cells = <2>;
  
 +			/*
 +			 * opp-microvolt is the vdd_gfx (core rail) voltage,
@@ -2289,7 +2561,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  					opp-level = <RPM_SMD_LEVEL_TURBO>;
  					opp-peak-kBps = <14432000>;
  					opp-avg-kBps = <14400000>;
-@@ -2118,13 +2244,15 @@ opp-710000097 {
+@@ -2118,13 +2372,15 @@ opp-710000097 {
  
  				opp-670000048 {
  					opp-hz = /bits/ 64 <670000048>;
@@ -2306,7 +2578,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  					opp-level = <RPM_SMD_LEVEL_NOM>;
  					opp-peak-kBps = <14432000>;
  					opp-avg-kBps = <12440000>;
-@@ -2133,7 +2261,8 @@ opp-596000097 {
+@@ -2133,7 +2389,8 @@ opp-596000097 {
  
  				opp-515000097 {
  					opp-hz = /bits/ 64 <515000097>;
@@ -2316,7 +2588,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  					opp-peak-kBps = <14432000>;
  					opp-avg-kBps = <10368000>;
  					opp-supported-hw = <0xFF>;
-@@ -2141,6 +2270,7 @@ opp-515000097 {
+@@ -2141,6 +2398,7 @@ opp-515000097 {
  
  				opp-414000000 {
  					opp-hz = /bits/ 64 <414000000>;
@@ -2324,7 +2596,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  					opp-level = <RPM_SMD_LEVEL_SVS>;
  					opp-peak-kBps = <12440000>;
  					opp-avg-kBps = <8136000>;
-@@ -2149,6 +2279,7 @@ opp-414000000 {
+@@ -2149,6 +2407,7 @@ opp-414000000 {
  
  				opp-342000000 {
  					opp-hz = /bits/ 64 <342000000>;
@@ -2332,7 +2604,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  					opp-level = <RPM_SMD_LEVEL_LOW_SVS>;
  					opp-peak-kBps = <8136000>;
  					opp-avg-kBps = <6144000>;
-@@ -2157,6 +2288,7 @@ opp-342000000 {
+@@ -2157,6 +2416,7 @@ opp-342000000 {
  
  				opp-257000000 {
  					opp-hz = /bits/ 64 <257000000>;
@@ -2340,7 +2612,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  					opp-level = <RPM_SMD_LEVEL_MIN_SVS>;
  					opp-peak-kBps = <6144000>;
  					opp-avg-kBps = <3296000>;
-@@ -2166,8 +2298,17 @@ opp-257000000 {
+@@ -2166,8 +2426,17 @@ opp-257000000 {
  		};
  
  		adreno_smmu: iommu@5040000 {
@@ -2360,7 +2632,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  			reg = <0x05040000 0x10000>;
  			clocks = <&gcc GCC_GPU_CFG_AHB_CLK>,
  				 <&gcc GCC_BIMC_GFX_CLK>,
-@@ -2998,6 +3139,24 @@ blsp1_i2c5: i2c@c179000 {
+@@ -2998,6 +3267,24 @@ blsp1_i2c5: i2c@c179000 {
  			#size-cells = <0>;
  		};
  
@@ -2385,7 +2657,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  		blsp1_i2c6: i2c@c17a000 {
  			compatible = "qcom,i2c-qup-v2.2.1";
  			reg = <0x0c17a000 0x600>;
-@@ -3170,6 +3329,7 @@ mmcc: clock-controller@c8c0000 {
+@@ -3170,6 +3457,7 @@ mmcc: clock-controller@c8c0000 {
  
  			clock-names = "xo",
  				      "gpll0",
@@ -2393,7 +2665,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  				      "dsi0dsi",
  				      "dsi0byte",
  				      "dsi1dsi",
-@@ -3180,6 +3340,7 @@ mmcc: clock-controller@c8c0000 {
+@@ -3180,6 +3468,7 @@ mmcc: clock-controller@c8c0000 {
  				      "core_bi_pll_test_se";
  			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>,
  				 <&gcc GCC_MMSS_GPLL0_CLK>,
@@ -2401,7 +2673,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  				 <&dsi0_phy 1>,
  				 <&dsi0_phy 0>,
  				 <&dsi1_phy 1>,
-@@ -3450,6 +3611,270 @@ dsi1_phy: dsi-phy@c996400 {
+@@ -3450,6 +3739,270 @@ dsi1_phy: dsi-phy@c996400 {
  			};
  		};
  
@@ -2672,7 +2944,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  		mmss_smmu: iommu@cd00000 {
  			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2";
  			reg = <0x0cd00000 0x40000>;
-@@ -3576,7 +4001,7 @@ apr {
+@@ -3576,7 +4129,7 @@ apr {
  					#size-cells = <0>;
  					qcom,intents = <512 20>;
  
@@ -2681,7 +2953,7 @@ index 5a623a9c1624..1e2f53416dca 100644
  						reg = <APR_SVC_ADSP_CORE>;
  						compatible = "qcom,q6core";
  						qcom,protection-domain = "avs/audio", "msm/adsp/audio_pd";
-@@ -3674,6 +4099,37 @@ power-controller@17912000 {
+@@ -3674,6 +4227,37 @@ power-controller@17912000 {
  			reg = <0x017912000 0x1000>;
  		};
  
@@ -2773,10 +3045,10 @@ index d422f9bc062e..4abdd9ef33c5 100644
  			reg = <0xd800>, <0xd900>;
 diff --git a/arch/arm64/configs/taimen_defconfig b/arch/arm64/configs/taimen_defconfig
 new file mode 100644
-index 000000000000..53ca13d90bdf
+index 000000000000..b5678f03c17b
 --- /dev/null
 +++ b/arch/arm64/configs/taimen_defconfig
-@@ -0,0 +1,5748 @@
+@@ -0,0 +1,5753 @@
 +#
 +# Automatically generated file; DO NOT EDIT.
 +# Linux/arm64 6.0.0 Kernel Configuration
@@ -5186,6 +5458,10 @@ index 000000000000..53ca13d90bdf
 +# end of Qualcomm thermal drivers
 +
 +CONFIG_WATCHDOG=y
++CONFIG_WATCHDOG_PRETIMEOUT_GOV=y
++CONFIG_WATCHDOG_PRETIMEOUT_GOV_NOOP=y
++CONFIG_WATCHDOG_PRETIMEOUT_GOV_PANIC=y
++CONFIG_WATCHDOG_PRETIMEOUT_DEFAULT_GOV_NOOP=y
 +CONFIG_SSB_POSSIBLE=y
 +# CONFIG_SSB is not set
 +CONFIG_BCMA_POSSIBLE=y
@@ -8525,6 +8801,7 @@ index 000000000000..53ca13d90bdf
 +CONFIG_WATCHDOG_HANDLE_BOOT_ENABLED=y
 +CONFIG_WATCHDOG_SYSFS=y
 +CONFIG_WATCHDOG_OPEN_TIMEOUT=180
++CONFIG_VIDEO_LC898214XD=m
 diff --git a/drivers/base/regmap/Kconfig b/drivers/base/regmap/Kconfig
 index 159bac6c5046..93c606cb437c 100644
 --- a/drivers/base/regmap/Kconfig
@@ -10988,10 +11265,10 @@ index 000000000000..84554cedd2e5
 +obj-$(CONFIG_IIO_QCOM_SMGR)	+= qcom_smgr.o
 diff --git a/drivers/iio/common/qcom_smgr/qcom_smgr.c b/drivers/iio/common/qcom_smgr/qcom_smgr.c
 new file mode 100644
-index 000000000000..9ddbd9171576
+index 000000000000..f7fb63bab34d
 --- /dev/null
 +++ b/drivers/iio/common/qcom_smgr/qcom_smgr.c
-@@ -0,0 +1,1706 @@
+@@ -0,0 +1,1708 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Qualcomm Sensor Manager driver
@@ -12271,10 +12548,12 @@ index 000000000000..9ddbd9171576
 +	},
 +	{
 +		/*
-+		 * The part behind SNS_SMGR_SENSOR_TYPE_PROX_LIGHT is a combined
-+		 * proximity/ALS chip and puts ambient light in the second value
-+		 * of its PRIMARY report. Subscribing to the SECONDARY data type
-+		 * as well makes SMGR stop reporting altogether, so do not.
++		 * The SECONDARY data type carries the real ambient-light
++		 * channel; it is subscribed with its own report id (see the
++		 * SECONDARY handling above). An older comment here claimed
++		 * that subscribing to it made SMGR stop reporting altogether
++		 * -- that was wrong, and acting on it regresses lux back to
++		 * the IR-crosstalk channel. Do not "restore" it.
 +		 */
 +		.type = IIO_LIGHT,
 +		.scan_index = 1,
@@ -13645,7 +13924,7 @@ index 709e6a9fe48e..82f32568e542 100644
  obj-$(CONFIG_INPUT_DRV2667_HAPTICS)	+= drv2667.o
 diff --git a/drivers/input/misc/drv2624.c b/drivers/input/misc/drv2624.c
 new file mode 100644
-index 000000000000..06ce6711eaa6
+index 000000000000..318515b2a4e1
 --- /dev/null
 +++ b/drivers/input/misc/drv2624.c
 @@ -0,0 +1,287 @@
@@ -13896,7 +14175,7 @@ index 000000000000..06ce6711eaa6
 +	if (!haptics->input)
 +		return -ENOMEM;
 +
-+	haptics->input->name = "drv2624:vibrator";
++	haptics->input->name = "drv2624:haptics";
 +	haptics->input->id.bustype = BUS_I2C;
 +	haptics->input->close = drv2624_close;
 +	input_set_drvdata(haptics->input, haptics);
@@ -17119,10 +17398,10 @@ index 000000000000..7e9eddadaeb2
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/media/i2c/imx362.c b/drivers/media/i2c/imx362.c
 new file mode 100644
-index 000000000000..1a5de98451f9
+index 000000000000..c775ab1cc308
 --- /dev/null
 +++ b/drivers/media/i2c/imx362.c
-@@ -0,0 +1,884 @@
+@@ -0,0 +1,889 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Sony IMX362 sensor driver -- Pixel 2 (taimen) REAR camera bring-up.
@@ -17905,10 +18184,15 @@ index 000000000000..1a5de98451f9
 +					     1,
 +					     IMX362_FLL - IMX362_EXPOSURE_MARGIN);
 +
-+	/* 4x default -- see the imx179 note: no IPA sensor helper, no AE. */
++	/*
++	 * 768 = 4x here: this part's gain is 1024/(1024-code), not the
++	 * imx179's 256/(256-code). The same numeric default would be 1.23x
++	 * and the rear preview comes out near-black. See the imx179 note for
++	 * why the default is what every frame actually gets.
++	 */
 +	v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
 +			  V4L2_CID_ANALOGUE_GAIN, 0, IMX362_ANA_GAIN_MAX,
-+			  1, 192);
++			  1, 768);
 +
 +	/*
 +	 * ORIENTATION and SENSOR_ROTATION from the DT node. libcamera reads

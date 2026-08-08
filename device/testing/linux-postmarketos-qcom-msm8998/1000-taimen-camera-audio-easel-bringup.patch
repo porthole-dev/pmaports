@@ -3045,10 +3045,10 @@ index d422f9bc062e..4abdd9ef33c5 100644
  			reg = <0xd800>, <0xd900>;
 diff --git a/arch/arm64/configs/taimen_defconfig b/arch/arm64/configs/taimen_defconfig
 new file mode 100644
-index 000000000000..b5678f03c17b
+index 000000000000..0377a8613493
 --- /dev/null
 +++ b/arch/arm64/configs/taimen_defconfig
-@@ -0,0 +1,5753 @@
+@@ -0,0 +1,5755 @@
 +#
 +# Automatically generated file; DO NOT EDIT.
 +# Linux/arm64 6.0.0 Kernel Configuration
@@ -3201,7 +3201,8 @@ index 000000000000..b5678f03c17b
 +#
 +# Scheduler features
 +#
-+# CONFIG_UCLAMP_TASK is not set
++CONFIG_UCLAMP_TASK=y
++CONFIG_UCLAMP_BUCKETS_COUNT=5
 +# end of Scheduler features
 +
 +CONFIG_ARCH_SUPPORTS_NUMA_BALANCING=y
@@ -3221,6 +3222,7 @@ index 000000000000..b5678f03c17b
 +CONFIG_FAIR_GROUP_SCHED=y
 +CONFIG_CFS_BANDWIDTH=y
 +CONFIG_RT_GROUP_SCHED=y
++CONFIG_UCLAMP_TASK_GROUP=y
 +CONFIG_CGROUP_PIDS=y
 +# CONFIG_CGROUP_RDMA is not set
 +CONFIG_CGROUP_FREEZER=y

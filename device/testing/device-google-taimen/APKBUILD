@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=40
+pkgrel=41
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -15,6 +15,7 @@ options="!check !archcheck"
 # rmtfs's do, so do NOT list them here.
 depends="
 	alsa-ucm-conf
+	linux-pam
 	mkbootimg
 	neard
 	postmarketos-base
@@ -68,6 +69,12 @@ source="
 	taimen-gmobile-overlay.conf
 	taimen-uclamp-session
 	taimen-uclamp-session.service
+	sns-reg.confd
+	iio-sensor-proxy.confd
+	taimen-rescue.initd
+	taimen-ambient-nudge.desktop
+	taimen-uclamp-session.desktop
+	taimen-suspend-guard-elogind.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -136,6 +143,12 @@ package() {
 	install -Dm644 "$srcdir"/sns-reg-registry.conf \
 		"$pkgdir"/usr/lib/systemd/system/sns-reg.service.d/10-registry.conf
 
+	# OpenRC counterpart of the ExecStartPre drop-in above: sns-reg (main/sns-reg)
+	# now ships an /etc/init.d/sns-reg, and this conf.d start_pre() hook makes
+	# it call the same prepare script -- see the file's header for how the
+	# hook mechanism works.
+	install -Dm644 "$srcdir"/sns-reg.confd "$pkgdir"/etc/conf.d/sns-reg
+
 	# Making the sensors reachable from the SHELL, which is a separate problem
 	# from making them work. Each file's header says what is broken without it;
 	# in short: the ALS is hidden by a gschema override, proximity is refused
@@ -164,6 +177,10 @@ package() {
 		"$pkgdir"/usr/lib/systemd/system/systemd-suspend.service.d/10-taimen-broken.conf
 	install -Dm644 "$srcdir"/taimen-suspend-guard.conf \
 		"$pkgdir"/usr/lib/systemd/system/systemd-suspend-then-hibernate.service.d/10-taimen-broken.conf
+	# elogind counterpart -- see the file's own header for why this is a
+	# static AllowSuspend=no rather than the same arm/disarm gate.
+	install -Dm644 "$srcdir"/taimen-suspend-guard-elogind.conf \
+		"$pkgdir"/etc/elogind/sleep.conf.d/10-taimen-broken.conf
 
 	# PID 1 seatbelt + the PAM-free way back in when PID 1 freezes. Both files'
 	# headers explain the failure they exist for. The rescue channel binds the
@@ -175,11 +192,19 @@ package() {
 		"$pkgdir"/usr/bin/taimen-rescue.py
 	install -Dm644 "$srcdir"/taimen-rescue.service \
 		"$pkgdir"/usr/lib/systemd/system/taimen-rescue.service
+	install -Dm755 "$srcdir"/taimen-rescue.initd \
+		"$pkgdir"/etc/init.d/taimen-rescue
 
 	# Long power-press -> poweroff when the shell is dead. See the file's header,
 	# including what it does NOT save you from.
 	install -Dm644 "$srcdir"/taimen-powerkey.conf \
 		"$pkgdir"/usr/lib/systemd/logind.conf.d/10-taimen-powerkey.conf
+	# elogind (the OpenRC-path logind) uses the exact same [Login] directive
+	# and drop-in convention, just under its own /etc/elogind/ tree -- see
+	# the elogind package's own shipped logind.conf.d/10-elogind.conf for
+	# confirmation. Same file, second destination.
+	install -Dm644 "$srcdir"/taimen-powerkey.conf \
+		"$pkgdir"/etc/elogind/logind.conf.d/10-taimen-powerkey.conf
 	install -Dm644 "$srcdir"/taimen-watchdog.conf \
 		"$pkgdir"/usr/lib/systemd/system.conf.d/10-taimen-watchdog.conf
 	install -Dm755 "$srcdir"/taimen-ambient-nudge \
@@ -239,8 +264,24 @@ package() {
 	ln -sf ../taimen-uclamp-session.service \
 		"$pkgdir"/usr/lib/systemd/user/graphical-session.target.wants/taimen-uclamp-session.service
 
+	# OpenRC counterparts -- see each .desktop file's header for why XDG
+	# autostart is the right mechanism here (no systemd --user to hang a
+	# graphical-session.target unit off of) and why they are shipped
+	# unconditionally with an /run/systemd/system guard in their Exec=.
+	install -Dm644 "$srcdir"/taimen-ambient-nudge.desktop \
+		"$pkgdir"/etc/xdg/autostart/taimen-ambient-nudge.desktop
+	install -Dm644 "$srcdir"/taimen-uclamp-session.desktop \
+		"$pkgdir"/etc/xdg/autostart/taimen-uclamp-session.desktop
+
 	install -Dm644 "$srcdir"/iio-sensor-proxy-wait-for-ssc.conf \
 		"$pkgdir"/usr/lib/systemd/system/iio-sensor-proxy.service.d/10-wait-for-ssc.conf
+
+	# OpenRC counterpart of the ExecStartPre drop-in above -- see the file's
+	# header for the same mechanism used for sns-reg.confd. Enablement is not
+	# this package's job: postmarketos-base-ui-gnome's openrc post-install
+	# already does `rc-update add iio-sensor-proxy default`.
+	install -Dm644 "$srcdir"/iio-sensor-proxy.confd \
+		"$pkgdir"/etc/conf.d/iio-sensor-proxy
 
 	# ALSA use case manager. Without this the card has 1243 raw mixer
 	# controls and nothing can tell which one is "volume", so the shell shows
@@ -341,4 +382,10 @@ c7f0c202c6ef02bf9dfff5797c380519a3970791b891591988d8cc8cadfb947ba1728e1c76f69b4b
 1e38dd25be7d52f9065647a2f0248746670417c2a94221129b74aff26a7a606149fa0c7e59c735e2f1e6b77e3102941e9f6b13874445991da90b2bd40bb7f9d6  taimen-gmobile-overlay.conf
 86c07404943e9227cab7ef23a2678e5940eca789ee861f7b038430a9c040a2297ca4b464bd979e1ad943446b4f4cc8a93bdb304236f4a5a1bae9396dc5cf0496  taimen-uclamp-session
 9d6dc558697f9ac2c3f020cef68d2acc3c3f3538e3ee1e993da7de966b656fc687e4771e8d55e84e98e088ac1193e4ebafd71fae16b0fb5b58882c1d436f0686  taimen-uclamp-session.service
+b271bb6cea1ab2cc027bb0ba3f3e4d513d809571d0070015e6fd4938af20a3fda94723d5ac7ee4bfd27ba1cc803e691fe1af8a63c845ce4b9f8af018bb32f2eb  sns-reg.confd
+0b8c70bffd858e5dd8e1a3dcb31a5be69a198cfc522b885be644d91c86a4534b0cd63f890d955d025c053edb8fc7ce8577921a66c2548573e9c792f8a3d3ab7e  iio-sensor-proxy.confd
+a4346603886f434ab15a614b8ed454601e810ca60b458491eed8e0548efc7772af722bf8f626d3301ed54fff358443be741e68f9d2ab48a28ba586213f222d14  taimen-rescue.initd
+e2c9528ccfb6a79226af530990bc5ca603ad63fa9a36439fdf344a04bc8af1b085659270d4d5e90682403524723796839c492ee2d87734b297800dbc5a913304  taimen-ambient-nudge.desktop
+2abb5206a413bc786aad46a9608ce41793fbcb561dce8f1ec050775733f04fe634e292187eaf7d9048f56197109cf2e00c261f89440c9c6eebab0f0446241c0f  taimen-uclamp-session.desktop
+dac6d1a3a1fceb692731373f936dd5e932ea7308ae4eeac37d0ba8abe4e86bb7abb6c4617fb5428ede7166ac7efc614395c331726273df2f2e828404dec14693  taimen-suspend-guard-elogind.conf
 "

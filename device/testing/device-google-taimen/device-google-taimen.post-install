@@ -38,10 +38,14 @@ ln -sf /usr/lib/systemd/system/taimen-modem-bringup.service \
 
 # Sensors: sns-reg serves the SNS_REG QMI service that SLPI's Sensor Manager
 # reads its configuration from. Without it SMGR never publishes and there are
-# no IIO devices at all.
+# no IIO devices at all. Both inits: same "harmless" reasoning as above --
+# main/sns-reg now ships /etc/init.d/sns-reg alongside sns-reg.service.
 mkdir -p /etc/systemd/system/basic.target.wants
 ln -sf /usr/lib/systemd/system/sns-reg.service \
 	/etc/systemd/system/basic.target.wants/sns-reg.service
+
+mkdir -p /etc/runlevels/default
+ln -sf /etc/init.d/sns-reg /etc/runlevels/default/sns-reg
 
 # NFC. neard's own [Install] has no WantedBy (see the drop-in we ship), so it
 # would never start; the drop-in adds one but the symlink still has to exist.
@@ -56,6 +60,31 @@ ln -sf /usr/lib/systemd/system/neard.service \
 mkdir -p /etc/systemd/system/sysinit.target.wants
 ln -sf /usr/lib/systemd/system/taimen-rescue.service \
 	/etc/systemd/system/sysinit.target.wants/taimen-rescue.service
+
+# OpenRC counterpart: the sysinit runlevel is OpenRC's earliest, matching
+# DefaultDependencies=no + WantedBy=sysinit.target above.
+mkdir -p /etc/runlevels/sysinit
+ln -sf /etc/init.d/taimen-rescue /etc/runlevels/sysinit/taimen-rescue
+
+# Phosh session environment (XDG_CURRENT_DESKTOP, GSK_RENDERER,
+# G_RESOURCE_OVERLAYS -- see phosh-desktop-env.conf, taimen-gsk.conf and
+# taimen-gmobile-overlay.conf for what each is for). Those three ship as
+# environment.d drop-ins, which only systemd --user reads. greetd's PAM
+# stack (/etc/pam.d/greetd -> base-auth) includes pam_env.so, which reads
+# /etc/environment and applies it to every session greetd starts --
+# including the initial_session autologin this device actually uses (see
+# phosh-desktop-env.conf's header) -- so appending here reaches the same
+# session under EITHER init. linux-pam is a hard dependency (see the
+# APKBUILD) specifically so /etc/environment already exists by this point.
+# Marker-guarded so a pkgrel bump does not duplicate the block.
+if ! grep -qF '# taimen-session-env' /etc/environment 2>/dev/null; then
+	cat >>/etc/environment <<-'EOF'
+	# taimen-session-env
+	XDG_CURRENT_DESKTOP=Phosh:GNOME
+	GSK_RENDERER=gl
+	G_RESOURCE_OVERLAYS=/mobi/phosh/gmobile/devices/display-panels=/usr/share/taimen-gmobile-overlay/display-panels
+	EOF
+fi
 
 # NOTE: taimen-wifi-country was removed in pkgrel 18. The WiFi regulatory fix is
 # now purely the ath.regd_override module param in /etc/modprobe.d -- cfg80211

@@ -1,0 +1,76 @@
+From ffce7e9e08311f2faec81c032c664d7b95b5ffe4 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 16:23:27 +0200
+Subject: [PATCH 23/33] drm/msm/a5xx: log where the global-vm kernel buffers
+ landed
+
+taimen-v6.0 carries commit 44273b7dd069 ("drm/msm/a5xx: report the SMMU
+fault info a5xx already receives") against an a5xx_fault_handler()
+that ignored the adreno-smmu fault info entirely and printed only the
+raw iova. That is no longer true here: 6.18's a5xx_fault_handler()
+already forwards `info` into the shared adreno_fault_handler(), which
+prints ttbr0, a fault type decoded from fsr, and a source string (a5xx
+sets it to fsynr1), and on a stall fault triggers a devcoredump that
+captures full GPU state including every ring's iova. Re-adding v6.0's
+separate SMMU-field pr_warn_ratelimited() on top of that would just
+print the same information twice.
+
+What 6.18 doesn't have is a plain dmesg breadcrumb, taken once at
+init, for where the ring, its memptrs and (when WHERE_AM_I is present)
+the rptr shadow actually got mapped. Those are exactly the buffers the
+GPU writes to unprompted, are allocated from the global vm, and are
+what let a raw fault ttbr0/iova be matched against a specific
+allocation without needing a full devcoredump -- which is what
+originally identified the global vm being based at 2^48 (see the
+preceding two "don't put the global address space..."/"base the TTBR1
+global vm..." commits). Log it, adapted to 6.18's a5xx_gpu_init() and
+a5xx_ucode_load().
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/adreno/a5xx_gpu.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a5xx_gpu.c b/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
+index 293cbbfb78b0..f4bd43f4b1ed 100644
+--- a/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
+@@ -717,6 +717,13 @@ static int a5xx_ucode_load(struct msm_gpu *gpu)
+ 				return PTR_ERR(a5xx_gpu->shadow);
+ 
+ 			msm_gem_object_set_name(a5xx_gpu->shadow_bo, "shadow");
++
++			/*
++			 * The other address the GPU writes to on its own, and
++			 * like memptrs it comes from the global vm.
++			 */
++			DRM_DEV_INFO(gpu->dev->dev, "shadow: iova %#llx\n",
++				     a5xx_gpu->shadow_iova);
+ 		}
+ 	} else if (gpu->nr_rings > 1) {
+ 		/* Disable preemption if WHERE_AM_I isn't available */
+@@ -1867,6 +1874,7 @@ struct msm_gpu *a5xx_gpu_init(struct drm_device *dev)
+ 	struct adreno_gpu *adreno_gpu;
+ 	struct msm_gpu *gpu;
+ 	unsigned int nr_rings;
++	unsigned int i;
+ 	int ret;
+ 
+ 	a5xx_gpu = kzalloc(sizeof(*a5xx_gpu), GFP_KERNEL);
+@@ -1899,6 +1907,16 @@ struct msm_gpu *a5xx_gpu_init(struct drm_device *dev)
+ 	msm_mmu_set_fault_handler(to_msm_vm(gpu->vm)->mmu, gpu,
+ 				  a5xx_fault_handler);
+ 
++	/*
++	 * Where the kernel's own GPU-visible buffers actually landed. Without
++	 * this a raw fault ttbr0/iova can only be guessed at, since the
++	 * submitted BOs in a devcoredump come from the per-process vm while
++	 * the ring and its memptrs come from the global one.
++	 */
++	for (i = 0; i < gpu->nr_rings; i++)
++		DRM_DEV_INFO(dev->dev, "ring[%d]: iova %#llx, memptrs %#llx\n",
++			     i, gpu->rb[i]->iova, gpu->rb[i]->memptrs_iova);
++
+ 	/* Set up the preemption specific bits and pieces for each ringbuffer */
+ 	a5xx_preempt_init(gpu);
+ 

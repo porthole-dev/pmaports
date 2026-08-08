@@ -1,0 +1,795 @@
+From b05527ba6314fe45a41d57a5255dae4d326c3bdc Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 15:40:10 +0200
+Subject: [PATCH 15/33] arm64: dts: qcom: msm8998: add cooling, CAMSS/CCI and
+ GPU fixes
+
+Adds SoC-level devicetree content the Google Pixel 2 XL (taimen) port
+needs, applicable to any msm8998 board:
+
+- #cooling-cells on cpu0-7 and adreno_gpu, plus cooling-maps for each
+  CPU and GPU thermal zone. msm8998.dtsi previously had no thermal
+  throttling wired up at all.
+
+- adreno_gpu opp-microvolt corrections, taken from downstream's GFX
+  CPR4 open-loop ceilings, so the 670 MHz and 515 MHz OPPs are no
+  longer under-volted relative to their voltage rail's ceiling.
+
+- adreno_smmu: drop "qcom,adreno-smmu" from the compatible string.
+  That opts the Adreno A540 into split-TTBR per-process pagetables,
+  and CP_SMMU_TABLE_UPDATE context switching faults on this part
+  (49-bit-truncated global VAs in the FAR), wedging the GPU on app
+  launches and eventually the whole SoC via a stuck
+  gcc_gpu_bimc_gfx_clk. Plain pagetables keep every engine in low
+  TTBR0 space.
+
+- CAMSS and CCI device nodes, disabled by default and enabled per
+  board. camss.c has no msm8998 match yet; msm8998 and sdm660 CAMSS
+  are the same IP at the same addresses bar the CSIPHY register base,
+  so the node is deliberately inert until the driver half lands, and
+  binds to nothing in the meantime.
+
+- cci0/cci1 and cam_mclk0/1 pinctrl states, and the mmss watchdog
+  node (this SoC's only unconditional way back from a boot that never
+  completes -- the bootloader does not leave it armed for Linux).
+
+CAMSS carries no interconnects/interconnect-names property: unlike
+this port's 6.0 base, 6.18's msm8998.dtsi has no interconnect
+provider nodes (no bimc/mnoc) at all, so &mnoc/&bimc do not resolve.
+Bandwidth voting can be added back once an interconnect provider
+lands in this dtsi.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 528 +++++++++++++++++++++++++-
+ 1 file changed, 524 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 2724c71dbb08..5288031c55ec 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -9,6 +9,7 @@
+ #include <dt-bindings/clock/qcom,rpmcc.h>
+ #include <dt-bindings/firmware/qcom,scm.h>
+ #include <dt-bindings/power/qcom-rpmpd.h>
++#include <dt-bindings/thermal/thermal.h>
+ #include <dt-bindings/gpio/gpio.h>
+ 
+ / {
+@@ -145,6 +146,7 @@ cpu0: cpu@0 {
+ 			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
+ 			next-level-cache = <&l2_0>;
++			#cooling-cells = <2>;
+ 			l2_0: l2-cache {
+ 				compatible = "cache";
+ 				cache-level = <2>;
+@@ -160,6 +162,7 @@ cpu1: cpu@1 {
+ 			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
+ 			next-level-cache = <&l2_0>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu2: cpu@2 {
+@@ -170,6 +173,7 @@ cpu2: cpu@2 {
+ 			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
+ 			next-level-cache = <&l2_0>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu3: cpu@3 {
+@@ -180,6 +184,7 @@ cpu3: cpu@3 {
+ 			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
+ 			next-level-cache = <&l2_0>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu4: cpu@100 {
+@@ -190,6 +195,7 @@ cpu4: cpu@100 {
+ 			capacity-dmips-mhz = <1536>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
+ 			next-level-cache = <&l2_1>;
++			#cooling-cells = <2>;
+ 			l2_1: l2-cache {
+ 				compatible = "cache";
+ 				cache-level = <2>;
+@@ -205,6 +211,7 @@ cpu5: cpu@101 {
+ 			capacity-dmips-mhz = <1536>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
+ 			next-level-cache = <&l2_1>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu6: cpu@102 {
+@@ -215,6 +222,7 @@ cpu6: cpu@102 {
+ 			capacity-dmips-mhz = <1536>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
+ 			next-level-cache = <&l2_1>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu7: cpu@103 {
+@@ -225,6 +233,7 @@ cpu7: cpu@103 {
+ 			capacity-dmips-mhz = <1536>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
+ 			next-level-cache = <&l2_1>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu-map {
+@@ -505,6 +514,16 @@ cpu0_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu0_alert0>;
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu1-thermal {
+@@ -525,6 +544,16 @@ cpu1_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu1_alert0>;
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu2-thermal {
+@@ -545,6 +574,16 @@ cpu2_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu2_alert0>;
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu3-thermal {
+@@ -565,6 +604,16 @@ cpu3_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu3_alert0>;
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu4-thermal {
+@@ -585,6 +634,16 @@ cpu4_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu4_alert0>;
++					cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu5-thermal {
+@@ -605,6 +664,16 @@ cpu5_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu5_alert0>;
++					cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu6-thermal {
+@@ -625,6 +694,16 @@ cpu6_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu6_alert0>;
++					cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		cpu7-thermal {
+@@ -645,6 +724,16 @@ cpu7_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpu7_alert0>;
++					cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		gpu-bottom-thermal {
+@@ -653,11 +742,30 @@ gpu-bottom-thermal {
+ 			thermal-sensors = <&tsens0 12>;
+ 
+ 			trips {
++				/*
++				 * The pre-existing 90C trip is type "hot", and
++				 * of_thermal_ops has no .hot member -- it executes
++				 * nothing. Keep it for parity with the other zones and
++				 * add a passive trip that a cooling map can bind to.
++				 */
+ 				gpu1_alert0: trip-point0 {
+ 					temperature = <90000>;
+ 					hysteresis = <2000>;
+ 					type = "hot";
+ 				};
++
++				gpu1_throttle: trip-point1 {
++					temperature = <85000>;
++					hysteresis = <3000>;
++					type = "passive";
++				};
++			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu1_throttle>;
++					cooling-device = <&adreno_gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 
+@@ -667,11 +775,30 @@ gpu-top-thermal {
+ 			thermal-sensors = <&tsens0 13>;
+ 
+ 			trips {
++				/*
++				 * The pre-existing 90C trip is type "hot", and
++				 * of_thermal_ops has no .hot member -- it executes
++				 * nothing. Keep it for parity with the other zones and
++				 * add a passive trip that a cooling map can bind to.
++				 */
+ 				gpu2_alert0: trip-point0 {
+ 					temperature = <90000>;
+ 					hysteresis = <2000>;
+ 					type = "hot";
+ 				};
++
++				gpu2_throttle: trip-point1 {
++					temperature = <85000>;
++					hysteresis = <3000>;
++					type = "passive";
++				};
++			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu2_throttle>;
++					cooling-device = <&adreno_gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 
+@@ -1391,6 +1518,58 @@ blsp2_i2c6_sleep: blsp2-i2c6-sleep-state {
+ 				bias-pull-up;
+ 			};
+ 
++			/*
++			 * Camera Control Interface. Vendor msm8998-pinctrl.dtsi
++			 * cci0_active :899 (gpio17,18), cci1_active :927
++			 * (gpio19,20), function "cci_i2c", bias-pull-up, ds 2.
++			 * The vendor's "CLK, DATA" comment on those nodes is
++			 * WRONG -- the CCI node's own qcom,gpio-tbl-label
++			 * (msm8998-camera.dtsi:744-748) orders them DATA0, CLK0,
++			 * DATA1, CLK1. Irrelevant to the mux (both pins take the
++			 * same config); do not propagate the wrong comment.
++			 */
++			cci0_default: cci0-default-state {
++				pins = "gpio17", "gpio18";
++				function = "cci_i2c";
++				drive-strength = <2>;
++				bias-pull-up;
++			};
++
++			cci1_default: cci1-default-state {
++				pins = "gpio19", "gpio20";
++				function = "cci_i2c";
++				drive-strength = <2>;
++				bias-pull-up;
++			};
++
++			/*
++			 * Sensor master clocks. Vendor cam_sensor_mclk0_active
++			 * :1009 (gpio13), cam_sensor_mclk1_active :1318
++			 * (gpio14), function "cam_mclk", bias-disable.
++			 * drive-strength is 2 mA, not 4 -- read the vendor
++			 * config block, not the summary.
++			 */
++			cam_mclk0_default: cam-mclk0-default-state {
++				pins = "gpio13";
++				function = "cam_mclk";
++				drive-strength = <2>;
++				bias-disable;
++			};
++
++			cam_mclk1_default: cam-mclk1-default-state {
++				pins = "gpio14";
++				function = "cam_mclk";
++				drive-strength = <2>;
++				bias-disable;
++			};
++			/*
++			 * No *_sleep states on purpose: i2c-qcom-cci.c makes no
++			 * pinctrl calls at all, so only "default" is ever
++			 * selected (by the driver core). sdm630.dtsi:2068
++			 * declares only "default" for the same reason. Add them
++			 * when something actually selects them.
++			 */
++
+ 			blsp2_spi1_default: blsp2-spi1-default-state {
+ 				pins = "gpio53", "gpio54", "gpio55", "gpio56";
+ 				function = "blsp_spi7";
+@@ -1546,47 +1725,78 @@ adreno_gpu: gpu@5000000 {
+ 			operating-points-v2 = <&gpu_opp_table>;
+ 			power-domains = <&rpmpd MSM8998_VDDMX>;
+ 			status = "disabled";
++			#cooling-cells = <2>;
+ 
++			/*
++			 * opp-microvolt is the vdd_gfx (core rail) voltage,
++			 * taken from downstream's GFX CPR4 open-loop ceilings
++			 * (msm-4.4 msm8998-v2.dtsi: SVS 828 mV, NOM 900 mV,
++			 * TURBO 1056 mV) with the freq->corner map from
++			 * qcom,gfxfreq-speedbin0: <=414 SVS, 515/596 NOM,
++			 * 670/710 TURBO. Ceiling values, so safe on any bin
++			 * without CPR. Consumed only when the board wires
++			 * vdd-supply on the GPU node.
++			 *
++			 * Triplets <target min max> with max at the rail
++			 * ceiling, because pm8005 s1 has discrete voltage
++			 * steps and an exact min==max value that is not a
++			 * step multiple makes _opp_supported_by_regulators()
++			 * reject the whole OPP at boot (828/900 mV both hit
++			 * this; 1056 mV happened to be a real step). The
++			 * regulator picks the lowest supported step >= min.
++			 *
++			 * opp-level (VDDMX vote) follows the same downstream
++			 * table's MX column: NOM for 515/596, TURBO for
++			 * 670/710. The earlier SVS_PLUS/NOM_PLUS values were
++			 * below downstream's minimum for those rates.
++			 */
+ 			gpu_opp_table: opp-table {
+ 				compatible = "operating-points-v2";
+ 				opp-710000097 {
+ 					opp-hz = /bits/ 64 <710000097>;
++					opp-microvolt = <1056000 1056000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_TURBO>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+ 
+ 				opp-670000048 {
+ 					opp-hz = /bits/ 64 <670000048>;
+-					opp-level = <RPM_SMD_LEVEL_NOM_PLUS>;
++					opp-microvolt = <1056000 1056000 1100000>;
++					opp-level = <RPM_SMD_LEVEL_TURBO>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+ 
+ 				opp-596000097 {
+ 					opp-hz = /bits/ 64 <596000097>;
++					opp-microvolt = <900000 900000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_NOM>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+ 
+ 				opp-515000097 {
+ 					opp-hz = /bits/ 64 <515000097>;
+-					opp-level = <RPM_SMD_LEVEL_SVS_PLUS>;
++					opp-microvolt = <900000 900000 1100000>;
++					opp-level = <RPM_SMD_LEVEL_NOM>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+ 
+ 				opp-414000000 {
+ 					opp-hz = /bits/ 64 <414000000>;
++					opp-microvolt = <828000 828000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_SVS>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+ 
+ 				opp-342000000 {
+ 					opp-hz = /bits/ 64 <342000000>;
++					opp-microvolt = <828000 828000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_LOW_SVS>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+ 
+ 				opp-257000000 {
+ 					opp-hz = /bits/ 64 <257000000>;
++					opp-microvolt = <828000 828000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_MIN_SVS>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+@@ -1594,8 +1804,17 @@ opp-257000000 {
+ 		};
+ 
+ 		adreno_smmu: iommu@5040000 {
+-			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2",
+-				     "qcom,adreno-smmu";
++			/*
++			 * Deliberately NOT "qcom,adreno-smmu": that opts the
++			 * A540 into split-TTBR per-process pagetables, and the
++			 * CP_SMMU_TABLE_UPDATE context switching faults on
++			 * this part (49-bit-truncated global VAs in the FAR,
++			 * e.g. 0x1800000016000), wedging the GPU on app
++			 * launches and eventually the whole SoC via a stuck
++			 * gcc_gpu_bimc_gfx_clk. Plain pagetables keep every
++			 * engine in low TTBR0 space.
++			 */
++			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2";
+ 			reg = <0x05040000 0x10000>;
+ 			clocks = <&gcc GCC_GPU_CFG_AHB_CLK>,
+ 				 <&gcc GCC_BIMC_GFX_CLK>,
+@@ -3220,6 +3439,276 @@ video-encoder {
+ 			};
+ 		};
+ 
++		/*
++		 * CAMSS. Kept `disabled`; enabled per-board.
++		 *
++		 * NOTE "qcom,msm8998-camss" has NO driver match yet -- camss.c
++		 * knows only msm8996/sdm660/sdm845. This node is deliberately
++		 * inert until the driver half lands; it binds to nothing.
++		 *
++		 * msm8998 and sdm660 CAMSS are the same IP at the same
++		 * addresses. The ONLY register-base delta is the CSIPHY:
++		 * msm8998 v5.0 @ca34000/5000/6000 vs sdm660 v3.5 @c824000/...
++		 *
++		 * THREE TRAPS, all deliberate, do not "fix" them back:
++		 *  1. csi_clk_mux size is 0x10, NOT the vendor's 0x4.
++		 *     camss-ispif.c writes CSI_PIX_CLK_MUX_SEL 0x000 AND
++		 *     CSI_RDI_CLK_MUX_SEL 0x008; a 4-byte map puts 0x008
++		 *     outside the ioremap. sdm630.dtsi:1901 also uses 0x10.
++		 *  2. NO csiphyN_clk_mux reg entries. msm8998 has no such
++		 *     register, and camss-csiphy.c:584-592 only ioremaps
++		 *     res->reg[1] for 8x16/8x96, leaving base_clk_mux NULL
++		 *     otherwise; csiphy_stream_on skips the mux write when it
++		 *     is NULL. No code change needed.
++		 *  3. power-domains must be exactly VFE0_GDSC then VFE1_GDSC in
++		 *     THAT ORDER and nothing else -- camss-vfe-4-8.c indexes
++		 *     camss->genpd[id] by VFE number. camss_top is already
++		 *     their parent, so do NOT add a third entry.
++		 *
++		 * Full per-value witnesses (every reg size, IRQ and clock, with
++		 * the vendor line it came from) are in the corpus:
++		 * deep-camera-dt.json step 3.
++		 *
++		 * EXPECTED dtc WARNING, do not "fix" it:
++		 *   simple-bus unit address format error, expected "ca00020"
++		 * dtc wants the unit address to match reg[0], which is the
++		 * csi_clk_mux at 0xca00020. sdm630.dtsi:1899 does exactly the
++		 * same thing (camss@ca00000 with reg[0] = 0x0ca00020), so this
++		 * warning is inherent to the upstream CAMSS naming convention.
++		 * Renaming to camss@ca00020 would diverge from every other
++		 * mainline CAMSS node for no benefit.
++		 */
++		camss: camss@ca00000 {
++			compatible = "qcom,msm8998-camss";
++
++			reg = <0x0ca00020 0x10>,
++			      <0x0ca30000 0x100>,
++			      <0x0ca30400 0x100>,
++			      <0x0ca30800 0x100>,
++			      <0x0ca30c00 0x100>,
++			      <0x0ca34000 0x1000>,
++			      <0x0ca35000 0x1000>,
++			      <0x0ca36000 0x1000>,
++			      <0x0ca31000 0x500>,
++			      <0x0ca10000 0x1000>,
++			      <0x0ca14000 0x1000>;
++			reg-names = "csi_clk_mux",
++				    "csid0", "csid1", "csid2", "csid3",
++				    "csiphy0", "csiphy1", "csiphy2",
++				    "ispif",
++				    "vfe0", "vfe1";
++
++			interrupts = <GIC_SPI 296 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 297 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 298 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 299 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 78 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 79 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 80 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 309 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 314 IRQ_TYPE_EDGE_RISING>,
++				     <GIC_SPI 315 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "csid0", "csid1", "csid2", "csid3",
++					  "csiphy0", "csiphy1", "csiphy2",
++					  "ispif",
++					  "vfe0", "vfe1";
++
++			clocks = <&mmcc CAMSS_AHB_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID0_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID1_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID2_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID3_CLK>,
++				 <&mmcc CAMSS_CSI0_AHB_CLK>,
++				 <&mmcc CAMSS_CSI0_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID0_CLK>,
++				 <&mmcc CAMSS_CSI0PIX_CLK>,
++				 <&mmcc CAMSS_CSI0RDI_CLK>,
++				 <&mmcc CAMSS_CSI1_AHB_CLK>,
++				 <&mmcc CAMSS_CSI1_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID1_CLK>,
++				 <&mmcc CAMSS_CSI1PIX_CLK>,
++				 <&mmcc CAMSS_CSI1RDI_CLK>,
++				 <&mmcc CAMSS_CSI2_AHB_CLK>,
++				 <&mmcc CAMSS_CSI2_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID2_CLK>,
++				 <&mmcc CAMSS_CSI2PIX_CLK>,
++				 <&mmcc CAMSS_CSI2RDI_CLK>,
++				 <&mmcc CAMSS_CSI3_AHB_CLK>,
++				 <&mmcc CAMSS_CSI3_CLK>,
++				 <&mmcc CAMSS_CPHY_CSID3_CLK>,
++				 <&mmcc CAMSS_CSI3PIX_CLK>,
++				 <&mmcc CAMSS_CSI3RDI_CLK>,
++				 <&mmcc CAMSS_CSI0PHYTIMER_CLK>,
++				 <&mmcc CAMSS_CSI1PHYTIMER_CLK>,
++				 <&mmcc CAMSS_CSI2PHYTIMER_CLK>,
++				 <&mmcc CAMSS_CSIPHY0_CLK>,
++				 <&mmcc CAMSS_CSIPHY1_CLK>,
++				 <&mmcc CAMSS_CSIPHY2_CLK>,
++				 <&mmcc CAMSS_CSI_VFE0_CLK>,
++				 <&mmcc CAMSS_CSI_VFE1_CLK>,
++				 <&mmcc CAMSS_ISPIF_AHB_CLK>,
++				 <&mmcc CAMSS_TOP_AHB_CLK>,
++				 <&mmcc CAMSS_VFE0_AHB_CLK>,
++				 <&mmcc CAMSS_VFE0_CLK>,
++				 <&mmcc CAMSS_VFE0_STREAM_CLK>,
++				 <&mmcc CAMSS_VFE1_AHB_CLK>,
++				 <&mmcc CAMSS_VFE1_CLK>,
++				 <&mmcc CAMSS_VFE1_STREAM_CLK>,
++				 <&mmcc CAMSS_VFE_VBIF_AHB_CLK>,
++				 <&mmcc CAMSS_VFE_VBIF_AXI_CLK>;
++			clock-names = "ahb",
++				      "cphy_csid0", "cphy_csid1",
++				      "cphy_csid2", "cphy_csid3",
++				      "csi0_ahb", "csi0", "csi0_phy",
++				      "csi0_pix", "csi0_rdi",
++				      "csi1_ahb", "csi1", "csi1_phy",
++				      "csi1_pix", "csi1_rdi",
++				      "csi2_ahb", "csi2", "csi2_phy",
++				      "csi2_pix", "csi2_rdi",
++				      "csi3_ahb", "csi3", "csi3_phy",
++				      "csi3_pix", "csi3_rdi",
++				      "csiphy0_timer", "csiphy1_timer",
++				      "csiphy2_timer",
++				      "csiphy0", "csiphy1", "csiphy2",
++				      "csi_vfe0", "csi_vfe1",
++				      "ispif_ahb",
++				      "top_ahb",
++				      "vfe0_ahb", "vfe0", "vfe0_stream",
++				      "vfe1_ahb", "vfe1", "vfe1_stream",
++				      "vfe_ahb", "vfe_axi";
++
++			/*
++			 * No interconnects/interconnect-names here: unlike our
++			 * 6.0 base, 6.18's msm8998.dtsi carries no interconnect
++			 * provider nodes (no bimc/mnoc/snoc) at all yet, so
++			 * "&mnoc"/"&bimc" don't resolve. Bandwidth voting is
++			 * optional for CAMSS; add it back if/when an
++			 * interconnect provider lands in this dtsi.
++			 */
++
++			/*
++			 * The camera VFE has its own VBIF on msm8998 -- that is
++			 * what camss_vfe_vbif_{ahb,axi}_clk exist for, and
++			 * msm8996 has no such block. Nothing in mainline ever
++			 * takes it out of reset: camss declares no resets at
++			 * all, and the bootloader has no reason to have
++			 * released a block it never uses. A VBIF held in reset
++			 * answers on AHB, so every register programs and reads
++			 * back correctly, while the AXI datapath is dead -- the
++			 * write master takes data, overflows, and its first
++			 * transaction comes back as a bus error. That is the
++			 * symptom exactly.
++			 */
++			resets = <&mmcc CAMSS_VFE_VBIF_BCR>;
++			reset-names = "vfe_vbif";
++
++			/*
++			 * Stream IDs from downstream's msm_cam_smmu_cb1 ("vfe").
++			 *
++			 * WITHDRAWN 2026-08-03: an earlier version of this
++			 * comment claimed the SMMU blocks capture, because
++			 * deleting this property made every capture buffer come
++			 * back full. It does not. Removing it drops camss to a
++			 * 32-bit DMA mask, which sends the buffers through
++			 * SWIOTLB -- and swiotlb only seeds a bounce buffer for
++			 * DMA_TO_DEVICE, so sync_for_cpu copies an untouched
++			 * (zeroed) bounce buffer over the poison. All four
++			 * buffers "change", including the two never programmed
++			 * into the write master. Measured from inside the
++			 * driver, with the IOMMU attached, the VFE writes zero
++			 * bytes and the poison survives intact.
++			 *
++			 * Stream matching was never the question either: a full
++			 * 0x7fff wildcard SMR changes nothing.
++			 *
++			 * Kept for the record: downstream never programs stream
++			 * matching -- its SMMU node carries qcom,skip-init and
++			 * qcom,no-smr-check and inherits the bootloader's
++			 * configuration -- whereas mainline's arm-smmu resets
++			 * the SMMU and programs SMRs
++			 * from this property. And #global-interrupts = <0> means
++			 * there is no handler to report a fault, which is why
++			 * this fails silently.
++			 */
++			iommus = <&mmss_smmu 0xc00>,
++				 <&mmss_smmu 0xc01>,
++				 <&mmss_smmu 0xc02>,
++				 <&mmss_smmu 0xc03>;
++
++			power-domains = <&mmcc CAMSS_VFE0_GDSC>,
++					<&mmcc CAMSS_VFE1_GDSC>;
++
++			status = "disabled";
++
++			ports {
++				#address-cells = <1>;
++				#size-cells = <0>;
++			};
++		};
++
++		/*
++		 * Camera Control Interface. Kept `disabled` here and enabled
++		 * per-board, like every other mainline CCI.
++		 *
++		 * "qcom,msm8996-cci" is correct VERBATIM, not an approximation:
++		 * cci_v2_data in i2c-qcom-cci.c matches downstream's msm8998
++		 * timing digit-for-digit (cci-clk-src 37.5 MHz; thigh/tlow etc.
++		 * msm8998-camera.dtsi:852-907).
++		 *
++		 * reg size 0x1000, not the vendor's 0x4000: the highest register
++		 * the mainline driver touches is CCI_IRQ_STATUS_0 = 0xc0c
++		 * (i2c-qcom-cci.c:56). msm8996.dtsi and sdm630.dtsi both use
++		 * 0x1000. IRQ 295 from msm8998-camera.dtsi:716, confirmed in the
++		 * stock runtime DTB (0x127). Downstream encodes IRQ_TYPE_NONE;
++		 * mainline CCI nodes all use EDGE_RISING and the driver passes
++		 * flags 0 to devm_request_irq(), so the DT type is what arms it.
++		 *
++		 * power-domains is mandatory per qcom,i2c-cci.yaml. Do NOT also
++		 * add the vendor's mmagic/gdsc_bimc_smmu: bimc_smmu_gdsc is
++		 * HW_CTRL|ALWAYS_ON (mmcc-msm8998.c:2650-2658) so it needs no
++		 * vote, and #power-domain-cells is 1.
++		 */
++		cci: cci@ca0c000 {
++			compatible = "qcom,msm8996-cci";
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			reg = <0x0ca0c000 0x1000>;
++			interrupts = <GIC_SPI 295 IRQ_TYPE_EDGE_RISING>;
++			power-domains = <&mmcc CAMSS_TOP_GDSC>;
++
++			clocks = <&mmcc CAMSS_TOP_AHB_CLK>,
++				 <&mmcc CAMSS_CCI_AHB_CLK>,
++				 <&mmcc CAMSS_CCI_CLK>,
++				 <&mmcc CAMSS_AHB_CLK>;
++			clock-names = "camss_top_ahb",
++				      "cci_ahb",
++				      "cci",
++				      "camss_ahb";
++
++			assigned-clocks = <&mmcc CAMSS_CCI_CLK>;
++			assigned-clock-rates = <37500000>;
++
++			pinctrl-names = "default";
++			pinctrl-0 = <&cci0_default &cci1_default>;
++
++			status = "disabled";
++
++			cci_i2c0: i2c-bus@0 {
++				reg = <0>;
++				clock-frequency = <400000>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++			};
++
++			cci_i2c1: i2c-bus@1 {
++				reg = <1>;
++				clock-frequency = <400000>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++			};
++		};
++
+ 		mmss_smmu: iommu@cd00000 {
+ 			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2";
+ 			reg = <0x0cd00000 0x40000>;
+@@ -3314,6 +3803,37 @@ apcs_glb: mailbox@17911000 {
+ 			#mbox-cells = <1>;
+ 		};
+ 
++		/*
++		 * APSS watchdog. THIS IS THE DEVICE'S ONLY UNCONDITIONAL WAY BACK.
++		 *
++		 * Without it, a boot that never completes sits forever: on
++		 * 2026-08-01 the initramfs dropped to its debug shell and stayed
++		 * there for 6+ minutes with nothing rescuing it, which proves the
++		 * bootloader does NOT leave this watchdog armed for Linux.
++		 *
++		 * With it, plus qcom-wdt arming at probe and
++		 * `watchdog.open_timeout=` on the cmdline, the chain is:
++		 *   probe arms the WDT and sets WDOG_HW_RUNNING
++		 *   -> the watchdog core pings it, but ONLY until the open deadline
++		 *      (watchdog_dev.c: worker pings while hw_running &&
++		 *      !past_open_deadline)
++		 *   -> if userspace never opens /dev/watchdog in time, the core
++		 *      STOPS pinging and the hardware bites -> reset.
++		 * So "boot never finished" self-recovers instead of waiting for a
++		 * human. Once systemd opens it (RuntimeWatchdogSec), the deadline
++		 * goes infinite and a wedged userspace stops the pings instead.
++		 *
++		 * bark (interrupt) is GIC SPI 3, bite (reset) is SPI 4; only the
++		 * bark is wired as an interrupt, the bite resets the SoC directly.
++		 */
++		watchdog@17817000 {
++			compatible = "qcom,apss-wdt-msm8998", "qcom,kpss-wdt";
++			reg = <0x017817000 0x1000>;
++			clocks = <&sleep_clk>;
++			interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
++			timeout-sec = <30>;
++		};
++
+ 		timer@17920000 {
+ 			#address-cells = <1>;
+ 			#size-cells = <1>;

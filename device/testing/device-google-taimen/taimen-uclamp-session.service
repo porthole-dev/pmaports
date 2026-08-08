@@ -1,0 +1,11 @@
+[Unit]
+Description=Raise session.slice uclamp_min so the compositor+shell aren't starved by the CPU DVFS floor
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+Slice=session.slice
+ExecStart=/usr/libexec/taimen-uclamp-session
+
+[Install]
+WantedBy=graphical-session.target

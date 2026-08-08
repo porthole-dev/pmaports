@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=38
+pkgrel=39
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -68,7 +68,6 @@ source="
 	taimen-gmobile-overlay.conf
 	taimen-uclamp-session
 	taimen-uclamp-session.service
-	taimen-user-cpu-delegate.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -207,31 +206,29 @@ package() {
 		"$pkgdir"/usr/lib/systemd/user/taimen-ambient-nudge.service
 
 	# Userspace half of the UI-stutter fix (kernel half: CONFIG_UCLAMP_TASK{,_GROUP}
-	# in linux-postmarketos-qcom-msm8998). Neither phoc nor phosh ships a
-	# systemd unit of its own -- phosh-session execs `phoc -E gnome-session
-	# --session=phosh` directly (verified via `apk info -L phoc`/`phosh`) --
-	# so there is no phoc.service/phosh.service to drop uclamp_min onto.
-	# The target is user-<uid>.slice, not session.slice: measured live
-	# on-device that phoc (the compositor) sits in session-c1.scope, a
-	# SIBLING of user@<uid>.service/session.slice where phosh (the shell)
-	# lives -- session.slice alone never reaches phoc. user-<uid>.slice is
-	# the nearest common ancestor of both. systemd itself has no native
-	# uclamp directive (checked: no "uclamp" string anywhere in this
-	# device's libsystemd-core), so the script writes the cgroup v2
-	# cpu.uclamp.min file directly -- see the script's header for the full
-	# reasoning, why 25% was chosen, and why it fails loudly (journaled,
-	# unit left FAILED) instead of silently no-op'ing.
+	# in linux-postmarketos-qcom-msm8998). This is the SECOND mechanism: the
+	# first (cgroup v2 cpu.uclamp.min on user-<uid>.slice, plus a
+	# user@.service.d Delegate=cpu drop-in) shipped in r38 and was confirmed
+	# broken on hardware -- this device's systemd 261.2 has cpu-controller
+	# support compiled out entirely (`strings /usr/lib/systemd/systemd` has
+	# zero occurrences of CPUAccounting/CPUWeight/cpu.weight/cpu.uclamp), so
+	# PID 1 can never push "cpu" into cgroup.subtree_control no matter what
+	# Delegate= says, and cpu.uclamp.min never exists. The drop-in
+	# (taimen-user-cpu-delegate.conf) is deleted, not kept: dead config that
+	# implies a working feature is worse than none.
+	#
+	# This script now calls sched_setattr(2) directly (per-task uclamp,
+	# CONFIG_UCLAMP_TASK -- needs neither systemd nor the cgroup cpu
+	# controller) against every thread of phoc and phosh by process name.
+	# See the script's own header for the full mechanism, the arm64 syscall
+	# number, the permission-check trace through this kernel's
+	# kernel/sched/core.c, why every thread (not just the main one) is set,
+	# why 25% was chosen, and why it fails loudly (journaled, unit left
+	# FAILED) instead of silently no-op'ing.
 	install -Dm755 "$srcdir"/taimen-uclamp-session \
 		"$pkgdir"/usr/libexec/taimen-uclamp-session
 	install -Dm644 "$srcdir"/taimen-uclamp-session.service \
 		"$pkgdir"/usr/lib/systemd/user/taimen-uclamp-session.service
-
-	# cpu.uclamp.min only exists on user-<uid>.slice if the cgroup-v2 "cpu"
-	# controller is delegated all the way down to it -- measured live that
-	# it currently is not (user-<uid>.slice/cgroup.controllers reads
-	# "memory pids", no cpu). See the drop-in's header for the mechanism.
-	install -Dm644 "$srcdir"/taimen-user-cpu-delegate.conf \
-		"$pkgdir"/usr/lib/systemd/system/user@.service.d/10-taimen-cpu-delegate.conf
 
 	# A system preset cannot enable a USER unit, and post-install only makes
 	# system symlinks -- so this shipped symlink IS the enablement. Packaged
@@ -342,7 +339,6 @@ d224523a48311d2fe470b026be546ed032dea096c6e67380b7cd8185b5ac160e41f85966dd759bda
 51918a0be58c993d27648d081f9239270ef7220bea5d0f666fa47e4ae273cf623d9fb615fc55fb12a76f4171f5f127dd24e488b89f8f6f7365cc048cb5726459  taimen-gsk.conf
 c7f0c202c6ef02bf9dfff5797c380519a3970791b891591988d8cc8cadfb947ba1728e1c76f69b4b87a57ac5d1fbcbb00ebafa687a9a979f9129c9ad5b00d65a  taimen-display-panel.json
 1e38dd25be7d52f9065647a2f0248746670417c2a94221129b74aff26a7a606149fa0c7e59c735e2f1e6b77e3102941e9f6b13874445991da90b2bd40bb7f9d6  taimen-gmobile-overlay.conf
-919a2c1c976e54c91dd86d1103dde7419673ea284d306a49c52618dc19d4207cfac3ec399b0b1babcffa39de4c7024d5be007592b7538fbf20ac2aa0d9972e7a  taimen-uclamp-session
-088cf962ab0f1da1319f1c993347cd2b7e94f4b5a574bce2f8b687559dc9e09eca00b05ec4c74b0598c06a61e0aa07da34cc9d82e166450ac430f9acdd4c2180  taimen-uclamp-session.service
-ec4535b0d20e3b8dff48298b9e206413a7f78b342130551db93edd35e7733acb89e1afc0f1a2c1be585c1e61e3e4e1e2ebc658a98ccb17d6af1ee63c375e4f8c  taimen-user-cpu-delegate.conf
+86c07404943e9227cab7ef23a2678e5940eca789ee861f7b038430a9c040a2297ca4b464bd979e1ad943446b4f4cc8a93bdb304236f4a5a1bae9396dc5cf0496  taimen-uclamp-session
+9d6dc558697f9ac2c3f020cef68d2acc3c3f3538e3ee1e993da7de966b656fc687e4771e8d55e84e98e088ac1193e4ebafd71fae16b0fb5b58882c1d436f0686  taimen-uclamp-session.service
 "

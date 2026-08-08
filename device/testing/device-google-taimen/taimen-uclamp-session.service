@@ -1,5 +1,5 @@
 [Unit]
-Description=Raise user-<uid>.slice uclamp_min so the compositor+shell aren't starved by the CPU DVFS floor
+Description=Raise phoc+phosh per-task uclamp_min so they aren't starved by the CPU DVFS floor
 After=graphical-session.target
 
 [Service]

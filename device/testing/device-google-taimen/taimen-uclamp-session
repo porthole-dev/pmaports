@@ -1,86 +1,183 @@
-#!/bin/sh
+#!/usr/bin/python3
 # Userspace half of the UI-stutter fix (kernel half: CONFIG_UCLAMP_TASK{,_GROUP}
 # in linux-postmarketos-qcom-msm8998). Measured on this device: every UI hitch
 # begins with a CPU cluster sitting at its 257 MHz floor and ramping to 710.
 # Pinning scaling_min_freq on BOTH clusters was a clean 10x (baseline 3.1-3.3%
 # dropped frames / max frame 83-85ms / 6-7 jank -> pinned 0.2-0.6% / 33-34ms /
 # 0-1 jank at 59.7fps), with the big cluster (policy4) alone doing almost all
-# of the work and the little cluster (policy0) alone doing nothing.
+# of the work. A global scaling_min_freq pin must NOT ship -- it destroys idle
+# battery, same reason an earlier 710MHz GPU floor was deliberately removed
+# from this project. uclamp_min is the targeted equivalent: it raises the
+# scheduler's utilisation floor only for the tasks that need it.
 #
-# A global scaling_min_freq pin must NOT ship -- it destroys idle battery,
-# same reason an earlier 710MHz GPU floor was deliberately removed from this
-# project. uclamp_min is the targeted equivalent: it raises the scheduler's
-# utilisation floor only for the tasks that need it.
+# WHY THIS IS PER-TASK, NOT CGROUP (2nd mechanism -- the 1st one shipped and
+# FAILED on hardware):
+# The previous version of this script wrote cgroup v2's cpu.uclamp.min on
+# user-<uid>.slice, and a matching user@.service.d drop-in added "cpu" to
+# Delegate=. That requires systemd's cpu-controller support, and this
+# device's systemd does not have it: `strings /usr/lib/systemd/systemd`
+# contains ZERO occurrences of CPUAccounting, CPUWeight, cpu.weight, cpu.max
+# or cpu.uclamp anywhere -- Alpine's systemd 261.2 package here was built
+# with cpu-controller support compiled out. Delegate=cpu merges fine
+# (`systemctl cat user@10000.service` shows it) but PID 1 has no code path
+# to ever push "cpu" into cgroup.subtree_control, so
+# user-10000.slice/cgroup.controllers stays "memory pids" forever and
+# cpu.uclamp.min never exists, no matter what the drop-in says. That is a
+# systemd packaging gap, not a kernel one: CONFIG_UCLAMP_TASK_GROUP is
+# correctly =y and the root cgroup does list "cpu".
 #
-# systemd has no native unit directive for uclamp (verified: no "uclamp"
-# string anywhere in libsystemd-core-261.so, the version this device ships),
-# so this writes the cgroup v2 interface file directly -- exactly what
-# CONFIG_UCLAMP_TASK_GROUP exists to expose (see kernel
-# Documentation/admin-guide/cgroup-v2.rst, "cpu.uclamp.min").
+# CONFIG_UCLAMP_TASK=y (also already =y) exposes a second, independent path
+# that needs neither systemd nor the cgroup cpu controller: per-task uclamp
+# via sched_setattr(2) with SCHED_FLAG_UTIL_CLAMP_MIN. That is what this
+# script now uses instead. taimen-user-cpu-delegate.conf (the Delegate=cpu
+# drop-in) is removed as dead weight -- it asked PID 1 to do something this
+# systemd build cannot do, and shipping it implied a working feature that
+# never worked.
 #
-# The target is user-<uid>.slice, NOT session.slice. session.slice was tried
-# first and is WRONG: it was measured live on-device (read-only) that phoc
-# (the compositor -- the process actually doing frame submission) runs in
-#     0::/user.slice/user-10000.slice/session-c1.scope
-# a SIBLING branch of
-#     0::/user.slice/user-10000.slice/user@10000.service/session.slice/mobi.phosh.Shell.service
-# where phosh (the shell) lives. session.slice only ever covers phosh, never
-# phoc. user-<uid>.slice is the nearest common ancestor of both, so it is
-# the smallest single write that actually reaches the compositor. This is
-# broader than "just the compositor + shell" -- it covers everything the
-# user runs, including app.slice/background.slice under user@.service -- but
-# on a single-user phone the interactive session more or less IS the
-# workload, and this is still far narrower than the global scaling_min_freq
-# pin this fix exists to avoid.
+# sched_setattr has no glibc/musl wrapper, so it's called directly via
+# syscall(2) -- exactly the pattern tools/tk-lib.sh's tk_request_bootloader
+# already uses for __NR_reboot on this project. __NR_sched_setattr = 274 on
+# arm64 (native 64-bit syscall table, uapi/asm-generic/unistd.h in this
+# project's own linux/ tree -- NOT the 32-bit compat table in
+# arch/arm64/include/asm/unistd32.h, which is 380 and does not apply here).
+# struct sched_attr is 56 bytes (SCHED_ATTR_SIZE_VER1, adds sched_util_min/
+# max -- uapi/linux/sched/types.h). SCHED_FLAG_KEEP_ALL
+# (KEEP_POLICY|KEEP_PARAMS) leaves policy/nice/priority untouched -- verified
+# against this kernel's kernel/sched/core.c: sys_sched_setattr() fills
+# attr.sched_nice/sched_priority from the target's CURRENT values before the
+# permission check runs when KEEP_PARAMS is set, so the "can't raise your own
+# priority" check trivially passes. Setting util_min alone (no
+# SCHED_FLAG_UTIL_CLAMP_MAX) has no extra CAP_SYS_NICE gate in
+# uclamp_validate() -- only check_same_owner(target) is required, which
+# holds here since this runs as the same uid as phoc/phosh. So this needs no
+# root and no new capability: a plain user unit is enough, same as before.
 #
-# For cpu.uclamp.min to exist at user-<uid>.slice at all, the "cpu"
-# cgroup-v2 controller must be enabled in user.slice's cgroup.subtree_control
-# (a cgroup's own controller-interface files exist only if its PARENT pushed
-# that controller down to it). Measured live: it currently is NOT --
-# `cat /sys/fs/cgroup/user.slice/user-10000.slice/cgroup.controllers` reads
-# "memory pids", no cpu. taimen-user-cpu-delegate.conf (a drop-in on the
-# system unit user@.service, see its own header) adds "cpu" to that unit's
-# Delegate=, which is what causes systemd to push "cpu" up through every
-# ancestor -- user.slice and user-<uid>.slice included -- exactly the same
-# mechanism that already makes "memory pids" show up there today. Once that
-# lands, the value written here to user-<uid>.slice applies to every
-# descendant task, including phoc in session-c1.scope, even though
-# session-c1.scope never separately enables "cpu" itself: a cgroup with no
-# controller of its own is scheduled as part of the nearest ancestor that
-# has one.
+# TARGETS AND THREADS: phoc (compositor) and phosh (shell), by process name.
+# uclamp is PER-TASK -- setting only the main thread risks missing whichever
+# thread actually submits frames. Checked live on this device
+# (/proc/<pid>/task/*/comm): phoc's only threads beyond its main thread are
+# Mesa/freedreon driver workers -- "disk$0" (shader disk-cache I/O),
+# "ir3q0" x2 (ir3 shader-compile queue) and "traceq0" (GPU trace queue) --
+# not a separate render/frame-submission thread. wlroots compositors run
+# their repaint/frame-submission loop on the main wl_event_loop thread, so
+# "phoc" (the main thread) is what actually matters; the Mesa worker threads
+# are auxiliary and largely idle post-startup. phosh is the same shape (GTK
+# main loop on the main thread, plus glycin/pango/dconf/gdbus helper
+# threads). Rather than special-case "just the main thread", every thread of
+# every matching process gets the clamp -- per-task uclamp is cheap to set
+# and this makes the fix correct even if a future Mesa/GTK version adds a
+# real render thread.
 #
-# 25 is a conservative opening value (20-30% was judged reasonable to keep
-# the big cluster off its floor during interaction without pinning it high).
-# It is a tuning knob, not a validated constant: it needs an on-device A/B
+# 256 (25% of 1024) is a conservative opening value carried over unchanged
+# from the cgroup-based attempt (20-30% was judged reasonable to keep the
+# big cluster off its floor during interaction without pinning it high). It
+# is a tuning knob, not a validated constant: it needs an on-device A/B
 # against tools/tk-fps.py before being trusted as final.
 #
-# The uid is read with `id -u`, never hardcoded, so this keeps working for
-# whatever user actually owns the session.
-#
-# FAILS LOUDLY on purpose: this device does not have the uclamp kernel
-# flashed yet, so cpu.uclamp.min will not exist until it is, and the cpu
-# delegation above is unconfirmed until then too. A silent no-op here would
-# be the exact failure mode this fix exists to avoid, so a missing file or a
-# failed write is reported to stderr (systemd journals it under this unit's
-# name) and the unit is left FAILED -- `systemctl --user status
-# taimen-uclamp-session.service` / `journalctl --user -u
-# taimen-uclamp-session.service` must be checked after the kernel is flashed
-# to confirm this actually applied.
-set -e
+# FAILS LOUDLY on purpose: a missing target process, or any sched_setattr
+# that fails for a reason other than the thread having already exited
+# (ESRCH -- an ordinary race between listing /proc/*/task and the syscall,
+# not a fault), is reported to stderr (systemd journals it under this
+# unit's name) and this exits non-zero, leaving the unit FAILED.
+import ctypes
+import errno
+import os
+import sys
 
-UCLAMP_MIN_PCT=25
+SYS_sched_setattr = 274  # arm64, native 64-bit syscall table (see header)
 
-uid=$(id -u)
-target="/sys/fs/cgroup/user.slice/user-${uid}.slice/cpu.uclamp.min"
+SCHED_FLAG_KEEP_POLICY = 0x08
+SCHED_FLAG_KEEP_PARAMS = 0x10
+SCHED_FLAG_KEEP_ALL = SCHED_FLAG_KEEP_POLICY | SCHED_FLAG_KEEP_PARAMS
+SCHED_FLAG_UTIL_CLAMP_MIN = 0x20
 
-if [ ! -e "$target" ]; then
-	echo "taimen-uclamp-session: $target does not exist -- cpu controller not delegated to user-${uid}.slice (needs the uclamp kernel + taimen-user-cpu-delegate.conf) or the cgroup layout changed. uclamp_min NOT applied." >&2
-	exit 1
-fi
+UCLAMP_MIN = 256  # 25% of 1024 -- see header; tuning knob, needs on-device A/B
+TARGET_COMMS = ("phoc", "phosh")
 
-if ! echo "$UCLAMP_MIN_PCT" > "$target"; then
-	echo "taimen-uclamp-session: write to $target failed. uclamp_min NOT applied." >&2
-	exit 1
-fi
 
-echo "taimen-uclamp-session: uclamp_min=$UCLAMP_MIN_PCT applied to user-${uid}.slice ($target)"
+class sched_attr(ctypes.Structure):
+    _fields_ = [
+        ("size", ctypes.c_uint32),
+        ("sched_policy", ctypes.c_uint32),
+        ("sched_flags", ctypes.c_uint64),
+        ("sched_nice", ctypes.c_int32),
+        ("sched_priority", ctypes.c_uint32),
+        ("sched_runtime", ctypes.c_uint64),
+        ("sched_deadline", ctypes.c_uint64),
+        ("sched_period", ctypes.c_uint64),
+        ("sched_util_min", ctypes.c_uint32),
+        ("sched_util_max", ctypes.c_uint32),
+    ]
+
+
+_libc = ctypes.CDLL(None, use_errno=True)
+
+
+def sched_setattr(tid, util_min):
+    """Returns 0 on success, else the positive errno."""
+    attr = sched_attr()
+    attr.size = ctypes.sizeof(sched_attr)
+    attr.sched_flags = SCHED_FLAG_KEEP_ALL | SCHED_FLAG_UTIL_CLAMP_MIN
+    attr.sched_util_min = util_min
+    ctypes.set_errno(0)
+    ret = _libc.syscall(SYS_sched_setattr, ctypes.c_int(tid),
+                         ctypes.byref(attr), ctypes.c_uint(0))
+    return 0 if ret == 0 else ctypes.get_errno()
+
+
+def tids_for(comm):
+    """All /proc/<pid>/task/<tid> for every process whose comm == comm."""
+    tids = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/comm") as f:
+                if f.read().strip() != comm:
+                    continue
+        except OSError:
+            continue  # process raced away between listdir and open
+        try:
+            tids.extend(int(t) for t in os.listdir(f"/proc/{entry}/task"))
+        except OSError:
+            continue
+    return tids
+
+
+def main():
+    all_tids = [tid for comm in TARGET_COMMS for tid in tids_for(comm)]
+    if not all_tids:
+        print(f"taimen-uclamp-session: no threads found for {TARGET_COMMS} "
+              "-- compositor/shell not running yet? uclamp_min NOT applied.",
+              file=sys.stderr)
+        return 1
+
+    applied = 0
+    failed = []
+    for tid in all_tids:
+        err = sched_setattr(tid, UCLAMP_MIN)
+        if err == 0:
+            applied += 1
+        elif err == errno.ESRCH:
+            continue  # thread exited between listing and the syscall
+        else:
+            failed.append((tid, os.strerror(err)))
+
+    if failed:
+        for tid, msg in failed:
+            print(f"taimen-uclamp-session: sched_setattr(tid={tid}) failed: {msg}",
+                  file=sys.stderr)
+        return 1
+
+    if applied == 0:
+        print("taimen-uclamp-session: every target thread exited before it "
+              "could be set -- uclamp_min NOT applied.", file=sys.stderr)
+        return 1
+
+    print(f"taimen-uclamp-session: uclamp_min={UCLAMP_MIN} applied to "
+          f"{applied} thread(s) across {TARGET_COMMS}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,12 @@
+# OpenRC counterpart of sns-reg-registry.conf (the systemd ExecStartPre
+# drop-in) -- see that file's header for why sns-reg needs
+# /etc/sns-reg.d/sns.reg before it can serve anything.
+#
+# start_pre() is an OpenRC hook: openrc-run.sh calls "${cmd}_pre" if it is
+# defined as a shell function before running $cmd (see
+# /usr/libexec/rc/sh/openrc-run.sh), and this conf.d file is sourced before
+# /etc/init.d/sns-reg itself, so this works without touching that (generic,
+# not taimen-specific) init script.
+start_pre() {
+	/usr/bin/taimen-sns-reg-prepare
+}

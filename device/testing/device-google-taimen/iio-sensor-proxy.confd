@@ -1,0 +1,16 @@
+# OpenRC counterpart of iio-sensor-proxy-wait-for-ssc.conf (the systemd
+# ExecStartPre drop-in) -- see that file's header for why iio-sensor-proxy
+# has to wait for the SSC prox/ALS device instead of racing it.
+#
+# start_pre() is an OpenRC hook (see sns-reg.confd's header for the
+# mechanism); iio-sensor-proxy-openrc's own /etc/init.d/iio-sensor-proxy
+# ships no conf.d file and defines no start_pre of its own, so this file is
+# free to add one without touching that package.
+start_pre() {
+	local i
+	for i in $(seq 1 50); do
+		grep -qs prox-light /sys/bus/iio/devices/iio:device*/name 2>/dev/null && return 0
+		sleep 0.2
+	done
+	return 0
+}

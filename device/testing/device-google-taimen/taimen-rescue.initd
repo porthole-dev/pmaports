@@ -1,0 +1,17 @@
+#!/sbin/openrc-run
+# See taimen-rescue.py's header and taimen-rescue.service's [Unit] comment:
+# this must already be RUNNING before the PID-1 freeze it diagnoses, so it
+# is enabled in the sysinit runlevel (OpenRC's earliest, matching
+# DefaultDependencies=no + WantedBy=sysinit.target) and respawns forever.
+supervisor=supervise-daemon
+name="taimen-rescue"
+description="taimen PAM-free rescue channel (USB-gadget only, port 2323)"
+
+command="/usr/bin/taimen-rescue.py"
+# The USB gadget address may not exist yet at first start; just keep trying
+# (mirrors RestartSec=2, Restart=always in the systemd unit).
+respawn_delay=2
+respawn_max=0
+# Do not let the rescue channel itself be the thing that dies under memory
+# pressure -- it is the last way in (mirrors OOMScoreAdjust=-900).
+supervise_daemon_args="--oom-score-adj -900"

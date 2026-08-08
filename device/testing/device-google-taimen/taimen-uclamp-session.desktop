@@ -1,0 +1,12 @@
+# OpenRC counterpart of taimen-uclamp-session.service. See
+# taimen-ambient-nudge.desktop's header for why an XDG autostart entry is
+# the right mechanism under OpenRC (no systemd --user to hang a
+# graphical-session.target unit off of), and why it is shipped
+# unconditionally with an Exec= guard rather than split by init system.
+[Desktop Entry]
+Type=Application
+Name=taimen uclamp-session
+Comment=Raise phoc+phosh per-task uclamp_min so they aren't starved by the CPU DVFS floor
+Exec=sh -c 'test -d /run/systemd/system || exec /usr/libexec/taimen-uclamp-session'
+NoDisplay=true
+Terminal=false

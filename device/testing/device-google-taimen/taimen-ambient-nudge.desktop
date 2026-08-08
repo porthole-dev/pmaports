@@ -1,0 +1,19 @@
+# OpenRC counterpart of taimen-ambient-nudge.service. There is no systemd
+# --user under OpenRC to hang a "run once after the graphical session
+# starts" unit off of graphical-session.target, but gnome-session (which
+# phosh-session execs into, systemd or not -- see phosh-desktop-env.conf's
+# header) autostarts XDG .desktop entries from here on its own, regardless
+# of init system.
+#
+# Shipped unconditionally rather than split by init system (same "enabling
+# both is harmless" reasoning the post-install already uses for
+# taimen-modem-bringup): under systemd the graphical-session.target.wants
+# symlink already runs this script once, so the Exec= guard below turns
+# this entry into a no-op there instead of running it twice.
+[Desktop Entry]
+Type=Application
+Name=taimen ambient-nudge
+Comment=Re-kick phosh ambient light claim after late SSC sensor enumeration
+Exec=sh -c 'test -d /run/systemd/system || exec /usr/libexec/taimen-ambient-nudge'
+NoDisplay=true
+Terminal=false

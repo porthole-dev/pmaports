@@ -1,0 +1,141 @@
+# 6.18 kernel fork for MSM8998 devices, in parallel with the 6.0 aport
+# (linux-postmarketos-qcom-msm8998). See that aport's APKBUILD for why: its
+# source branch is 202 commits of bring-up archaeology that doesn't reduce to
+# a reviewable patch series. This one tracks the qcom-msm8998-6.18.y branch,
+# a 33-commit series rebased on top of it, split one logical change per patch
+# (25 -> 33: the MSM8998 CAMSS series landed on taimen-v6.18-wip 2026-08-08).
+# Kernel config based on: taimen_defconfig
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
+_flavor="postmarketos-qcom-msm8998-6.18"
+pkgname=linux-$_flavor
+pkgver=6.18
+pkgrel=3
+_commit="4e0c53280d9757b3872d3823b9f94066669aa388"
+pkgdesc="6.18 mainline kernel fork for MSM8998 devices"
+arch="aarch64"
+_carch="arm64"
+_config="config-$_flavor.$arch"
+url="https://github.com/msm8998-mainline/linux"
+license="GPL-2.0-only"
+options="!strip !check !tracedeps
+	pmb:cross-native
+"
+makedepends="
+	bash
+	bison
+	clang
+	findutils
+	flex
+	linux-headers
+	lld
+	llvm
+	openssl-dev
+	perl
+	postmarketos-installkernel
+	python3
+	xz
+"
+
+# Source
+source="
+	https://github.com/msm8998-mainline/linux/archive/$_commit/linux-$_commit.tar.gz
+	$_config
+	0001-media-i2c-imx179-add-Sony-IMX179-sensor-driver.patch
+	0002-media-i2c-imx362-add-Sony-IMX362-sensor-driver.patch
+	0003-media-i2c-lc898214xd-add-ON-Semi-LC898214XD-AF-actua.patch
+	0004-misc-easel-mipi-add-Easel-MIPI-bridge-driver.patch
+	0005-regulator-bcm15602-easel-add-BCM15602-PMIC-driver.patch
+	0006-Input-ftm4-add-STMicroelectronics-FingerTip-M4-touch.patch
+	0007-Input-drv2624-add-TI-DRV2624-haptics-driver.patch
+	0008-drm-panel-add-LG-SW43402-panel-driver.patch
+	0009-net-qrtr-turn-QRTR-into-a-bus.patch
+	0010-iio-qcom-smgr-add-Qualcomm-SMGR-sensor-driver.patch
+	0011-power-supply-qcom_fg-add-Qualcomm-PMIC-fuel-gauge-dr.patch
+	0012-power-supply-qcom_pmi8998_charger-add-Qualcomm-PMI89.patch
+	0013-ASoC-qcom-add-msm8998-machine-driver.patch
+	0014-ASoC-codecs-add-TI-TAS2557-smart-amplifier-driver.patch
+	0015-arm64-dts-qcom-msm8998-add-cooling-CAMSS-CCI-and-GPU.patch
+	0016-arm64-dts-qcom-pmi8998-add-fuel-gauge-node.patch
+	0017-arm64-dts-qcom-msm8998-google-wahoo-add-Pixel-2-fami.patch
+	0018-arm64-dts-qcom-msm8998-google-taimen-add-Pixel-2-XL-.patch
+	0019-arm64-dts-qcom-msm8998-google-walleye-add-Pixel-2-bo.patch
+	0020-drm-msm-adreno-don-t-put-the-global-address-space-at.patch
+	0021-drm-msm-adreno-base-the-TTBR1-global-vm-in-the-sign-.patch
+	0022-drm-msm-a5xx-don-t-preempt-while-per-process-pagetab.patch
+	0023-drm-msm-a5xx-log-where-the-global-vm-kernel-buffers-.patch
+	0024-drm-msm-adreno-attach-the-OPP-regulator-when-the-GPU.patch
+	0025-media-qcom-camss-csiphy-take-the-settle-rate-from-th.patch
+	0026-media-qcom-camss-allocate-the-ISPIF-whenever-the-SoC.patch
+	0027-media-qcom-camss-csiphy-3ph-1-0-derive-gen2-from-the.patch
+	0028-media-qcom-camss-vfe-4-8-override-the-write-master-c.patch
+	0029-media-qcom-camss-vfe-4-8-keep-the-bus-bridge-out-of-.patch
+	0030-dt-bindings-media-qcom-msm8998-camss-document-the-MS.patch
+	0031-arm64-dts-qcom-msm8998-drop-the-unused-CAMSS-VBIF-re.patch
+	0032-media-qcom-camss-add-support-for-the-MSM8998-CAMSS.patch
+	0033-arm64-configs-add-taimen_defconfig.patch
+"
+builddir="$srcdir/linux-$_commit"
+
+prepare() {
+	default_prepare
+	cp "$srcdir/config-$_flavor.$arch" .config
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor"
+}
+
+package() {
+	mkdir -p "$pkgdir"/boot
+
+	make zinstall modules_install dtbs_install \
+		ARCH="$_carch" \
+		LLVM=1 \
+		INSTALL_PATH="$pkgdir"/boot \
+		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release
+}
+sha512sums="
+5e367acc078e5fb79420793072c57fb507e626de9b11263da7dbd6be694b0519f82b5bb2f5e3fd1ac9d5d7088007902bd0fa089ed30bf79d2a215dfd419503cd  linux-4e0c53280d9757b3872d3823b9f94066669aa388.tar.gz
+f9e1730110c7b12265a3725d47f31c1173de1c2d11fbc7a3b6eed9a5fc034170d1c866f5dd13dd1c640fbcb7ea199982e0dd3595bf37dc7e63e199e287ba2925  config-postmarketos-qcom-msm8998-6.18.aarch64
+82478adb4b828be225cdec82db25ba664aa974c2f7677cba2fe227162d6ec3e4d70dfa3d4641b75a82854301404b1aed0830642c427580a20b1cde284e7595db  0001-media-i2c-imx179-add-Sony-IMX179-sensor-driver.patch
+9c3fc9cce80d4272532552e4a957b5f9fbc57dad186f8eec1afd336670f97d6a0765566aa1f3fe6583ba1e199805a99dc4276638be6f459870247a4ba185ade1  0002-media-i2c-imx362-add-Sony-IMX362-sensor-driver.patch
+e672bade881c4983559e9005a738b21f2030a260e2284410ec70748e11bda5c572b867f402c5e8a3bab26956a8be9e9b384a5df180dbf5bd12d79032bab042af  0003-media-i2c-lc898214xd-add-ON-Semi-LC898214XD-AF-actua.patch
+64fd260482de046285fcf24d0c6913758c796da8073ef656f6d0f8cd8f0d873de70a264260bf4c1233f26b2a38a3b0d4da02763c9c81cdf9a7d1138de560910e  0004-misc-easel-mipi-add-Easel-MIPI-bridge-driver.patch
+dbdb7ca1db7d2ff7e7fc8c03631e906d494a76e7c08db80768aa5149f6eec92d355b5b2640e282288b8abb4fd641ee6dd42bbd9bd8367de79f70bc199e25b6b5  0005-regulator-bcm15602-easel-add-BCM15602-PMIC-driver.patch
+74fe40f8989e86da5ea7b842dac80e41ff058fc593a4b06883f5e6a9183f1c93ef4774cfeda089193cbf19a73c74f8979caf67cacf21c87e3f5b691ccb2294cf  0006-Input-ftm4-add-STMicroelectronics-FingerTip-M4-touch.patch
+a52ce1475f7d164b82a5aaf5d08ab157d995c7f2ae99d2fbfb4b46ac82923919fff339997b9bf865cc6549a4a8468a0ed508d5e0e2131f7c114410e5bd41b62b  0007-Input-drv2624-add-TI-DRV2624-haptics-driver.patch
+31202fef7484145c54e49b4fac39ad7ad4ae05ebbb741c7e7594078ccffb2f6ad17f4aa3a1b6ee73f1775bf097f27701ea437d2608f99c3149393765d51fa8dd  0008-drm-panel-add-LG-SW43402-panel-driver.patch
+1288ce5d1fafe969c6de42265db63a38a3400d767b5f41271fb9040834510fb17520db389d1cb0359873caf4a8fd1e14edad4e8b62901570a48eab521546ccc1  0009-net-qrtr-turn-QRTR-into-a-bus.patch
+ed867c29d7b34399be18cdb1915ca6fcf9df1214e48023bf5d3d5dac2a15bf37be4af0094a1339e57be18c7961fc365024db5a21701feda9a5b6180cc9619dc8  0010-iio-qcom-smgr-add-Qualcomm-SMGR-sensor-driver.patch
+38a339caa0c50f4989d8a1b5ef36830cc780b1cb77fd165a1f2e28767329304418f156e286139b67211d06b297bbb6c0d3ddcd062120fc1e2fe6dffc8bca9957  0011-power-supply-qcom_fg-add-Qualcomm-PMIC-fuel-gauge-dr.patch
+a7e503b29e00d1d9407d2fc8cd58acf72e6acda5e80353f4f41a8776a512a4334c969a2f8c09aa204c51d5c2347f2bc6e036c720774e43bc82659ab3e64741bc  0012-power-supply-qcom_pmi8998_charger-add-Qualcomm-PMI89.patch
+180ccbcd8d065c6b1c6387fad7972edff317493d45010c0f4f7d0f1313715f95f50fabd0969e5d87285f02df755010e28173c86ceb117e1b1b403ede560afc9b  0013-ASoC-qcom-add-msm8998-machine-driver.patch
+40d01c9094f0f369b6af1c2500a112d65fd296dc606252fc94bb0d4c65c0b50a8077a7a41b55d3566e9061fe13ffd3074454e7b2547efd74bdb329408f124a20  0014-ASoC-codecs-add-TI-TAS2557-smart-amplifier-driver.patch
+d4834b904c2c6d5aa7b36a4462108c12eb0653c6c25d85b022c544597a4fe1f12deea39aa3dc10b7a23111eb461bfc86cb9338f42ffaa74405889407e7a2f315  0015-arm64-dts-qcom-msm8998-add-cooling-CAMSS-CCI-and-GPU.patch
+5782d02ad2d1d4cd60f6d6d00d0888b81b4614c23fb667a181970bf017bb6811abaf11c3928ecc3e346c2e95fd786ee305a201a7c931adbf1070649806a9740c  0016-arm64-dts-qcom-pmi8998-add-fuel-gauge-node.patch
+af6cd2e1b89e83c62fed447e3171dd1ee3aebbfc1d7e3727e89be47b9c25b864d79fe33112d931a8c4a3a6b1415e647c4a103e57077009ea1a9382548179626e  0017-arm64-dts-qcom-msm8998-google-wahoo-add-Pixel-2-fami.patch
+82bd97fabbe2fd4eaa5612437832f7223d2db4bd19087066a9efedc2aa300905181911f2c9cd6ae3639a5ace24c7440ed302fb0520f25bfa2148dcb3dce74190  0018-arm64-dts-qcom-msm8998-google-taimen-add-Pixel-2-XL-.patch
+a03e2022774bba379476e7dcc6dd41f1f0b87a4b59dba159a1023f0fc43bc4d876a9f30fe7ffbabd0016e35cdd92002b926caa7e3fc8e1358cdd061eb70358fa  0019-arm64-dts-qcom-msm8998-google-walleye-add-Pixel-2-bo.patch
+3e2d418b0c01a83dc7c03638f42bc4351b7da982762dd8291005beaab69c658e24beb23b27dbf2fb42f2b9d185761fbec7e521186277434a37910ee8c6af88f6  0020-drm-msm-adreno-don-t-put-the-global-address-space-at.patch
+2e5b4a6d592b46e15d2af6b557f853f9ffacd02e5055a16f3819bda814d3acf00eed750b56f0418e11fa34eac35c1c3388a29073adcb37b7503b6db449045015  0021-drm-msm-adreno-base-the-TTBR1-global-vm-in-the-sign-.patch
+b50bff655afb43ff93219ef30e1b38a086a3cd9b433e8137356adec342347af97f596368961c554a9b826776769112ef909949e1d1b6f1816211fc179b7f0a9d  0022-drm-msm-a5xx-don-t-preempt-while-per-process-pagetab.patch
+3861b99e849f91ffd937a07d80d30b21ea13b27cee91b10e7a88c87f53759e50798dcc07bc6b6e6c6457d52ce25895d0eb3f227e3389f716ab4d07d196d58e1d  0023-drm-msm-a5xx-log-where-the-global-vm-kernel-buffers-.patch
+c812f2a06ae85e7d206b2b5cbccb5417e940d7adbea9ddadacd8d1614f6cf1a6f14cad4836829bf48fa00ebb7b8ca71e3560807533aca07db89382954b6bfbd2  0024-drm-msm-adreno-attach-the-OPP-regulator-when-the-GPU.patch
+ba9466f31d73a8f59930c87ffdb55d555eef8151e2490c34490b9a8ba53f109f47b1f039b70694543910ce36888c8c94f2a6316e2244a94326041ec273544d46  0025-media-qcom-camss-csiphy-take-the-settle-rate-from-th.patch
+717edb6edc92473c5b74f8fb63350b5e7049904630a89507e136c84f009af4b338b8ed5b6578acefad2f9f510e6d46ef29269e55acc856107bdb5873d5bdbe41  0026-media-qcom-camss-allocate-the-ISPIF-whenever-the-SoC.patch
+1d46b5d3e1ea751500ecc9cb324683d3e7402937fd6c7426052f79f6438ed7ad0c45db4171ee051eed5344014b8e89543e95cdc32a7a38a29a91d4f1ad13e429  0027-media-qcom-camss-csiphy-3ph-1-0-derive-gen2-from-the.patch
+f12a401ab59880bcc5aacbc1a44545f934105c39919e0de8ee2ef5656fdeac88e1bd3343687d9dea99cc06e5fee340344cc2df4bb8b967447d276b8eb9a1ca71  0028-media-qcom-camss-vfe-4-8-override-the-write-master-c.patch
+f06c678a43493d9a2363ef894e3b1bc36c73ecaf0e676a435efd531f47fd0276528733805aa479466ca3482c36705e81aa56b9978de07dda74d50f6d5ffb376b  0029-media-qcom-camss-vfe-4-8-keep-the-bus-bridge-out-of-.patch
+8b61eab1ec6eae241c4580dcdec3f7708cb971ce13bab4cd21b76c54dd316b1cad424212b896e76bbd7a00ea43ea515f5de99a55c78b722a874774109eaecdbf  0030-dt-bindings-media-qcom-msm8998-camss-document-the-MS.patch
+9f1efe489ec533f3d3beb4d51f0e7e1a78a101eb88f48be42022353fbfcc688f1acfe2154c5bf69bc8fd9c7fe6b7be1b8d3305ff520994be0f47c1415d47a87b  0031-arm64-dts-qcom-msm8998-drop-the-unused-CAMSS-VBIF-re.patch
+6b69b7087eb298f1a56de3df23268d35462e27a3cbb362581b7cd2ef9df6a23ff85b93d5ab1f8638470a5262ddeb32260c79bea7777c5671758c17c47101648b  0032-media-qcom-camss-add-support-for-the-MSM8998-CAMSS.patch
+663ea0a5543ed8efef854637a14c0ee42fbd516d1cb9f5950ea61b314f36dbdb6a36a2a2599e3a45c242bd24f1d23cfa7a9c517027cf0613c3b3be3370f0d50e  0033-arm64-configs-add-taimen_defconfig.patch
+"

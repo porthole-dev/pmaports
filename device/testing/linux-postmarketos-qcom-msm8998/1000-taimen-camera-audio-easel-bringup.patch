@@ -11267,10 +11267,10 @@ index 000000000000..84554cedd2e5
 +obj-$(CONFIG_IIO_QCOM_SMGR)	+= qcom_smgr.o
 diff --git a/drivers/iio/common/qcom_smgr/qcom_smgr.c b/drivers/iio/common/qcom_smgr/qcom_smgr.c
 new file mode 100644
-index 000000000000..bb906d71cdd4
+index 000000000000..7e0b7ed1dc38
 --- /dev/null
 +++ b/drivers/iio/common/qcom_smgr/qcom_smgr.c
-@@ -0,0 +1,1757 @@
+@@ -0,0 +1,1779 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Qualcomm Sensor Manager driver
@@ -12302,9 +12302,16 @@ index 000000000000..bb906d71cdd4
 +				    long mask)
 +{
 +	struct qcom_smgr_iio_priv *priv = iio_priv(iio_dev);
++	struct qcom_smgr_sensor *sensor = priv->sensor;
++	int sec, data_type;
 +
 +	switch (mask) {
 +	case IIO_CHAN_INFO_SAMP_FREQ:
++		/* sec == -1 for event-only sensors too; both PRIMARY then. */
++		sec = qcom_smgr_secondary_scan_index(sensor->type);
++		data_type = (sec >= 0 && sec == chan->scan_index)
++			    ? SNS_SMGR_DATA_TYPE_SECONDARY : SNS_SMGR_DATA_TYPE_PRIMARY;
++		priv->samp_freq_vals[2] = sensor->data_types[data_type].max_sample_rate;
 +		*type = IIO_VAL_INT;
 +		*vals = priv->samp_freq_vals;
 +		*length = ARRAY_SIZE(priv->samp_freq_vals);
@@ -12886,9 +12893,13 @@ index 000000000000..bb906d71cdd4
 +	priv = iio_priv(iio_dev);
 +	priv->sensor = sensor;
 +
++	/*
++	 * samp_freq_vals[2] (max) is per-channel -- PRIMARY and SECONDARY
++	 * can have different max rates -- so it is filled in by
++	 * qcom_smgr_iio_read_avail() for the requesting channel, not here.
++	 */
 +	priv->samp_freq_vals[0] = 1;
 +	priv->samp_freq_vals[1] = 1;
-+	priv->samp_freq_vals[2] = priv->sensor->data_types[0].max_sample_rate;
 +
 +	iio_dev->name = qcom_smgr_sensor_type_device_names[sensor->type];
 +	iio_dev->info = &qcom_smgr_iio_info;
@@ -12963,9 +12974,20 @@ index 000000000000..bb906d71cdd4
 +				smgr->sensors[i].id);
 +
 +		for (j = 0; j < smgr->sensors[i].data_type_count; j++) {
-+			/* Default to maximum sample rate */
-+			smgr->sensors[i].data_types->cur_sample_rate =
-+				smgr->sensors[i].data_types->max_sample_rate;
++			/*
++			 * Default to maximum sample rate. There is no channel
++			 * to route by yet -- iio_dev doesn't exist until
++			 * qcom_smgr_register_sensor() below -- but there
++			 * doesn't need to be: this loop already walks every
++			 * data type this sensor has (PRIMARY and, where
++			 * present, SECONDARY) by index j, so init each one's
++			 * own rate directly instead of indexing through the
++			 * data_types pointer, which always decays to element
++			 * 0 and left SECONDARY's cur_sample_rate at its
++			 * zeroed init value.
++			 */
++			smgr->sensors[i].data_types[j].cur_sample_rate =
++				smgr->sensors[i].data_types[j].max_sample_rate;
 +
 +			/*
 +			 * Worth keeping the range and rate: this is how the

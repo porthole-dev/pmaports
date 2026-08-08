@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=41
+pkgrel=42
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -345,7 +345,7 @@ nonfree_firmware() {
 
 sha512sums="
 51b7e9f3edf05d774b4477aa5e978831407a25295e3f451b2cb746b4a508caba529672404061c6147f812978cbb87172e2bacb0d2bd0094aa5a3c4b4017ff9ce  deviceinfo
-8363fa3c9d5836c50f08d72c1a904fc3b58181442df13c423022a88274f964bde242d14d8399a6b9c3230f6bbada6c778cab3014dd055eacd2225ed7b9413e97  kernel-cmdline.mainline.conf
+40eee3322459b366c04f1cbb590c35c59c03964ec078e7ab3a67d5667cf025cf985d1e91e0a85f4ac86966052d30d18503ebb7bee7ddefc32ad107ad0cf38af2  kernel-cmdline.mainline.conf
 2caa643431db69a76f62b8ac489d1a3842d34b32750682da88c359918ca7a0899ed7206bb7faa8e311dc7fc66806e77411f63c3d1ac5b2aba840d336aaed1a61  modules-initfs.mainline
 c3fbad8037d656e2f24efcc08fbac593ea4076d03bb9398bb650667b8c09d8798769c6f58cad25b1ce3263a6607e01c7b2b196f3aaa354335ab7255c2b560789  sudoers-nopasswd
 f009e13cda9afd30267061b944e9c1ec3105ab9e2ce4de7f0e39cff55ac5523d3418d1cc03283a61bd7b6e848dd5cbb25c024803301b15e31d5f0415d49790dd  taimen-modem-bringup

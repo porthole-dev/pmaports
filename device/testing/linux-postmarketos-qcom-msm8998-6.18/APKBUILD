@@ -9,7 +9,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=4
+pkgrel=5
 _commit="4e0c53280d9757b3872d3823b9f94066669aa388"
 pkgdesc="6.18 mainline kernel fork for MSM8998 devices"
 arch="aarch64"
@@ -73,6 +73,14 @@ source="
 	0031-arm64-dts-qcom-msm8998-drop-the-unused-CAMSS-VBIF-re.patch
 	0032-media-qcom-camss-add-support-for-the-MSM8998-CAMSS.patch
 	0033-arm64-configs-add-taimen_defconfig.patch
+	0034-arm64-configs-drop-dead-CONFIG_INTERCONNECT_QCOM_MSM.patch
+	0035-arm64-configs-rename-QFPROM-symbol-for-v6.1-Kconfig.patch
+	0036-ASoC-qcom-lpass-msm8998-add-missing-const-on-variant.patch
+	0037-arm64-dts-qcom-msm8998-google-wahoo-mark-ramoops-reg.patch
+	0038-arm64-configs-enable-CONFIG_USB_G_SERIAL-for-taimen_.patch
+	0039-arm64-configs-taimen-fix-symbols-v6.18-Kconfig-silen.patch
+	0040-watchdog-qcom-wdt-add-arm_on_probe-module-parameter.patch
+	0041-arm64-dts-qcom-msm8998-google-wahoo-fix-duplicate-pa.patch
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -104,7 +112,7 @@ package() {
 }
 sha512sums="
 5e367acc078e5fb79420793072c57fb507e626de9b11263da7dbd6be694b0519f82b5bb2f5e3fd1ac9d5d7088007902bd0fa089ed30bf79d2a215dfd419503cd  linux-4e0c53280d9757b3872d3823b9f94066669aa388.tar.gz
-1b84f787150a2ac9129e829fffdd3ff932d9b89103b7dcb908f0f9da92b5cec8f8f677f7e6e414ed6cd87d80e6f70a12b7f8fc3cc4a1eb4400874e4fad6ef7b0  config-postmarketos-qcom-msm8998-6.18.aarch64
+d60e70c5b8b6d6dc0cfdb616363673ce4084ad815ef4db5a7b9176efa7ef94b93f262bd5c67b43ce2229712438e81ec30cd2e685d2849448615ef462e49f7de3  config-postmarketos-qcom-msm8998-6.18.aarch64
 82478adb4b828be225cdec82db25ba664aa974c2f7677cba2fe227162d6ec3e4d70dfa3d4641b75a82854301404b1aed0830642c427580a20b1cde284e7595db  0001-media-i2c-imx179-add-Sony-IMX179-sensor-driver.patch
 9c3fc9cce80d4272532552e4a957b5f9fbc57dad186f8eec1afd336670f97d6a0765566aa1f3fe6583ba1e199805a99dc4276638be6f459870247a4ba185ade1  0002-media-i2c-imx362-add-Sony-IMX362-sensor-driver.patch
 e672bade881c4983559e9005a738b21f2030a260e2284410ec70748e11bda5c572b867f402c5e8a3bab26956a8be9e9b384a5df180dbf5bd12d79032bab042af  0003-media-i2c-lc898214xd-add-ON-Semi-LC898214XD-AF-actua.patch
@@ -138,4 +146,12 @@ f06c678a43493d9a2363ef894e3b1bc36c73ecaf0e676a435efd531f47fd0276528733805aa47946
 9f1efe489ec533f3d3beb4d51f0e7e1a78a101eb88f48be42022353fbfcc688f1acfe2154c5bf69bc8fd9c7fe6b7be1b8d3305ff520994be0f47c1415d47a87b  0031-arm64-dts-qcom-msm8998-drop-the-unused-CAMSS-VBIF-re.patch
 6b69b7087eb298f1a56de3df23268d35462e27a3cbb362581b7cd2ef9df6a23ff85b93d5ab1f8638470a5262ddeb32260c79bea7777c5671758c17c47101648b  0032-media-qcom-camss-add-support-for-the-MSM8998-CAMSS.patch
 663ea0a5543ed8efef854637a14c0ee42fbd516d1cb9f5950ea61b314f36dbdb6a36a2a2599e3a45c242bd24f1d23cfa7a9c517027cf0613c3b3be3370f0d50e  0033-arm64-configs-add-taimen_defconfig.patch
+8af8f2cdf556861f7ebe4596f6fe6c330f020bb887b119ac8384c2fce108316d368e34bc2927dc262f836df96d321bcbf0c9711f69ad22a2212e97a6c4bd3f8c  0034-arm64-configs-drop-dead-CONFIG_INTERCONNECT_QCOM_MSM.patch
+787de809e3e0557b419a033c04d513fd8ecd92f56cf9dedfbf706e5f3b9423f9dc8885d2647cfcc4524b38661d23e4b19eb789667f33288a8739795bf49d2b4e  0035-arm64-configs-rename-QFPROM-symbol-for-v6.1-Kconfig.patch
+bd2c96d84cb4fb44606ce61dbf97f2a864c068def952528e087bbd2165de390e7d857a614a7ad548b21c7b68ce4c7ef48d74f5433fbb621ac32d7e9520c63044  0036-ASoC-qcom-lpass-msm8998-add-missing-const-on-variant.patch
+130c320dd647044d539a272817a9ca4bd31963bd1cefd663b53ebf080e6fda1f43f98332ab0e21efde723771b2b1ce038f0039b64daf580f3adc45a37d7023d8  0037-arm64-dts-qcom-msm8998-google-wahoo-mark-ramoops-reg.patch
+cfd1f17ae2b48c46e89ab0830abb2e1ddb153966ddea1b2c16289c6986015fa911cf5af93dc734f12804ee3b043995bace89b2a4e3a9e967b8302d7537989344  0038-arm64-configs-enable-CONFIG_USB_G_SERIAL-for-taimen_.patch
+3413d75fddaf79fce47353a344e3c0fac1e66fe2c4d010aa60c948e3941d8874aedf62d30787764a72da335447e70d63338dbb1d3cad024ab480f61ae6d712e8  0039-arm64-configs-taimen-fix-symbols-v6.18-Kconfig-silen.patch
+40ac45de726c35881dccae3cfd30c6b02dce1746ef7216e6d8224b540a8235df5ea2ed37161ca4141b5426ea4861489b1e228c1cb2d4240b8ca822b466bb44f2  0040-watchdog-qcom-wdt-add-arm_on_probe-module-parameter.patch
+9fcd3b16d3f47bcfc4392e661639c04dd0125ebec9c12d8887a0f612c17743bbdca18c1bdf7ae9bd865ef1d47e8a55f704c97c6d6113d3ead45e196817b90b61  0041-arm64-dts-qcom-msm8998-google-wahoo-fix-duplicate-pa.patch
 "

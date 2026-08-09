@@ -1,0 +1,40 @@
+From 9a77e78b6955a3aa4456e30e6622af9b2ce92c5b Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 21:16:36 +0200
+Subject: [PATCH 38/41] arm64: configs: enable CONFIG_USB_G_SERIAL for
+ taimen_defconfig
+
+Diagnostic instrument, not a permanent config: this built-in legacy
+gadget binds the UDC at device_initcall, before userspace runs, so
+the phone enumerates over USB if and only if the kernel got that far
+-- independent of whether an initramfs or configfs ever start. That
+makes USB enumeration itself a liveness signal for early boot instead
+of an inference from silence.
+
+It conflicts with the normal pmOS configfs USB gadget (only one
+driver can own the UDC), so a kernel built with this set will offer a
+serial device (ttyACM/ttyUSB on the host) instead of ssh/NCM even if
+it boots all the way up. That is expected for this build, not a
+regression to fix here.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/configs/taimen_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/configs/taimen_defconfig b/arch/arm64/configs/taimen_defconfig
+index a47709a009fb..8bab36dee1be 100644
+--- a/arch/arm64/configs/taimen_defconfig
++++ b/arch/arm64/configs/taimen_defconfig
+@@ -3719,7 +3719,7 @@ CONFIG_USB_FUNCTIONFS=m
+ # CONFIG_USB_FUNCTIONFS_RNDIS is not set
+ CONFIG_USB_FUNCTIONFS_GENERIC=y
+ # CONFIG_USB_MASS_STORAGE is not set
+-# CONFIG_USB_G_SERIAL is not set
++CONFIG_USB_G_SERIAL=y
+ # CONFIG_USB_MIDI_GADGET is not set
+ # CONFIG_USB_G_PRINTER is not set
+ # CONFIG_USB_CDC_COMPOSITE is not set
+-- 
+2.55.0
+

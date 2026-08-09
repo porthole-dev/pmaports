@@ -27,3 +27,8 @@ enable taimen-modem-bringup.service
 #   * Removed '/etc/systemd/system/sysinit.target.wants/taimen-rescue.service'.
 # ANY unit this package ships without a line here WILL be silently disabled.
 enable taimen-rescue.service
+
+# sns-reg, enabled here since pkgrel 43: the sensor registry server must be
+# up before qcom_smgr asks the SLPI for sensors; on a fresh install it was
+# left disabled and every SSC sensor silently stayed absent.
+enable sns-reg.service

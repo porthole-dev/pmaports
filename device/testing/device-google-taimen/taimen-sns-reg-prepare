@@ -18,12 +18,16 @@
 # repo for where that table was extracted from.
 set -e
 
-if [ -e /etc/sns-reg.d/sns.reg ]; then
+if [ -s /etc/sns-reg.d/sns.reg ]; then
 	exit 0
 fi
 
 mnt=$(mktemp -d)
 mount -o ro /dev/disk/by-partlabel/persist "$mnt"
 cp "$mnt/sensors/sns.reg" /etc/sns-reg.d/sns.reg
+# fsync the copy: on 2026-08-09 a watchdog reset seconds after this cp left a
+# 0-byte sns.reg via ext4 delayed allocation, and the old `[ -e ]` guard then
+# refused to re-copy it forever. Hence also the `[ -s ]` above.
+sync /etc/sns-reg.d/sns.reg
 umount "$mnt"
 rmdir "$mnt"

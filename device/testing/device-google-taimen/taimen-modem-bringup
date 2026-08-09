@@ -91,12 +91,23 @@ if [ -n "$R" ]; then
 	fi
 fi
 
-# 4. diag-router as soon as the WLAN PD gives us wlan0.
-i=0
-while [ $i -lt 60 ] && [ ! -e /sys/class/net/wlan0 ]; do
-	sleep 1
-	i=$((i + 1))
-done
+# 4. diag-router as soon as the WLAN PD gives us wlan0 -- but only if nothing
+# has started it already. pmOS enables diag-router.service on its own
+# (qcom-diag ships it and the installer puts it in multi-user.target.wants), so
+# on a systemd image it is running long before this script reaches here and the
+# poll below is pure boot latency. Measured 2026-08-09, kernel 6.18.0 #23:
+# diag-router was active at t=59.4s, this unit ran 59.59s -> 67.75s, and all
+# 8.15s of that was this loop -- sitting on the critical chain to
+# NetworkManager -> network.target -> tuned -> multi-user.target ->
+# graphical.target. The wait exists only to delay *starting* diag-router; once
+# it is up there is nothing left to delay.
+if ! pgrep -x diag-router >/dev/null 2>&1; then
+	i=0
+	while [ $i -lt 60 ] && [ ! -e /sys/class/net/wlan0 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+fi
 ensure_running diag-router diag-router
 
 exit 0

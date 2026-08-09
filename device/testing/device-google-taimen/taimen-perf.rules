@@ -2,3 +2,24 @@
 # frames of any animation render at the 257 MHz floor before the governor
 # reacts -- up to three dropped frames at 60 Hz. 10 ms reacts within one frame.
 ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="5000000.gpu", ATTR{polling_interval}="10"
+
+# UFS clock+gear scaling costs far more than it saves on this device. msm8998
+# has no operating-points-v2, so ufs_qcom_freq_to_gear_speed() returns
+# UFS_HS_DONT_CHANGE and ufshcd_scale_gear() takes its legacy path down to
+# clk_scaling.min_gear, which ufs-qcom never overrides -- HS-G1. The link then
+# idles at HS-G1 / 50 MHz, and simple_ondemand's 60 ms window with a 70 % busy
+# threshold is never satisfied by app-launch-shaped I/O, so a short read runs
+# at the floor and only reaches HS-G3 as it is finishing. Measured, 16 MB cold
+# O_DIRECT bursts: 225 MB/s scaling vs 545 MB/s pinned; 4 KiB random reads
+# 3234 us vs 2005 us. This is not a 6.18 regression -- 6.0 behaves identically.
+#
+# Idle power is still covered: clkgate_enable and auto_hibern8 (150 ms each)
+# are untouched, and they are what actually gates the clocks when the link goes
+# quiet. Gear/clock scaling on top of that is a second-order saving.
+#
+# Anchored on sda, not on the ufshc platform device: ufshcd_add_lus() creates
+# clkscale_enable and only then calls scsi_scan_host(), so the block add event
+# is the first one guaranteed to see the attribute. The platform add and bind
+# events both fire before the async scan has created it.
+ACTION=="add", SUBSYSTEM=="block", KERNEL=="sda", \
+  RUN+="/bin/sh -c 'echo 0 > /sys/bus/platform/drivers/ufshcd-qcom/1da4000.ufshc/clkscale_enable'"

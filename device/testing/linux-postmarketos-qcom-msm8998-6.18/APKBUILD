@@ -9,7 +9,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=10
+pkgrel=11
 _commit="4e0c53280d9757b3872d3823b9f94066669aa388"
 pkgdesc="6.18 mainline kernel fork for MSM8998 devices"
 arch="aarch64"
@@ -113,7 +113,7 @@ package() {
 }
 sha512sums="
 5e367acc078e5fb79420793072c57fb507e626de9b11263da7dbd6be694b0519f82b5bb2f5e3fd1ac9d5d7088007902bd0fa089ed30bf79d2a215dfd419503cd  linux-4e0c53280d9757b3872d3823b9f94066669aa388.tar.gz
-022f5d6f07e0cd58175d6e3392d50aa1595c74fa364e8baeb2ca5ac203f0c1e10898bb5a547e7a4c9b0e060dd3f9455d35a3e26133051500313d32b8e8c9488b  config-postmarketos-qcom-msm8998-6.18.aarch64
+ba8de4ebf1ebe1ceb8cf985e819487eca3fe4d0525029560816f5d967fd242885028e2c0901774c829b25155f269bbbb025c2fdd01341acfdfb14d089b9a098d  config-postmarketos-qcom-msm8998-6.18.aarch64
 82478adb4b828be225cdec82db25ba664aa974c2f7677cba2fe227162d6ec3e4d70dfa3d4641b75a82854301404b1aed0830642c427580a20b1cde284e7595db  0001-media-i2c-imx179-add-Sony-IMX179-sensor-driver.patch
 9c3fc9cce80d4272532552e4a957b5f9fbc57dad186f8eec1afd336670f97d6a0765566aa1f3fe6583ba1e199805a99dc4276638be6f459870247a4ba185ade1  0002-media-i2c-imx362-add-Sony-IMX362-sensor-driver.patch
 e672bade881c4983559e9005a738b21f2030a260e2284410ec70748e11bda5c572b867f402c5e8a3bab26956a8be9e9b384a5df180dbf5bd12d79032bab042af  0003-media-i2c-lc898214xd-add-ON-Semi-LC898214XD-AF-actua.patch

@@ -1,0 +1,15 @@
+# Auto-brightness. taimen has a real ambient light sensor -- the ALS half of
+# qcom-smgr-prox-light -- and iio-sensor-proxy exposes it as
+# HasAmbientLight=true with sane lux values.
+#
+# gsd-power reads this key and never claims the sensor while it is false, so
+# with it false there is no auto-brightness and Settings offers no switch.
+# Both phosh and postmarketOS ship gschema overrides forcing it false, because
+# most mobile devices have no working ALS. See taimen-dconf-profile for why
+# this is a dconf system database rather than another gschema override.
+#
+# Measured on the device the moment the key became true: iio-sensor-proxy's
+# LightLevel went 0 -> 8.34 lux and the backlight moved 69 -> 58 on its own,
+# then 24 as the room darkened to 3.09 lux.
+[org/gnome/settings-daemon/plugins/power]
+ambient-enabled=true

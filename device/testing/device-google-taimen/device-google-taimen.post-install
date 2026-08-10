@@ -90,4 +90,10 @@ fi
 # now purely the ath.regd_override module param in /etc/modprobe.d -- cfg80211
 # adopts the country from the AP beacon country IE on its own.
 
+# Compile /etc/dconf/db/local.d into the binary database dconf actually reads.
+# Nothing else does this: dconf ships no apk trigger, so without it the file
+# installed above is inert and auto-brightness stays off (see
+# taimen-dconf-profile for why a gschema override cannot do this job).
+command -v dconf >/dev/null && dconf update
+
 exit 0

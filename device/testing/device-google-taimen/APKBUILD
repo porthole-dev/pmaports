@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=45
+pkgrel=46
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -43,7 +43,8 @@ source="
 	swclock-wait-for-rtc.conf
 	groups.conf
 	sns-reg-registry.conf
-	taimen-sensors.gschema.override
+	taimen-dconf-profile
+	taimen-dconf-sensors
 	taimen-proximity.rules
 	taimen-accel-matrix.rules
 	phosh-desktop-env.conf
@@ -154,11 +155,13 @@ package() {
 
 	# Making the sensors reachable from the SHELL, which is a separate problem
 	# from making them work. Each file's header says what is broken without it;
-	# in short: the ALS is hidden by a gschema override, proximity is refused
-	# without a udev property, and iio-sensor-proxy races the SSC sensors at
-	# boot.
-	install -Dm644 "$srcdir"/taimen-sensors.gschema.override \
-		"$pkgdir"/usr/share/glib-2.0/schemas/99-taimen-sensors.gschema.override
+	# in short: gsd-power never claims the ALS unless ambient-enabled is true
+	# and neither phosh nor postmarketOS will let a gschema override make it
+	# true, proximity is refused without a udev property, and iio-sensor-proxy
+	# races the SSC sensors at boot. dconf update runs from the post-install.
+	install -Dm644 "$srcdir"/taimen-dconf-profile "$pkgdir"/etc/dconf/profile/user
+	install -Dm644 "$srcdir"/taimen-dconf-sensors \
+		"$pkgdir"/etc/dconf/db/local.d/01-taimen-sensors
 	install -Dm644 "$srcdir"/taimen-proximity.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-proximity.rules
 	install -Dm644 "$srcdir"/taimen-accel-matrix.rules \
@@ -359,7 +362,8 @@ bfb5d9ffe314f1ac18bd27baa4adf4a908e9005a0d0a472c74de72611672f85235fc5f198e3def1d
 640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
 2690c1a30952b293a5e3b46b6e07c54e3b03c759a3b83d3c04b77d2ff2d886fd930625fdca7f5bea5254dd418d2cfa7765e5ebbeca2064542a70c4ee5592e6a8  groups.conf
 cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7d8476548b3d9c4d6cb24ff9fd289d00b2ca8a06c82afe3c2  sns-reg-registry.conf
-a3389ff3bdcbe6dc9d3436c6bfd9c358a55039c57a044228f7cc7bc861e5adbc7d0320e208eec904f9150c59d76b1831d248600a96b2fb9ffd5d018919f7f6c9  taimen-sensors.gschema.override
+c24db92ededd9b6e936e557a458167f981156bb70e66add92918de0a6cd6ba9cc2b94d0531c87ef21b4aa2ee02fa924db366253acac6daf72c18efa97f6262dc  taimen-dconf-profile
+5506422fb48be5730036de5e94b66b519091e6cd53c044536cf7c62b80f5660087b1ccbe57e117b2b95453d5ab8a940e83a5b472c0e45e68d1f399ecbb7dcd4c  taimen-dconf-sensors
 20bba033222c5979b0c93083a8a5d04a410eb4332112c1fea9c38a6d159d39fccd05533fee7546c01f79ace97a76c69204243efe5266be7ea8eaead807df1213  taimen-proximity.rules
 e9a8ad48c0b9e250ace1e6cea004f628ebf741fcdfe6d767f1fc4da953c8205c87f84b4e61a15a6a82582790e241b06ce20e220c2165c365062c293d0335de7d  taimen-accel-matrix.rules
 6cb9e6ebcc0cd5677afa99372405b24f56b3b854885917fcf344d8ccce0b42bf9488144893dacb5bb52b0deef3103f01755fff14a5a318e0a0151875363e5a46  phosh-desktop-env.conf

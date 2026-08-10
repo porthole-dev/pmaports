@@ -1,0 +1,20 @@
+# dconf profile for every user on this device.
+#
+# It exists so the file next to it, /etc/dconf/db/local.d/01-taimen-sensors,
+# is consulted at all: without a system-db line in the profile, dconf reads
+# the user database and nothing else. "user-db:user" first keeps the user's
+# own choices winning over these defaults, which is the point of setting a
+# default rather than forcing a value.
+#
+# Why this is not a gschema override, which is the obvious mechanism and the
+# one this device used to use: glib-compile-schemas will not let a second
+# override file change a key an earlier one already overrode, and BOTH phosh
+# (00_mobi.Phosh.gschema.override) and postmarketOS
+# (00_postmarketos-base-ui-gnome.gschema.override) override
+# ambient-enabled=false. Measured on the device: a taimen override sorting
+# after them (99-) and a taimen override sorting before them (00-) BOTH lost,
+# while a control key in the very same file that no 00_ file mentions took
+# effect immediately. So filename ordering is not the lever it was documented
+# to be, and auto-brightness was off no matter what that file said.
+user-db:user
+system-db:local

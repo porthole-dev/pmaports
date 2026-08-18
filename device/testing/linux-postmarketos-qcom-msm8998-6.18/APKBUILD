@@ -9,7 +9,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=21
+pkgrel=22
 _commit="4e0c53280d9757b3872d3823b9f94066669aa388"
 pkgdesc="6.18 mainline kernel fork for MSM8998 devices"
 arch="aarch64"
@@ -24,6 +24,7 @@ makedepends="
 	bash
 	bison
 	clang
+	elfutils-dev
 	findutils
 	flex
 	linux-headers

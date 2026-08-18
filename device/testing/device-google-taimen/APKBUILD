@@ -10,8 +10,8 @@ arch="aarch64"
 options="!check !archcheck"
 # soc-qcom-qbootctl marks each boot successful in the Android A/B interface.
 # Without it the bootloader decrements the slot's retry counter every boot
-# and eventually refuses the slot, even though pmOS booted fine. Its -openrc
-# subpackage comes in on its own via install_if, exactly as rmtfs's does, and
+# and eventually refuses the slot, even though pmOS booted fine. Its
+# soc-qcom-qbootctl-openrc subpackage comes in on its own via install_if and
 # runs `rc-update add qbootctl default`; on systemd the unit is already
 # unconditionally enabled by postmarketos-base-systemd's 90-base.preset
 # ("enable qbootctl.service"). So do NOT hand-symlink either init here or in
@@ -423,7 +423,7 @@ e1f59cf40a3a58840a86ebc9bd82a78ea0a9ad7d45fd37f6430e47210bb02d636defd487341a8e50
 bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd87e6a44b2814973e9dc849e275695e203a5516b6e4d665a5f  taimen-modem-bringup.initd
 cb7d96d5d0f2153ab76556100053162b0a4c90e2301723303b07e39559df762f4c6f5fc4cf3ef572a3212682d983c8daabd8cf1f349396517ab1c00309ecb75e  taimen-modem-bringup.service
 259349fe19752f3d9aac9651acdad3499058030e63587c6af68e1df1c0ddf602096fbccc892893ce02437e67c19b046522c1e80f604a68b48563e486ced143ca  ath-regd-override.conf
-c211e4c5e20b7cc440516a998ac5fdf12fde624a6e59fe459b5c63c95eee09cd47b56fcd8a7832d905721056174e85219023ce26ece59a0e22bbac3b8ec291d8  taimen.preset
+9945c2bfc5d8195e01f80461bee418b6db6d8fd5e694873536b1afb6950fb0f827814a21846f262017e0f13ec6ee02c90ad9c583f92ded7217a4d9fd920a55cf  taimen.preset
 640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
 2690c1a30952b293a5e3b46b6e07c54e3b03c759a3b83d3c04b77d2ff2d886fd930625fdca7f5bea5254dd418d2cfa7765e5ebbeca2064542a70c4ee5592e6a8  groups.conf
 cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7d8476548b3d9c4d6cb24ff9fd289d00b2ca8a06c82afe3c2  sns-reg-registry.conf

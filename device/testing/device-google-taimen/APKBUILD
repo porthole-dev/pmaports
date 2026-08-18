@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=2
+pkgrel=3
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -89,6 +89,7 @@ source="
 	taimen-ambient-nudge.desktop
 	taimen-uclamp-session.desktop
 	taimen-suspend-guard-elogind.conf
+	taimen-cpuidle-suspend-hook
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -204,6 +205,17 @@ package() {
 	# static AllowSuspend=no rather than the same arm/disarm gate.
 	install -Dm644 "$srcdir"/taimen-suspend-guard-elogind.conf \
 		"$pkgdir"/etc/elogind/sleep.conf.d/10-taimen-broken.conf
+
+	# cpuidle mitigation for the s2idle hang -- see the script's own header
+	# and docs/campaign/ws-05-suspend.md for the root-caused A/B this is
+	# built from. Both directories are read unconditionally by their
+	# respective init (no unit, no symlink, no rc-update), so the same file
+	# installed twice IS the whole OpenRC twin, same shape as the powerkey
+	# logind.conf.d pair below.
+	install -Dm755 "$srcdir"/taimen-cpuidle-suspend-hook \
+		"$pkgdir"/usr/lib/systemd/system-sleep/10-taimen-cpuidle
+	install -Dm755 "$srcdir"/taimen-cpuidle-suspend-hook \
+		"$pkgdir"/usr/libexec/elogind/system-sleep/10-taimen-cpuidle
 
 	# PID 1 seatbelt + the PAM-free way back in when PID 1 freezes. Both files'
 	# headers explain the failure they exist for. The rescue channel binds the
@@ -462,4 +474,5 @@ a4346603886f434ab15a614b8ed454601e810ca60b458491eed8e0548efc7772af722bf8f626d330
 e2c9528ccfb6a79226af530990bc5ca603ad63fa9a36439fdf344a04bc8af1b085659270d4d5e90682403524723796839c492ee2d87734b297800dbc5a913304  taimen-ambient-nudge.desktop
 2abb5206a413bc786aad46a9608ce41793fbcb561dce8f1ec050775733f04fe634e292187eaf7d9048f56197109cf2e00c261f89440c9c6eebab0f0446241c0f  taimen-uclamp-session.desktop
 dac6d1a3a1fceb692731373f936dd5e932ea7308ae4eeac37d0ba8abe4e86bb7abb6c4617fb5428ede7166ac7efc614395c331726273df2f2e828404dec14693  taimen-suspend-guard-elogind.conf
+a78e637281120a28ff47c9cda475f1777c8b91b8e494ffe5604a2095b58c7cec9e60ff7282fad98bb31e95760efb0214593d6e7b71ffedc33c9250212f86f4f0  taimen-cpuidle-suspend-hook
 "

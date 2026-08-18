@@ -1,4 +1,4 @@
-# Maintainer: Giuseppe Maggio <jertlok@proton.me>
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
 #
 # Convergence Shell -- a GNOME Shell extension that turns vanilla GNOME into a
 # usable phone shell (app drawer, status bar, notification panel, gesture bar,

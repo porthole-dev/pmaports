@@ -2,8 +2,7 @@
 # upstream aborts the daemon on a g_assert whenever the Location interface is
 # initialized a second time on one modem object, which unlocking a SIM PIN does.
 # Reproduced on demand on google-taimen. Drop this fork once the fix is upstream.
-# Contributor: Stuart Cardall <developer@it-offshore.co.uk>
-maintainer="Achill Gilgenast <achill@achill.org>"
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=modemmanager
 pkgver=1.25.95_git20260709
 pkgrel=1

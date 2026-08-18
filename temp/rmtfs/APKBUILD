@@ -8,7 +8,7 @@
 # without O_CREAT).
 #
 # Drop this fork if the entries land upstream.
-maintainer="Aelin <aelin@postmarketos.org>"
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=rmtfs
 pkgver=1.3
 pkgrel=1

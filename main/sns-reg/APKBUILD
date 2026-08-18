@@ -1,4 +1,4 @@
-# Maintainer: Yassine Oudjana (Tooniis) <y.oudjana@protonmail.com>
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=sns-reg
 pkgver=0.1_git20250706
 pkgrel=3

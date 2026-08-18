@@ -1,5 +1,5 @@
 From 41a966f02fb044845d0430c53d5706df867e0000 Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Yassine Oudjana <y.oudjana@protonmail.com>
 Date: Sat, 8 Aug 2026 16:10:54 +0200
 Subject: [PATCH 09/33] net: qrtr: turn QRTR into a bus
 
@@ -42,6 +42,8 @@ device_driver *, const struct device *, and string literal
 namespaces respectively); adapted to 6.18's current signatures instead
 of carrying the old ones forward.
 
+Signed-off-by: Yassine Oudjana <y.oudjana@protonmail.com>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  include/linux/mod_devicetable.h   |   9 ++

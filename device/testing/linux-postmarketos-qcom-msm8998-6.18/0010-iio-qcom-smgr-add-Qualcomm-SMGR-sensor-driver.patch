@@ -1,5 +1,5 @@
 From 1a134841cf34e69a91ededbea204cd5052da8663 Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Yassine Oudjana <y.oudjana@protonmail.com>
 Date: Sat, 8 Aug 2026 15:37:09 +0200
 Subject: [PATCH 10/33] iio: qcom-smgr: add Qualcomm SMGR sensor driver
 
@@ -20,6 +20,8 @@ namespace syntax (MODULE_IMPORT_NS("QRTR")), which is what 6.18
 actually expects -- the bare-token form is pre-6.13/v6.0-era and would
 not have compiled here regardless of the qrtr bus gap.
 
+Signed-off-by: Yassine Oudjana <y.oudjana@protonmail.com>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iio/common/Kconfig                    |    1 +

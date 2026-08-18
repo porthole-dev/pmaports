@@ -9,7 +9,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=11
+pkgrel=12
 _commit="4e0c53280d9757b3872d3823b9f94066669aa388"
 pkgdesc="6.18 mainline kernel fork for MSM8998 devices"
 arch="aarch64"
@@ -77,7 +77,6 @@ source="
 	0035-arm64-configs-rename-QFPROM-symbol-for-v6.1-Kconfig.patch
 	0036-ASoC-qcom-lpass-msm8998-add-missing-const-on-variant.patch
 	0037-arm64-dts-qcom-msm8998-google-wahoo-mark-ramoops-reg.patch
-	0038-arm64-configs-enable-CONFIG_USB_G_SERIAL-for-taimen_.patch
 	0039-arm64-configs-taimen-fix-symbols-v6.18-Kconfig-silen.patch
 	0040-watchdog-qcom-wdt-add-arm_on_probe-module-parameter.patch
 	0041-arm64-dts-qcom-msm8998-google-wahoo-fix-duplicate-pa.patch
@@ -151,7 +150,6 @@ f06c678a43493d9a2363ef894e3b1bc36c73ecaf0e676a435efd531f47fd0276528733805aa47946
 787de809e3e0557b419a033c04d513fd8ecd92f56cf9dedfbf706e5f3b9423f9dc8885d2647cfcc4524b38661d23e4b19eb789667f33288a8739795bf49d2b4e  0035-arm64-configs-rename-QFPROM-symbol-for-v6.1-Kconfig.patch
 bd2c96d84cb4fb44606ce61dbf97f2a864c068def952528e087bbd2165de390e7d857a614a7ad548b21c7b68ce4c7ef48d74f5433fbb621ac32d7e9520c63044  0036-ASoC-qcom-lpass-msm8998-add-missing-const-on-variant.patch
 130c320dd647044d539a272817a9ca4bd31963bd1cefd663b53ebf080e6fda1f43f98332ab0e21efde723771b2b1ce038f0039b64daf580f3adc45a37d7023d8  0037-arm64-dts-qcom-msm8998-google-wahoo-mark-ramoops-reg.patch
-cfd1f17ae2b48c46e89ab0830abb2e1ddb153966ddea1b2c16289c6986015fa911cf5af93dc734f12804ee3b043995bace89b2a4e3a9e967b8302d7537989344  0038-arm64-configs-enable-CONFIG_USB_G_SERIAL-for-taimen_.patch
 3413d75fddaf79fce47353a344e3c0fac1e66fe2c4d010aa60c948e3941d8874aedf62d30787764a72da335447e70d63338dbb1d3cad024ab480f61ae6d712e8  0039-arm64-configs-taimen-fix-symbols-v6.18-Kconfig-silen.patch
 40ac45de726c35881dccae3cfd30c6b02dce1746ef7216e6d8224b540a8235df5ea2ed37161ca4141b5426ea4861489b1e228c1cb2d4240b8ca822b466bb44f2  0040-watchdog-qcom-wdt-add-arm_on_probe-module-parameter.patch
 9fcd3b16d3f47bcfc4392e661639c04dd0125ebec9c12d8887a0f612c17743bbdca18c1bdf7ae9bd865ef1d47e8a55f704c97c6d6113d3ead45e196817b90b61  0041-arm64-dts-qcom-msm8998-google-wahoo-fix-duplicate-pa.patch

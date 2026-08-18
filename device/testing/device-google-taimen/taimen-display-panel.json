@@ -2,5 +2,6 @@
   "name": "Google Pixel 2 XL",
   "x-res": 1440,
   "y-res": 2880,
+  "border-radius": 100,
   "corner-radii": [100, 100, 100, 100]
 }

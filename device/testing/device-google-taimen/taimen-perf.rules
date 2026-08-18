@@ -3,6 +3,18 @@
 # reacts -- up to three dropped frames at 60 Hz. 10 ms reacts within one frame.
 ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="5000000.gpu", ATTR{polling_interval}="10"
 
+# Keep the GPU out of runtime suspend across short interaction pauses; msm's
+# 250 ms default means every touch after a reading pause pays the resume +
+# requantisation cost before the first frame.
+#
+# On `bind`, not `add`: the attribute is created by the driver core for every
+# device, but writing it returns -EIO until the driver has called
+# pm_runtime_use_autosuspend() (drivers/base/power/sysfs.c,
+# autosuspend_delay_ms_store). The platform `add` event fires before probe, so
+# it would fail exactly the way the tmpfiles.d version did.
+ACTION=="bind", SUBSYSTEM=="platform", KERNEL=="5000000.gpu", \
+  ATTR{power/autosuspend_delay_ms}="1000"
+
 # UFS clock+gear scaling costs far more than it saves on this device. msm8998
 # has no operating-points-v2, so ufs_qcom_freq_to_gear_speed() returns
 # UFS_HS_DONT_CHANGE and ufshcd_scale_gear() takes its legacy path down to

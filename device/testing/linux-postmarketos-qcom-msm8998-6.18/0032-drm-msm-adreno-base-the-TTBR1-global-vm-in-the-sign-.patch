@@ -1,0 +1,73 @@
+From 4e9510221bb5a4956250a153b65ab2a7397dce95 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 16:16:14 +0200
+Subject: [PATCH 032/113] drm/msm/adreno: base the TTBR1 global vm in the
+ sign-extendable half
+
+The GPU issues 48-bit VAs. Within the forced-TTBR1 aperture
+(0xffff000000000000-0xffffffffffffffff on msm8998) the SMMU rebuilds
+the full VA by sign-extending the top bit of the upstream address, so
+the only TTBR1 addresses a 48-bit master can form are those with bit
+47 set: 0xffff800000000000 and up. The previous fix left the vm based
+at the aperture start, in the unreachable lower half -- every global
+buffer was issued with bit 47 clear, sign-extended to a LOW address,
+looked up in TTBR0 where nothing maps, and write-faulted.
+
+This is what made GPU recovery fatal: the crashdumper allocates its
+scratch in this vm, so recovery (or merely reading debugfs/dri/0/gpu)
+faulted itself, a5xx_hw_init() failed with -22, and the device looped
+until the bootloader gave up the slot.
+
+Base the vm at 0xffff800000000000 with the size clamped so
+start + size does not wrap u64 (a wrapped range makes every drm_mm
+allocation fail with -ENOSPC and takes all of msm down).
+
+Verified on taimen (against the pre-drm_gpuvm code this function has
+since become): vm maps at 0xffff800000001000, reading
+debugfs/dri/0/gpu (previously a deterministic wedge) returns state
+cleanly, and a real runtime fault now goes fault -> hangcheck ->
+recover -> GPU healthy again, with the session surviving.
+
+Ported from taimen-v6.0 onto 6.18's adreno_iommu_create_vm(); the fix
+itself carries over unchanged.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/adreno/adreno_gpu.c | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/adreno/adreno_gpu.c b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+index 61f67eef3682..af1041c74287 100644
+--- a/drivers/gpu/drm/msm/adreno/adreno_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+@@ -239,6 +239,30 @@ adreno_iommu_create_vm(struct msm_gpu *gpu,
+ 	if (start + size < start)
+ 		size = U64_MAX - start;
+ 
++	/*
++	 * The GPU issues 48-bit VAs. Within the TTBR1 aperture the SMMU
++	 * reconstructs the full 64-bit VA by sign-extending the top bit of the
++	 * upstream address (SEP), so the only TTBR1 VAs a 48-bit master can
++	 * actually form are the ones whose bit 47 is set:
++	 * 0xffff800000000000 and up. The aperture's lower half
++	 * (0xffff000000000000..0xffff7fffffffffff) is unreachable -- a buffer
++	 * placed there is issued with bit 47 clear, sign-extends to a LOW
++	 * address, gets looked up in TTBR0 where nothing maps it, and faults.
++	 *
++	 * That unreachable half is exactly where this vm used to start, and is
++	 * why running the crashdumper (GPU recovery, or any read of
++	 * debugfs/dri/0/gpu, which allocates its 1 MB scratch here) reliably
++	 * wedged the A540: the recovery path itself faulted, a5xx_hw_init()
++	 * returned -22, and the device looped to fastboot.
++	 *
++	 * Base the vm in the reachable half. The clamp above already keeps
++	 * start + size from wrapping.
++	 */
++	if (start == 0xffff000000000000ULL) {
++		start = 0xffff800000000000ULL;
++		size = U64_MAX - start;
++	}
++
+ 	DRM_DEV_INFO(&pdev->dev,
+ 		     "gpu aspace: aperture %#llx-%#llx, base %#llx, size %#llx\n",
+ 		     geometry->aperture_start, geometry->aperture_end,

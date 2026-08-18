@@ -1,0 +1,70 @@
+From 0e1c1cd404db2cc7b99c61f900749841b50e5412 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 10 Aug 2026 10:46:57 +0200
+Subject: [PATCH 099/113] arm64: dts: qcom: msm8998-google-wahoo: enable IPA
+
+Enable the IPA block so the modem gets a data path, and have the AP load
+the GSI firmware rather than the modem.
+
+With the modem as GSI loader it is supposed to initialise GSI and raise
+the "ipa-setup-ready" smp2p interrupt; on wahoo that interrupt never
+arrives, so ipa_qmi_ready() never fires, ipa_modem_start() is never
+called, and the rmnet netdev is never created. The vendor ships
+qcom/msm8998/wahoo/ipa_fws.mbn, whose ELF program headers are based at
+paddr 0 spanning 0x7000 - fully relocatable - so qcom_mdt_load places it
+wherever memory-region points, and the existing ipa_fw_mem carveout
+(0x10000 at 0x95200000) is untouched by this board's memory map.
+
+msm8998-oneplus-common.dtsi already loads GSI firmware from the AP on
+this SoC.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../boot/dts/qcom/msm8998-google-wahoo.dtsi   | 34 +++++++++++++------
+ 1 file changed, 23 insertions(+), 11 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+index 7a4e3840cff1..020bd785d00c 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+@@ -596,17 +596,29 @@ &ufsphy {
+ 	vddp-ref-clk-always-on;
+ };
+ 
+-/*
+- * milestone-2 TODO (ipa, explicitly out of milestone-1 scope): our &ipa
+- * override (GSI firmware load, memory-region, "okay" status -- see
+- * taimen-v6.0's msm8998-google-wahoo.dtsi for the full node with modem
+- * WLAN-datapath rationale) has no base node to attach to: 6.18's
+- * msm8998.dtsi carries no top-level "ipa" node at all yet, unlike our
+- * 6.0 base. Needs the ipa SoC node ported into msm8998.dtsi first
+- * (the drivers/net/ipa code is also unported -- gsi.c, ipa_gsi.c,
+- * ipa_modem.c are all in the milestone-2 list), then this override can
+- * come back.
+- */
++&ipa {
++	status = "okay";
++
++	/*
++	 * The AP loads the GSI firmware here, as msm8998-oneplus-common.dtsi
++	 * already does on this SoC -- NOT "modem". With the modem as loader
++	 * it is supposed to initialise GSI and raise the "ipa-setup-ready"
++	 * smp2p interrupt; on wahoo that interrupt never arrives, so
++	 * ipa_qmi_ready() never fires, ipa_modem_start() is never called and
++	 * the rmnet netdev is never created. Without that netdev nothing
++	 * matches ModemManager's 77-mm-qcom-soc.rules (SUBSYSTEM=="net",
++	 * DRIVERS=="ipa"), so no modem object is ever exposed.
++	 *
++	 * The vendor ships qcom/msm8998/wahoo/ipa_fws.mbn, and its ELF program
++	 * headers are based at paddr 0 spanning 0x7000, i.e. fully relocatable,
++	 * so qcom_mdt_load places it wherever memory-region points. ipa_fw_mem
++	 * is 0x10000 at 0x95200000 and /proc/iomem confirms 95200000-95214fff
++	 * is reserved and otherwise unused on this device.
++	 */
++	qcom,gsi-loader = "self";
++	memory-region = <&ipa_fw_mem>;
++	firmware-name = "qcom/msm8998/wahoo/ipa_fws.mbn";
++};
+ 
+ &wifi {
+ 	status = "okay";

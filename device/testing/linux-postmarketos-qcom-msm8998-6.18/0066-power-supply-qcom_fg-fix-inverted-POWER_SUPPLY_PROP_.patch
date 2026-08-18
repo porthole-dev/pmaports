@@ -1,0 +1,53 @@
+From b5448781019d58f212f3a187b6ce7f963eb0d86e Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 18:24:12 +0200
+Subject: [PATCH 066/113] power: supply: qcom_fg: fix inverted
+ POWER_SUPPLY_PROP_CURRENT_NOW sign
+
+qcom_fg_get_current() and qcom_fg_gen3_get_current() report the raw,
+sign-extended BATT_CURRENT SRAM value directly. On taimen (PMI8998,
+gen3 fuel gauge) that raw value is positive while the battery is
+discharging and negative while it is charging -- the opposite of the
+kernel's power-supply convention, where CURRENT_NOW is positive for
+charging and negative for discharging (see e.g. the documented
+convention in 88pm860x_battery.c).
+
+This was measured directly on taimen hardware while fixing the
+sign-extension helper in a prior commit: -8789 uA idle at 99% charge
+(charging) and +250000 uA sustained under an 8-way CPU burn
+(discharging). Negate the scaled value so the sign matches what
+userspace expects from every other power-supply driver.
+
+Both qcom_fg_get_current() (pre-gen3, PMI8996 and older) and
+qcom_fg_gen3_get_current() (PMI8998 and newer) read the same
+BATT_CURRENT register family and share the same sign convention, so
+fix both for consistency even though only the gen3 path is exercised
+on taimen.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/power/supply/qcom_fg.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/power/supply/qcom_fg.c b/drivers/power/supply/qcom_fg.c
+index a79fe65cf4b1..5fa1f0b0f7d9 100644
+--- a/drivers/power/supply/qcom_fg.c
++++ b/drivers/power/supply/qcom_fg.c
+@@ -374,7 +374,7 @@ static int qcom_fg_get_current(struct qcom_fg_chip *chip, int *val)
+ 	}
+ 	//handle rev 1 too
+ 	temp = sign_extend32(readval[1] << 8 | readval[0], 15);
+-	*val = div_s64((s64)temp * 152587, 1000);
++	*val = -div_s64((s64)temp * 152587, 1000);
+ 	return 0;
+ }
+ 
+@@ -429,7 +429,7 @@ static int qcom_fg_gen3_get_current(struct qcom_fg_chip *chip, int *val)
+ 	}
+ 	//handle rev 1 too
+ 	temp = sign_extend32(readval[1] << 8 | readval[0], 15);
+-	*val = div_s64((s64)temp * 488281, 1000);
++	*val = -div_s64((s64)temp * 488281, 1000);
+ 	return 0;
+ }
+ 

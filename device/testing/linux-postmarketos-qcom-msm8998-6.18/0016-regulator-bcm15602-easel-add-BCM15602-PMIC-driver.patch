@@ -1,0 +1,339 @@
+From 178feebed2388816714d0175e2f5919bca149b40 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 15:32:56 +0200
+Subject: [PATCH 016/113] regulator: bcm15602-easel: add BCM15602 PMIC driver
+
+Adds a minimal regulator driver for the Broadcom BCM15602 PMIC that
+powers Easel (Google Pixel Visual Core) on the Google Pixel 2 / 2 XL.
+Easel is an in-line MIPI bridge that both camera sensors' CSI lanes
+route through, so this regulator has to come up before the camera
+can work at all.
+
+The downstream driver (drivers/staging/easel/regulator/) models every
+rail, the ADC, the watchdog and the thermal sensor. Nothing on this
+port consumes any of that: what the camera needs is "Easel is
+powered", so this exposes exactly one regulator and drives the
+documented enable sequence behind it. It does not attempt to boot
+Easel's own firmware, bring up its DDR, or touch its IPU -- none of
+which the camera bypass path requires.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/regulator/Kconfig          |   9 +
+ drivers/regulator/Makefile         |   1 +
+ drivers/regulator/bcm15602-easel.c | 274 +++++++++++++++++++++++++++++
+ 3 files changed, 284 insertions(+)
+ create mode 100644 drivers/regulator/bcm15602-easel.c
+
+diff --git a/drivers/regulator/Kconfig b/drivers/regulator/Kconfig
+index d84f3d054c59..7e66d3b9498c 100644
+--- a/drivers/regulator/Kconfig
++++ b/drivers/regulator/Kconfig
+@@ -228,6 +228,15 @@ config REGULATOR_BCM590XX
+ 	  BCM590xx PMUs. This will enable support for the software
+ 	  controllable LDO/Switching regulators.
+ 
++config REGULATOR_BCM15602_EASEL
++	tristate "BCM15602 PMIC (Easel power on Pixel 2)"
++	depends on I2C
++	help
++	  Power for Easel (Google Pixel Visual Core) on the Google Pixel 2
++	  and Pixel 2 XL. Easel is an in-line MIPI bridge carrying both
++	  cameras' CSI lanes, so this regulator is required for the camera
++	  to work at all.
++
+ config REGULATOR_BD71815
+ 	tristate "ROHM BD71815 Power Regulator"
+ 	depends on MFD_ROHM_BD71828
+diff --git a/drivers/regulator/Makefile b/drivers/regulator/Makefile
+index b3101376029d..580ad46d30a0 100644
+--- a/drivers/regulator/Makefile
++++ b/drivers/regulator/Makefile
+@@ -33,6 +33,7 @@ obj-$(CONFIG_REGULATOR_ATC260X) += atc260x-regulator.o
+ obj-$(CONFIG_REGULATOR_AW37503) += aw37503-regulator.o
+ obj-$(CONFIG_REGULATOR_AXP20X) += axp20x-regulator.o
+ obj-$(CONFIG_REGULATOR_BCM590XX) += bcm590xx-regulator.o
++obj-$(CONFIG_REGULATOR_BCM15602_EASEL) += bcm15602-easel.o
+ obj-$(CONFIG_REGULATOR_BD71815)	+= bd71815-regulator.o
+ obj-$(CONFIG_REGULATOR_BD71828) += bd71828-regulator.o
+ obj-$(CONFIG_REGULATOR_BD718XX) += bd718x7-regulator.o
+diff --git a/drivers/regulator/bcm15602-easel.c b/drivers/regulator/bcm15602-easel.c
+new file mode 100644
+index 000000000000..7de8190dc1bf
+--- /dev/null
++++ b/drivers/regulator/bcm15602-easel.c
+@@ -0,0 +1,274 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * BCM15602 -- power for Easel (Google Pixel Visual Core / Intel Monette Hill)
++ * on the Pixel 2 / 2 XL (wahoo).
++ *
++ * Why this exists, and why it is in the camera path (HANDOFF §41): Easel is
++ * not an optional co-processor on this board, it is an IN-LINE MIPI BRIDGE.
++ * Both camera sensors' CSI lanes terminate on Easel's MIPI receivers and it
++ * retransmits to the SoC's CSIPHY0/CSIPHY1 -- confirmed from Easel's own
++ * devicetree in the factory image (/vendor/firmware/easel/mnh.dtb: mipihost
++ * RX0/RX1/RX2 in, mipidevice TX0/TX1 out, plus a mipitop mux). With this PMIC
++ * off, the SoC's CSIPHYs are electrically dead no matter how perfectly the
++ * sensors and CAMSS are programmed.
++ *
++ * Scope, stated honestly: this powers Easel and nothing else. It does not
++ * boot Easel's firmware, bring up its DDR, or touch the IPU -- none of which
++ * the MIPI bypass path needs, because that mux is programmed from the AP over
++ * PCIe BAR2 (downstream mnh-pcie.c:218/264).
++ *
++ * ponytail: the downstream driver (drivers/staging/easel/regulator/, 1489
++ * lines) models every rail, the ADC, the watchdog and the thermal sensor.
++ * Nothing here consumes any of that. What the camera needs is "Easel is
++ * powered", so this exposes exactly one regulator and drives the documented
++ * sequence behind it. Split the rails out if something ever needs them
++ * individually.
++ */
++
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/regulator/driver.h>
++#include <linux/regulator/machine.h>
++
++/* Register map: drivers/staging/easel/regulator/bcm15602-regulator.h */
++#define BCM15602_REG_PMIC_ID_LSB	0x00
++#define BCM15602_REG_GPIO_OUT_CTRL	0x08
++#define BCM15602_REG_BUCK_SDSR_CTRL0	0x52
++#define BCM15602_REG_BUCK_ASR_CTRL0	0x5c
++#define BCM15602_REG_LDO_IOLDO_ENCTRL	0x72
++#define BCM15602_REG_LDO_SDLDO_ENCTRL	0x77
++
++#define BCM15602_PART_ID		0x5602
++
++/*
++ * GPIO output register is a single byte holding both pins plus a fixed
++ * enable field: 0xC | (gpio1 << 1) | gpio0  (bcm15602-gpio.c:80-84).
++ * gpio0 = soc_pwr_good, gpio1 = ddr_pad_iso_n (DDR is unused here).
++ */
++#define BCM15602_GPIO_BASE		0x0c
++#define BCM15602_GPIO_SOC_PWR_GOOD	BIT(0)
++
++struct bcm15602 {
++	struct i2c_client *client;
++	struct gpio_desc *pon;
++	struct gpio_desc *resetb;
++	struct clk *ref_clk;
++	struct clk *sleep_clk;
++	bool on;
++};
++
++/*
++ * Rail enable order and values are exactly bcm15602_regulator_enable()'s,
++ * sequenced as mnh_pwr_up() does it (mnh-pwr.c:597): sdldo, ioldo, asr, sdsr.
++ */
++static const struct {
++	const char *name;
++	u8 reg;
++	u8 val;
++} bcm15602_rails[] = {
++	{ "sdldo", BCM15602_REG_LDO_SDLDO_ENCTRL, 0x03 },
++	{ "ioldo", BCM15602_REG_LDO_IOLDO_ENCTRL, 0x03 },
++	{ "asr",   BCM15602_REG_BUCK_ASR_CTRL0,   0xc1 },
++	{ "sdsr",  BCM15602_REG_BUCK_SDSR_CTRL0,  0xdb },
++};
++
++/*
++ * The PMIC only answers on i2c once PON is high and it has released RESETB
++ * (an input we read back). Measured on taimen: 50 ms.
++ */
++static int bcm15602_wake(struct bcm15602 *bcm)
++{
++	int i, ret;
++
++	gpiod_set_value_cansleep(bcm->pon, 0);
++	usleep_range(10000, 12000);
++	gpiod_set_value_cansleep(bcm->pon, 1);
++
++	for (i = 0; i < 40; i++) {
++		usleep_range(50000, 55000);
++		if (gpiod_get_value_cansleep(bcm->resetb))
++			break;
++	}
++	if (i == 40) {
++		dev_err(&bcm->client->dev, "RESETB never released\n");
++		return -ETIMEDOUT;
++	}
++
++	ret = i2c_smbus_read_word_data(bcm->client, BCM15602_REG_PMIC_ID_LSB);
++	if (ret < 0)
++		return ret;
++	if (ret != BCM15602_PART_ID) {
++		dev_err(&bcm->client->dev, "unexpected part 0x%04x\n", ret);
++		return -ENODEV;
++	}
++
++	dev_info(&bcm->client->dev, "BCM15602 part 0x%04x ready after %d ms\n",
++		 ret, (i + 1) * 50);
++
++	return 0;
++}
++
++static int bcm15602_enable(struct regulator_dev *rdev)
++{
++	struct bcm15602 *bcm = rdev_get_drvdata(rdev);
++	int i, ret;
++
++	if (!bcm->on) {
++		ret = bcm15602_wake(bcm);
++		if (ret)
++			return ret;
++	}
++
++	for (i = 0; i < ARRAY_SIZE(bcm15602_rails); i++) {
++		ret = i2c_smbus_write_byte_data(bcm->client,
++						bcm15602_rails[i].reg,
++						bcm15602_rails[i].val);
++		if (ret) {
++			dev_err(&bcm->client->dev, "failed to enable %s: %d\n",
++				bcm15602_rails[i].name, ret);
++			return ret;
++		}
++		usleep_range(1000, 2000);
++	}
++
++	/*
++	 * Easel's reference clocks, BEFORE soc_pwr_good -- mnh_pwr_up() order
++	 * (mnh-pwr.c:637-660). These feed Easel's internal PLLs; without them
++	 * the PCIe link still trains (that PHY runs off the SoC's own refclk)
++	 * but nothing behind the endpoint is clocked, and every BAR2 read --
++	 * ROM, SRAM, peripherals alike -- hangs the bus (HANDOFF §41e/§41f).
++	 */
++	ret = clk_prepare_enable(bcm->ref_clk);
++	if (ret) {
++		dev_err(&bcm->client->dev, "failed to enable ref clk: %d\n", ret);
++		return ret;
++	}
++
++	ret = clk_prepare_enable(bcm->sleep_clk);
++	if (ret) {
++		dev_err(&bcm->client->dev, "failed to enable sleep clk: %d\n", ret);
++		clk_disable_unprepare(bcm->ref_clk);
++		return ret;
++	}
++
++	ret = i2c_smbus_write_byte_data(bcm->client, BCM15602_REG_GPIO_OUT_CTRL,
++					BCM15602_GPIO_BASE |
++					BCM15602_GPIO_SOC_PWR_GOOD);
++	if (ret)
++		return ret;
++
++	/* mnh_pwr_up() gives the PLLs 60 us before touching the PCIe link. */
++	usleep_range(100, 200);
++
++	bcm->on = true;
++	dev_info(&bcm->client->dev, "Easel powered (rails up, soc_pwr_good)\n");
++
++	return 0;
++}
++
++static int bcm15602_disable(struct regulator_dev *rdev)
++{
++	struct bcm15602 *bcm = rdev_get_drvdata(rdev);
++
++	i2c_smbus_write_byte_data(bcm->client, BCM15602_REG_GPIO_OUT_CTRL,
++				  BCM15602_GPIO_BASE);
++	clk_disable_unprepare(bcm->sleep_clk);
++	clk_disable_unprepare(bcm->ref_clk);
++	gpiod_set_value_cansleep(bcm->pon, 0);
++	bcm->on = false;
++
++	return 0;
++}
++
++static int bcm15602_is_enabled(struct regulator_dev *rdev)
++{
++	struct bcm15602 *bcm = rdev_get_drvdata(rdev);
++
++	return bcm->on;
++}
++
++static const struct regulator_ops bcm15602_ops = {
++	.enable = bcm15602_enable,
++	.disable = bcm15602_disable,
++	.is_enabled = bcm15602_is_enabled,
++};
++
++static const struct regulator_desc bcm15602_desc = {
++	.name = "easel_vddpe",
++	.of_match = of_match_ptr("easel_vddpe"),
++	.regulators_node = of_match_ptr("regulators"),
++	.ops = &bcm15602_ops,
++	.type = REGULATOR_VOLTAGE,
++	.owner = THIS_MODULE,
++	.n_voltages = 1,
++	.fixed_uV = 1800000,
++	.enable_time = 1000,
++};
++
++static int bcm15602_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct regulator_config config = { };
++	struct regulator_dev *rdev;
++	struct bcm15602 *bcm;
++
++	bcm = devm_kzalloc(dev, sizeof(*bcm), GFP_KERNEL);
++	if (!bcm)
++		return -ENOMEM;
++
++	bcm->client = client;
++
++	bcm->pon = devm_gpiod_get(dev, "pon", GPIOD_OUT_LOW);
++	if (IS_ERR(bcm->pon))
++		return dev_err_probe(dev, PTR_ERR(bcm->pon),
++				     "failed to get pon gpio\n");
++
++	bcm->resetb = devm_gpiod_get(dev, "resetb", GPIOD_IN);
++	if (IS_ERR(bcm->resetb))
++		return dev_err_probe(dev, PTR_ERR(bcm->resetb),
++				     "failed to get resetb gpio\n");
++
++	bcm->ref_clk = devm_clk_get(dev, "ref");
++	if (IS_ERR(bcm->ref_clk))
++		return dev_err_probe(dev, PTR_ERR(bcm->ref_clk),
++				     "failed to get ref clk\n");
++
++	bcm->sleep_clk = devm_clk_get(dev, "sleep");
++	if (IS_ERR(bcm->sleep_clk))
++		return dev_err_probe(dev, PTR_ERR(bcm->sleep_clk),
++				     "failed to get sleep clk\n");
++
++	i2c_set_clientdata(client, bcm);
++
++	config.dev = dev;
++	config.driver_data = bcm;
++	config.of_node = dev->of_node;
++
++	rdev = devm_regulator_register(dev, &bcm15602_desc, &config);
++	if (IS_ERR(rdev))
++		return dev_err_probe(dev, PTR_ERR(rdev),
++				     "failed to register regulator\n");
++
++	return 0;
++}
++
++static const struct of_device_id bcm15602_of_match[] = {
++	{ .compatible = "brcm,bcm15602" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, bcm15602_of_match);
++
++static struct i2c_driver bcm15602_driver = {
++	.driver = {
++		.name = "bcm15602",
++		.of_match_table = bcm15602_of_match,
++	},
++	.probe = bcm15602_probe,
++};
++module_i2c_driver(bcm15602_driver);
++
++MODULE_DESCRIPTION("BCM15602 PMIC -- Easel power on Pixel 2");
++MODULE_LICENSE("GPL");

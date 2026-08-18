@@ -1,0 +1,74 @@
+From 5ee78fe553210e3cf3bf8910376aa3fbbaa10557 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 31 Jul 2026 13:05:42 +0200
+Subject: [PATCH 055/113] nfc: nxp-nci: fix NFC dying permanently after a power
+ cycle
+
+Turning the adapter off and on again left NFC dead until reboot. Every
+power-on after the first failed with -EREMOTEIO on the i2c read, and the
+NCI core then timed out waiting for a CORE_RESET response.
+
+Two things, and only the second is fatal.
+
+The controller needs VEN held low long enough to actually reset.
+nxp_nci_i2c_set_mode() waited 10-15 ms in both directions; the vendor
+driver waits 100 ms on the way down and 20 ms on the way up. Ten
+milliseconds is not enough for a PN553.
+
+The fatal one: a read that fails while the controller is still coming up
+latches phy->hard_fault, and nxp_nci_i2c_write() then returns that fault
+for every subsequent write. So the NCI reset is never actually
+transmitted, and the core sits waiting for a response to a command that
+was never sent. hard_fault was only cleared when going to COLD, so a
+fault latched during power-up survived every later attempt. A fault
+belongs to the power state it happened in -- clear it on every
+transition.
+
+Reproduced on a PN553 (Google Pixel 2 XL): before, the second power-on
+and every one after it failed. After, four off/on cycles in a row all
+succeed.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/nfc/nxp-nci/i2c.c | 26 ++++++++++++++++++++++++--
+ 1 file changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/nfc/nxp-nci/i2c.c b/drivers/nfc/nxp-nci/i2c.c
+index 049662ffdf97..1db4d39c1fc9 100644
+--- a/drivers/nfc/nxp-nci/i2c.c
++++ b/drivers/nfc/nxp-nci/i2c.c
+@@ -49,10 +49,32 @@ static int nxp_nci_i2c_set_mode(void *phy_id,
+ 
+ 	gpiod_set_value(phy->gpiod_fw, (mode == NXP_NCI_MODE_FW) ? 1 : 0);
+ 	gpiod_set_value(phy->gpiod_en, (mode != NXP_NCI_MODE_COLD) ? 1 : 0);
+-	usleep_range(10000, 15000);
+ 
++	/*
++	 * Powering down needs VEN held low long enough for the controller to
++	 * actually reset. 10 ms is not enough: the part comes back up in a
++	 * state where it NAKs its own address, so the next power-on fails with
++	 * -EREMOTEIO and the NCI reset then times out, leaving NFC dead until
++	 * the machine is rebooted. Reproduced on a PN553 by toggling the
++	 * adapter off and on again.
++	 *
++	 * The vendor driver waits 100 ms here and 20 ms on the way up.
++	 */
+ 	if (mode == NXP_NCI_MODE_COLD)
+-		phy->hard_fault = 0;
++		msleep(100);
++	else
++		usleep_range(10000, 15000);
++
++	/*
++	 * Any bus fault latched before this belongs to the previous power
++	 * state, so clear it on every transition rather than only on the way
++	 * down. A read that fails while the controller is still coming up sets
++	 * hard_fault, and nxp_nci_i2c_write() then refuses every write from
++	 * then on -- so the NCI reset is never actually transmitted and the
++	 * core times out waiting for a response to a command that was never
++	 * sent. That leaves NFC dead until reboot.
++	 */
++	phy->hard_fault = 0;
+ 
+ 	return 0;
+ }

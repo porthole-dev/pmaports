@@ -1,0 +1,29 @@
+From fe767e2ccd026b9462a8a3c70d426dec53ca2255 Mon Sep 17 00:00:00 2001
+From: Konrad Dybcio <konrad.dybcio@somainline.org>
+Date: Sun, 20 Sep 2020 00:28:16 +0200
+Subject: [PATCH 005/113] drm/msm/a5xx: Disable flat shading optimization
+
+Port over the command from downstream to prevent undefined
+behaviour.
+
+Signed-off-by: Konrad Dybcio <konrad.dybcio@somainline.org>
+Signed-off-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/adreno/a5xx_gpu.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a5xx_gpu.c b/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
+index 4a04dc43a8e6..adf1350e77c1 100644
+--- a/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
+@@ -848,6 +848,9 @@ static int a5xx_hw_init(struct msm_gpu *gpu)
+ 	/* Disable All flat shading optimization (ALLFLATOPTDIS) */
+ 	gpu_rmw(gpu, REG_A5XX_VPC_DBG_ECO_CNTL, 0, (1 << 10));
+ 
++	/* Disable All flat shading optimization (ALLFLATOPTDIS) */
++	gpu_rmw(gpu, REG_A5XX_VPC_DBG_ECO_CNTL, 0, (1 << 10));
++
+ 	/* Protect registers from the CP */
+ 	gpu_write(gpu, REG_A5XX_CP_PROTECT_CNTL, 0x00000007);
+ 

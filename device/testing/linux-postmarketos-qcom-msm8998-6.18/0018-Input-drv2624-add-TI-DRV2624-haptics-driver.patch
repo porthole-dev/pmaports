@@ -1,0 +1,347 @@
+From 9111bbde1db073c162a619aea04efdcf3f5d8702 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 15:34:04 +0200
+Subject: [PATCH 018/113] Input: drv2624 - add TI DRV2624 haptics driver
+
+Adds a driver for the Texas Instruments DRV2624 haptics driver IC,
+used for the vibration motor on the Google Pixel 2 XL (taimen). The
+actuator is exposed through the force-feedback API, which is what
+userspace haptics daemons consume.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/input/misc/Kconfig   |  13 ++
+ drivers/input/misc/Makefile  |   1 +
+ drivers/input/misc/drv2624.c | 287 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 301 insertions(+)
+ create mode 100644 drivers/input/misc/drv2624.c
+
+diff --git a/drivers/input/misc/Kconfig b/drivers/input/misc/Kconfig
+index cc2558630797..eef3394c30ca 100644
+--- a/drivers/input/misc/Kconfig
++++ b/drivers/input/misc/Kconfig
+@@ -898,6 +898,19 @@ config INPUT_SOC_BUTTON_ARRAY
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called soc_button_array.
+ 
++config INPUT_DRV2624_HAPTICS
++	tristate "TI DRV2624 haptics support"
++	depends on INPUT && I2C
++	select INPUT_FF_MEMLESS
++	select REGMAP_I2C
++	help
++	  Say Y to enable support for the Texas Instruments DRV2624 haptics
++	  driver. Exposes the actuator through the force-feedback API, which
++	  is what userspace haptics daemons use.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called drv2624.
++
+ config INPUT_DRV260X_HAPTICS
+ 	tristate "TI DRV260X haptics support"
+ 	depends on INPUT && I2C
+diff --git a/drivers/input/misc/Makefile b/drivers/input/misc/Makefile
+index f5ebfa9d9983..53dfcde3e960 100644
+--- a/drivers/input/misc/Makefile
++++ b/drivers/input/misc/Makefile
+@@ -36,6 +36,7 @@ obj-$(CONFIG_INPUT_DA9052_ONKEY)	+= da9052_onkey.o
+ obj-$(CONFIG_INPUT_DA9055_ONKEY)	+= da9055_onkey.o
+ obj-$(CONFIG_INPUT_DA9063_ONKEY)	+= da9063_onkey.o
+ obj-$(CONFIG_INPUT_E3X0_BUTTON)		+= e3x0-button.o
++obj-$(CONFIG_INPUT_DRV2624_HAPTICS)	+= drv2624.o
+ obj-$(CONFIG_INPUT_DRV260X_HAPTICS)	+= drv260x.o
+ obj-$(CONFIG_INPUT_DRV2665_HAPTICS)	+= drv2665.o
+ obj-$(CONFIG_INPUT_DRV2667_HAPTICS)	+= drv2667.o
+diff --git a/drivers/input/misc/drv2624.c b/drivers/input/misc/drv2624.c
+new file mode 100644
+index 000000000000..ce6e1480d4d9
+--- /dev/null
++++ b/drivers/input/misc/drv2624.c
+@@ -0,0 +1,287 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * TI DRV2624 haptic driver
++ *
++ * Enough of the part to be a vibrator: real-time playback driven from the
++ * force-feedback API, which is what userspace haptics daemons (feedbackd)
++ * actually use. The waveform sequencer, the RAM waveform bank, the
++ * diagnostics and the auto-calibration the vendor driver also carries are
++ * deliberately absent -- nothing on this system asks for them, and they can
++ * be added later without changing anything here.
++ *
++ * Register map and the actuator programming arithmetic follow TI's own
++ * driver.
++ */
++
++#include <linux/bitfield.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/input.h>
++#include <linux/module.h>
++#include <linux/regmap.h>
++
++#define DRV2624_REG_ID			0x00
++#define DRV2624_ID_MASK			0xf0
++#define DRV2624_ID			0x00
++
++#define DRV2624_REG_MODE		0x07
++#define DRV2624_MODE_MASK		0x03
++#define DRV2624_MODE_RTP		0x00
++#define DRV2624_PINFUNC_MASK		0x0c
++#define DRV2624_PINFUNC_INT		(0x02 << 2)
++
++#define DRV2624_REG_CONTROL1		0x08
++#define DRV2624_ACTUATOR_MASK		BIT(7)
++#define DRV2624_LOOP_MASK		BIT(6)
++#define DRV2624_AUTOBRK_OK		BIT(4)
++
++#define DRV2624_REG_GO			0x0c
++#define DRV2624_GO			BIT(0)
++
++#define DRV2624_REG_CONTROL2		0x0d
++#define DRV2624_LIB_MASK		BIT(7)
++
++#define DRV2624_REG_RTP_INPUT		0x0e
++#define DRV2624_REG_RATED_VOLTAGE	0x1f
++#define DRV2624_REG_OVERDRIVE_CLAMP	0x20
++
++#define DRV2624_REG_DRIVE_TIME		0x27
++#define DRV2624_DRIVE_TIME_MASK		0x1f
++#define DRV2624_MINFREQ_SEL_MASK	BIT(7)
++
++#define DRV2624_REG_LRA_OL_CTRL		0x2c
++#define DRV2624_LRA_WAVE_SHAPE_MASK	BIT(0)
++
++#define DRV2624_REG_OL_PERIOD_H		0x2e
++#define DRV2624_REG_OL_PERIOD_L		0x2f
++
++/* RTP amplitude is 7-bit unsigned in unidirectional mode. */
++#define DRV2624_RTP_MAX			0x7f
++
++#define DRV2624_ACTUATOR_LRA		1
++
++struct drv2624 {
++	struct regmap *regmap;
++	struct input_dev *input;
++	struct work_struct play_work;
++	struct gpio_desc *reset;
++	u8 rtp;
++};
++
++static const struct regmap_config drv2624_regmap_config = {
++	.reg_bits = 8,
++	.val_bits = 8,
++	.max_register = 0xff,
++};
++
++static void drv2624_play_work(struct work_struct *work)
++{
++	struct drv2624 *haptics = container_of(work, struct drv2624, play_work);
++
++	if (haptics->rtp) {
++		regmap_write(haptics->regmap, DRV2624_REG_RTP_INPUT,
++			     haptics->rtp);
++		regmap_write(haptics->regmap, DRV2624_REG_GO, DRV2624_GO);
++	} else {
++		regmap_write(haptics->regmap, DRV2624_REG_GO, 0);
++	}
++}
++
++static int drv2624_play(struct input_dev *input, void *data,
++			struct ff_effect *effect)
++{
++	struct drv2624 *haptics = input_get_drvdata(input);
++	u32 magnitude;
++
++	/* The part has one amplitude, so the two rumble motors collapse. */
++	magnitude = max(effect->u.rumble.strong_magnitude,
++			effect->u.rumble.weak_magnitude);
++
++	haptics->rtp = (u8)(magnitude * DRV2624_RTP_MAX / 0xffff);
++	schedule_work(&haptics->play_work);
++
++	return 0;
++}
++
++static void drv2624_close(struct input_dev *input)
++{
++	struct drv2624 *haptics = input_get_drvdata(input);
++
++	cancel_work_sync(&haptics->play_work);
++	regmap_write(haptics->regmap, DRV2624_REG_GO, 0);
++}
++
++/*
++ * Actuator programming. The two period arithmetics are TI's: drive time is
++ * expressed as a fraction of the resonant period, and the open-loop period
++ * counts 24.619 us ticks.
++ */
++static int drv2624_init_actuator(struct device *dev, struct drv2624 *haptics)
++{
++	u32 actuator, loop, rated, odclamp, lra_freq, ol_freq, wave;
++	unsigned int drive_time, ol_period;
++	int ret;
++
++	if (device_property_read_u32(dev, "ti,actuator", &actuator))
++		actuator = DRV2624_ACTUATOR_LRA;
++	/* 0 closed loop, 1 open loop -- same sense as the register bit. */
++	if (device_property_read_u32(dev, "ti,smart-loop", &loop))
++		loop = 0;
++	if (device_property_read_u32(dev, "ti,rated-voltage", &rated))
++		rated = 0;
++	if (device_property_read_u32(dev, "ti,odclamp-voltage", &odclamp))
++		odclamp = 0;
++	if (device_property_read_u32(dev, "ti,lra-frequency", &lra_freq))
++		lra_freq = 0;
++	if (device_property_read_u32(dev, "ti,ol-lra-frequency", &ol_freq))
++		ol_freq = lra_freq;
++	if (device_property_read_u32(dev, "ti,lra-wave-shape", &wave))
++		wave = 0;
++
++	ret = regmap_update_bits(haptics->regmap, DRV2624_REG_MODE,
++				 DRV2624_PINFUNC_MASK | DRV2624_MODE_MASK,
++				 DRV2624_PINFUNC_INT | DRV2624_MODE_RTP);
++	if (ret)
++		return ret;
++
++	ret = regmap_update_bits(haptics->regmap, DRV2624_REG_CONTROL1,
++				 DRV2624_ACTUATOR_MASK | DRV2624_LOOP_MASK |
++				 DRV2624_AUTOBRK_OK,
++				 FIELD_PREP(DRV2624_ACTUATOR_MASK, actuator) |
++				 FIELD_PREP(DRV2624_LOOP_MASK, loop) |
++				 DRV2624_AUTOBRK_OK);
++	if (ret)
++		return ret;
++
++	/* Waveform library: 0 selects the LRA set, 1 the ERM set. */
++	ret = regmap_update_bits(haptics->regmap, DRV2624_REG_CONTROL2,
++				 DRV2624_LIB_MASK,
++				 FIELD_PREP(DRV2624_LIB_MASK,
++					    actuator == DRV2624_ACTUATOR_LRA ? 0 : 1));
++	if (ret)
++		return ret;
++
++	if (rated) {
++		ret = regmap_write(haptics->regmap, DRV2624_REG_RATED_VOLTAGE,
++				   rated);
++		if (ret)
++			return ret;
++	}
++	if (odclamp) {
++		ret = regmap_write(haptics->regmap, DRV2624_REG_OVERDRIVE_CLAMP,
++				   odclamp);
++		if (ret)
++			return ret;
++	}
++
++	if (actuator != DRV2624_ACTUATOR_LRA || !lra_freq)
++		return 0;
++
++	drive_time = 5 * (1000 - lra_freq) / lra_freq;
++	if (lra_freq < 125)
++		drive_time |= DRV2624_MINFREQ_SEL_MASK;
++
++	ret = regmap_update_bits(haptics->regmap, DRV2624_REG_DRIVE_TIME,
++				 DRV2624_DRIVE_TIME_MASK |
++				 DRV2624_MINFREQ_SEL_MASK, drive_time);
++	if (ret)
++		return ret;
++
++	ol_period = 1000000000u / (24619u * ol_freq);
++	ret = regmap_update_bits(haptics->regmap, DRV2624_REG_OL_PERIOD_H,
++				 0x03, (ol_period >> 8) & 0x03);
++	if (ret)
++		return ret;
++	ret = regmap_write(haptics->regmap, DRV2624_REG_OL_PERIOD_L,
++			   ol_period & 0xff);
++	if (ret)
++		return ret;
++
++	return regmap_update_bits(haptics->regmap, DRV2624_REG_LRA_OL_CTRL,
++				  DRV2624_LRA_WAVE_SHAPE_MASK, wave);
++}
++
++static int drv2624_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct drv2624 *haptics;
++	unsigned int val;
++	int ret;
++
++	haptics = devm_kzalloc(dev, sizeof(*haptics), GFP_KERNEL);
++	if (!haptics)
++		return -ENOMEM;
++
++	haptics->regmap = devm_regmap_init_i2c(client, &drv2624_regmap_config);
++	if (IS_ERR(haptics->regmap))
++		return dev_err_probe(dev, PTR_ERR(haptics->regmap),
++				     "failed to init regmap\n");
++
++	haptics->reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
++	if (IS_ERR(haptics->reset))
++		return dev_err_probe(dev, PTR_ERR(haptics->reset),
++				     "failed to get reset gpio\n");
++	if (haptics->reset) {
++		usleep_range(1000, 2000);
++		gpiod_set_value_cansleep(haptics->reset, 0);
++		/* The part answers i2c only after its internal boot. */
++		usleep_range(2000, 3000);
++	}
++
++	ret = regmap_read(haptics->regmap, DRV2624_REG_ID, &val);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to read chip id\n");
++	if ((val & DRV2624_ID_MASK) != DRV2624_ID)
++		return dev_err_probe(dev, -ENODEV, "unexpected chip id 0x%02x\n",
++				     val);
++	dev_dbg(dev, "DRV2624 id 0x%02x\n", val);
++
++	ret = drv2624_init_actuator(dev, haptics);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to program actuator\n");
++
++	haptics->input = devm_input_allocate_device(dev);
++	if (!haptics->input)
++		return -ENOMEM;
++
++	haptics->input->name = "drv2624:haptics";
++	haptics->input->id.bustype = BUS_I2C;
++	haptics->input->close = drv2624_close;
++	input_set_drvdata(haptics->input, haptics);
++	input_set_capability(haptics->input, EV_FF, FF_RUMBLE);
++
++	INIT_WORK(&haptics->play_work, drv2624_play_work);
++	i2c_set_clientdata(client, haptics);
++
++	ret = input_ff_create_memless(haptics->input, NULL, drv2624_play);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to create ff device\n");
++
++	return input_register_device(haptics->input);
++}
++
++static const struct of_device_id drv2624_of_match[] = {
++	{ .compatible = "ti,drv2624" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, drv2624_of_match);
++
++static const struct i2c_device_id drv2624_id[] = {
++	{ "drv2624", 0 },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, drv2624_id);
++
++static struct i2c_driver drv2624_driver = {
++	.probe = drv2624_probe,
++	.driver = {
++		.name = "drv2624",
++		.of_match_table = drv2624_of_match,
++	},
++	.id_table = drv2624_id,
++};
++module_i2c_driver(drv2624_driver);
++
++MODULE_DESCRIPTION("TI DRV2624 haptic driver");
++MODULE_LICENSE("GPL");

@@ -1,0 +1,84 @@
+From e1701b65a7566327f604c3087c96a57271ccb979 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 18:16:22 +0200
+Subject: [PATCH 036/113] media: qcom: camss: csiphy: take the settle rate from
+ the timer clock
+
+csiphy_set_clock_rates() stores the rate of every clock it rates in
+csiphy->timer_clk_rate, so the value that ends up feeding
+csiphy_settle_cnt_calc() is whichever rated clock happens to come last in
+the resource table.
+
+That was harmless while the settle timer was the only rated clock, but it
+stops being true as soon as a PHY also rates its own core clock - which
+the v5.x parts have to, since they cannot sample a high speed link off the
+power-on default. The settle count then silently shifts, and a settle
+count that is too short is a link that never locks, reported four stages
+downstream as a VFE SOF timeout.
+
+Only assign timer_clk_rate for the csiphyN_timer clock, and program each
+clock with its own rounded rate.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../media/platform/qcom/camss/camss-csiphy.c  | 33 ++++++++++++-------
+ 1 file changed, 21 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/camss/camss-csiphy.c b/drivers/media/platform/qcom/camss/camss-csiphy.c
+index 2de97f58f9ae..f0a191137e53 100644
+--- a/drivers/media/platform/qcom/camss/camss-csiphy.c
++++ b/drivers/media/platform/qcom/camss/camss-csiphy.c
+@@ -130,6 +130,15 @@ static u8 csiphy_get_bpp(const struct csiphy_format_info *formats,
+ 	return formats[0].bpp;
+ }
+ 
++static bool csiphy_match_clock_name(const char *clock_name, const char *format,
++				    int index)
++{
++	char name[16]; /* csiphyXXX_timer\0 */
++
++	snprintf(name, sizeof(name), format, index);
++	return !strcmp(clock_name, name);
++}
++
+ /*
+  * csiphy_set_clock_rates - Calculate and set clock rates on CSIPHY module
+  * @csiphy: CSIPHY device
+@@ -180,9 +189,18 @@ static int csiphy_set_clock_rates(struct csiphy_device *csiphy)
+ 				return -EINVAL;
+ 			}
+ 
+-			csiphy->timer_clk_rate = round_rate;
+-
+-			ret = clk_set_rate(clock->clk, csiphy->timer_clk_rate);
++			/*
++			 * Only the timer clock drives the settle counter.
++			 * A CSIPHY may have more than one rated clock - the
++			 * v5.x PHYs also rate their own core clock - and
++			 * taking the rate of whichever came last silently
++			 * skews every settle count derived from it.
++			 */
++			if (csiphy_match_clock_name(clock->name, "csiphy%d_timer",
++						    csiphy->id))
++				csiphy->timer_clk_rate = round_rate;
++
++			ret = clk_set_rate(clock->clk, round_rate);
+ 			if (ret < 0) {
+ 				dev_err(dev, "clk set rate failed: %d\n", ret);
+ 				return ret;
+@@ -558,15 +576,6 @@ static int csiphy_init_formats(struct v4l2_subdev *sd,
+ 	return csiphy_set_format(sd, fh ? fh->state : NULL, &format);
+ }
+ 
+-static bool csiphy_match_clock_name(const char *clock_name, const char *format,
+-				    int index)
+-{
+-	char name[16]; /* csiphyXXX_timer\0 */
+-
+-	snprintf(name, sizeof(name), format, index);
+-	return !strcmp(clock_name, name);
+-}
+-
+ /*
+  * msm_csiphy_subdev_init - Initialize CSIPHY device structure and resources
+  * @csiphy: CSIPHY device

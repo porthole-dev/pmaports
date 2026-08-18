@@ -1,0 +1,38 @@
+From 428a48edf52cfc536aa5cc188782076f6dd91660 Mon Sep 17 00:00:00 2001
+From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
+Date: Tue, 27 Jul 2021 12:35:49 +0300
+Subject: [PATCH 006/113] drm/msm/dsi_phy_10nm: Fix bad VCO rate calculation
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/dsi/phy/dsi_phy_10nm.c | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_10nm.c b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_10nm.c
+index ec486ff02c9b..ed482fc3bdd7 100644
+--- a/drivers/gpu/drm/msm/dsi/phy/dsi_phy_10nm.c
++++ b/drivers/gpu/drm/msm/dsi/phy/dsi_phy_10nm.c
+@@ -123,7 +123,7 @@ static void dsi_pll_calc_dec_frac(struct dsi_pll_10nm *pll, struct dsi_pll_confi
+ 
+ 	pll_freq = pll->vco_current_rate;
+ 
+-	divider = fref * 2;
++	divider = fref;
+ 
+ 	multiplier = 1 << FRAC_BITS;
+ 	dec_multiple = div_u64(pll_freq * multiplier, divider);
+@@ -431,12 +431,11 @@ static unsigned long dsi_pll_10nm_vco_recalc_rate(struct clk_hw *hw,
+ 	 *	1. Assumes prescaler is disabled
+ 	 */
+ 	multiplier = 1 << FRAC_BITS;
+-	pll_freq = dec * (ref_clk * 2);
+-	tmp64 = (ref_clk * 2 * frac);
++	pll_freq = dec * ref_clk;
++	tmp64 = ref_clk * frac;
+ 	pll_freq += div_u64(tmp64, multiplier);
+ 
+ 	vco_rate = pll_freq;
+-	pll_10nm->vco_current_rate = vco_rate;
+ 
+ 	DBG("DSI PLL%d returning vco rate = %lu, dec = %x, frac = %x",
+ 	    pll_10nm->phy->id, (unsigned long)vco_rate, dec, frac);

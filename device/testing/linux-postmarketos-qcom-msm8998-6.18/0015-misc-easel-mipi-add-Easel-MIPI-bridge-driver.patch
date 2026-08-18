@@ -1,0 +1,1027 @@
+From dc2e8f2b797e7e44409567a68135e531843bf6bc Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 15:32:33 +0200
+Subject: [PATCH 015/113] misc: easel-mipi: add Easel MIPI bridge driver
+
+On the Google Pixel 2 / 2 XL both camera sensors' CSI lanes terminate
+on Easel (Google Pixel Visual Core / Intel Monette Hill) before being
+retransmitted to the SoC's CSIPHY0/CSIPHY1. Until Easel's MIPI mux is
+put in bypass, the SoC's CSIPHYs receive nothing at all.
+
+This driver claims the PCI endpoint so the core assigns its BARs and
+turns on memory decoding -- without a driver, COMMAND stays 0x0000,
+every BAR reads back 0, and any MMIO access to it is a transaction to
+nowhere that hangs the fabric. It then retargets BAR2's inbound iATU
+window (8 MB, but the peripherals live at 0x04000000) and programs
+the RX->TX bypass mux for each configured link.
+
+Exports easel_mipi_kick(), used by the imx179/imx362 sensor drivers:
+the msm8998 CSIPHY clock-lane detector only arms on an LP->HS
+transition seen after the CSIPHY is configured, and Easel's TX clock
+has been running continuously HS since module load, so a CSIPHY
+configured mid-session never sees one. A short LP pulse on the TX
+clock lane, issued from the sensor's s_stream(), makes every stream
+attempt equivalent to one immediately after Easel's own probe.
+
+Built as a module rather than built-in on purpose: a built-in driver
+that touches an unresponsive Easel would hang the boot, where a
+loadable module fails safely instead.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/misc/Kconfig       |   9 +
+ drivers/misc/Makefile      |   1 +
+ drivers/misc/easel-mipi.c  | 926 +++++++++++++++++++++++++++++++++++++
+ include/linux/easel-mipi.h |  18 +
+ 4 files changed, 954 insertions(+)
+ create mode 100644 drivers/misc/easel-mipi.c
+ create mode 100644 include/linux/easel-mipi.h
+
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index b9c11f67315f..b404294e1512 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -551,6 +551,15 @@ config VCPU_STALL_DETECTOR
+ 
+ 	  If you do not intend to run this kernel as a guest, say N.
+ 
++config EASEL_MIPI
++	tristate "Easel (Pixel Visual Core) MIPI bridge"
++	depends on PCI
++	help
++	  Both cameras on the Google Pixel 2 / 2 XL route their MIPI CSI
++	  lanes through Easel (Google Pixel Visual Core / Intel Monette
++	  Hill), which must be put in bypass mode before any camera data
++	  can reach the SoC's CSIPHYs.
++
+ config TMR_MANAGER
+ 	tristate "Select TMR Manager"
+ 	depends on MICROBLAZE && MB_MANAGER
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index b32a2597d246..7b12f3cbab01 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -63,6 +63,7 @@ obj-$(CONFIG_HI6421V600_IRQ)	+= hi6421v600-irq.o
+ obj-$(CONFIG_OPEN_DICE)		+= open-dice.o
+ obj-$(CONFIG_GP_PCI1XXXX)	+= mchp_pci1xxxx/
+ obj-$(CONFIG_VCPU_STALL_DETECTOR)	+= vcpu_stall_detector.o
++obj-$(CONFIG_EASEL_MIPI)	+= easel-mipi.o
+ obj-$(CONFIG_TMR_MANAGER)      += xilinx_tmr_manager.o
+ obj-$(CONFIG_TMR_INJECT)	+= xilinx_tmr_inject.o
+ obj-$(CONFIG_TPS6594_ESM)	+= tps6594-esm.o
+diff --git a/drivers/misc/easel-mipi.c b/drivers/misc/easel-mipi.c
+new file mode 100644
+index 000000000000..0d8a24636c4d
+--- /dev/null
++++ b/drivers/misc/easel-mipi.c
+@@ -0,0 +1,926 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Easel (Google Pixel Visual Core / Intel Monette Hill) MIPI bridge.
++ *
++ * On Pixel 2 / 2 XL both camera sensors' CSI lanes terminate on Easel, which
++ * retransmits them to the SoC's CSIPHY0/CSIPHY1 (HANDOFF §41). Until Easel's
++ * MIPI mux is put in bypass, the SoC's CSIPHYs receive nothing at all, which
++ * is exactly what this bring-up measured for three days.
++ *
++ * This driver claims the endpoint so the PCI core assigns its BARs and turns
++ * on memory decoding -- without a driver, COMMAND stays 0x0000, every BAR
++ * reads back 0, and any MMIO access to it is a transaction to nowhere that
++ * hangs the fabric and watchdogs the phone.
++ *
++ * Easel's register space is reached through BAR2, whose inbound window has to
++ * be retargeted first: the window is 8 MB but the peripherals live at
++ * 0x04000000. Downstream does this in mnh_check_iatu_bar2() via PCI *config*
++ * space (the DWC DBI is exposed there), not MMIO -- see mnh-pcie.c:186.
++ *
++ * ponytail: built as a module on purpose during bring-up. A built-in driver
++ * that touches an unresponsive Easel hangs the boot, and three failed boots
++ * drain the A/B retry counter into the bootloader (TODO §3).
++ */
++
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/pci.h>
++#include <linux/limits.h>
++
++#define EASEL_VENDOR_INTEL	0x8086
++#define EASEL_DEVICE_MNH	0x3140
++
++/* Easel address map -- mnh-hwio-bases.h */
++#define EASEL_PERIPH_BASE	0x04000000
++#define EASEL_SCU_BASE		0x04003000
++#define EASEL_SCU_CCU_CLK_CTL	0x04003084
++#define SCU_MIPI_TESTCLKEN	BIT(4)
++#define SCU_MIPI_REFCLKEN	BIT(6)
++#define EASEL_MIPI_TOP_BASE	0x04015000
++
++/* Inbound iATU, in the endpoint's config space -- hw-mnh-regs.h:56-69 */
++#define IATU_VIEWPORT		0x900
++#define IATU_REGION_CTRL_1	0x904
++#define IATU_REGION_CTRL_2	0x908
++#define IATU_LWR_TARGET_ADDR	0x918
++#define IATU_UPPER_TARGET_ADDR	0x91c
++#define IATU_INBOUND		0x80000000
++#define IATU_BAR_MODE		0xc0000000
++
++#define EASEL_BAR_CONFIG	2
++
++/*
++ * Board wiring (factory DTBO + HANDOFF §41): rear imx362 -> RX0 -> TX0 ->
++ * CSIPHY0, front imx179 -> RX1 -> TX1 -> CSIPHY1. Rates are Mbps per lane,
++ * i.e. twice the sensor's V4L2 link frequency: imx179 170 MHz -> 340,
++ * imx362 685 MHz -> 1370.
++ */
++/* Both links by default: front worked 2026-08-04, rear needs RX0->TX0 armed
++ * at probe just the same (a rear test on a bypass=0x1 boot cost an hour). */
++static unsigned int bypass = 0x3;
++module_param(bypass, uint, 0644);
++MODULE_PARM_DESC(bypass, "links to put in MIPI bypass: bit0 front (RX1->TX1), bit1 rear (RX0->TX0)");
++
++/*
++ * 648 Mbps/lane is what the vendor actually drives on the front link --
++ * captured live from a working stock session (TKMIPI rxdev=1 txdev=1
++ * rx_rate=648 tx_rate=648). That is the imx179 FULL mode (3280x2464,
++ * op_pixel_clk 259.2 MHz), not the binned 1640x922/340 Mbps mode this port
++ * used to assume. Stream the front sensor at 3280x2464 to match.
++ */
++static unsigned int front_rate = 648;
++module_param(front_rate, uint, 0644);
++MODULE_PARM_DESC(front_rate, "front link rate, Mbps per lane");
++
++static unsigned int rear_rate = 1368;
++module_param(rear_rate, uint, 0644);
++MODULE_PARM_DESC(rear_rate, "rear link rate, Mbps per lane");
++
++/*
++ * The RX->TX pairing is latched when the TX is configured: re-pointing the
++ * mux afterwards leaves the new transmitter idle (HANDOFF §44a). So the
++ * pairing has to be a parameter, configured from scratch, not a poke.
++ */
++static unsigned int front_rx = 1, front_tx = 1;
++module_param(front_rx, uint, 0644);
++module_param(front_tx, uint, 0644);
++MODULE_PARM_DESC(front_tx, "which Easel TX the front link uses (0 or 1)");
++
++struct easel {
++	struct pci_dev *pdev;
++	void __iomem *cfg;	/* BAR2 window into Easel address space */
++	u32 window;		/* what the window currently targets */
++};
++
++/*
++ * Retarget BAR2 at a 32-bit-aligned region of Easel's address space. Returns
++ * the offset within BAR2 at which @addr can then be reached.
++ */
++static u32 easel_set_window(struct easel *easel, u32 base, u32 addr)
++{
++	struct pci_dev *pdev = easel->pdev;
++
++	if (easel->window != base) {
++		pci_write_config_dword(pdev, IATU_VIEWPORT, IATU_INBOUND | 1);
++		pci_write_config_dword(pdev, IATU_LWR_TARGET_ADDR, base);
++		pci_write_config_dword(pdev, IATU_UPPER_TARGET_ADDR, 0);
++		pci_write_config_dword(pdev, IATU_REGION_CTRL_1, 0);
++		pci_write_config_dword(pdev, IATU_REGION_CTRL_2,
++				       IATU_BAR_MODE |
++				       (EASEL_BAR_CONFIG << 8));
++		udelay(1);
++		easel->window = base;
++	}
++
++	return addr - base;
++}
++
++
++/*
++ * ---------------------------------------------------------------------------
++ * MIPI bypass, ported from downstream mnh-mipi.c
++ *
++ * Bypass = configure the RX host (from the sensor), the TX device (to the
++ * SoC), and the mux that wires one to the other. The IPU is not involved.
++ * ---------------------------------------------------------------------------
++ */
++
++#define EASEL_MIPI_TX0_BASE	0x04010000
++#define EASEL_MIPI_TX1_BASE	0x04011000
++#define EASEL_MIPI_RX0_BASE	0x04012000
++#define EASEL_MIPI_TOP		EASEL_MIPI_TOP_BASE
++#define EASEL_RX_STRIDE		0x1000
++#define EASEL_TX_STRIDE		0x1000
++
++/* MIPI RX (snps mipicsi_host) register offsets */
++#define RX_N_LANES		0x004
++#define RX_CSI2_RESETN		0x008
++#define RX_PHY_SHUTDOWNZ	0x040
++#define RX_DPHY_RSTZ		0x044
++#define RX_PHY_TEST_CTRL0	0x050
++#define RX_PHY_TEST_CTRL1	0x054
++#define RX_INT_MSK_PHY_FATAL	0x0e4
++#define RX_INT_MSK_PKT_FATAL	0x0f4
++#define RX_INT_MSK_FRAME_FATAL	0x104
++#define RX_INT_MSK_PHY		0x114
++#define RX_INT_MSK_PKT		0x124
++#define RX_INT_MSK_LINE		0x134
++#define RX_TESTCLK		BIT(1)
++#define RX_TESTEN		BIT(16)
++
++/* MIPI TX (snps mipicsi_device) register offsets */
++#define TX_CSI2_RESETN		0x004
++#define TX_INT_MASK_N_VPG	0x040
++#define TX_INT_MASK_N_IDI	0x048
++#define TX_PHY_RSTZ		0x0e0
++#define TX_PHY_IF_CFG		0x0e4
++#define TX_LPCLK_CTRL		0x0e8
++#define TX_PHY_STATUS		0x110
++#define TX_PHY0_TST_CTRL0	0x114
++#define TX_PHY0_TST_CTRL1	0x118
++#define TX_PHY_SHUTDOWNZ	BIT(0)
++#define TX_PHY_RSTZ_BIT		BIT(1)
++#define TX_PHY_ENABLECLK	BIT(2)
++#define TX_TESTCLK		BIT(1)
++#define TX_TESTEN		BIT(16)
++
++/* MIPI TOP register offsets */
++#define TOP_TX0_MODE		0x000
++#define TOP_TX0_DPHY_PLL_CNTRL	0x010
++#define TOP_TX0_DPHY_CONFIG	0x018
++#define TOP_TX1_MODE		0x028
++#define TOP_TX1_DPHY_PLL_CNTRL	0x038
++#define TOP_TX1_DPHY_CONFIG	0x040
++#define TOP_RX0_MODE		0x050
++#define TOP_RX0_DPHY_CONFIG	0x064
++#define TOP_RX1_MODE		0x074
++#define TOP_RX1_DPHY_CONFIG	0x078
++#define TOP_RX2_MODE		0x088
++#define TOP_RX2_DPHY_CONFIG	0x08c
++#define TOP_CSI_CLK_CTRL	0x104
++
++/* RXn_MODE / TXn_MODE fields */
++#define RX_MODE_IPU_EN		BIT(0)
++#define RX_MODE_BYP_TX0_EN	BIT(1)
++#define RX_MODE_VC_EN_SHIFT	7
++#define TX_MODE_FUNC		BIT(0)
++#define TX_MODE_BYP_SEL_SHIFT	1
++
++#define REF_FREQ_KHZ		25000
++
++static u32 easel_rx_base(unsigned int dev)
++{
++	return EASEL_MIPI_RX0_BASE + dev * EASEL_RX_STRIDE;
++}
++
++static u32 easel_tx_base(unsigned int dev)
++{
++	return EASEL_MIPI_TX0_BASE + dev * EASEL_TX_STRIDE;
++}
++
++static void easel_w(struct easel *easel, u32 addr, u32 val)
++{
++	u32 off = easel_set_window(easel, EASEL_PERIPH_BASE, addr);
++
++	writel(val, easel->cfg + off);
++}
++
++static u32 easel_r(struct easel *easel, u32 addr)
++{
++	u32 off = easel_set_window(easel, EASEL_PERIPH_BASE, addr);
++
++	return readl(easel->cfg + off);
++}
++
++static void easel_rmw(struct easel *easel, u32 addr, u32 mask, u32 val)
++{
++	easel_w(easel, addr, (easel_r(easel, addr) & ~mask) | (val & mask));
++}
++
++/*
++ * D-PHY test interface: 12-bit test code shifted in 4 bits then 8, then the
++ * data byte -- mnh_sm_mipi_{rx,tx}_dphy_write_gen3().
++ */
++static void easel_dphy_write(struct easel *easel, u32 base, u32 ctrl0,
++			     u32 ctrl1, u32 clk, u32 en, int cmd, int data)
++{
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, 0);
++	easel_rmw(easel, base + ctrl1, en, en);
++	easel_rmw(easel, base + ctrl0, clk, clk);
++	easel_rmw(easel, base + ctrl1, 0xff, 0);
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, 0);
++	easel_rmw(easel, base + ctrl1, 0xff, (cmd & 0xf00) >> 8);
++	easel_rmw(easel, base + ctrl0, clk, clk);
++
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, en);
++	easel_rmw(easel, base + ctrl0, clk, clk);
++	easel_rmw(easel, base + ctrl1, 0xff, cmd & 0xff);
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, 0);
++
++	easel_rmw(easel, base + ctrl1, 0xff, data & 0xff);
++	easel_rmw(easel, base + ctrl0, clk, clk);
++	udelay(1);
++}
++
++#define rx_dphy(e, d, c, v) \
++	easel_dphy_write(e, easel_rx_base(d), RX_PHY_TEST_CTRL0, \
++			 RX_PHY_TEST_CTRL1, RX_TESTCLK, RX_TESTEN, c, v)
++#define tx_dphy(e, d, c, v) \
++	easel_dphy_write(e, easel_tx_base(d), TX_PHY0_TST_CTRL0, \
++			 TX_PHY0_TST_CTRL1, TX_TESTCLK, TX_TESTEN, c, v)
++
++/*
++ * Same address phase as easel_dphy_write, then TESTDOUT (CTRL1[15:8])
++ * instead of a data write. Proves whether test-interface writes actually
++ * land -- with SCU MIPI_TESTCLKEN off they are silently dropped (§45), and
++ * the HS lane-driver enables at 0x304..0xB04 go through this interface.
++ */
++static u8 easel_dphy_read(struct easel *easel, u32 base, u32 ctrl0,
++			  u32 ctrl1, u32 clk, u32 en, int cmd)
++{
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, 0);
++	easel_rmw(easel, base + ctrl1, en, en);
++	easel_rmw(easel, base + ctrl0, clk, clk);
++	easel_rmw(easel, base + ctrl1, 0xff, 0);
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, 0);
++	easel_rmw(easel, base + ctrl1, 0xff, (cmd & 0xf00) >> 8);
++	easel_rmw(easel, base + ctrl0, clk, clk);
++
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, en);
++	easel_rmw(easel, base + ctrl0, clk, clk);
++	easel_rmw(easel, base + ctrl1, 0xff, cmd & 0xff);
++	easel_rmw(easel, base + ctrl0, clk, 0);
++	easel_rmw(easel, base + ctrl1, en, 0);
++	udelay(1);
++
++	return (easel_r(easel, base + ctrl1) >> 8) & 0xff;
++}
++
++#define tx_dphy_rd(e, d, c) \
++	easel_dphy_read(e, easel_tx_base(d), TX_PHY0_TST_CTRL0, \
++			TX_PHY0_TST_CTRL1, TX_TESTCLK, TX_TESTEN, c)
++
++/* freq_range_code per Mbps/lane -- mipi_rate_configs[], osc code is 0x1b6. */
++static const struct { u16 rate; u8 code; u16 osc; } easel_rates[] = {
++	{   80, 0x00, 0x1b6 }, {   90, 0x10, 0x1b6 }, {  100, 0x20, 0x1b6 }, {  110, 0x30, 0x1b6 },
++	{  120, 0x01, 0x1b6 }, {  130, 0x11, 0x1b6 }, {  140, 0x21, 0x1b6 }, {  150, 0x31, 0x1b6 },
++	{  160, 0x02, 0x1b6 }, {  170, 0x12, 0x1b6 }, {  180, 0x22, 0x1b6 }, {  190, 0x32, 0x1b6 },
++	{  205, 0x03, 0x1b6 }, {  220, 0x13, 0x1b6 }, {  235, 0x23, 0x1b6 }, {  250, 0x33, 0x1b6 },
++	{  275, 0x04, 0x1b6 }, {  300, 0x14, 0x1b6 }, {  325, 0x25, 0x1b6 }, {  350, 0x35, 0x1b6 },
++	{  400, 0x05, 0x1b6 }, {  450, 0x16, 0x1b6 }, {  500, 0x26, 0x1b6 }, {  550, 0x37, 0x1b6 },
++	{  600, 0x07, 0x1b6 }, {  650, 0x18, 0x1b6 }, {  700, 0x28, 0x1b6 }, {  750, 0x39, 0x1b6 },
++	{  800, 0x09, 0x1b6 }, {  850, 0x19, 0x1b6 }, {  900, 0x29, 0x1b6 }, {  950, 0x3a, 0x1b6 },
++	{ 1000, 0x0a, 0x1b6 }, { 1050, 0x1a, 0x1b6 }, { 1100, 0x2a, 0x1b6 }, { 1150, 0x3b, 0x1b6 },
++	{ 1200, 0x0b, 0x1b6 }, { 1250, 0x1b, 0x1b6 }, { 1300, 0x2b, 0x1b6 }, { 1350, 0x3c, 0x1b6 },
++	{ 1400, 0x0c, 0x1b6 }, { 1450, 0x1c, 0x1b6 }, { 1500, 0x2c, 0x1b6 }, { 1550, 0x3d, 0x10f },
++	{ 1600, 0x0d, 0x118 }, { 1650, 0x1d, 0x121 }, { 1700, 0x2e, 0x12a }, { 1750, 0x3e, 0x132 },
++	{ 1800, 0x0e, 0x13b }, { 1850, 0x1e, 0x144 }, { 1900, 0x2f, 0x14d }, { 1950, 0x3f, 0x155 },
++	{ 2000, 0x0f, 0x15e }, { 2050, 0x40, 0x167 }, { 2100, 0x41, 0x170 }, { 2150, 0x42, 0x178 },
++	{ 2200, 0x43, 0x181 }, { 2250, 0x44, 0x18a }, { 2300, 0x45, 0x193 }, { 2350, 0x46, 0x19b },
++	{ 2400, 0x47, 0x1a4 }, { 2450, 0x48, 0x1ad }, { 2500, 0x49, 0x1b6 },
++};
++#define EASEL_OSC_FREQ_CODE	0x1b6
++
++
++/*
++ * Vendor mipi_dev_ovr_cfgs[] (mnh-mipi.c:197). Per-rate D-PHY timing
++ * overrides plus PHY_STOP_WAIT_TIME. 0x5E and 0x64 are deliberately NOT
++ * written -- the vendor comments them out.
++ */
++struct easel_ovr {
++	u16 rate;
++	u8 r5a, r5b, r5c, r5d, r5f, r61, r62, r63, r65;
++	u8 wait_time;
++	bool use_ovrd;
++};
++
++static const struct easel_ovr easel_ovrs[] = {
++	{  340, 0x57, 0x43, 0xC2, 0x44, 0x8A, 0x43, 0xC3, 0x44, 0x83, 0x14, true },
++	{  360, 0x57, 0x43, 0xC2, 0x44, 0x8A, 0x43, 0xC3, 0x44, 0x83, 0x14, false },
++	{  446, 0x57, 0x45, 0xC3, 0x9D, 0x8E, 0x45, 0xC3, 0x9D, 0x84, 0x17, true },
++	{  488, 0x58, 0x45, 0xC3, 0x03, 0x90, 0x45, 0xC3, 0x03, 0x85, 0x18, true },
++	{  550, 0x4C, 0x48, 0xC5, 0x03, 0x91, 0x47, 0xC6, 0x03, 0x85, 0x1A, true },
++	{  648, 0x4E, 0x48, 0xC5, 0x05, 0x94, 0x48, 0xC5, 0x05, 0x85, 0x1C, true },
++	{  685, 0x4C, 0x48, 0xC5, 0x03, 0x91, 0x47, 0xC6, 0x03, 0x85, 0x1D, true },
++	{  720, 0x4E, 0x49, 0xC5, 0x05, 0x96, 0x49, 0xC6, 0x05, 0x86, 0x1D, true },
++	{  984, 0x50, 0x4D, 0xC7, 0x05, 0xA0, 0x4D, 0xC8, 0x05, 0x8A, 0x26, true },
++	{ 1104, 0x5D, 0x4F, 0xC6, 0x09, 0xA7, 0x4F, 0xC9, 0x07, 0x8B, 0x27, true },
++	{ 1200, 0x53, 0x51, 0xCA, 0x09, 0xA7, 0x50, 0xCC, 0x07, 0x8D, 0x2B, true },
++	{ 1296, 0x53, 0x51, 0xCA, 0x09, 0xA7, 0x50, 0xCC, 0x07, 0x8D, 0x2E, true },
++	{ 1300, 0x53, 0x51, 0xCA, 0x09, 0xA7, 0x50, 0xCC, 0x07, 0x8D, 0x2E, true },
++	{ 1368, 0x53, 0x51, 0xCA, 0x09, 0xA7, 0x50, 0xCC, 0x08, 0x8D, 0x2F, true },
++	{ 1776, 0x58, 0x59, 0xCD, 0x0B, 0xC0, 0x50, 0xCE, 0x0B, 0x90, 0x36, true },
++	{ 1850, 0x58, 0x59, 0xCD, 0x0B, 0xC0, 0x59, 0xCE, 0x0B, 0x98, 0x36, true },
++	{ 1900, 0x58, 0x59, 0xCD, 0x0B, 0xC0, 0x59, 0xCE, 0x0B, 0x98, 0x1B, true },
++	{ 2000, 0x58, 0x59, 0xCD, 0x0B, 0xC0, 0x59, 0xCE, 0x0B, 0x98, 0x1B, true },
++	{ 2100, 0x9A, 0x9B, 0xD0, 0x0E, 0xC0, 0x39, 0xD3, 0x0C, 0xA7, 0x1E, true },
++};
++
++static const struct easel_ovr *easel_find_ovr(u32 rate)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(easel_ovrs); i++)
++		if (rate <= easel_ovrs[i].rate)
++			return &easel_ovrs[i];
++	return &easel_ovrs[ARRAY_SIZE(easel_ovrs) - 1];
++}
++
++/*
++ * mnh_mipi_gen3_device() quantizes the requested rate to a fixed ladder
++ * BEFORE deriving anything (mnh-mipi.c:490). This is why a link the HAL
++ * asks for at 648 Mbps is actually driven at 685 -- and why our port, which
++ * skipped this step, drove 650 with a 600-bucket D-PHY range.
++ */
++static u32 easel_quantize_rate(u32 rate)
++{
++	static const u16 ladder[] = { 360, 550, 685, 720, 984,
++				      1104, 1200, 1368, 1850 };
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(ladder); i++)
++		if (rate <= ladder[i])
++			return ladder[i];
++	return rate;
++}
++
++static int easel_freq_code(u32 rate)
++{
++	int i;
++
++	if (rate < easel_rates[0].rate)
++		return -EINVAL;
++	for (i = 0; i < ARRAY_SIZE(easel_rates); i++)
++		if (rate < easel_rates[i].rate)
++			return i - 1;
++
++	return ARRAY_SIZE(easel_rates) - 1;
++}
++
++static const struct { u32 khz; u8 cntrl; } easel_vco[] = {
++	{   40000, 0x3f }, {   52500, 0x39 }, {   80000, 0x2f },
++	{  105000, 0x29 }, {  160000, 0x1f }, {  210000, 0x19 },
++	{  320000, 0x0f }, {  420000, 0x09 }, {  630000, 0x03 },
++	{ 1100000, 0x01 }, { 1150000, 0x01 },
++};
++
++static u8 easel_vco_cntrl(u32 rate)
++{
++	u32 khz = rate * 1000 / 2;
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(easel_vco); i++)
++		if (khz < easel_vco[i].khz)
++			return easel_vco[i ? i - 1 : 0].cntrl;
++
++	return easel_vco[ARRAY_SIZE(easel_vco) - 1].cntrl;
++}
++
++/* mnh_mipi_get_pll_coeffs() */
++static void easel_pll_coeffs(u32 rate, u16 *m, u8 *n)
++{
++	u32 khz = rate * 1000 / 2;
++	int div, est, iter_n, iter_m, calc;
++	int best_err = INT_MAX, best_n = 0, best_m = 0;
++
++	if (khz < 80000)
++		div = 8;
++	else if (khz < 160000)
++		div = 4;
++	else if (khz < 320000)
++		div = 2;
++	else
++		div = 1;
++
++	est = khz * 1000 * div / REF_FREQ_KHZ;
++
++	for (iter_n = 4; iter_n <= 12; iter_n++) {
++		iter_m = (est * iter_n + 999) / 1000;
++		calc = iter_m * 1000 / iter_n;
++		if (iter_m < 64)
++			continue;
++		if (iter_m > 625)
++			break;
++		if ((calc - est) < best_err) {
++			best_n = iter_n;
++			best_m = iter_m;
++			best_err = calc - est;
++		}
++	}
++
++	*m = best_m;
++	*n = best_n;
++}
++
++/* mnh_mipi_gen3_lprxpon_wa() -- b/63578602 */
++static void easel_lprxpon_wa(struct easel *easel, unsigned int dev, bool on)
++{
++	static const u16 regs[] = { 0x1ae, 0x1ad, 0x305, 0x505,
++				    0x705, 0x905, 0xb05 };
++	static const u8 vals[] = { 0x07, 0xe0, 0x06, 0x06, 0x06, 0x06, 0x06 };
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(regs); i++)
++		rx_dphy(easel, dev, regs[i], on ? vals[i] : 0x00);
++}
++
++/* mnh_mipi_gen3_host() */
++static int easel_config_rx(struct easel *easel, unsigned int dev, u32 rate)
++{
++	u32 base = easel_rx_base(dev);
++	int code;
++
++	if (dev > 2)
++		return -EINVAL;
++
++	code = easel_freq_code(rate);
++	if (code < 0)
++		return code;
++
++	easel_rmw(easel, base + RX_N_LANES, 0x7, 0);
++
++	easel_w(easel, base + RX_INT_MSK_PHY_FATAL, 0xffffffff);
++	easel_w(easel, base + RX_INT_MSK_PKT_FATAL, 0xffffffff);
++	easel_w(easel, base + RX_INT_MSK_FRAME_FATAL, 0xffffffff);
++	easel_w(easel, base + RX_INT_MSK_PHY, 0xffffffff);
++	easel_w(easel, base + RX_INT_MSK_PKT, 0xffffffff);
++	easel_w(easel, base + RX_INT_MSK_LINE, 0xffffffff);
++
++	/* ungate the controller clock (CG bit clear = running) */
++	easel_rmw(easel, EASEL_MIPI_TOP + TOP_CSI_CLK_CTRL,
++		  BIT(2 + dev), 0);
++
++	easel_rmw(easel, base + RX_PHY_SHUTDOWNZ, 0x1, 0);
++	easel_rmw(easel, base + RX_DPHY_RSTZ, 0x1, 0);
++	easel_w(easel, base + RX_PHY_TEST_CTRL0, 0x1);
++	udelay(1);
++	easel_w(easel, base + RX_PHY_TEST_CTRL0, 0x0);
++
++	easel_w(easel, EASEL_MIPI_TOP + TOP_RX0_DPHY_CONFIG + dev * 0x14,
++		0x8400 | easel_rates[code].code);
++
++	rx_dphy(easel, dev, 0xe2, easel_rates[code].osc & 0xff);
++	rx_dphy(easel, dev, 0xe3, easel_rates[code].osc >> 8);
++	rx_dphy(easel, dev, 0xe4, 0x01);
++	rx_dphy(easel, dev, 0x08, 0x20);
++	udelay(1);
++
++	easel_rmw(easel, base + RX_N_LANES, 0x7, 0x3);	/* 4 lanes */
++	udelay(1);
++
++	easel_lprxpon_wa(easel, dev, true);
++
++	easel_rmw(easel, base + RX_PHY_SHUTDOWNZ, 0x1, 0x1);
++	udelay(20);
++	easel_rmw(easel, base + RX_DPHY_RSTZ, 0x1, 0x1);
++	easel_rmw(easel, base + RX_CSI2_RESETN, 0x1, 0x1);
++	udelay(30);
++
++	easel_lprxpon_wa(easel, dev, false);
++
++	return 0;
++}
++
++/* mnh_mipi_gen3_device() -- bypass path only, no VPG, no timing overrides */
++static int easel_config_tx(struct easel *easel, unsigned int dev, u32 rate)
++{
++	u32 base = easel_tx_base(dev);
++	u32 pll = EASEL_MIPI_TOP +
++		  (dev ? TOP_TX1_DPHY_PLL_CNTRL : TOP_TX0_DPHY_PLL_CNTRL);
++	u32 cfg = EASEL_MIPI_TOP +
++		  (dev ? TOP_TX1_DPHY_CONFIG : TOP_TX0_DPHY_CONFIG);
++	const struct easel_ovr *ovr;
++	u8 vco, pll_n;
++	u16 pll_m;
++	u32 status = 0;
++	int code, i;
++
++	if (dev > 1)
++		return -EINVAL;
++
++	rate = easel_quantize_rate(rate);
++	ovr = easel_find_ovr(rate);
++
++	code = easel_freq_code(rate);
++	if (code < 0)
++		return code;
++
++	easel_rmw(easel, EASEL_MIPI_TOP + TOP_CSI_CLK_CTRL, BIT(dev), 0);
++
++	/*
++	 * Drop the continuous clock first. These registers survive a module
++	 * reload, and with it still set the clock lane never returns to LP,
++	 * so the INIT wait below can never see TXSTOPSTATE_CLK.
++	 */
++	easel_rmw(easel, base + TX_LPCLK_CTRL, 0x1, 0);
++
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_SHUTDOWNZ, TX_PHY_SHUTDOWNZ);
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_RSTZ_BIT, TX_PHY_RSTZ_BIT);
++	udelay(1000);
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_RSTZ_BIT, 0);
++	easel_w(easel, base + TX_CSI2_RESETN, 0x0);
++	udelay(1);
++	easel_w(easel, base + TX_CSI2_RESETN, 0x1);
++	easel_w(easel, base + TX_INT_MASK_N_VPG, 0xffffffff);
++	easel_w(easel, base + TX_INT_MASK_N_IDI, 0xffffffff);
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_SHUTDOWNZ, 0);
++
++	/* PLL shadow control + clk sel */
++	easel_rmw(easel, pll, 0x1, 0x1);
++	easel_rmw(easel, pll, 0xc0, 0x1 << 6);
++
++	easel_rmw(easel, base + TX_CSI2_RESETN, 0x1, 0x1);
++	easel_w(easel, base + TX_PHY_RSTZ, 0x0);
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_ENABLECLK, TX_PHY_ENABLECLK);
++	easel_w(easel, base + TX_PHY0_TST_CTRL0, 0x1);
++	udelay(1);
++	easel_w(easel, base + TX_PHY0_TST_CTRL0, 0x0);
++
++	easel_w(easel, cfg, 0x8400 | easel_rates[code].code);
++
++	vco = easel_vco_cntrl(rate);
++	easel_pll_coeffs(rate, &pll_m, &pll_n);
++	pll_m -= 2;
++	pll_n -= 1;
++
++	tx_dphy(easel, dev, 0x17b, ((vco & 0x3f) << 1) | 0x81);
++	tx_dphy(easel, dev, 0x178, 0x80 | ((pll_n & 0xf) << 3));
++	tx_dphy(easel, dev, 0x179, pll_m & 0xff);
++	tx_dphy(easel, dev, 0x17a, (pll_m >> 8) & 0x3);
++
++	tx_dphy(easel, dev, 0x15e, 0x10);
++	tx_dphy(easel, dev, 0x162, 0x04);
++	tx_dphy(easel, dev, 0x16e, 0x0c);
++	tx_dphy(easel, dev, 0x173, 0x02);
++	tx_dphy(easel, dev, 0x174, 0x00);
++	tx_dphy(easel, dev, 0x175, 0x60);
++	tx_dphy(easel, dev, 0x176, 0x03);
++	udelay(1);
++
++	/* slew rate calibration (mnh-mipi.c:583), always applied */
++	if (rate > 1500) {
++		tx_dphy(easel, dev, 0x26b, 0x44);
++		tx_dphy(easel, dev, 0x272, 0x00);
++	} else if (rate > 1000) {
++		tx_dphy(easel, dev, 0x270, 0xd0);
++		tx_dphy(easel, dev, 0x271, 0x07);
++		tx_dphy(easel, dev, 0x272, 0x10);
++	} else if (rate > 500) {
++		tx_dphy(easel, dev, 0x270, 0xe2);
++		tx_dphy(easel, dev, 0x271, 0x04);
++		tx_dphy(easel, dev, 0x272, 0x11);
++	} else {
++		tx_dphy(easel, dev, 0x270, 0x84);
++		tx_dphy(easel, dev, 0x271, 0x03);
++		tx_dphy(easel, dev, 0x272, 0x11);
++	}
++
++	/* per-rate timing overrides (mnh-mipi.c:641); 0x5E/0x64 stay unwritten */
++	if (ovr->use_ovrd) {
++		tx_dphy(easel, dev, 0x5a, ovr->r5a);
++		tx_dphy(easel, dev, 0x5b, ovr->r5b);
++		tx_dphy(easel, dev, 0x5c, ovr->r5c);
++		tx_dphy(easel, dev, 0x5d, ovr->r5d);
++		tx_dphy(easel, dev, 0x5f, ovr->r5f);
++		tx_dphy(easel, dev, 0x61, ovr->r61);
++		tx_dphy(easel, dev, 0x62, ovr->r62);
++		tx_dphy(easel, dev, 0x63, ovr->r63);
++		tx_dphy(easel, dev, 0x65, ovr->r65);
++	}
++
++	tx_dphy(easel, dev, 0x304, BIT(2) | BIT(3));
++	tx_dphy(easel, dev, 0x504, BIT(2) | BIT(3));
++	tx_dphy(easel, dev, 0x704, BIT(2) | BIT(3));
++	tx_dphy(easel, dev, 0x904, BIT(2) | BIT(3));
++	tx_dphy(easel, dev, 0xb04, BIT(2) | BIT(3));
++
++	easel_rmw(easel, base + TX_PHY_IF_CFG, 0x7, 3);		/* 4 lanes */
++	easel_rmw(easel, base + TX_PHY_IF_CFG, 0xff00, ovr->wait_time << 8);
++
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_ENABLECLK, TX_PHY_ENABLECLK);
++	udelay(1);
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_SHUTDOWNZ, TX_PHY_SHUTDOWNZ);
++	udelay(1);
++	easel_rmw(easel, base + TX_PHY_RSTZ, TX_PHY_RSTZ_BIT, TX_PHY_RSTZ_BIT);
++	udelay(10);
++
++	/*
++	 * D-PHY INIT: every lane must reach the LP stop state before the
++	 * continuous clock is enabled, then a full INIT period must elapse.
++	 * Skipping either leaves the transmitter driving a clock that no
++	 * receiver can lock to -- 0x1550 is TXSTOPSTATE for the clock lane
++	 * and all four data lanes (mnh-mipi.c:659-677).
++	 */
++	for (i = 0; i < 40; i++) {
++		status = easel_r(easel, base + TX_PHY_STATUS);
++		if ((status & 0x1550) == 0x1550)
++			break;
++		udelay(10);
++	}
++	if ((status & 0x1550) != 0x1550)
++		dev_warn(&easel->pdev->dev,
++			 "TX%u lanes never reached LP stop state, status 0x%08x\n",
++			 dev, status);
++
++	/* INIT period in continuous-clock mode is software timed. */
++	usleep_range(1000, 1200);
++
++	easel_rmw(easel, base + TX_LPCLK_CTRL, 0x1, 0x1);
++
++	dev_info(&easel->pdev->dev,
++		 "TX%u PHY_STATUS 0x%08x -> 0x%08x, DPHY_CFG 0x%08x, pll m=%u n=%u vco=0x%02x\n",
++		 dev, status, easel_r(easel, base + TX_PHY_STATUS),
++		 easel_r(easel, cfg), pll_m + 2, pll_n + 1, vco);
++
++	return 0;
++}
++
++/* mnh_mipi_config_mux_sel(), MIPI_MODE_BYPASS only */
++static void easel_config_mux(struct easel *easel, unsigned int rxdev,
++			     unsigned int txdev, u32 vc_en_mask)
++{
++	static const u32 rx_mode_off[] = { TOP_RX0_MODE, TOP_RX1_MODE,
++					   TOP_RX2_MODE };
++	u32 rx_mode, tx_mode;
++	int i;
++
++	/*
++	 * Clear every OTHER receiver's claim on THIS transmitter first. These
++	 * registers survive a module reload, so a stale RX0->TX0 from an
++	 * earlier run silently contends with the pairing being set up now --
++	 * which invalidated the first RX1->TX0 test (HANDOFF §44c).
++	 *
++	 * Only the claim on this TX: clearing the other RX's whole bypass
++	 * config (BYP_TX0|BYP_TX1|IPU) wiped the front link every time the
++	 * rear was configured after it -- the bug that broke the front the
++	 * moment bypass=0x3 became the default (2026-08-04 evening).
++	 */
++	for (i = 0; i < ARRAY_SIZE(rx_mode_off); i++) {
++		if (i == rxdev)
++			continue;
++		easel_rmw(easel, EASEL_MIPI_TOP + rx_mode_off[i],
++			  RX_MODE_BYP_TX0_EN << txdev, 0);
++	}
++
++	rx_mode = easel_r(easel, EASEL_MIPI_TOP + rx_mode_off[rxdev]);
++	rx_mode &= ~((0xf << RX_MODE_VC_EN_SHIFT) | RX_MODE_BYP_TX0_EN |
++		     (RX_MODE_BYP_TX0_EN << 1) | RX_MODE_IPU_EN);
++	rx_mode |= (vc_en_mask & 0xf) << RX_MODE_VC_EN_SHIFT;
++	rx_mode |= RX_MODE_BYP_TX0_EN << txdev;
++	/*
++	 * The vendor uses MIPI_MODE_BYPASS_W_IPU, not plain bypass: stock's
++	 * live RX0_MODE reads 0x1b (IPU_EN | BYP_TX0_EN) while streaming.
++	 * ponytail: keep it unconditional -- we have no IPU user, and the
++	 * only known-good configuration sets it.
++	 */
++	rx_mode |= RX_MODE_IPU_EN;
++
++	tx_mode = (1 + rxdev) << TX_MODE_BYP_SEL_SHIFT;
++
++	easel_w(easel, EASEL_MIPI_TOP + rx_mode_off[rxdev], rx_mode);
++	easel_w(easel, EASEL_MIPI_TOP + (txdev ? TOP_TX1_MODE : TOP_TX0_MODE),
++		tx_mode);
++
++	/*
++	 * Read back what latched. mnh-mipi.c warns the RX mode register only
++	 * takes while the RX clock is present, and this driver usually runs
++	 * with the sensor off -- these values are the tell (HANDOFF §5.1).
++	 */
++	dev_info(&easel->pdev->dev,
++		 "mux readback: RX%u_MODE 0x%02x (wrote 0x%02x), TX%u_MODE 0x%02x (wrote 0x%02x)\n",
++		 rxdev, easel_r(easel, EASEL_MIPI_TOP + rx_mode_off[rxdev]),
++		 rx_mode, txdev,
++		 easel_r(easel, EASEL_MIPI_TOP +
++			 (txdev ? TOP_TX1_MODE : TOP_TX0_MODE)), tx_mode);
++}
++
++/*
++ * Put one camera link into bypass: sensor -> RXn -> TXn -> SoC CSIPHYn.
++ * @rate is Mbps per lane, i.e. twice the sensor's V4L2 link frequency.
++ */
++int easel_mipi_bypass(struct easel *easel, unsigned int rxdev,
++		      unsigned int txdev, u32 rate)
++{
++	u32 clk;
++	int ret;
++
++	dev_info(&easel->pdev->dev,
++		 "bypass: RX%u -> TX%u at %u Mbps/lane\n", rxdev, txdev, rate);
++
++	/*
++	 * The D-PHY test interface needs its own clock. Measured on taimen:
++	 * SCU CCU_CLK_CTL reads 0x00ff5c63 out of reset -- MIPI_REFCLKEN set,
++	 * **MIPI_TESTCLKEN clear**. With it clear every tx_dphy()/rx_dphy()
++	 * write is silently dropped, including the HS lane-driver enables at
++	 * 0x304..0xB04, so the controller runs its state machine (lanes leave
++	 * stop state, PLL locks) while the pads drive nothing at all. No
++	 * downstream kernel code writes this register -- Easel's boot ROM
++	 * does, and we never boot it (HANDOFF §45).
++	 */
++	clk = easel_r(easel, EASEL_SCU_CCU_CLK_CTL);
++	easel_w(easel, EASEL_SCU_CCU_CLK_CTL,
++		clk | SCU_MIPI_TESTCLKEN | SCU_MIPI_REFCLKEN);
++	dev_info(&easel->pdev->dev,
++		 "SCU CCU_CLK_CTL 0x%08x -> 0x%08x, CSI_CLK_CTRL 0x%08x\n",
++		 clk, easel_r(easel, EASEL_SCU_CCU_CLK_CTL),
++		 easel_r(easel, EASEL_MIPI_TOP + TOP_CSI_CLK_CTRL));
++
++	ret = easel_config_rx(easel, rxdev, rate);
++	if (ret) {
++		dev_err(&easel->pdev->dev, "RX%u config failed: %d\n",
++			rxdev, ret);
++		return ret;
++	}
++
++	ret = easel_config_tx(easel, txdev, rate);
++	if (ret) {
++		dev_err(&easel->pdev->dev, "TX%u config failed: %d\n",
++			txdev, ret);
++		return ret;
++	}
++
++	/*
++	 * vc_en = 0, matching a live stock session (TKMIPI vc_en=0, and the
++	 * working RX0_MODE reads 0x1b with VC_EN clear). We used to enable all
++	 * four virtual channels, a state no working session has ever had.
++	 */
++	easel_config_mux(easel, rxdev, txdev, 0x0);
++
++	/*
++	 * Localize the silence: PHY_RX (0x48) shows clock-lane HS activity,
++	 * PHY_STOPSTATE (0x4c) the lane LP states. With the sensor streaming,
++	 * a live RX shows rxclkactivehs=1; all-idle means the sensor's signal
++	 * never reaches Easel and the TX side is not the problem.
++	 */
++	dev_info(&easel->pdev->dev,
++		 "RX%u: PHY_RX 0x%08x STOPSTATE 0x%08x INT_MAIN 0x%08x, TX%u PHY_STATUS 0x%08x\n",
++		 rxdev, easel_r(easel, easel_rx_base(rxdev) + 0x48),
++		 easel_r(easel, easel_rx_base(rxdev) + 0x4c),
++		 easel_r(easel, easel_rx_base(rxdev) + 0x0c),
++		 txdev, easel_r(easel, easel_tx_base(txdev) + TX_PHY_STATUS));
++
++	dev_info(&easel->pdev->dev, "bypass RX%u->TX%u configured\n",
++		 rxdev, txdev);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(easel_mipi_bypass);
++
++static struct easel *easel_dev;
++
++/*
++ * Cycle the front TX's continuous clock: LP-11 for a few ms, then HS again.
++ * The CSIPHY clock-lane detector may only arm on an LP->HS transition seen
++ * AFTER the CSIPHY is configured; our TX clock has been continuously HS
++ * since module load, so a csiphy configured mid-session never sees one.
++ * Stock never hits this because the HAL brings the TX up 0.1 s before the
++ * CSIPHY, then data follows immediately.
++ */
++void easel_mipi_kick(unsigned int txdev)
++{
++	struct easel *easel = easel_dev;
++	u32 base;
++
++	if (!easel || txdev > 1)
++		return;
++
++	base = easel_tx_base(txdev);
++	easel_rmw(easel, base + TX_LPCLK_CTRL, 0x1, 0);
++	msleep(5);
++	easel_rmw(easel, base + TX_LPCLK_CTRL, 0x1, 0x1);
++	dev_info(&easel->pdev->dev, "TX%u clock lane kicked (LP pulse), PHY_STATUS 0x%08x\n",
++		 txdev, easel_r(easel, base + TX_PHY_STATUS));
++}
++EXPORT_SYMBOL_GPL(easel_mipi_kick);
++
++static int easel_probe(struct pci_dev *pdev, const struct pci_device_id *id)
++{
++	struct easel *easel;
++	u32 ctrl2, off;
++	int i, ret;
++
++	easel = devm_kzalloc(&pdev->dev, sizeof(*easel), GFP_KERNEL);
++	if (!easel)
++		return -ENOMEM;
++
++	easel->pdev = pdev;
++	easel->window = ~0;
++
++	/*
++	 * The PCI core sizes this port's bridge windows to fit Easel but never
++	 * places the endpoint's own BARs -- they stay at address 0 with
++	 * COMMAND=0x0000, so pci_enable_device() fails with "BAR 0 not
++	 * claimed" and any MMIO to them hangs the fabric. Assign them here.
++	 */
++	for (i = 0; i < PCI_STD_NUM_BARS; i++) {
++		struct resource *r = &pdev->resource[i];
++
++		if (!r->flags || r->parent || resource_size(r) == 0)
++			continue;
++		ret = pci_assign_resource(pdev, i);
++		if (ret)
++			dev_warn(&pdev->dev, "BAR %d assign failed: %d\n",
++				 i, ret);
++		else
++			dev_info(&pdev->dev, "BAR %d assigned %pr\n", i, r);
++	}
++
++	ret = pcim_enable_device(pdev);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "cannot enable device\n");
++
++	pci_set_master(pdev);
++
++	ret = pcim_iomap_regions(pdev, BIT(EASEL_BAR_CONFIG), "easel-cfg");
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "cannot map BAR2\n");
++
++	easel->cfg = pcim_iomap_table(pdev)[EASEL_BAR_CONFIG];
++	pci_set_drvdata(pdev, easel);
++	easel_dev = easel;
++
++	dev_info(&pdev->dev, "Easel BAR2 mapped at %pa, len 0x%llx\n",
++		 &pdev->resource[EASEL_BAR_CONFIG].start,
++		 (u64)pci_resource_len(pdev, EASEL_BAR_CONFIG));
++
++	off = easel_set_window(easel, EASEL_PERIPH_BASE, EASEL_MIPI_TOP_BASE);
++	pci_read_config_dword(pdev, IATU_REGION_CTRL_2, &ctrl2);
++	dev_info(&pdev->dev,
++		 "iATU: BAR2 -> 0x%08x (ctrl2 0x%08x), MIPI_TOP at +0x%x\n",
++		 EASEL_PERIPH_BASE, ctrl2, off);
++
++	/*
++	 * ONE MUX reset per probe, before any link config. Downstream never
++	 * resets from the kernel ("Upper layers should issue a MUX reset
++	 * prior to configuring the MUX", mnh-mipi.c:699 -- firmware/HAL did
++	 * it). Doing it per-link reset the already-configured front TX every
++	 * time the rear was configured after it: TX1 PLL read back unlocked
++	 * (PHY_STATUS 0x03) on every bypass=0x3 boot until this moved here.
++	 * MIPI_SW_RST is CSI_CLK_CTRL bit 5.
++	 */
++	if (bypass) {
++		easel_rmw(easel, EASEL_MIPI_TOP + TOP_CSI_CLK_CTRL,
++			  BIT(5), BIT(5));
++		udelay(10);
++		easel_rmw(easel, EASEL_MIPI_TOP + TOP_CSI_CLK_CTRL, BIT(5), 0);
++		udelay(10);
++	}
++
++	if (bypass & 0x1)
++		easel_mipi_bypass(easel, front_rx, front_tx, front_rate);
++	if (bypass & 0x2)
++		easel_mipi_bypass(easel, 0, 0, rear_rate);
++
++	return 0;
++}
++
++static void easel_remove(struct pci_dev *pdev)
++{
++	easel_dev = NULL;
++	pci_clear_master(pdev);
++}
++
++static const struct pci_device_id easel_ids[] = {
++	{ PCI_DEVICE(EASEL_VENDOR_INTEL, EASEL_DEVICE_MNH) },
++	{ }
++};
++MODULE_DEVICE_TABLE(pci, easel_ids);
++
++static struct pci_driver easel_driver = {
++	.name = "easel-mipi",
++	.id_table = easel_ids,
++	.probe = easel_probe,
++	.remove = easel_remove,
++};
++module_pci_driver(easel_driver);
++
++MODULE_DESCRIPTION("Easel (Pixel Visual Core) MIPI bridge");
++MODULE_LICENSE("GPL");
+diff --git a/include/linux/easel-mipi.h b/include/linux/easel-mipi.h
+new file mode 100644
+index 000000000000..5be9b0ac17a0
+--- /dev/null
++++ b/include/linux/easel-mipi.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _LINUX_EASEL_MIPI_H
++#define _LINUX_EASEL_MIPI_H
++
++/*
++ * Pulse Easel TX @txdev's continuous clock lane through LP-11 for ~5 ms.
++ *
++ * The msm8998 CSIPHY arms its clock-lane detector only on an LP->HS
++ * transition seen AFTER the CSIPHY is configured; Easel's continuous clock
++ * runs from easel-mipi probe, so without this pulse no capture session can
++ * ever lock (first frames 2026-08-04 were unlocked by exactly this).
++ * Sensors call it right after starting their MIPI output, which the media
++ * pipeline guarantees is after CSIPHY config. No-op if easel-mipi is not
++ * bound. Sleeps; process context only.
++ */
++void easel_mipi_kick(unsigned int txdev);
++
++#endif

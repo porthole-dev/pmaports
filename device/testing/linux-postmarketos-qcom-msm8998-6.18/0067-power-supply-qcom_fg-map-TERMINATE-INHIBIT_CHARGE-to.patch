@@ -1,0 +1,43 @@
+From 7d9eca7fb1b51b2ca8739e72d6d7c1cc86dca383 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 18:24:30 +0200
+Subject: [PATCH 067/113] power: supply: qcom_fg: map TERMINATE/INHIBIT_CHARGE
+ to STATUS_FULL
+
+qcom_fg_get_prop_batt_status() reads BATTERY_CHARGER_STATUS_1 and maps
+TERMINATE_CHARGE and INHIBIT_CHARGE -- the states the charger state
+machine enters once the battery reaches float voltage and charging
+stops -- to POWER_SUPPLY_STATUS_CHARGING. With a charger permanently
+attached this makes GNOME (and anything else reading
+power_supply_class) show "Charging" forever once the battery is
+actually full and topped off.
+
+qcom_smbx.c reads the identical BATTERY_CHARGER_STATUS_1 register on
+the same PMI8998 hardware block (same register offset 0x06, same
+TRICKLE/PRE/FAST/FULLON/TAPER/TERMINATE/INHIBIT/DISABLE enum), and
+already maps both states to POWER_SUPPLY_STATUS_FULL. Do the same
+here so the fuel gauge and the charger driver agree on what "full"
+means for the same battery.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/power/supply/qcom_fg.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/power/supply/qcom_fg.c b/drivers/power/supply/qcom_fg.c
+index 5fa1f0b0f7d9..16d8a2fe407e 100644
+--- a/drivers/power/supply/qcom_fg.c
++++ b/drivers/power/supply/qcom_fg.c
+@@ -604,9 +604,11 @@ int qcom_fg_get_prop_batt_status(struct qcom_fg_chip *chip, int *val)
+ 	case FAST_CHARGE:
+ 	case FULLON_CHARGE:
+ 	case TAPER_CHARGE:
++		*val = POWER_SUPPLY_STATUS_CHARGING;
++		break;
+ 	case TERMINATE_CHARGE:
+ 	case INHIBIT_CHARGE:
+-		*val = POWER_SUPPLY_STATUS_CHARGING;
++		*val = POWER_SUPPLY_STATUS_FULL;
+ 		break;
+ 	case DISABLE_CHARGE:
+ 		*val = POWER_SUPPLY_STATUS_NOT_CHARGING;

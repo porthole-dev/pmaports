@@ -1,0 +1,97 @@
+From c853cb616f1ddb2f5f62a597c82cfe7347378dfe Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 18 Aug 2026 23:59:00 +0200
+Subject: [PATCH 118/118] ASoC: codecs: wcd-mbhc-v2: fix double release of the
+ MICB_ENABLE vote in wcd_correct_swch_plug()
+
+wcd_mbhc_adc_detect_plug_type() takes exactly one MICB_ENABLE vote
+before scheduling correct_plug_swch. wcd_correct_swch_plug() is
+supposed to release exactly that one vote with a matching
+MICB_DISABLE, but it currently releases it twice on two of its exit
+paths:
+
+ - the hs_detect_work_stop early exit calls wcd_micbias_disable()
+   (which itself issues MICB_DISABLE) and then falls through to the
+   "exit:" label, which unconditionally issues another MICB_DISABLE;
+
+ - a plug_type of MBHC_PLUG_TYPE_HEADPHONE hits the same unconditional
+   MICB_DISABLE at "exit:" and then, a few lines later, calls
+   wcd_micbias_disable() again for the same reason.
+
+(A headphone plug that also stops mid-detection takes both paths and
+releases the single vote three times.)
+
+mbhc_micbias_control() is a manual counter, not an atomic refcount
+with a floor: mbhc_cb->mbhc_micbias_control's backing store
+(wcd->sysclk_users in wcd934x) has no protection against being driven
+negative. Once one of these double-releases has happened, the counter
+never returns to zero on disable (it print/decrements from 0 to -1 and
+stops there, so the disable branch never runs and the codec bias/MCLK
+never powers down) and never reaches 1 on enable either (it goes from
+-1 to 0, so the enable branch that reprograms the clock never runs).
+
+Fix it by tracking whether this call has already released the vote
+and skipping the redundant release(s), instead of removing
+MICB_DISABLE from wcd_micbias_disable() -- that helper has other,
+unrelated callers (e.g. wcd_mbhc_report_plug_removal()) that rely on
+it being the sole release for their own, separately-taken vote.
+
+No behaviour other than the vote count changes: enable_irq() and the
+rest of the HEADPHONE-branch cleanup still run unconditionally.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/codecs/wcd-mbhc-v2.c | 19 ++++++++++++++++---
+ 1 file changed, 16 insertions(+), 3 deletions(-)
+
+diff --git a/sound/soc/codecs/wcd-mbhc-v2.c b/sound/soc/codecs/wcd-mbhc-v2.c
+index 26ebcdadeb7d..b4d5b1ffdc7f 100644
+--- a/sound/soc/codecs/wcd-mbhc-v2.c
++++ b/sound/soc/codecs/wcd-mbhc-v2.c
+@@ -1154,6 +1154,7 @@ static void wcd_correct_swch_plug(struct work_struct *work)
+ 	int output_mv, cross_conn, hs_threshold, try = 0, micbias_mv;
+ 	bool is_spl_hs = false;
+ 	bool is_pa_on;
++	bool micbias_disabled = false;
+ 	int ret;
+ 
+ 	mbhc = container_of(work, struct wcd_mbhc, correct_plug_swch);
+@@ -1218,6 +1219,7 @@ static void wcd_correct_swch_plug(struct work_struct *work)
+ 	while (!time_after(jiffies, timeout)) {
+ 		if (mbhc->hs_detect_work_stop) {
+ 			wcd_micbias_disable(mbhc);
++			micbias_disabled = true;
+ 			goto exit;
+ 		}
+ 
+@@ -1297,8 +1299,18 @@ static void wcd_correct_swch_plug(struct work_struct *work)
+ 		wcd_mbhc_adc_update_fsm_source(mbhc, plug_type);
+ 
+ exit:
+-	if (mbhc->mbhc_cb->mbhc_micbias_control/* &&  !mbhc->micbias_enable*/)
+-		mbhc->mbhc_cb->mbhc_micbias_control(component, MIC_BIAS_2, MICB_DISABLE);
++	/*
++	 * Every path into this label already released exactly one
++	 * MICB_ENABLE vote: either here, or -- for HEADPHONE, and for the
++	 * hs_detect_work_stop early exit above -- via wcd_micbias_disable()
++	 * below. Releasing it twice underflows mbhc_cb->mbhc_micbias_control's
++	 * backing refcount (wcd->sysclk_users in wcd934x), which then never
++	 * reaches zero and never reaches its enable branch either.
++	 */
++	if (plug_type != MBHC_PLUG_TYPE_HEADPHONE && !micbias_disabled) {
++		if (mbhc->mbhc_cb->mbhc_micbias_control/* &&  !mbhc->micbias_enable*/)
++			mbhc->mbhc_cb->mbhc_micbias_control(component, MIC_BIAS_2, MICB_DISABLE);
++	}
+ 
+ 	/*
+ 	 * If plug type is corrected from special headset to headphone,
+@@ -1306,7 +1318,8 @@ static void wcd_correct_swch_plug(struct work_struct *work)
+ 	 * disable micbias.
+ 	 */
+ 	if (plug_type == MBHC_PLUG_TYPE_HEADPHONE) {
+-		wcd_micbias_disable(mbhc);
++		if (!micbias_disabled)
++			wcd_micbias_disable(mbhc);
+ 		/*
+ 		 * Enable ADC COMPLETE interrupt for HEADPHONE.
+ 		 * Btn release may happen after the correct work, ADC COMPLETE

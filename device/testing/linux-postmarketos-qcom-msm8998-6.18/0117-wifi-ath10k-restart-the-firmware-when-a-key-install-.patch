@@ -1,0 +1,63 @@
+From f6a4baacf2addd6d4c4fdebc0be37ac1ec6549b0 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 18 Aug 2026 21:10:00 +0200
+Subject: [PATCH 117/118] wifi: ath10k: restart the firmware when a key install
+ times out
+
+ath10k_install_key() sends WMI_VDEV_INSTALL_KEY_CMDID and waits 3 s for
+the firmware to acknowledge it. If the firmware does not answer, the
+function returns -ETIMEDOUT, every caller logs it, and that is the end of
+it: the driver carries on talking to a firmware that has demonstrably
+stopped servicing its control path, with the key state in the firmware
+now unknown.
+
+On a Pixel 2 XL (msm8998, WCN3990 hw1.0) this is not a recoverable
+situation. Observed on an idle station link:
+
+  ath10k_snoc 18800000.wifi: failed to install key for vdev 0 peer ...: -110
+  wlan0: failed to remove key (0, ...) from hardware (-110)
+  wpa_supplicant: wlan0: CTRL-EVENT-DISCONNECTED ... reason=4 locally_generated=1
+
+From that point the firmware kept doing 802.11 management on its own -
+eight further associations all completed with status=0 - but returned a
+drop completion for every data frame, so no EAPOL frame ever left the
+chip and none of those associations reached the 4-way handshake. The
+firmware never crashed, so no existing ath10k recovery trigger fired and
+the interface stayed unusable until the machine was rebooted. Recovering
+at the point of the key timeout would have cost one firmware restart
+instead of an indefinitely dead interface.
+
+Treat the unanswered install-key command the same way ath10k_wmi_cmd_send()
+already treats a WMI command it cannot hand to the firmware within 3 s, and
+ask for a firmware restart. ath10k_core_start_recovery() is a no-op unless
+the device is running and no recovery is already pending, and it does not
+block on the restart, so this stays a single queued restart even if several
+key installs time out in a row.
+
+The hook goes in ath10k_install_key() rather than in its callers so that
+every path that installs a key - .set_key, the static WEP key upload, and
+the peer key teardown - is covered.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/net/wireless/ath/ath10k/mac.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
+index 4db75dc91eb7..8431f33e9653 100644
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -326,8 +326,12 @@ static int ath10k_install_key(struct ath10k_vif *arvif,
+ 		return ret;
+ 
+ 	time_left = wait_for_completion_timeout(&ar->install_key_done, 3 * HZ);
+-	if (time_left == 0)
++	if (time_left == 0) {
++		ath10k_warn(ar, "vdev %i install key timed out, restarting hardware\n",
++			    arvif->vdev_id);
++		ath10k_core_start_recovery(ar);
+ 		return -ETIMEDOUT;
++	}
+ 
+ 	return 0;
+ }

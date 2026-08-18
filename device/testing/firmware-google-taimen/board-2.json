@@ -1,0 +1,14 @@
+[
+	{
+		"data": "bdwlan.bin",
+		"names": [
+			"bus=snoc,qmi-board-id=ff"
+		]
+	},
+	{
+		"data": "bdwlan.b09",
+		"names": [
+			"bus=snoc,qmi-board-id=9"
+		]
+	}
+]

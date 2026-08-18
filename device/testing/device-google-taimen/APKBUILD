@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=49
+pkgrel=50
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -34,7 +34,6 @@ source="
 	deviceinfo
 	kernel-cmdline.mainline.conf
 	modules-initfs.mainline
-	sudoers-nopasswd
 	taimen-modem-bringup
 	taimen-modem-bringup.initd
 	taimen-modem-bringup.service
@@ -90,10 +89,6 @@ build() {
 
 package() {
 	devicepkg_package $startdir $pkgname
-
-	# See the file's header: local bring-up convenience, not for upstream.
-	install -Dm440 "$srcdir"/sudoers-nopasswd \
-		"$pkgdir"/etc/sudoers.d/50-pmos-dev-nopasswd
 
 	# WLAN/modem bring-up ordering. This used to live in /etc/local.d on the
 	# device only, which meant every clean install silently came up with no
@@ -364,7 +359,6 @@ sha512sums="
 51b7e9f3edf05d774b4477aa5e978831407a25295e3f451b2cb746b4a508caba529672404061c6147f812978cbb87172e2bacb0d2bd0094aa5a3c4b4017ff9ce  deviceinfo
 ecbe386189da5a9d25411c6e94b6acb7efd0fbc853a5ac31bfdfce0d69c60bf8270826d07108ac17b175ea04f8b8d49936d24ab9997888b32a94118a808d4e41  kernel-cmdline.mainline.conf
 2caa643431db69a76f62b8ac489d1a3842d34b32750682da88c359918ca7a0899ed7206bb7faa8e311dc7fc66806e77411f63c3d1ac5b2aba840d336aaed1a61  modules-initfs.mainline
-c3fbad8037d656e2f24efcc08fbac593ea4076d03bb9398bb650667b8c09d8798769c6f58cad25b1ce3263a6607e01c7b2b196f3aaa354335ab7255c2b560789  sudoers-nopasswd
 e1f59cf40a3a58840a86ebc9bd82a78ea0a9ad7d45fd37f6430e47210bb02d636defd487341a8e5062bc6b685d9db66b9f35cb89b52361b07e3cb75ffa589025  taimen-modem-bringup
 bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd87e6a44b2814973e9dc849e275695e203a5516b6e4d665a5f  taimen-modem-bringup.initd
 cb7d96d5d0f2153ab76556100053162b0a4c90e2301723303b07e39559df762f4c6f5fc4cf3ef572a3212682d983c8daabd8cf1f349396517ab1c00309ecb75e  taimen-modem-bringup.service

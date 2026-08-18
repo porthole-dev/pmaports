@@ -1,5 +1,5 @@
 From 4eee7dddc32fab350dd12ef88dfbc7c502642525 Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Jami Kettunen <jami.kettunen@protonmail.com>
 Date: Sat, 8 Aug 2026 15:39:06 +0200
 Subject: [PATCH 13/33] ASoC: qcom: add msm8998 machine driver
 
@@ -14,6 +14,8 @@ SND_SOC_LPASS_MSM8998 and there is nothing to reconcile in the
 platform driver itself -- it is the same LPASS CPU DAI/platform glue
 every other Qualcomm SoC in this directory has.
 
+Signed-off-by: Jami Kettunen <jami.kettunen@protonmail.com>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  include/dt-bindings/sound/msm8998-lpass.h |   9 +

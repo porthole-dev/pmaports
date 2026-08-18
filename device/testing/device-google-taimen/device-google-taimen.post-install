@@ -1,41 +1,8 @@
 #!/bin/sh
-# WLAN/modem bring-up ordering (see /usr/bin/taimen-modem-bringup). Both
-# wrappers ship; only the one matching the running init is ever read, so
-# enabling both is harmless and survives switching between OpenRC and systemd.
-ln -sf /etc/init.d/taimen-modem-bringup \
-	/etc/runlevels/default/taimen-modem-bringup
-ln -sf /usr/lib/systemd/system/taimen-modem-bringup.service \
-	/etc/systemd/system/multi-user.target.wants/taimen-modem-bringup.service
-
-# Sensors: sns-reg serves the SNS_REG QMI service that SLPI's Sensor Manager
-# reads its configuration from. Without it SMGR never publishes and there are
-# no IIO devices at all. Both inits: same "harmless" reasoning as above --
-# main/sns-reg now ships /etc/init.d/sns-reg alongside sns-reg.service.
-mkdir -p /etc/systemd/system/basic.target.wants
-ln -sf /usr/lib/systemd/system/sns-reg.service \
-	/etc/systemd/system/basic.target.wants/sns-reg.service
-
-mkdir -p /etc/runlevels/default
-ln -sf /etc/init.d/sns-reg /etc/runlevels/default/sns-reg
-
-# NFC. neard's own [Install] has no WantedBy (see the drop-in we ship), so it
-# would never start; the drop-in adds one but the symlink still has to exist.
-ln -sf /usr/lib/systemd/system/neard.service \
-	/etc/systemd/system/multi-user.target.wants/neard.service
-
-# PAM-free rescue channel. It has to already be RUNNING before the PID-1 freeze
-# it exists to diagnose, so it is enabled by default; its [Install] is
-# WantedBy=sysinit.target. See taimen-rescue.py's header for why nothing on the
-# normal login path can be used when PID 1 is frozen, and for why it binds the
-# USB-gadget address only and must never be widened.
-mkdir -p /etc/systemd/system/sysinit.target.wants
-ln -sf /usr/lib/systemd/system/taimen-rescue.service \
-	/etc/systemd/system/sysinit.target.wants/taimen-rescue.service
-
-# OpenRC counterpart: the sysinit runlevel is OpenRC's earliest, matching
-# DefaultDependencies=no + WantedBy=sysinit.target above.
-mkdir -p /etc/runlevels/sysinit
-ln -sf /etc/init.d/taimen-rescue /etc/runlevels/sysinit/taimen-rescue
+# Service enablement lives in taimen.preset (systemd) and the -openrc
+# subpackage's own post-install (OpenRC) -- see those for
+# taimen-modem-bringup, sns-reg, neard and taimen-rescue. Nothing here needs
+# a per-unit mechanism, so only the two things that have none are left:
 
 # Phosh session environment (XDG_CURRENT_DESKTOP, GSK_RENDERER,
 # G_RESOURCE_OVERLAYS -- see phosh-desktop-env.conf, taimen-gsk.conf and

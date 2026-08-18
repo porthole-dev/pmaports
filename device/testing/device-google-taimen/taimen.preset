@@ -32,3 +32,11 @@ enable taimen-rescue.service
 # up before qcom_smgr asks the SLPI for sensors; on a fresh install it was
 # left disabled and every SSC sensor silently stayed absent.
 enable sns-reg.service
+
+# neard, moved here from a post-install symlink in pkgrel 52. neard's own
+# [Install] has no WantedBy (see neard-install.conf, the drop-in that adds
+# one) -- without a line here it is silently disabled the same way
+# taimen-rescue.service was on the r24->r28 upgrade (see above). No OpenRC
+# counterpart exists for neard: Alpine's neard package ships no /etc/init.d
+# script at all, so there is nothing to enable there (tracked separately).
+enable neard.service

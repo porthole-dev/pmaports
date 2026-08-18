@@ -1,0 +1,988 @@
+From f7909240d6348f6068dc77d2e0556b129f3a34a6 Mon Sep 17 00:00:00 2001
+From: Casey Connolly <casey.connolly@linaro.org>
+Date: Sat, 8 Aug 2026 15:41:39 +0200
+Subject: [PATCH 029/113] arm64: dts: qcom: msm8998-google-taimen: add Pixel 2
+ XL board
+
+Adds the board devicetree for the Google Pixel 2 XL (taimen), on top
+of the shared msm8998-google-wahoo dtsi: battery, LG SW43402 display
+panel, front (imx179) and rear (imx362) cameras with their
+regulators/pinctrl/CCI wiring, lc898214xd AF actuator, ftm4
+touchscreen, drv2624 haptics, easel-mipi/bcm15602 for the camera MIPI
+bridge, and tas2557 speaker amplifier.
+
+CAMSS itself is left disabled: msm8998 has no CAMSS driver match yet,
+so the camera sensor and CCI nodes describe the hardware ahead of
+that landing, matching how other in-tree SoC dtsi files carry DT
+nodes ahead of driver support. The front sensor's (imx179) CCI
+address is a best-effort guess (0x10, the common IMX179 default)
+since the vendor DT does not carry it -- the downstream camera
+framework gets it from a userspace sensor library instead.
+
+Signed-off-by: Casey Connolly <casey.connolly@linaro.org>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/Makefile             |   1 +
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 940 ++++++++++++++++++
+ 2 files changed, 941 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+
+diff --git a/arch/arm64/boot/dts/qcom/Makefile b/arch/arm64/boot/dts/qcom/Makefile
+index 296688f7cb26..40448eb85afa 100644
+--- a/arch/arm64/boot/dts/qcom/Makefile
++++ b/arch/arm64/boot/dts/qcom/Makefile
+@@ -110,6 +110,7 @@ dtb-$(CONFIG_ARCH_QCOM)	+= msm8996pro-xiaomi-natrium.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8996pro-xiaomi-scorpio.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-asus-novago-tp370ql.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-fxtec-pro1.dtb
++dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-google-taimen.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-hp-envy-x2.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-lenovo-miix-630.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= msm8998-mtp.dtb
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+new file mode 100644
+index 000000000000..1fa9abbb35f7
+--- /dev/null
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -0,0 +1,940 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2020, Caleb Connolly <caleb@connolly.tech>
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/leds/common.h>
++#include <dt-bindings/sound/qcom,q6afe.h>
++#include <dt-bindings/sound/qcom,q6asm.h>
++
++#include "msm8998-google-wahoo.dtsi"
++
++/ {
++	model = "Google Pixel 2 XL";
++	compatible = "google,taimen", "google,wahoo", "qcom,msm8998";
++	qcom,msm-id = <0x124 0x20001>;
++
++	wahoo_batt: battery {
++		compatible = "simple-battery";
++		voltage-max-design-microvolt = <4400000>;
++		voltage-min-design-microvolt = <3700000>;
++		charge-full-design-microamp-hours = <3520000>;
++		operating-range-celsius = <0 45>;
++	};
++
++	/*
++	 * Codec MCLK -- there is a KNOWN, MEASURED inconsistency here that is
++	 * NOT yet resolved. See docs/HANDOFF-audio.md §2.5 before touching it.
++	 *
++	 * The codec only understands 9.6 or 12.288 MHz (the two encodings in
++	 * WCD934X_CODEC_RPM_CLK_MCLK_CFG), the driver programs the 9.6 setting,
++	 * and every MCLK-derived divider is computed from the clock-frequency
++	 * below. But RPM_SMD_LN_BB_CLK2 is an XO *buffer*: mainline registers it
++	 * with clk_smd_rpm_branch_ops, which has no .set_rate, so the
++	 * clk_set_rate(extclk, 9600000) in wcd934x_comp_set_sysclk() returns 0
++	 * and changes nothing. clk_summary reports bb_clk2 at 19200000 and the
++	 * codec driver now warns about the mismatch at probe.
++	 *
++	 * The vendor's msm8998-audio.dtsi routes the codec's `wcd_clk` through
++	 * `clock_audio` -> `clk_audio_pmi_clk`, which audio-ext-clk-up.c defines
++	 * as a 1:1 clk_fixed_factor over **div_clk1** gated by pm8998 gpio13 --
++	 * i.e. the same arrangement yoshino and sagit use, not this one.
++	 *
++	 * Pointing extclk at RPM_SMD_DIV_CLK1 was TRIED (2026-07-30) and did NOT
++	 * change anything measurable: div_clk1 kept reporting 19200000 through a
++	 * full capture, and the half-rate symptom was identical. So it is left on
++	 * LN_BB_CLK2 -- the configuration the working 12/12 mic result was
++	 * measured on -- rather than shipping an unvalidated clock change.
++	 *
++	 * Before trying again, settle what div_clk1's rate actually IS: mainline
++	 * caches RPM clock rates (clk_smd_rpm_recalc_rate returns r->rate) and
++	 * DEFINE_CLK_SMD_RPM initialises that to INT_MAX, so a reported
++	 * 19200000 is not obviously the hardware truth. Note also that going via
++	 * yoshino's gpio-gate-clock needs CONFIG_COMMON_CLK_GPIO=y in the
++	 * pmaports config -- without it the node gets no driver, devm_clk_get()
++	 * defers forever and there is no sound card at all. That was measured
++	 * too.
++	 */
++
++	/*
++	 * Volume up only. Volume down is not a GPIO on this board -- it is
++	 * wired to the PMIC's RESIN pin, which is also why Power+VolDown is the
++	 * hardware reset combo. See &pm8998_resin below.
++	 *
++	 * GPIO and polarity taken from the vendor's own
++	 * msm8998-taimen-misc.dtsi, which is taimen-specific: the sibling
++	 * Pixel 2 (muskie) puts three keys on GPIOs and this board has one.
++	 */
++	gpio-keys {
++		compatible = "gpio-keys";
++
++		key-volume-up {
++			label = "Volume Up";
++			gpios = <&tlmm 126 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_VOLUMEUP>;
++			debounce-interval = <15>;
++			wakeup-source;
++		};
++	};
++};
++
++/* Volume down. The pon node carries it; mainline leaves it disabled. */
++&pm8998_resin {
++	status = "okay";
++
++	linux,code = <KEY_VOLUMEDOWN>;
++};
++
++/*
++ * qcom_fg reads these three off the fuel-gauge node directly and treats every
++ * one as mandatory -- probe aborts naming whichever is missing. It ignores
++ * monitored-battery; that is only for the charger, which reaches the battery
++ * node via power_supply_get_battery_info().
++ */
++&pmi8998_fg {
++	qcom,max-voltage-uv	 = <4400000>;
++	qcom,min-voltage-uv	 = <3700000>;
++	qcom,battery-capacity-ua = <3520000>;
++};
++
++/*
++ * Rear camera flash: dual LED on the PMI8998 flash module, both channels
++ * ganged like the vendor's led_flash0 (qcom,flash-source = flash0+flash1,
++ * msm8998-taimen-camera.dtsi:36). Torch capped at 300 mA total, flash at
++ * 1 A total -- conservative vs the module's 500 mA/1.5 A per-channel
++ * ceilings; raise only with a thermal reason to.
++ */
++&pmi8998_flash {
++	status = "okay";
++
++	led-0 {
++		function = LED_FUNCTION_FLASH;
++		color = <LED_COLOR_ID_WHITE>;
++		led-sources = <1>, <2>;
++		led-max-microamp = <300000>;
++		flash-max-microamp = <1000000>;
++		flash-max-timeout-us = <1280000>;
++	};
++};
++
++/*
++ * Vibrator. Not the PMI8998 haptics block -- msm8998-taimen-haptics.dtsi
++ * explicitly disables that and puts a TI DRV2624 LRA driver on the vendor's
++ * "i2c_6", which msm8998-blsp.dtsi labels BLSP1 QUP6 (i2c@c17a000), i.e.
++ * blsp1_i2c6 here. All the actuator numbers below are the vendor's.
++ *
++ * The notification LED is deliberately absent even though the vendor maps
++ * three PMI8998 LPG channels for it: the LED is not populated on this board,
++ * and driven at full white it emits nothing. leds-qcom-lpg binds and creates
++ * rgb:status regardless, which would let the shell send notifications to a
++ * sink that cannot light.
++ */
++&blsp1_i2c6 {
++	status = "okay";
++
++	vibrator@5a {
++		compatible = "ti,drv2624";
++		reg = <0x5a>;
++
++		reset-gpios = <&tlmm 95 GPIO_ACTIVE_LOW>;
++
++		ti,actuator = <1>;		/* LRA */
++		ti,smart-loop = <0>;		/* closed loop */
++		ti,rated-voltage = <77>;	/* 1.8 Vrms */
++		ti,odclamp-voltage = <165>;	/* 3.5 Vpeak */
++		ti,lra-frequency = <155>;	/* f0 = 155 Hz */
++		ti,ol-lra-frequency = <155>;
++		ti,lra-wave-shape = <0>;	/* square */
++	};
++};
++
++&panel {
++	compatible = "lg,sw43402";
++};
++
++/*
++ * QUP5 is muxed between I2C and SPI. RAM-booting TWRP and reading the working
++ * vendor kernel over adb settled which one this device actually uses:
++ *
++ *     Name="touchscreen"
++ *     Sysfs=/devices/soc/c179000.i2c/i2c-5/5-0049/input/input1
++ *     driver fts_touch, modalias i2c:ftm4_fts, "FTS Chip ID : 36 70"
++ *
++ * i.e. QUP5 runs as I2C and the touch controller is an STM FTM4 at 0x49.
++ * The factory dtbo says the opposite -- it marks this i2c bus "disabled" and
++ * spi@c179000 + lge,sw49408 "ok" -- and that is wrong for this unit. Nothing
++ * is on SPI at QUP5 there (only pn81a on spi1 and mnh-spi on spi10).
++ *
++ * 400 kHz is what the vendor devicetree runs this bus at.
++ */
++&blsp1_i2c5 {
++	status = "okay";
++	clock-frequency = <400000>;
++
++	touchscreen@49 {
++		compatible = "st,ftm4";
++		reg = <0x49>;
++
++		interrupt-parent = <&tlmm>;
++		interrupts = <125 IRQ_TYPE_LEVEL_LOW>;
++
++		/*
++		 * The vendor ftm4_fts node names these as
++		 *     stm,regulator_dvdd = "pm8998_l6"    (1.808 V)
++		 *     stm,regulator_avdd = "pm8998_l28"   (3.008 V)
++		 * With them off tlmm 125 floats at 0; with them on it reads a
++		 * driven 1, which is the part powering up. The panel rails
++		 * (vpnl, lab, ibb) are separate and already up.
++		 */
++		vdd-supply = <&vreg_l6a_1p8>;
++		avdd-supply = <&vreg_l28_3p0>;
++
++		reset-gpios = <&tlmm 89 GPIO_ACTIVE_LOW>;
++
++		/*
++		 * This bus is shared with the SLPI sensor DSP and an external
++		 * mux picks the owner: low hands it to the AP, high to the
++		 * SLPI. Nothing else in the devicetree hints at it, and the
++		 * AP cannot reach the controller at all until it is driven.
++		 */
++		st,i2c-switch-gpios = <&tlmm 75 GPIO_ACTIVE_LOW>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&ts_int_n &ts_reset_n &ts_i2c_switch>;
++
++		touchscreen-size-x = <1440>;
++		touchscreen-size-y = <2880>;
++	};
++};
++
++/*
++ * NFC. The controller is an NXP PN553-family part; the vendor devicetree
++ * describes it as "qcom,nq-nci" on i2c_8, which is BLSP2 QUP2 (i2c@c1b6000)
++ * in mainline numbering -- the vendor counts i2c interfaces across both
++ * BLSPs, so its "8" is BLSP2's second.
++ *
++ * The vendor node carries a pile of properties this driver does not need:
++ * a BBCLK3 reference clock voted through a clkreq pin, and the eSE plumbing
++ * (esepwr/clear_n/spi_cs) for the PN81A secure element that hangs off spi_1.
++ * The eSE is a separate device and is deliberately not described here.
++ * msm8998-oneplus-common.dtsi drives the same controller on this SoC with
++ * nothing but the three lines below, so the clock is evidently not something
++ * the AP has to arrange.
++ *
++ * GPIOs are from the vendor msm8998-taimen-nfc.dtsi:
++ *   qcom,nq-irq  = <&tlmm 92>  -> interrupts
++ *   qcom,nq-ven  = <&tlmm 12>  -> enable-gpios
++ *   qcom,nq-firm = <&tlmm 93>  -> firmware-gpios (firmware download mode)
++ */
++&blsp2_i2c2 {
++	status = "okay";
++
++	nfc@28 {
++		compatible = "nxp,nxp-nci-i2c";
++		reg = <0x28>;
++
++		interrupt-parent = <&tlmm>;
++		interrupts = <92 IRQ_TYPE_LEVEL_HIGH>;
++
++		enable-gpios = <&tlmm 12 GPIO_ACTIVE_HIGH>;
++		firmware-gpios = <&tlmm 93 GPIO_ACTIVE_HIGH>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&nfc_int_active &nfc_enable_active &nfc_firm_active>;
++	};
++};
++
++/*
++ * milestone-2 TODO (ASoC / slimbus / qdsp6, explicitly out of milestone-1
++ * scope): our full audio wiring -- slimbam/slim/slim_ngd (WCD9340 codec
++ * on SLIMbus), q6core/q6afe/q6asm/q6adm property overrides, lpass_q6_smmu,
++ * q6asmdai frontends, q6afedai Quaternary MI2S, and the &sound machine
++ * card -- has no base nodes to attach to. 6.18's msm8998.dtsi carries no
++ * APR/q6core/q6afe/q6asm/q6adm/slimbus/sound nodes at all yet, unlike our
++ * 6.0 base (see taimen-v6.0:arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++ * lines 249-572 for the full original block with its debugging rationale).
++ * sound/soc/qcom/{msm8998.c,lpass-msm8998.c} are carried forward as source
++ * (milestone 1), but the whole APR/qdsp6/slimbus DT + driver stack needs
++ * porting into msm8998.dtsi before this board override can come back.
++ */
++
++&tlmm {
++	/* Quaternary MI2S to the TAS2557 speaker amps: SCK/WS on 58/59, data on
++	 * SD1/gpio61. Values are the vendor's (8 mA, no pull); the output-high
++	 * on the clock pair is theirs too and matters because the amps sample
++	 * the line while the port is idle. */
++	quat_mi2s_active: quat-mi2s-active {
++		pins = "gpio58", "gpio59";
++		function = "qua_mi2s";
++		drive-strength = <8>;
++		bias-disable;
++		output-high;
++	};
++
++	quat_mi2s_sd1_active: quat-mi2s-sd1-active {
++		pins = "gpio61";
++		function = "qua_mi2s";
++		drive-strength = <8>;
++		bias-disable;
++	};
++
++	ts_int_n: ts-int-n {
++		pins = "gpio125";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-up;
++	};
++
++	ts_reset_n: ts-reset-n {
++		pins = "gpio89";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	ts_i2c_switch: ts-i2c-switch {
++		pins = "gpio75";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	/*
++	 * NFC. Values are the vendor's (msm8998-pinctrl.dtsi, nfc_int_active /
++	 * nfc_enable_active). The vendor groups gpio116 -- the eSE enable --
++	 * into nfc_enable_active; it is left out here because the eSE is not
++	 * described and driving its enable line would be a side effect.
++	 */
++	nfc_int_active: nfc-int-active {
++		pins = "gpio92";
++		function = "gpio";
++		drive-strength = <6>;
++		bias-pull-up;
++	};
++
++	nfc_enable_active: nfc-enable-active {
++		pins = "gpio12";
++		function = "gpio";
++		drive-strength = <6>;
++		bias-pull-up;
++	};
++
++	nfc_firm_active: nfc-firm-active {
++		pins = "gpio93";
++		function = "gpio";
++		drive-strength = <6>;
++		bias-disable;
++	};
++};
++
++/*
++ * Speaker amps: a TI TAS2557 stereo pair, left 0x4c and right 0x4d, on
++ * BLSP2 QUP1 -- the vendor's i2c_7. One node describes the pair, as downstream
++ * does; the driver claims the left address itself. Both share a reset on
++ * pm8998 GPIO6: downstream numbers those GPIOs from 1 and mainline's
++ * pinctrl-spmi-gpio names pin 0 "gpio1", so vendor GPIO6 is index 5 here.
++ *
++ * Verified by RAM-booting before flashing: both addresses ACK and report
++ * REV_PGID 0xa0 = PG2.1, which selects tas2557s_PG21_uCDSP.bin.
++ */
++&blsp2_i2c1 {
++	status = "okay";
++
++	speaker_amp: audio-codec@4d {
++		compatible = "ti,tas2557";
++		reg = <0x4d>;
++
++		reset-gpios = <&pm8998_gpios 5 GPIO_ACTIVE_HIGH>;
++
++		#sound-dai-cells = <0>;
++	};
++};
++
++/*
++ * CAMERA MILESTONE 1 (2026-08-02): CCI only, no sensors, no CAMSS.
++ *
++ * This is deliberately the smallest possible camera step, and it proves four
++ * things that nothing else in the port can prove cheaply:
++ *   1. the 0xca0c000 reg base is right and APPS is allowed to touch it --
++ *      cci_probe reads CCI_HW_VERSION before anything else, so a wrong base is
++ *      garbage or an XPU hang, not a quiet probe;
++ *   2. CAMSS_TOP_GDSC comes up under APPS control and the four MMSS clocks
++ *      enable (cci_enable_clocks runs before any register access);
++ *   3. GIC SPI 295 is really the CCI interrupt AND it fires -- cci_reset waits
++ *      on the reset-done IRQ with a 100 ms timeout and probe FAILS on timeout.
++ *      This is the first proof in the whole port that the camera IRQ numbers
++ *      copied out of the vendor DT are correct;
++ *   4. cci_clk_src can be programmed to 37.5 MHz.
++ *
++ * master 0 = rear, master 1 = front (vendor msm8998-taimen-camera.dtsi:195/:237).
++ *
++ * DO NOT run i2cdetect against these buses: the sensors are unpowered (IMX362
++ * needs 8 rail/reset steps, then MCLK 24 MHz, then a 9 ms settle before it
++ * answers), so a scan proves nothing and only risks the bus.
++ */
++&cci {
++	status = "okay";
++};
++
++/*
++ * EASEL (Pixel Visual Core / Intel Monette Hill) -- HANDOFF §41.
++ *
++ * This is NOT an optional co-processor: it is an in-line MIPI bridge and both
++ * cameras' CSI lanes terminate on it. Easel's own devicetree
++ * (/vendor/firmware/easel/mnh.dtb) declares mipihost RX0/RX1/RX2 (from the
++ * sensors) and mipidevice TX0/TX1 (to this SoC's CSIPHY0/CSIPHY1). With Easel
++ * unpowered, the AP's CSIPHYs are electrically dead no matter how correctly
++ * the sensors and the CAMSS are programmed -- which is exactly what §15-§40
++ * measured for three days.
++ *
++ * blsp2_i2c3 is downstream's i2c_9 (msm8998-blsp.dtsi:245, BLSP2 QUP3
++ * @0xc1b7000); the BCM15602 at 0x08 is Easel's dedicated PMIC and supplies
++ * every Easel rail plus the soc-pwr-good / ddr-pad-iso-n GPIOs.
++ */
++/*
++ * Easel is a PCIe endpoint on pcie0; its MIPI bypass mux is programmed
++ * entirely through BAR2 (mnh-pcie.c:218/264), so no Easel firmware boot is
++ * needed to get the cameras' data across the bridge. Both nodes exist in
++ * msm8998.dtsi and only needed enabling -- the PHY's supplies (l1a/l2a) are
++ * already described there.
++ */
++&pcie_phy {
++	status = "okay";
++};
++
++&pcie0 {
++	status = "okay";
++
++	/*
++	 * Resize the windows for Easel, exactly as downstream's
++	 * msm8998-taimen-easel.dtsi does ("move and resize conf, io, and bars
++	 * (mem) allocations").
++	 *
++	 * Easel wants BAR0 4K + BAR2 8M + BAR4 4M, and each 64-bit BAR is
++	 * naturally aligned, so the generic 13M window at 0x1b300000 cannot
++	 * place them: the kernel assigns the 8M BAR at 0x1b800000 and then
++	 * reports "BAR 9: no space for [mem size 0x00600000 64bit pref]".
++	 * Every BAR is then left at address 0 with COMMAND=0x0000, so any
++	 * BAR read is a transaction to nowhere -- which on this fabric hangs
++	 * the bus and watchdogs the phone (three reboots, HANDOFF §41f).
++	 *
++	 * Shrink the io window to 128K and give the BARs 15M at 0x1b100000.
++	 * The config window has to move out of the way too (it sits at
++	 * 0x1b100000 in msm8998.dtsi, which the enlarged BAR window would
++	 * overlap -- "resource collision ... cannot initialize host").
++	 * Downstream puts it at 0x1b010000/128K; ECAM for one bus needs 1M,
++	 * and bus-range is trimmed to match what is actually behind this port.
++	 */
++	reg = <0x01c00000 0x2000>,
++	      <0x1b000000 0xf1d>,
++	      <0x1b000f20 0xa8>,
++	      <0x1b010000 0x20000>;
++	reg-names = "parf", "dbi", "elbi", "config";
++	bus-range = <0x00 0x01>;
++
++	ranges = <0x01000000 0x0 0x1b030000 0x1b030000 0x0 0x20000>,
++		 <0x02000000 0x0 0x1b100000 0x1b100000 0x0 0xf00000>;
++
++	/*
++	 * Probe ordering, not decoration: Easel is this link's endpoint, so it
++	 * must be powered BEFORE the host trains the link. Naming the Easel
++	 * power domain here makes qcom-pcie defer until the BCM15602 driver
++	 * has registered it, and qcom_pcie_init_2_3_2() enables the supply
++	 * before link-up. Without this the host probes first, finds no
++	 * endpoint, and reports "Phy link never came up" -- and the driver
++	 * suppresses bind attrs, so there is no way to retry afterwards.
++	 */
++	vddpe-3v3-supply = <&easel_vddpe>;
++};
++
++&blsp2_i2c3 {
++	status = "okay";
++
++	bcm15602: pmic@8 {
++		compatible = "brcm,bcm15602";
++		reg = <0x08>;
++
++		interrupt-parent = <&tlmm>;
++		interrupts = <26 IRQ_TYPE_EDGE_FALLING>;
++		interrupt-names = "bcm15602_intb";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&bcm15602_default>;
++
++		pon-gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
++		resetb-gpios = <&tlmm 91 GPIO_ACTIVE_HIGH>;
++
++		/*
++		 * Easel's reference clocks (msm8998-taimen-easel.dtsi mnh-sm:
++		 * ref_clk = clk_ln_bb_clk2, sleep_clk = clk_div_clk3). They feed
++		 * Easel's internal PLLs and must be running before soc-pwr-good.
++		 */
++		clocks = <&rpmcc RPM_SMD_LN_BB_CLK2>,
++			 <&rpmcc RPM_SMD_DIV_CLK3>;
++		clock-names = "ref", "sleep";
++
++		regulators {
++			easel_vddpe: easel_vddpe {
++				regulator-name = "easel_vddpe";
++			};
++		};
++	};
++};
++
++&tlmm {
++	bcm15602_default: bcm15602-default-state {
++		pon-pins {
++			pins = "gpio25";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-disable;
++		};
++
++		intb-pins {
++			pins = "gpio26";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-up;
++		};
++
++		resetb-pins {
++			pins = "gpio91";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-down;
++		};
++	};
++
++	easel_default: easel-default-state {
++		ready-pins {
++			pins = "gpio27";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-down;
++		};
++
++		boot-mode-pins {
++			pins = "gpio28";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-disable;
++		};
++	};
++};
++
++/*
++ * CAMERA MILESTONE 2 (2026-08-02): bring up CAMSS itself. Still no sensors.
++ *
++ * M2 asks exactly one question: does the media graph enumerate and do the
++ * hardware version registers read? Everything else about the camera port is
++ * downstream of that answer, and it needs no sensor to ask -- see
++ * docs/CAMERA-M2-PREP.md §5.
++ *
++ * The driver side is already in this tree (media: camss: add msm8998 support).
++ * msm8998 is sdm660 minus two clocks, so it groups with CAMSS_660 at all nine
++ * dispatch sites, which also means it runs WITHOUT programming ISPIF -- mainline
++ * allocates camss->ispif only for 8x16 and 8x96, and ispif_res_660 sits unused.
++ * If the graph will not link CSID->VFE, that fork is where to look; the 8x96
++ * table is already written. (PREP §4.)
++ *
++ * RAM-BOOT THIS. `fastboot boot`, never `fastboot flash`. Skipping that on the
++ * M1 DTB cost three bootloops and left slot _b marked unbootable.
++ *
++ * The node's power-domains order VFE0-then-VFE1 is load-bearing: camss-vfe-4-8.c
++ * indexes camss->genpd[id] by VFE number. Do not "tidy" it.
++ */
++&camss {
++	status = "okay";
++
++	/*
++	 * MIPI CSI PHY analog rails. Downstream enables both from the CSID
++	 * driver before any PHY programming: qcom,mipi-csi-vdd = pm8998 l2
++	 * (1.2 V, with a 12 mA load vote -- see camss-csid.c) and vdd_sec =
++	 * pm8998 l1 (0.88 V). Mainline never requested either; captures only
++	 * worked at all because the display's DSI PHY holds l2 on.
++	 */
++	vdda-supply = <&vreg_l2a_1p2>;
++	vdd_sec-supply = <&vreg_l1a_0p875>;
++
++	ports {
++		/*
++		 * Front sensor only, for now. CSIPHY1/CSID1 per the vendor DT
++		 * (qcom,csiphy-sd-index = <1>, qcom,csid-sd-index = <1>).
++		 * IMX179 is 4-lane -- CONFIRMED, do not "fix" this to 2.
++		 * Sony's IMX179QQH5-C datasheet §2-1.2.1 gives the lane
++		 * registers: CSI_LANE_MODE is 0x3364 (0 = 4 lane, 2 = 2 lane)
++		 * and OPPXCK_DIV 0x0309 is 0x05 for 4 lane, 0x0A for 2. The
++		 * vendor mode tables write 0x3364 = 0x00 and 0x0309 = 0x05, and
++		 * the live sensor reads back both, so it transmits on four.
++		 * (A csi_lane_mask = 0x07 "2 lane" found by pattern search in
++		 * libmmcamera_imx179.so was a false positive; the datasheet's
++		 * 750 Mbps/lane ceiling also rules 2 lanes out, since full res
++		 * would need 1296 Mbps/lane.)
++		 * data-lanes must match or CSID reports a
++		 * lane-count mismatch rather than anything about the sensor.
++		 */
++		/*
++		 * REAR sensor (IMX362) on CSIPHY0/CSID0 per the factory DTBO
++		 * (fragment@127 camera@0: csiphy-sd-index 0, csid-sd-index 0).
++		 * 4-lane: vendor XML LaneMask 0x1F, mode table 0x0114 = 0x03.
++		 */
++		port@0 {
++			reg = <0>;
++			camss_ep_rear: endpoint {
++				clock-lanes = <7>;
++				data-lanes = <0 1 2 3>;
++				remote-endpoint = <&imx362_ep>;
++			};
++		};
++
++		port@1 {
++			reg = <1>;
++			camss_ep_front: endpoint {
++				clock-lanes = <7>;
++				/*
++				 * §46: reversed order was TESTED against a live
++				 * Easel link and is no better -- and note it is
++				 * a weak test anyway: permuting data-lanes
++				 * keeps the same lane set, so CMN_CTRL5 stays
++				 * 0x8f and the clock lane block (0x700) does
++				 * not move. A genuine clock/data pad swap is
++				 * not expressible here.
++				 */
++				data-lanes = <0 1 2 3>;
++				remote-endpoint = <&imx179_ep>;
++			};
++		};
++	};
++};
++
++/*
++ * CAMERA MILESTONE 4, front sensor (IMX179).
++ *
++ * THE NON-OBVIOUS TRANSLATION, and the whole reason this block looks like this:
++ * the vendor enables the sensor rails with RAW PMIC GPIOs
++ * (msm8998-taimen-camera.dtsi:216 -- gpios = <&pmi8998_gpios 6>, <&pmi8998_gpios 3>),
++ * but mainline sensor drivers take REGULATOR supplies. So each of those becomes
++ * a regulator-fixed with enable-active-high. Miss this and the driver probes,
++ * finds no supply, and either fails or -- worse -- runs with the rail off and
++ * reads all-zero registers, which looks like a dead sensor rather than a DT
++ * omission. (docs/CAMERA-M2-PREP.md, "The one non-obvious translation".)
++ *
++ * PMIC GPIO numbering is 1-based on both sides: pmic_gpio_of_xlate() subtracts
++ * PMIC_GPIO_PHYSICAL_OFFSET = 1, so the vendor's `pmi8998_gpios 6` really is
++ * <&pmi8998_gpios 6> here (our 6.0 base spelled the label "pmi8998_gpio",
++ * singular; 6.18's pmi8998.dtsi renamed the node to plural "pmi8998_gpios",
++ * matching the vendor's own name -- coincidence, not a fix for this), and the
++ * pinctrl pin really is "gpio6". Do not "fix" this to 5.
++ *
++ * VIO is not GPIO-switched -- it is pm8998 LVS1, always available.
++ */
++/ {
++	cam1_dvdd: regulator-cam1-dvdd {
++		compatible = "regulator-fixed";
++		regulator-name = "cam1_dvdd_1v2";
++		regulator-min-microvolt = <1200000>;
++		regulator-max-microvolt = <1200000>;
++		gpio = <&pmi8998_gpios 6 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam1_dvdd_en>;
++	};
++
++	cam1_avdd: regulator-cam1-avdd {
++		compatible = "regulator-fixed";
++		regulator-name = "cam1_avdd_2v7";
++		regulator-min-microvolt = <2700000>;
++		regulator-max-microvolt = <2700000>;
++		gpio = <&pmi8998_gpios 3 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam1_avdd_en>;
++	};
++};
++
++/*
++ * REAR camera (IMX362) rails. Factory DTBO fragment@127 camera@0 + downstream
++ * msm8998-taimen-camera.dtsi:170-183: all rails except VIO are pm8998
++ * GPIO-switched (1-based numbering, same xlate rule as the pmi8998 note
++ * above). Voltages from the vendor node: dvdd 1.05 V, avdd 2.8 V, the rest
++ * from the downstream labels.
++ */
++/ {
++	cam0_dvdd: regulator-cam0-dvdd {
++		compatible = "regulator-fixed";
++		regulator-name = "cam0_dvdd_1v05";
++		regulator-min-microvolt = <1050000>;
++		regulator-max-microvolt = <1050000>;
++		gpio = <&pm8998_gpios 20 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam0_dvdd_en>;
++	};
++
++	cam0_avdd: regulator-cam0-avdd {
++		compatible = "regulator-fixed";
++		regulator-name = "cam0_avdd_2v8";
++		regulator-min-microvolt = <2800000>;
++		regulator-max-microvolt = <2800000>;
++		gpio = <&pm8998_gpios 15 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam0_avdd_en>;
++	};
++
++	cam0_avdd2: regulator-cam0-avdd2 {
++		compatible = "regulator-fixed";
++		regulator-name = "cam0_avdd2_1v8";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++		gpio = <&pm8998_gpios 19 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam0_avdd2_en>;
++	};
++
++	cam0_drv: regulator-cam0-drv {
++		compatible = "regulator-fixed";
++		regulator-name = "cam0_ois_drv_2v8";
++		regulator-min-microvolt = <2800000>;
++		regulator-max-microvolt = <2800000>;
++		gpio = <&pm8998_gpios 9 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam0_drv_en>;
++	};
++
++	cam0_vaf: regulator-cam0-vaf {
++		compatible = "regulator-fixed";
++		regulator-name = "cam0_vaf_2v85";
++		regulator-min-microvolt = <2850000>;
++		regulator-max-microvolt = <2850000>;
++		gpio = <&pm8998_gpios 10 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam0_vaf_en>;
++	};
++};
++
++&pm8998_gpios {
++	cam0_dvdd_en: cam0-dvdd-en-state {
++		pins = "gpio20";
++		function = "normal";
++		bias-disable;
++		drive-push-pull;
++		output-low;
++		power-source = <0>;
++		qcom,drive-strength = <1>;
++	};
++
++	cam0_avdd_en: cam0-avdd-en-state {
++		pins = "gpio15";
++		function = "normal";
++		bias-disable;
++		drive-push-pull;
++		output-low;
++		power-source = <0>;
++		qcom,drive-strength = <1>;
++	};
++
++	cam0_avdd2_en: cam0-avdd2-en-state {
++		pins = "gpio19";
++		function = "normal";
++		bias-disable;
++		drive-push-pull;
++		output-low;
++		power-source = <0>;
++		qcom,drive-strength = <1>;
++	};
++
++	cam0_drv_en: cam0-drv-en-state {
++		pins = "gpio9";
++		function = "normal";
++		bias-disable;
++		drive-push-pull;
++		output-low;
++		power-source = <0>;
++		qcom,drive-strength = <1>;
++	};
++
++	cam0_vaf_en: cam0-vaf-en-state {
++		pins = "gpio10";
++		function = "normal";
++		bias-disable;
++		drive-push-pull;
++		output-low;
++		power-source = <0>;
++		qcom,drive-strength = <1>;
++	};
++};
++
++&cci_i2c0 {
++	/*
++	 * Rear AF actuator. Vendor slave 0xE4 (8-bit) -> 0x72; closed-loop
++	 * part that self-initialises from internal EEPROM on standby release.
++	 * Verified live over CCI i2c 2026-08-04: ACKs at 0x72, target regs
++	 * 0xA0/0xA1 move the lens (sharpness sweep responded).
++	 */
++	af_lens: lens@72 {
++		compatible = "onnn,lc898214xd";
++		reg = <0x72>;
++	};
++
++	/*
++	 * Vendor slave_info: 8-bit addr 0x34 -> 7-bit 0x1a. Same MCLK-rate and
++	 * CAMSS_TOP-domain traps as the front sensor -- see the imx179 node.
++	 */
++	imx362: camera@1a {
++		compatible = "sony,imx362";
++		reg = <0x1a>;
++		lens-focus = <&af_lens>;
++
++		/*
++		 * libcamera reads both of these (v4l2_fwnode_device_parse) and
++		 * without them logs "Failed to retrieve the camera location" /
++		 * "Rotation control not available" and renders the viewfinder
++		 * unrotated. 1 = BACK. The sensor is mounted with its rows
++		 * along the phone's long edge; rotation is the calibration
++		 * knob if the preview comes out sideways.
++		 */
++		orientation = <1>;
++		rotation = <90>;
++
++		clocks = <&mmcc CAMSS_MCLK0_CLK>;
++		power-domains = <&mmcc CAMSS_TOP_GDSC>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam_mclk0_default>;
++
++		reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
++
++		vdrv-supply = <&cam0_drv>;
++		vaf-supply = <&cam0_vaf>;
++		vdig-supply = <&cam0_dvdd>;
++		vio-supply = <&vreg_lvs1a_1p8>;
++		vana-supply = <&cam0_avdd>;
++		vana2-supply = <&cam0_avdd2>;
++
++		port {
++			imx362_ep: endpoint {
++				clock-lanes = <7>;
++				data-lanes = <0 1 2 3>;
++				/*
++				 * res0: op_pixel_clk 548 MHz (vendor
++				 * out_info) * 10 bpp / (2 * 4 lanes).
++				 */
++				link-frequencies = /bits/ 64 <685000000>;
++				remote-endpoint = <&camss_ep_rear>;
++			};
++		};
++	};
++};
++
++&pmi8998_gpios {
++	cam1_dvdd_en: cam1-dvdd-en-state {
++		pins = "gpio6";
++		function = "normal";
++		bias-disable;
++		drive-push-pull;
++		output-low;
++		power-source = <0>;
++		qcom,drive-strength = <1>;
++	};
++
++	cam1_avdd_en: cam1-avdd-en-state {
++		pins = "gpio3";
++		function = "normal";
++		bias-disable;
++		drive-push-pull;
++		output-low;
++		power-source = <0>;
++		qcom,drive-strength = <1>;
++	};
++};
++
++&cci_i2c1 {
++	/*
++	 * Address is a bring-up guess: the vendor DT does NOT carry it (the
++	 * downstream camera framework gets the slave address from the userspace
++	 * sensor library, not from DT), and 0x10 is the usual IMX179 7-bit
++	 * address. If the driver reports it cannot read the chip ID, scan this
++	 * bus WITH THE RAILS UP -- a scan while unpowered proves nothing, which
++	 * is why the M1 comment above forbids the naive version.
++	 */
++	imx179: camera@10 {
++		compatible = "sony,imx179";
++		reg = <0x10>;
++
++		/*
++		 * 0 = FRONT; see the imx362 node for why these matter.
++		 * rotation 90 (owner-verified on the live viewfinder). Selfie
++		 * previews are MIRRORED by apps, and mirror(rot270) == rot90 --
++		 * that mirror confound is how 270 once looked right in an
++		 * unmirrored capture. Trust the live preview.
++		 */
++		orientation = <0>;
++		rotation = <90>;
++
++		/*
++		 * The rate goes on the RCG SOURCE, not on the leaf branch.
++		 * The vendor node names both -- clk_mclk1_clk_src as
++		 * "cam_src_clk" with qcom,clock-rates = <24000000 0>, and the
++		 * branch as "cam_clk" with rate 0 -- and cam_soc_api.c
++		 * round_rate/set_rate's each clock before enabling it. Setting
++		 * 24 MHz on the branch and relying on CLK_SET_RATE_PARENT does
++		 * NOT stick: clk_set_rate() returns 0 and the clock stays at its
++		 * 300 MHz power-on default (GPLL0_DIV straight through), and the
++		 * sensor then never answers on I2C -- which reads as a wrong
++		 * address, not as a clock fault.
++		 */
++		/*
++		 * Deliberately NO assigned-clocks here. mclk1_clk_src is a plain
++		 * clk_rcg2: configuring it writes the new M/N and then polls the
++		 * UPDATE bit, which only clears once the RCG root is running. At
++		 * probe time nothing has enabled the branch yet, so that poll
++		 * times out, the RCG is left half-configured, and the subsequent
++		 * clk_prepare_enable() fails with -EBUSY. The driver sets the
++		 * rate itself, after enabling the branch.
++		 */
++		clocks = <&mmcc CAMSS_MCLK1_CLK>;
++
++		/*
++		 * MCLK1 is inside the CAMSS domain. Without this, writes to the
++		 * mmcc RCG are silently dropped -- clk_set_rate() returns 0 and
++		 * the clock stays at 300 MHz. CCI only works because it takes
++		 * the same domain (see the cci node); nothing else was holding
++		 * it on for the sensor's clock.
++		 */
++		power-domains = <&mmcc CAMSS_TOP_GDSC>;
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&cam_mclk1_default>;
++
++		reset-gpios = <&tlmm 23 GPIO_ACTIVE_LOW>;
++
++		vio-supply = <&vreg_lvs1a_1p8>;
++		vdig-supply = <&cam1_dvdd>;
++		vana-supply = <&cam1_avdd>;
++
++		port {
++			imx179_ep: endpoint {
++				clock-lanes = <7>;
++				data-lanes = <0 1 2 3>;
++				/*
++				 * From the vendor's sensor_lib_out_info_t in
++				 * libmmcamera_imx179.so (0xa8bc8): op_pixel_clk
++				 * is 136 / 216 / 259.2 MHz, and link_freq =
++				 * op_pixel_clk * 10 bpp / (2 * 4 lanes). These
++				 * are DOUBLE what was here before -- the old
++				 * derivation divided by an extra 2 and then
++				 * read "lands on pll_multiplier MHz" as
++				 * confirmation. It lands on 2x that.
++				 */
++				link-frequencies = /bits/ 64 <170000000 270000000 324000000>;
++				remote-endpoint = <&camss_ep_front>;
++			};
++		};
++	};
++};

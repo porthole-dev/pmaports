@@ -1,0 +1,55 @@
+From c13adc12bdfa647931df95f38bcb9aecedadf839 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 11:57:40 +0200
+Subject: [PATCH 047/113] arm64: dts: qcom: msm8998-google-wahoo: fix duplicate
+ panel-ldo node name
+
+The two fixed regulators for the panel shared the node name
+"panel-ldo", so dtc silently merged them: the built DTB carried a
+single node whose properties came from whichever definition parsed
+last, panel_ldo_vddio_supply and panel_ldo_vpnl_supply were two labels
+on that one node, and the vddio GPIO (tlmm 133) was never driven.
+Give each regulator its own node name.
+
+Also reword a comment that contained "drivers/net/ipa/*", which forms
+'/*' inside a block comment and made dtc warn on every build.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+index 388781562490..8e29213fc6c0 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+@@ -103,7 +103,7 @@ vph_pwr: vph-pwr-regulator {
+ 		regulator-boot-on;
+ 	};
+ 
+-	panel_ldo_vddio_supply: panel-ldo {
++	panel_ldo_vddio_supply: panel-ldo-vddio {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "panel_ldo_vddio_supply";
+ 
+@@ -115,7 +115,7 @@ panel_ldo_vddio_supply: panel-ldo {
+ 		regulator-boot-on;
+ 	};
+ 
+-	panel_ldo_vpnl_supply: panel-ldo {
++	panel_ldo_vpnl_supply: panel-ldo-vpnl {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "panel_ldo_vpnl_supply";
+ 
+@@ -610,8 +610,9 @@ &ufsphy {
+  * WLAN-datapath rationale) has no base node to attach to: 6.18's
+  * msm8998.dtsi carries no top-level "ipa" node at all yet, unlike our
+  * 6.0 base. Needs the ipa SoC node ported into msm8998.dtsi first
+- * (drivers/net/ipa/* is also unported -- gsi.c, ipa_gsi.c, ipa_modem.c
+- * are all in the milestone-2 list), then this override can come back.
++ * (the drivers/net/ipa code is also unported -- gsi.c, ipa_gsi.c,
++ * ipa_modem.c are all in the milestone-2 list), then this override can
++ * come back.
+  */
+ 
+ &wifi {

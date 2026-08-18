@@ -1,0 +1,71 @@
+From 78060df31013df16b43adfa2a426ea486962095d Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 17:25:35 +0200
+Subject: [PATCH 073/113] media: i2c: imx179: drop the bring-up rail-drop
+ module parameter
+
+The tk_raildrop parameter cut a regulator out from under a live sensor to
+tell a deaf CSIPHY apart from a silent sensor. It answered that question
+during bring-up and has no place in a driver: it disables a supply behind
+the regulator core's back, ignores the runtime PM state, and keeps a file
+scope pointer to the last probed instance purely so a module parameter can
+reach it.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/imx179.c | 35 -----------------------------------
+ 1 file changed, 35 deletions(-)
+
+diff --git a/drivers/media/i2c/imx179.c b/drivers/media/i2c/imx179.c
+index c5cb9582dde3..5de3606cac7c 100644
+--- a/drivers/media/i2c/imx179.c
++++ b/drivers/media/i2c/imx179.c
+@@ -442,39 +442,6 @@ static inline struct imx179 *to_imx179(struct v4l2_subdev *sd)
+ 	return container_of(sd, struct imx179, sd);
+ }
+ 
+-/*
+- * ponytail: bring-up stimulus, delete with the rest of the knobs. Writing N
+- * (0=vio 1=vdig 2=vana) drops that rail for 300 ms while everything else
+- * keeps running. The one electrical event we can command from software that
+- * MUST move the MIPI lane DC levels -- the discriminator for "PHY blind" vs
+- * "sensor silent" (HANDOFF §39): if the PHY latches nothing even across its
+- * transmitter's power dying, its receiver is not alive.
+- */
+-static struct imx179 *tk_imx179_instance;
+-static int tk_raildrop_set(const char *val, const struct kernel_param *kp)
+-{
+-	struct imx179 *imx179 = tk_imx179_instance;
+-	unsigned int n;
+-	int ret;
+-
+-	if (!imx179)
+-		return -ENODEV;
+-	ret = kstrtouint(val, 0, &n);
+-	if (ret || n >= ARRAY_SIZE(imx179->supplies))
+-		return -EINVAL;
+-
+-	pr_info("imx179: dropping %s for 300 ms\n", imx179->supplies[n].supply);
+-	regulator_disable(imx179->supplies[n].consumer);
+-	msleep(300);
+-	ret = regulator_enable(imx179->supplies[n].consumer);
+-	pr_info("imx179: %s restored (%d)\n", imx179->supplies[n].supply, ret);
+-
+-	return 0;
+-}
+-module_param_call(tk_raildrop, tk_raildrop_set, NULL, NULL, 0200);
+-MODULE_PARM_DESC(tk_raildrop, "bring-up: drop supply N for 300 ms (0=vio 1=vdig 2=vana)");
+-
+-
+ /* 16-bit register address, 8-bit data -- the usual Sony layout. */
+ static int imx179_write(struct imx179 *imx179, u16 reg, u8 val)
+ {
+@@ -1032,8 +999,6 @@ static int imx179_probe(struct i2c_client *client)
+ 		return dev_err_probe(dev, PTR_ERR(imx179->reset_gpio),
+ 				     "failed to get reset gpio\n");
+ 
+-	tk_imx179_instance = imx179;
+-
+ 	ret = imx179_power_on(dev);
+ 	if (ret)
+ 		return ret;

@@ -1,0 +1,40 @@
+From 97e852bcfaae36c4fec96711d0eb58bf11245945 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 17:16:21 +0200
+Subject: [PATCH 081/113] ASoC: wcd934x: ask for the slave port earlier than 12
+ bytes
+
+The slave port raises its service request once its 12-byte FIFO holds
+the watermark, so the watermark is the deadline the bus has to meet. At
+48 kHz/16-bit a 12-byte setting leaves six samples, 125 us, and on a
+Pixel 2 XL that is not met: the port latches and the capture comes back
+all zeros - the same terminal-underflow failure the port programming
+order was fixed for.
+
+The 12-byte value was survivable only while the external clock divider
+was misprogrammed and the port carried 24000 samples/s, which is to say
+it was never really tested. Six consecutive captures per setting with
+the divider correct: 6 bytes 6/6, 9 bytes 6/6, 12 bytes 2/6, 15 bytes
+1/6.
+
+Ask at 6 bytes. A lower watermark only costs bus service requests; the
+FIFO depth, and so the tolerance to a late one, is unchanged.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/codecs/wcd934x.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sound/soc/codecs/wcd934x.c b/sound/soc/codecs/wcd934x.c
+index 7f47959e7711..fac065e4d0c0 100644
+--- a/sound/soc/codecs/wcd934x.c
++++ b/sound/soc/codecs/wcd934x.c
+@@ -46,7 +46,7 @@
+ #define SLAVE_PORT_ENABLE		1
+ #define SLAVE_PORT_DISABLE		0
+ #define WCD934X_SLIM_WATER_MARK_VAL \
+-	((SLAVE_PORT_WATER_MARK_12BYTES << SLAVE_PORT_WATER_MARK_SHIFT) | \
++	((SLAVE_PORT_WATER_MARK_6BYTES << SLAVE_PORT_WATER_MARK_SHIFT) | \
+ 	 (SLAVE_PORT_ENABLE))
+ 
+ #define WCD934X_SLIM_NUM_PORT_REG	3

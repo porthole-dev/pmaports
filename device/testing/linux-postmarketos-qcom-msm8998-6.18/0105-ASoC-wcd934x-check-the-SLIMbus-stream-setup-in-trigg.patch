@@ -1,0 +1,51 @@
+From 48c0246e81b0bc0805fb1a1484994bc34b0570ca Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 10 Aug 2026 11:54:22 +0200
+Subject: [PATCH 105/113] ASoC: wcd934x: check the SLIMbus stream setup in
+ trigger
+
+wcd934x_trigger() discards the return of both slim_stream_prepare() and
+slim_stream_enable(), so a stream that the bus refuses to set up still
+reports a successful START. The PCM then runs to completion with correct
+timing and delivers silence, and nothing anywhere says why.
+
+That is the whole failure signature of a capture on this codec, and it is
+the state the driver is left in whenever the SLIMbus side fails for any
+reason -- an unsupported presence rate, a port that will not connect, a
+controller that rejects the channel definition.
+
+Check both, unprepare the stream if enabling it fails, and return the
+error so the PCM layer fails the start where the fault actually is.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/codecs/wcd934x.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/codecs/wcd934x.c b/sound/soc/codecs/wcd934x.c
+index cf5a4fcbb126..bcd249024e43 100644
+--- a/sound/soc/codecs/wcd934x.c
++++ b/sound/soc/codecs/wcd934x.c
+@@ -1940,8 +1940,20 @@ static int wcd934x_trigger(struct snd_pcm_substream *substream, int cmd,
+ 				ret);
+ 			return ret;
+ 		}
+-		slim_stream_prepare(dai_data->sruntime, cfg);
+-		slim_stream_enable(dai_data->sruntime);
++		ret = slim_stream_prepare(dai_data->sruntime, cfg);
++		if (ret) {
++			dev_err(wcd->dev, "Error preparing SLIM stream: %d\n",
++				ret);
++			return ret;
++		}
++
++		ret = slim_stream_enable(dai_data->sruntime);
++		if (ret) {
++			dev_err(wcd->dev, "Error enabling SLIM stream: %d\n",
++				ret);
++			slim_stream_unprepare(dai_data->sruntime);
++			return ret;
++		}
+ 		break;
+ 	case SNDRV_PCM_TRIGGER_STOP:
+ 	case SNDRV_PCM_TRIGGER_SUSPEND:

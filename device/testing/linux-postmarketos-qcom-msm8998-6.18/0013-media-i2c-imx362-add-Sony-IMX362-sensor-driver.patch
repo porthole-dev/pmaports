@@ -1,0 +1,939 @@
+From 4cc0b4cb7f4674a70daa7bd1d7cd53efd80c2980 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 15:31:11 +0200
+Subject: [PATCH 013/113] media: i2c: imx362: add Sony IMX362 sensor driver
+
+Adds a V4L2 sensor driver for the Sony IMX362, used as the
+rear-facing camera on the Google Pixel 2 XL (taimen). It rides a
+separate CSI link from the front imx179 (CSIPHY0/CSID0/MCLK0/CCI0)
+and streams through the same Easel MIPI bridge, on TX0 instead of
+TX1.
+
+Register tables, power sequence and timing are taken from the
+vendor's libmmcamera_imx362.so. Structure mirrors imx179.c, including
+the msm8998 CCI / CAMSS_TOP runtime-PM handling documented there.
+
+Given its own VIDEO_IMX362 Kconfig symbol rather than reusing
+VIDEO_IMX179: the two are independently selectable, physically
+distinct sensors on separate CSI links, and only happen to share a
+vendor.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/Kconfig  |  14 +
+ drivers/media/i2c/Makefile |   1 +
+ drivers/media/i2c/imx362.c | 868 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 883 insertions(+)
+ create mode 100644 drivers/media/i2c/imx362.c
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 0a0017e8a755..2078be7feb97 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -270,6 +270,20 @@ config VIDEO_IMX355
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called imx355.
+ 
++config VIDEO_IMX362
++	tristate "Sony IMX362 sensor support"
++	depends on I2C && VIDEO_DEV
++	depends on MEDIA_CAMERA_SUPPORT
++	select MEDIA_CONTROLLER
++	select VIDEO_V4L2_SUBDEV_API
++	help
++	  This is a Video4Linux2 sensor driver for the Sony
++	  IMX362 camera, found as the rear-facing camera on the
++	  Google Pixel 2 XL (taimen).
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called imx362.
++
+ config VIDEO_IMX412
+ 	tristate "Sony IMX412 sensor support"
+ 	depends on OF_GPIO
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index abe8c7ed376b..79aa0e1c45bf 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -59,6 +59,7 @@ obj-$(CONFIG_VIDEO_IMX319) += imx319.o
+ obj-$(CONFIG_VIDEO_IMX334) += imx334.o
+ obj-$(CONFIG_VIDEO_IMX335) += imx335.o
+ obj-$(CONFIG_VIDEO_IMX355) += imx355.o
++obj-$(CONFIG_VIDEO_IMX362) += imx362.o
+ obj-$(CONFIG_VIDEO_IMX412) += imx412.o
+ obj-$(CONFIG_VIDEO_IMX415) += imx415.o
+ obj-$(CONFIG_VIDEO_IR_I2C) += ir-kbd-i2c.o
+diff --git a/drivers/media/i2c/imx362.c b/drivers/media/i2c/imx362.c
+new file mode 100644
+index 000000000000..2866e14227c9
+--- /dev/null
++++ b/drivers/media/i2c/imx362.c
+@@ -0,0 +1,868 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Sony IMX362 sensor driver
++ *
++ * Written for the Google Pixel 2 XL (taimen) rear camera, on a separate CSI
++ * link from the front imx179 (CSIPHY0/CSID0/MCLK0/CCI0). Register tables,
++ * power sequence and timing are taken from the vendor's
++ * libmmcamera_imx362.so.
++ *
++ * Structure is a lean clone of imx179.c; see that file for the msm8998 CCI /
++ * CAMSS_TOP runtime-PM traps -- they all apply here unchanged.
++ */
++
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/pm_runtime.h>
++#include <linux/regulator/consumer.h>
++#include <linux/easel-mipi.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-fwnode.h>
++#include <media/v4l2-subdev.h>
++
++#define IMX362_REG_MODE_SELECT		0x0100
++#define IMX362_MODE_STANDBY		0x00
++#define IMX362_MODE_STREAMING		0x01
++
++/*
++ * SMIA exposure/timing registers; libcamera-mandatory controls hang off
++ * these (see the imx179 note -- same requirement, same layout, except the
++ * analog gain here is the 16-bit 0x0204/0x0205 pair, G = 1024/(1024-code)).
++ */
++#define IMX362_REG_FRM_LENGTH		0x0340	/* u16, lines */
++#define IMX362_REG_COARSE_INTEG		0x0202	/* u16, lines */
++#define IMX362_REG_ANALOG_GAIN		0x0204	/* u16 */
++#define IMX362_FLL_MAX			0xffff
++/* ponytail: margin 10 is the conservative Sony value; datasheet may say less */
++#define IMX362_EXPOSURE_MARGIN		10
++#define IMX362_EXPOSURE_MIN		1
++/* ponytail: 896 = 8x, vendor tuning ceiling */
++#define IMX362_ANA_GAIN_MAX		896
++
++/* vendor sensor_lib_out_info_t timing for the single mode */
++#define IMX362_LLP			5856
++#define IMX362_FLL			3112
++
++#define IMX362_NATIVE_WIDTH		4032U
++#define IMX362_NATIVE_HEIGHT		3032U
++
++/*
++ * From the vendor slave_info (libmmcamera_imx362.so .data +0x20):
++ * slave_addr 0x34 (8-bit) -> 0x1a 7-bit, i2c_freq_mode 3, addr_type 2,
++ * sensor_id_reg_addr 0x0016, sensor_id 0x0362, mask 0 (full compare).
++ */
++#define IMX362_REG_CHIP_ID		0x0016
++#define IMX362_CHIP_ID			0x0362
++
++#define IMX362_XCLK_FREQ		24000000
++
++struct imx362_reg {
++	u16 addr;
++	u8 val;
++};
++
++/*
++ * Extracted byte-for-byte from libmmcamera_imx362.so: init_settings at .data
++ * file offset 0x5134 (54 entries), res0 snapshot mode at 0x57290 (63 entries).
++ * The mode table's first record is the vendor's literal { 0x0000, 0x00,
++ * delay 2 ms } entry -- imx362_write_regs() reproduces the delay.
++ */
++static const struct imx362_reg imx362_init[] = {
++	{ 0x0136, 0x18 },
++	{ 0x0137, 0x00 },
++	{ 0x31a3, 0x00 },
++	{ 0x4b5f, 0x00 },
++	{ 0x5812, 0x04 },
++	{ 0x5813, 0x04 },
++	{ 0x58d0, 0x08 },
++	{ 0x5f20, 0x01 },
++	{ 0x5ff0, 0x00 },
++	{ 0x5ff1, 0xfe },
++	{ 0x5ff2, 0x00 },
++	{ 0x5ff3, 0x52 },
++	{ 0x720a, 0x24 },
++	{ 0x720b, 0x89 },
++	{ 0x720c, 0x85 },
++	{ 0x720d, 0xa1 },
++	{ 0x720e, 0x6e },
++	{ 0x729c, 0x59 },
++	{ 0x729d, 0x69 },
++	{ 0x729e, 0x85 },
++	{ 0x729f, 0xa1 },
++	{ 0x72a0, 0x6e },
++	{ 0x730c, 0x9f },
++	{ 0x730d, 0xa1 },
++	{ 0x730e, 0x6e },
++	{ 0x7328, 0x9f },
++	{ 0x7329, 0xa1 },
++	{ 0x732a, 0x6e },
++	{ 0x9352, 0xaa },
++	{ 0xb0b6, 0x05 },
++	{ 0xb0b7, 0x05 },
++	{ 0xb0b9, 0x05 },
++	{ 0xbc88, 0x06 },
++	{ 0xbc89, 0xd8 },
++	{ 0x5872, 0x00 },
++	{ 0x5873, 0x0f },
++	{ 0x4b67, 0xff },
++	{ 0x793d, 0x08 },
++	{ 0x792f, 0x00 },
++	{ 0x4040, 0x00 },
++	{ 0x4041, 0x00 },
++	{ 0x4042, 0x00 },
++	{ 0x4972, 0x00 },
++	{ 0x4973, 0x00 },
++	{ 0x4d08, 0x00 },
++	{ 0x4d09, 0x00 },
++	{ 0x4d0b, 0x00 },
++	{ 0x5c61, 0x01 },
++	{ 0x7914, 0x01 },
++	{ 0x7928, 0x01 },
++	{ 0x7994, 0x01 },
++	{ 0x799c, 0x01 },
++	{ 0x8118, 0x00 },
++	{ 0x8119, 0x00 },
++};
++
++static const struct imx362_reg imx362_mode_full[] = {
++	{ 0x0000, 0x00 }, /* vendor entry, carries a 2 ms delay */
++	{ 0x0112, 0x0a },
++	{ 0x0113, 0x0a },
++	{ 0x0114, 0x03 },
++	{ 0x0220, 0x00 },
++	{ 0x0221, 0x11 },
++	{ 0x0340, 0x0c },
++	{ 0x0341, 0x28 },
++	{ 0x0342, 0x16 },
++	{ 0x0343, 0xe0 },
++	{ 0x0381, 0x01 },
++	{ 0x0383, 0x01 },
++	{ 0x0385, 0x01 },
++	{ 0x0387, 0x01 },
++	{ 0x0900, 0x00 },
++	{ 0x0901, 0x11 },
++	{ 0x30f4, 0x01 },
++	{ 0x30f5, 0xf4 },
++	{ 0x30f6, 0x00 },
++	{ 0x30f7, 0x14 },
++	{ 0x31a0, 0x00 },
++	{ 0x31a5, 0x01 },
++	{ 0x31a6, 0x00 },
++	{ 0x560f, 0xbe },
++	{ 0x0344, 0x00 },
++	{ 0x0345, 0x00 },
++	{ 0x0346, 0x00 },
++	{ 0x0347, 0x00 },
++	{ 0x0348, 0x0f },
++	{ 0x0349, 0xbf },
++	{ 0x034a, 0x0b },
++	{ 0x034b, 0xcf },
++	{ 0x034c, 0x0f },
++	{ 0x034d, 0xc0 },
++	{ 0x034e, 0x0b },
++	{ 0x034f, 0xd0 },
++	{ 0x0408, 0x00 },
++	{ 0x0409, 0x00 },
++	{ 0x040a, 0x00 },
++	{ 0x040b, 0x00 },
++	{ 0x040c, 0x0f },
++	{ 0x040d, 0xc0 },
++	{ 0x040e, 0x0b },
++	{ 0x040f, 0xd0 },
++	{ 0x0301, 0x03 },
++	{ 0x0303, 0x02 },
++	{ 0x0305, 0x04 },
++	{ 0x0306, 0x00 },
++	{ 0x0307, 0x89 },
++	{ 0x0309, 0x0a },
++	{ 0x030b, 0x01 },
++	{ 0x030d, 0x04 },
++	{ 0x030e, 0x00 },
++	{ 0x030f, 0xe4 },
++	{ 0x0310, 0x01 },
++	{ 0x319c, 0x01 },
++	{ 0x7819, 0x20 },
++	{ 0x7934, 0x01 },
++	{ 0x8118, 0x00 },
++	{ 0x8119, 0x00 },
++	{ 0x811b, 0x00 },
++	{ 0x034e, 0x0b },
++	{ 0x034f, 0xd8 }, /* final y_output = 3032 (PDAF rows appended) */
++};
++
++/*
++ * Timing from the vendor sensor_lib_out_info_t (res0, .data file offset
++ * 0xa93d0 region): LLP 5856, FLL 3112, vt_pixel_clk 547.2 MHz -> 30.0 fps
++ * exactly; op_pixel_clk 548 MHz.  link_freq = op * 10 bpp / (2 * 4 lanes).
++ */
++struct imx362_mode {
++	u32 width;
++	u32 height;
++	const struct imx362_reg *regs;
++	u32 num_regs;
++	u64 pixel_rate;
++};
++
++static const struct imx362_mode imx362_modes[] = {
++	{
++		.width = 4032,
++		.height = 3032,
++		.regs = imx362_mode_full,
++		.num_regs = ARRAY_SIZE(imx362_mode_full),
++		.pixel_rate = 547200000,
++	},
++};
++
++static const s64 imx362_link_freqs[] = {
++	684000000,
++};
++
++/*
++ * Vendor power_setting_array (decoded from .data +0x38, size 9): RESET low,
++ * then these six rails IN THIS ORDER 1 ms apart, then RESET high, then MCLK
++ * with a 9 ms settle.  All but vio are pm8998 GPIO-switched board rails
++ * (factory DT fragment@127 camera@0 + downstream msm8998-taimen-camera.dtsi).
++ */
++static const char * const imx362_supply_names[] = {
++	"vdrv",		/* 2.8 V OIS driver AVDD -- pm8998 gpio 9  (CUSTOM2) */
++	"vaf",		/* 2.85 V VCM            -- pm8998 gpio 10 (VAF)     */
++	"vdig",		/* 1.05 V DVDD           -- pm8998 gpio 20           */
++	"vio",		/* 1.8 V interface       -- pm8998 LVS1              */
++	"vana",		/* 2.8 V AVDD            -- pm8998 gpio 15           */
++	"vana2",	/* 1.8 V AVDD2           -- pm8998 gpio 19 (CUSTOM1) */
++};
++
++struct imx362 {
++	struct v4l2_subdev sd;
++	struct media_pad pad;
++
++	struct clk *xclk;
++	struct gpio_desc *reset_gpio;
++	struct regulator_bulk_data supplies[ARRAY_SIZE(imx362_supply_names)];
++
++	struct v4l2_ctrl_handler ctrls;
++	struct mutex lock;	/* protects fmt and cur_mode */
++	struct v4l2_mbus_framefmt fmt;
++	const struct imx362_mode *cur_mode;
++
++	struct device *cci_dev;
++
++	struct v4l2_ctrl *pixel_rate;
++	struct v4l2_ctrl *link_freq;
++	struct v4l2_ctrl *exposure;
++};
++
++static inline struct imx362 *to_imx362(struct v4l2_subdev *sd)
++{
++	return container_of(sd, struct imx362, sd);
++}
++
++static int imx362_write(struct imx362 *imx362, u16 reg, u8 val)
++{
++	struct i2c_client *client = v4l2_get_subdevdata(&imx362->sd);
++	u8 buf[3] = { reg >> 8, reg & 0xff, val };
++	int ret;
++
++	ret = i2c_master_send(client, buf, sizeof(buf));
++	if (ret != sizeof(buf)) {
++		dev_err(&client->dev, "write 0x%04x failed: %d\n", reg, ret);
++		return ret < 0 ? ret : -EIO;
++	}
++
++	return 0;
++}
++
++static int imx362_read(struct imx362 *imx362, u16 reg, u8 *val)
++{
++	struct i2c_client *client = v4l2_get_subdevdata(&imx362->sd);
++	u8 addr[2] = { reg >> 8, reg & 0xff };
++	struct i2c_msg msgs[2] = {
++		{ .addr = client->addr, .flags = 0,
++		  .len = sizeof(addr), .buf = addr },
++		{ .addr = client->addr, .flags = I2C_M_RD,
++		  .len = 1, .buf = val },
++	};
++	int ret;
++
++	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
++	if (ret != ARRAY_SIZE(msgs))
++		return ret < 0 ? ret : -EIO;
++
++	return 0;
++}
++
++static int imx362_write_regs(struct imx362 *imx362,
++			     const struct imx362_reg *regs, u32 num)
++{
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < num; i++) {
++		ret = imx362_write(imx362, regs[i].addr, regs[i].val);
++		if (ret)
++			return ret;
++		/* the single vendor entry that carries a delay */
++		if (regs[i].addr == 0x0000)
++			usleep_range(2000, 3000);
++	}
++
++	return 0;
++}
++
++static int imx362_power_on(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct imx362 *imx362 = to_imx362(sd);
++	struct i2c_client *client = v4l2_get_subdevdata(sd);
++	int i, ret;
++
++	/* Same CAMSS_TOP trap as imx179: hold CCI awake across the cycle. */
++	imx362->cci_dev = client->adapter->dev.parent;
++	if (imx362->cci_dev) {
++		ret = pm_runtime_resume_and_get(imx362->cci_dev);
++		if (ret < 0) {
++			dev_err(dev, "failed to wake CCI: %d\n", ret);
++			return ret;
++		}
++	}
++
++	/* Vendor sequence: reset held low across the rail ramp. */
++	gpiod_set_value_cansleep(imx362->reset_gpio, 1);
++	usleep_range(1000, 2000);
++
++	for (i = 0; i < ARRAY_SIZE(imx362->supplies); i++) {
++		ret = regulator_enable(imx362->supplies[i].consumer);
++		if (ret) {
++			dev_err(dev, "failed to enable %s: %d\n",
++				imx362->supplies[i].supply, ret);
++			while (--i >= 0)
++				regulator_disable(imx362->supplies[i].consumer);
++			if (imx362->cci_dev)
++				pm_runtime_put(imx362->cci_dev);
++			return ret;
++		}
++		usleep_range(1000, 2000);
++	}
++
++	gpiod_set_value_cansleep(imx362->reset_gpio, 0);
++	usleep_range(1000, 2000);
++
++	ret = clk_prepare_enable(imx362->xclk);
++	if (ret) {
++		dev_err(dev, "failed to enable xclk: %d\n", ret);
++		goto err_rails;
++	}
++
++	/* Rate only sticks with the branch enabled -- see imx179.c. */
++	ret = clk_set_rate(imx362->xclk, IMX362_XCLK_FREQ);
++	if (ret || clk_get_rate(imx362->xclk) != IMX362_XCLK_FREQ)
++		dev_warn(dev, "xclk is %lu Hz, wanted %u\n",
++			 clk_get_rate(imx362->xclk), IMX362_XCLK_FREQ);
++
++	/* Vendor delay on the CLK step. */
++	usleep_range(9000, 10000);
++
++	return 0;
++
++err_rails:
++	for (i = ARRAY_SIZE(imx362->supplies) - 1; i >= 0; i--)
++		regulator_disable(imx362->supplies[i].consumer);
++	if (imx362->cci_dev)
++		pm_runtime_put(imx362->cci_dev);
++	return ret;
++}
++
++static int imx362_power_off(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct imx362 *imx362 = to_imx362(sd);
++	int i;
++
++	/* Vendor power-down: clock off first, then reset, rails reversed. */
++	clk_disable_unprepare(imx362->xclk);
++	gpiod_set_value_cansleep(imx362->reset_gpio, 1);
++	for (i = ARRAY_SIZE(imx362->supplies) - 1; i >= 0; i--)
++		regulator_disable(imx362->supplies[i].consumer);
++	if (imx362->cci_dev)
++		pm_runtime_put(imx362->cci_dev);
++
++	return 0;
++}
++
++static int imx362_identify(struct imx362 *imx362)
++{
++	struct i2c_client *client = v4l2_get_subdevdata(&imx362->sd);
++	u8 hi, lo;
++	u16 id;
++	int ret;
++
++	ret = imx362_read(imx362, IMX362_REG_CHIP_ID, &hi);
++	if (ret) {
++		dev_err(&client->dev, "no answer at 0x%02x reading chip ID: %d\n",
++			client->addr, ret);
++		return ret;
++	}
++	ret = imx362_read(imx362, IMX362_REG_CHIP_ID + 1, &lo);
++	if (ret)
++		return ret;
++
++	id = (hi << 8) | lo;
++	if (id != IMX362_CHIP_ID) {
++		dev_err(&client->dev, "wrong chip ID 0x%04x, expected 0x%04x\n",
++			id, IMX362_CHIP_ID);
++		return -ENODEV;
++	}
++
++	dev_dbg(&client->dev, "IMX362 detected (0x%04x)\n", id);
++
++	return 0;
++}
++
++static void imx362_set_mode_format(struct imx362 *imx362,
++				   const struct imx362_mode *mode)
++{
++	imx362->cur_mode = mode;
++	imx362->fmt.code = MEDIA_BUS_FMT_SRGGB10_1X10;
++	imx362->fmt.width = mode->width;
++	imx362->fmt.height = mode->height;
++	imx362->fmt.field = V4L2_FIELD_NONE;
++	imx362->fmt.colorspace = V4L2_COLORSPACE_RAW;
++}
++
++static int imx362_enum_mbus_code(struct v4l2_subdev *sd,
++				 struct v4l2_subdev_state *state,
++				 struct v4l2_subdev_mbus_code_enum *code)
++{
++	if (code->index > 0)
++		return -EINVAL;
++
++	code->code = MEDIA_BUS_FMT_SRGGB10_1X10;
++
++	return 0;
++}
++
++static int imx362_enum_frame_size(struct v4l2_subdev *sd,
++				  struct v4l2_subdev_state *state,
++				  struct v4l2_subdev_frame_size_enum *fse)
++{
++	if (fse->index >= ARRAY_SIZE(imx362_modes) ||
++	    fse->code != MEDIA_BUS_FMT_SRGGB10_1X10)
++		return -EINVAL;
++
++	fse->min_width = imx362_modes[fse->index].width;
++	fse->max_width = imx362_modes[fse->index].width;
++	fse->min_height = imx362_modes[fse->index].height;
++	fse->max_height = imx362_modes[fse->index].height;
++
++	return 0;
++}
++
++static int imx362_get_fmt(struct v4l2_subdev *sd,
++			  struct v4l2_subdev_state *state,
++			  struct v4l2_subdev_format *fmt)
++{
++	struct imx362 *imx362 = to_imx362(sd);
++
++	mutex_lock(&imx362->lock);
++	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY)
++		fmt->format = *v4l2_subdev_state_get_format(state, fmt->pad);
++	else
++		fmt->format = imx362->fmt;
++	mutex_unlock(&imx362->lock);
++
++	return 0;
++}
++
++static int imx362_set_fmt(struct v4l2_subdev *sd,
++			  struct v4l2_subdev_state *state,
++			  struct v4l2_subdev_format *fmt)
++{
++	struct imx362 *imx362 = to_imx362(sd);
++	const struct imx362_mode *mode = &imx362_modes[0];
++
++	mutex_lock(&imx362->lock);
++
++	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
++		struct v4l2_mbus_framefmt *try_fmt =
++			v4l2_subdev_state_get_format(state, fmt->pad);
++
++		try_fmt->code = MEDIA_BUS_FMT_SRGGB10_1X10;
++		try_fmt->width = mode->width;
++		try_fmt->height = mode->height;
++		try_fmt->field = V4L2_FIELD_NONE;
++		try_fmt->colorspace = V4L2_COLORSPACE_RAW;
++		fmt->format = *try_fmt;
++	} else {
++		imx362_set_mode_format(imx362, mode);
++		fmt->format = imx362->fmt;
++		__v4l2_ctrl_s_ctrl_int64(imx362->pixel_rate, mode->pixel_rate);
++		__v4l2_ctrl_s_ctrl(imx362->link_freq, 0);
++	}
++
++	mutex_unlock(&imx362->lock);
++
++	return 0;
++}
++
++static int imx362_init_state(struct v4l2_subdev *sd,
++			     struct v4l2_subdev_state *state)
++{
++	struct imx362 *imx362 = to_imx362(sd);
++
++	mutex_lock(&imx362->lock);
++	*v4l2_subdev_state_get_format(state, 0) = imx362->fmt;
++	mutex_unlock(&imx362->lock);
++
++	return 0;
++}
++
++static int imx362_write16(struct imx362 *imx362, u16 reg, u16 val)
++{
++	int ret;
++
++	ret = imx362_write(imx362, reg, val >> 8);
++	if (ret)
++		return ret;
++	return imx362_write(imx362, reg + 1, val & 0xff);
++}
++
++static int imx362_set_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct imx362 *imx362 =
++		container_of(ctrl->handler, struct imx362, ctrls);
++	struct i2c_client *client = v4l2_get_subdevdata(&imx362->sd);
++	int ret = 0;
++
++	if (ctrl->id == V4L2_CID_VBLANK)
++		__v4l2_ctrl_modify_range(imx362->exposure,
++					 IMX362_EXPOSURE_MIN,
++					 imx362->cur_mode->height + ctrl->val -
++						IMX362_EXPOSURE_MARGIN,
++					 1, imx362->exposure->val);
++
++	if (!pm_runtime_get_if_in_use(&client->dev))
++		return 0;
++
++	switch (ctrl->id) {
++	case V4L2_CID_EXPOSURE:
++		ret = imx362_write16(imx362, IMX362_REG_COARSE_INTEG,
++				     ctrl->val);
++		break;
++	case V4L2_CID_ANALOGUE_GAIN:
++		ret = imx362_write16(imx362, IMX362_REG_ANALOG_GAIN,
++				     ctrl->val);
++		break;
++	case V4L2_CID_VBLANK:
++		ret = imx362_write16(imx362, IMX362_REG_FRM_LENGTH,
++				     imx362->cur_mode->height + ctrl->val);
++		break;
++	default:
++		break;
++	}
++
++	pm_runtime_put(&client->dev);
++
++	return ret;
++}
++
++static const struct v4l2_ctrl_ops imx362_ctrl_ops = {
++	.s_ctrl = imx362_set_ctrl,
++};
++
++static int imx362_get_selection(struct v4l2_subdev *sd,
++				struct v4l2_subdev_state *state,
++				struct v4l2_subdev_selection *sel)
++{
++	switch (sel->target) {
++	case V4L2_SEL_TGT_CROP:
++	case V4L2_SEL_TGT_NATIVE_SIZE:
++	case V4L2_SEL_TGT_CROP_DEFAULT:
++	case V4L2_SEL_TGT_CROP_BOUNDS:
++		/* single full-array mode; PDAF rows are part of the output */
++		sel->r.left = 0;
++		sel->r.top = 0;
++		sel->r.width = IMX362_NATIVE_WIDTH;
++		sel->r.height = IMX362_NATIVE_HEIGHT;
++		return 0;
++	}
++
++	return -EINVAL;
++}
++
++static int imx362_s_stream(struct v4l2_subdev *sd, int enable)
++{
++	struct imx362 *imx362 = to_imx362(sd);
++	struct i2c_client *client = v4l2_get_subdevdata(sd);
++	const struct imx362_mode *mode;
++	int ret;
++
++	if (enable) {
++		ret = pm_runtime_resume_and_get(&client->dev);
++		if (ret < 0)
++			return ret;
++
++		mutex_lock(&imx362->lock);
++		mode = imx362->cur_mode;
++
++		/*
++		 * Hardware-reset before every stream, same reason as imx179:
++		 * probe holds power forever, so make each attempt equivalent
++		 * to the first after boot.  No 0x0103 software reset -- the
++		 * vendor never writes it on this part, and XCLR just toggled.
++		 */
++		gpiod_set_value_cansleep(imx362->reset_gpio, 1);
++		usleep_range(1000, 2000);
++		gpiod_set_value_cansleep(imx362->reset_gpio, 0);
++		usleep_range(9000, 10000);
++
++		ret = imx362_write_regs(imx362, imx362_init,
++					ARRAY_SIZE(imx362_init));
++		if (!ret)
++			ret = imx362_write_regs(imx362, mode->regs,
++						mode->num_regs);
++		mutex_unlock(&imx362->lock);
++		/* re-apply user exposure/gain/vblank over the table defaults */
++		if (!ret)
++			ret = v4l2_ctrl_handler_setup(&imx362->ctrls);
++		if (ret) {
++			dev_err(&client->dev, "failed to program mode: %d\n", ret);
++			pm_runtime_put(&client->dev);
++			return ret;
++		}
++
++		ret = imx362_write(imx362, IMX362_REG_MODE_SELECT,
++				   IMX362_MODE_STREAMING);
++		if (ret) {
++			pm_runtime_put(&client->dev);
++			return ret;
++		}
++		/*
++		 * Arm the CSIPHY: rear sensor rides Easel TX0. See
++		 * easel_mipi_kick().
++		 */
++		msleep(50);
++		easel_mipi_kick(0);
++	} else {
++		imx362_write(imx362, IMX362_REG_MODE_SELECT,
++			     IMX362_MODE_STANDBY);
++		pm_runtime_put(&client->dev);
++	}
++
++	return 0;
++}
++
++static const struct v4l2_subdev_video_ops imx362_video_ops = {
++	.s_stream = imx362_s_stream,
++};
++
++static const struct v4l2_subdev_pad_ops imx362_pad_ops = {
++	.enum_mbus_code = imx362_enum_mbus_code,
++	.enum_frame_size = imx362_enum_frame_size,
++	.get_fmt = imx362_get_fmt,
++	.set_fmt = imx362_set_fmt,
++	.get_selection = imx362_get_selection,
++};
++
++static const struct v4l2_subdev_ops imx362_subdev_ops = {
++	.video = &imx362_video_ops,
++	.pad = &imx362_pad_ops,
++};
++
++static const struct v4l2_subdev_internal_ops imx362_internal_ops = {
++	.init_state = imx362_init_state,
++};
++
++static int imx362_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct imx362 *imx362;
++	unsigned int i;
++	int ret;
++
++	imx362 = devm_kzalloc(dev, sizeof(*imx362), GFP_KERNEL);
++	if (!imx362)
++		return -ENOMEM;
++
++	v4l2_i2c_subdev_init(&imx362->sd, client, &imx362_subdev_ops);
++	imx362->sd.internal_ops = &imx362_internal_ops;
++	mutex_init(&imx362->lock);
++	imx362_set_mode_format(imx362, &imx362_modes[0]);
++
++	imx362->xclk = devm_clk_get(dev, NULL);
++	if (IS_ERR(imx362->xclk))
++		return dev_err_probe(dev, PTR_ERR(imx362->xclk),
++				     "failed to get xclk\n");
++
++	for (i = 0; i < ARRAY_SIZE(imx362_supply_names); i++)
++		imx362->supplies[i].supply = imx362_supply_names[i];
++
++	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(imx362->supplies),
++				      imx362->supplies);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to get supplies\n");
++
++	/* Held asserted until power_on releases it. */
++	imx362->reset_gpio = devm_gpiod_get_optional(dev, "reset",
++						     GPIOD_OUT_HIGH);
++	if (IS_ERR(imx362->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(imx362->reset_gpio),
++				     "failed to get reset gpio\n");
++
++	ret = imx362_power_on(dev);
++	if (ret)
++		return ret;
++
++	ret = imx362_identify(imx362);
++	if (ret)
++		goto err_power_off;
++
++	ret = v4l2_ctrl_handler_init(&imx362->ctrls, 9);
++	if (ret)
++		goto err_power_off;
++
++	imx362->pixel_rate = v4l2_ctrl_new_std(&imx362->ctrls, NULL,
++					       V4L2_CID_PIXEL_RATE, 1,
++					       INT_MAX, 1,
++					       imx362->cur_mode->pixel_rate);
++	imx362->link_freq = v4l2_ctrl_new_int_menu(&imx362->ctrls, NULL,
++					V4L2_CID_LINK_FREQ,
++					ARRAY_SIZE(imx362_link_freqs) - 1, 0,
++					imx362_link_freqs);
++	if (imx362->link_freq)
++		imx362->link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++
++	/* libcamera-mandatory quartet; single mode so the ranges are fixed */
++	ret = 0;
++	{
++		struct v4l2_ctrl *hblank;
++
++		hblank = v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
++					   V4L2_CID_HBLANK,
++					   IMX362_LLP - IMX362_NATIVE_WIDTH,
++					   IMX362_LLP - IMX362_NATIVE_WIDTH, 1,
++					   IMX362_LLP - IMX362_NATIVE_WIDTH);
++		if (hblank)
++			hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++	}
++
++	v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops, V4L2_CID_VBLANK,
++			  IMX362_FLL - IMX362_NATIVE_HEIGHT,
++			  IMX362_FLL_MAX - IMX362_NATIVE_HEIGHT, 1,
++			  IMX362_FLL - IMX362_NATIVE_HEIGHT);
++
++	imx362->exposure = v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
++					     V4L2_CID_EXPOSURE,
++					     IMX362_EXPOSURE_MIN,
++					     IMX362_FLL - IMX362_EXPOSURE_MARGIN,
++					     1,
++					     IMX362_FLL - IMX362_EXPOSURE_MARGIN);
++
++	/*
++	 * 768 = 4x here: this part's gain is 1024/(1024-code), not the
++	 * imx179's 256/(256-code). The same numeric default would be 1.23x
++	 * and the rear preview comes out near-black. See the imx179 note for
++	 * why the default is what every frame actually gets.
++	 */
++	v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
++			  V4L2_CID_ANALOGUE_GAIN, 0, IMX362_ANA_GAIN_MAX,
++			  1, 768);
++
++	/*
++	 * ORIENTATION and SENSOR_ROTATION from the DT node. libcamera reads
++	 * both; without them it logs "Failed to retrieve the camera location"
++	 * and "Rotation control not available" and shows the preview
++	 * unrotated with no front/back distinction.
++	 */
++	{
++		struct v4l2_fwnode_device_properties props;
++
++		ret = v4l2_fwnode_device_parse(dev, &props);
++		if (!ret)
++			ret = v4l2_ctrl_new_fwnode_properties(&imx362->ctrls,
++							      &imx362_ctrl_ops,
++							      &props);
++		if (ret)
++			dev_warn(dev, "no orientation/rotation properties: %d\n",
++				 ret);
++	}
++
++	if (imx362->ctrls.error) {
++		ret = imx362->ctrls.error;
++		goto err_ctrl_free;
++	}
++
++	imx362->sd.ctrl_handler = &imx362->ctrls;
++	imx362->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
++	imx362->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
++	imx362->pad.flags = MEDIA_PAD_FL_SOURCE;
++
++	ret = media_entity_pads_init(&imx362->sd.entity, 1, &imx362->pad);
++	if (ret)
++		goto err_ctrl_free;
++
++	ret = v4l2_async_register_subdev_sensor(&imx362->sd);
++	if (ret)
++		goto err_media_cleanup;
++
++	/* Same runtime-PM hold as imx179 -- see the comment there. */
++	pm_runtime_set_active(dev);
++	pm_runtime_get_noresume(dev);
++	pm_runtime_enable(dev);
++
++	return 0;
++
++err_media_cleanup:
++	media_entity_cleanup(&imx362->sd.entity);
++err_ctrl_free:
++	v4l2_ctrl_handler_free(&imx362->ctrls);
++err_power_off:
++	imx362_power_off(dev);
++	mutex_destroy(&imx362->lock);
++
++	return ret;
++}
++
++static void imx362_remove(struct i2c_client *client)
++{
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct imx362 *imx362 = to_imx362(sd);
++
++	v4l2_async_unregister_subdev(sd);
++	media_entity_cleanup(&sd->entity);
++	v4l2_ctrl_handler_free(&imx362->ctrls);
++
++	pm_runtime_disable(&client->dev);
++	if (!pm_runtime_status_suspended(&client->dev))
++		imx362_power_off(&client->dev);
++	pm_runtime_set_suspended(&client->dev);
++
++	mutex_destroy(&imx362->lock);
++}
++
++static const struct dev_pm_ops imx362_pm_ops = {
++	SET_RUNTIME_PM_OPS(imx362_power_off, imx362_power_on, NULL)
++};
++
++static const struct of_device_id imx362_of_match[] = {
++	{ .compatible = "sony,imx362" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, imx362_of_match);
++
++static struct i2c_driver imx362_i2c_driver = {
++	.driver = {
++		.name = "imx362",
++		.of_match_table = imx362_of_match,
++		.pm = &imx362_pm_ops,
++	},
++	.probe = imx362_probe,
++	.remove = imx362_remove,
++};
++module_i2c_driver(imx362_i2c_driver);
++
++MODULE_DESCRIPTION("Sony IMX362 sensor driver");
++MODULE_LICENSE("GPL");

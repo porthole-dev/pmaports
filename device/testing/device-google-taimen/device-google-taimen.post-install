@@ -1,33 +1,4 @@
 #!/bin/sh
-# Mark each successful boot in the Android A/B interface.
-#
-# Why this exists: nothing in pmOS ever tells the bootloader that a boot
-# worked. The Pixel 2 bootloader therefore scores every boot as FAILED and
-# decrements the slot's retry counter; when it hits zero the slot is marked
-# unbootable and the device drops to fastboot -- or comes up with hardware
-# isolated -- even though pmOS booted perfectly every single time. Downstream
-# Android does this from the boot_control HAL (markBootSuccessful); qbootctl
-# is that HAL ported to Linux userspace, and it sets the "successful" bit and
-# resets the retry counter in the GPT partition attributes.
-#
-# The qbootctl-openrc / qbootctl-systemd subpackages are pulled in
-# automatically by install_if (see depends="qbootctl" in the APKBUILD), but
-# neither enables itself, so do it here. Plain symlinks are used rather than
-# rc-update/systemctl because this runs inside the build chroot.
-#
-# Both links are created unconditionally and WITHOUT testing for the init
-# script / unit file. install_if is resolved by apk *after* this script runs,
-# so /etc/init.d/qbootctl does not exist yet at this point -- guarding on it
-# silently does nothing, which is exactly the bug this comment replaces.
-# Creating both is harmless: each init only ever reads its own path, and the
-# matching qbootctl-<init> subpackage is guaranteed present via install_if.
-mkdir -p /etc/runlevels/default
-ln -sf /etc/init.d/qbootctl /etc/runlevels/default/qbootctl
-
-mkdir -p /etc/systemd/system/multi-user.target.wants
-ln -sf /usr/lib/systemd/system/qbootctl.service \
-	/etc/systemd/system/multi-user.target.wants/qbootctl.service
-
 # WLAN/modem bring-up ordering (see /usr/bin/taimen-modem-bringup). Both
 # wrappers ship; only the one matching the running init is ever read, so
 # enabling both is harmless and survives switching between OpenRC and systemd.

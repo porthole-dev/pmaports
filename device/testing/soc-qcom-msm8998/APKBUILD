@@ -1,5 +1,4 @@
-# Archived: unmaintained
-maintainer=""
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=soc-qcom-msm8998
 pkgdesc="Common package for Qualcomm MSM8998 devices"
 pkgver=1

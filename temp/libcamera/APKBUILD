@@ -1,5 +1,5 @@
 # Forked from Alpine for temporary downstream patches
-maintainer="Robert Mader <robert.mader@collabora.com>"
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=libcamera
 _pkgver=0.7.2
 pkgver=9999$_pkgver

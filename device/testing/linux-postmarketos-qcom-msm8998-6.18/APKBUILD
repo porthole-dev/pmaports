@@ -9,7 +9,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=18
+pkgrel=19
 _commit="4e0c53280d9757b3872d3823b9f94066669aa388"
 pkgdesc="6.18 mainline kernel fork for MSM8998 devices"
 arch="aarch64"
@@ -102,10 +102,10 @@ package() {
 		ARCH="$_carch" \
 		LLVM=1 \
 		INSTALL_PATH="$pkgdir"/boot \
-		INSTALL_MOD_PATH="$pkgdir" \
+		INSTALL_MOD_PATH="$pkgdir"/usr \
 		INSTALL_MOD_STRIP=1 \
 		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
-	rm -f "$pkgdir"/lib/modules/*/build "$pkgdir"/lib/modules/*/source
+	rm -f "$pkgdir"/usr/lib/modules/*/build "$pkgdir"/usr/lib/modules/*/source
 
 	install -D "$builddir"/include/config/kernel.release \
 		"$pkgdir"/usr/share/kernel/$_flavor/kernel.release

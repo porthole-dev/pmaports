@@ -1,79 +1,106 @@
 # Reference: <https://postmarketos.org/devicepkg>
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 #
-# Proprietary firmware for the Google Pixel 2 XL (taimen), lifted out of the
-# factory image. The tarball is NOT in git -- it is Google/Qualcomm's to
-# redistribute, not ours -- so regenerate it before building on a fresh checkout:
+# Proprietary firmware for the Google Pixel 2 XL (taimen). Bulk of it comes
+# from TheMuppets' LineageOS vendor mirror, pinned by commit -- same source
+# pmOS already uses for firmware-google-sargo and firmware-google-manta (the
+# other Pixel devices). taimen reached end-of-life on the Android 11 build
+# this port was verified against, so there have been no further OTAs to drift
+# the vendor blobs: every file below was hashed byte-identical against this
+# project's own first-party extraction from the Android 11 factory image
+# (taimen-rp1a.201005.004.a1-factory-2f5c4987, docs/BLOBS.md) before the
+# switch. Full comparison and evidence log: docs/campaign/ws-07-vendor-blobs.md.
 #
-#   1. Fetch taimen-rp1a.201005.004.a1-factory-2f5c4987.zip from
-#      https://developers.google.com/android/images  (Android 11, the last taimen build)
-#   2. taimen/docs/BLOBS.md documents the extraction; in short:
-#        unzip -p <factory>.zip '*/image-*.zip' > image.zip
-#        unzip -p image.zip vendor.img > vendor.sparse
-#        python3 taimen/blobs/unsparse.py vendor.sparse vendor.raw
-#        debugfs -R "ls -l /firmware" vendor.raw        # to browse
-#   3. Vendor ships the PIL images SPLIT as foo.mdt + foo.b00..bNN, while our DT
-#      asks for a single foo.mbn. Weld them with taimen/tools/pil-squash.py.
-#      Where vendor already ships a combined image (a540_zap.elf, wlanmdsp.mbn)
-#      prefer that verbatim over a reconstruction.
+# NOT yet migrated: mba.mbn / modem.mbn (remoteproc_mss). TheMuppets carries
+# modem firmware as a single combined radio/modem.img, a different container
+# shape than the split mba.mbn + modem.mdt+bNN this device actually boots (see
+# docs/BLOBS.md); nobody has done the PIL-segment diff to prove they match, so
+# they are NOT included in this migration and still come from the old
+# first-party extraction tarball below (regenerate per docs/BLOBS.md sections
+# 2-4 on a fresh checkout -- factory-image vendor.img plus a live pull off the
+# device's own modem_a partition, gitignored, not in git). Once that diff is
+# done and comes back equivalent, drop the old tarball and fold modem into the
+# TheMuppets source like everything else.
 #
-#   4. mba.mbn and modem.{mdt,bNN} are NOT in vendor.img -- they live on the
-#      modem_a/b partition, which is readable straight off a booted device once
-#      UFS works (no TWRP needed):
-#        mount -o ro /dev/disk/by-partlabel/modem_a /mnt/modem   # files in image/
-#      Back up modemst1/2, fsg and fsc before anything ever writes there.
-#   5. The two PD maps pd-mapper needs are in DIFFERENT places:
-#        modemr.jsn   modem partition image/   -- modem ROOT pd
-#        modemuw.jsn  vendor.img /firmware     -- modem USER pd (subdomain
-#                     wlan_pd), which advertises provider=wlan service=fw. This
-#                     is the service ath10k_snoc blocks on, so WiFi needs it.
-#      pd-mapper looks for *.jsn NEXT TO the firmware named in
-#      /sys/class/remoteproc/*/firmware, honouring firmware_class.path -- not in
-#      /lib/firmware root.
-#   6. ath10k board-2.bin / firmware-5.bin are GENERATED from vendor's
-#      bdwlan.bin + bdwlan.b09 with qca-swiss-army-knife:
-#        ath10k-bdencoder -c board-2.json -o board-2.bin
-#          # names: bus=snoc,qmi-board-id=ff for bdwlan.bin, =9 for bdwlan.b09
-#        ath10k-fwencoder -c --timestamp=0 --set-fw-api=5 \
-#          --features=wowlan,mgmt-tx-by-ref,non-bmi,single-chan-info-per-channel \
-#          --set-wmi-op-version=tlv --set-htt-op-version=tlv -o firmware-5.bin
-#      linux-firmware-ath10k ships generic WCN3990 board-2.bin.zst/firmware-5.bin.zst
-#      in the same directory. There is no file conflict (different names) and ours
-#      win: the firmware loader tries the uncompressed name across every search
-#      path before it tries any .zst (drivers/base/firmware_loader/main.c).
+# ath10k board-2.bin / firmware-5.bin are GENERATED at build time from
+# TheMuppets' bdwlan.bin + bdwlan.b09 with qca-swiss-army-knife (board-2.json
+# in this dir carries the board-id mapping: qmi-board-id=ff for bdwlan.bin,
+# =9 for bdwlan.b09). linux-firmware-ath10k ships generic WCN3990
+# board-2.bin.zst/firmware-5.bin.zst in the same directory; no name conflict,
+# and ours win because the firmware loader tries the uncompressed name across
+# every search path before any .zst (drivers/base/firmware_loader/main.c).
+#
+# adsp.mbn / slpi_v2.mbn / ipa_fws.mbn: TheMuppets ships these PIL-split as
+# foo.mdt + foo.b00..bNN; pil-squasher welds them back into the single .mbn
+# our DT asks for. a540_zap.elf and wlanmdsp.mbn ship already combined --
+# installed verbatim, just renamed to match the DT's firmware-name.
 #
 # Not included, deliberately:
 #   a530_* GPU firmware comes from firmware-qcom-adreno-a530.
 pkgname=firmware-google-taimen
-pkgver=20201005
-pkgrel=2
-pkgdesc="Firmware for Google Pixel 2 XL (modem, adsp, slpi, wlan, bluetooth, gpu zap)"
+pkgver=20250505
+pkgrel=1
+pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
 license="proprietary"
-options="!check !archcheck !strip !tracedeps !spdx"
+options="!check !archcheck !strip !tracedeps !spdx pmb:cross-native"
+makedepends="qca-swiss-army-knife pil-squasher"
 depends="
 	firmware-qcom-adreno-a530
 	linux-firmware-ath10k
 	linux-firmware-qca
 "
-source="$pkgname-$pkgver.tar.gz
-	tas2557s_PG21_uCDSP.bin
-	tas2557s_uCDSP.bin
+_commit="d1a4f0d0ea34157875751c812c9887550e216c5a"
+_repo="TheMuppets/proprietary_vendor_google_taimen"
+# Old first-party extraction, kept ONLY for mba.mbn/modem.mbn -- see header.
+# Not in git (proprietary, ~39 MB); regenerate per docs/BLOBS.md on a fresh
+# checkout before building.
+_modemver=20201005
+source="
+	$pkgname-$_commit.tar.gz::https://github.com/$_repo/archive/$_commit.tar.gz
+	board-2.json
+	$pkgname-$_modemver.tar.gz
 	"
+builddir="$srcdir/proprietary_vendor_google_taimen-$_commit/proprietary/vendor/firmware"
+
+build() {
+	pil-squasher adsp.mbn adsp.mdt
+	pil-squasher slpi_v2.mbn slpi_v2.mdt
+	pil-squasher ipa_fws.mbn ipa_fws.mdt
+
+	cp "$srcdir"/board-2.json .
+	ath10k-bdencoder -c board-2.json -o board-2.bin
+	ath10k-fwencoder --create \
+		--features=wowlan,mgmt-tx-by-ref,non-bmi,single-chan-info-per-channel \
+		--set-wmi-op-version=tlv --set-htt-op-version=tlv --set-fw-api=5
+}
 
 package() {
-	install -d "$pkgdir"/lib/firmware
-	cp -a "$srcdir"/qcom "$srcdir"/qca "$srcdir"/ath10k "$pkgdir"/lib/firmware/
+	local _fw="$pkgdir"/lib/firmware
+	install -d "$_fw"/qcom/msm8998/wahoo "$_fw"/qca "$_fw"/ath10k/WCN3990/hw1.0
+
+	install -Dm644 adsp.mbn slpi_v2.mbn ipa_fws.mbn wlanmdsp.mbn modemuw.jsn \
+		-t "$_fw"/qcom/msm8998/wahoo/
+	install -Dm644 a540_zap.elf "$_fw"/qcom/msm8998/wahoo/a540_zap.mbn
+
+	# mba.mbn / modem.mbn: still the old first-party extraction -- see header.
+	install -Dm644 "$srcdir"/qcom/msm8998/wahoo/mba.mbn \
+		"$srcdir"/qcom/msm8998/wahoo/modem.mbn \
+		-t "$_fw"/qcom/msm8998/wahoo/
+
+	install -Dm644 crbtfw21.tlv crnv21.bin -t "$_fw"/qca/
 	# TAS2557 speaker amp uCDSP firmware -- without it the codec probe fails
 	# and the whole sound card defers forever (silent phone).
-	install -Dm644 "$srcdir"/tas2557s_PG21_uCDSP.bin "$srcdir"/tas2557s_uCDSP.bin \
-		-t "$pkgdir"/lib/firmware/
+	install -Dm644 tas2557s_PG21_uCDSP.bin tas2557s_uCDSP.bin -t "$_fw"/
+
+	install -Dm644 board-2.bin firmware-5.bin -t "$_fw"/ath10k/WCN3990/hw1.0/
+
 	find "$pkgdir"/lib/firmware -type f -exec chmod 644 {} +
 }
 
 sha512sums="
+65ebd3c01f5633f8d9818c8410332ccb0f336b0ef8bd99b7b2f046814585395548ce9a432628623672dc811a9ea20aa945925743eed24242866ed3b5983cccea  firmware-google-taimen-d1a4f0d0ea34157875751c812c9887550e216c5a.tar.gz
+0c38e60200837c0d0dc1a84e910b230723de17a9c6c1fce52a84303de38cf43867368c0d42126163395641f432a2eb80abd58809ddb1d66514ed46394a395047  board-2.json
 e11fdff317c90468e889927c246ac25a5f6235fd18399dbf35177de6f4f6b632e2ffdb856e5a19a71223fac9e169cdade5563cc4d2f442281cfc45c20990ef2e  firmware-google-taimen-20201005.tar.gz
-5e99f0f8b6f672c46d96fa05a0459a2908e3b8167973f4ff64629c393f3984bfe719d87443a890d04c4d5908ade82e1ded696d13f02d413c9e520038aa30cf75  tas2557s_PG21_uCDSP.bin
-9b387aa40ae558aeba2cee9991264783ab0401addddfe542e60f9e46d228b291553be2719863f0541cfe468877b985b55084e75154017081eca7c9a7e4dd0f43  tas2557s_uCDSP.bin
 "

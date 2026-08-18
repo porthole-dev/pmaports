@@ -1,4 +1,9 @@
-# Proprietary Google/Qualcomm firmware, assembled from the factory image and the
-# device's own modem partition -- ~39 MB, not ours to redistribute, and fully
-# regenerable. See the APKBUILD header for how to rebuild it.
+# Proprietary Google/Qualcomm firmware. Most of it is now fetched by abuild
+# from TheMuppets (see source= in APKBUILD); the old first-party extraction
+# tarball is kept only for mba.mbn/modem.mbn (see APKBUILD header). Neither
+# is ours to redistribute, so the tarball and any loose blob extracted from
+# it stay out of git.
 *.tar.gz
+*.bin
+*.mbn
+*.jsn

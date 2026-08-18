@@ -105,9 +105,10 @@ package() {
 
 	# WLAN/modem bring-up ordering. This used to live in /etc/local.d on the
 	# device only, which meant every clean install silently came up with no
-	# working modem. Ship it, and ship both init wrappers: the matching one is
-	# enabled (taimen.preset for systemd, the openrc() subpackage for OpenRC),
-	# the other is an inert file.
+	# working modem. Ship it, and ship both init wrappers: the .service is
+	# always in the main package (inert on OpenRC), and the initd is amoved
+	# into the openrc() subpackage below so it only lands on OpenRC systems
+	# in the first place, rather than shipping inert on systemd.
 	install -Dm755 "$srcdir"/taimen-modem-bringup \
 		"$pkgdir"/usr/bin/taimen-modem-bringup
 	install -Dm755 "$srcdir"/taimen-modem-bringup.initd \
@@ -353,10 +354,23 @@ openrc() {
 	# ("openrc neard=0.20-r0") pulls it in automatically once neard,
 	# already a top-level depends= above, is present, so this subpackage
 	# only needs to `rc-update add` it below.
+	#
+	# sns-reg's own /etc/init.d/sns-reg comes from the sns-reg aport, not
+	# from this package, so it cannot be amoved in -- it is guaranteed to
+	# exist by the hard `sns-reg` depends= below instead.
 	install_if="$pkgname=$pkgver-r$pkgrel openrc"
 	install="$subpkgname.post-install $subpkgname.post-upgrade"
-	depends="openrc"
-	mkdir "$subpkgdir"
+	# install_if is not a dependency edge, so without an explicit depends=
+	# apk can run this post-install before sns-reg's init script exists and
+	# `rc-update add sns-reg default` fails (the script has no `set -e`, so
+	# it would keep going and apk would just warn on exit). Declaring our
+	# own depends= here drops abuild's automatic "$pkgname=$pkgver-r$pkgrel"
+	# dependency on the parent, so that has to be listed explicitly too.
+	# taimen-modem-bringup and taimen-rescue need no such guarantee any
+	# more: amove below moves their init scripts into this subpackage, so
+	# they exist by construction before this post-install can run.
+	depends="$pkgname=$pkgver-r$pkgrel openrc sns-reg"
+	amove etc/init.d/taimen-modem-bringup etc/init.d/taimen-rescue
 }
 
 kernel_mainline() {

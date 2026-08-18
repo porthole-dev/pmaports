@@ -1,5 +1,5 @@
 # Reference: <https://postmarketos.org/devicepkg>
-# Maintainer: Giuseppe Maggio <jertlok@proton.me>
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
 #
 # Proprietary firmware for the Google Pixel 2 XL (taimen), lifted out of the
 # factory image. The tarball is NOT in git -- it is Google/Qualcomm's to

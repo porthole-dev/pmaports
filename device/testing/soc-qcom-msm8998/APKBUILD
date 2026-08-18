@@ -2,39 +2,35 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=soc-qcom-msm8998
 pkgdesc="Common package for Qualcomm MSM8998 devices"
 pkgver=1
-pkgrel=5
+pkgrel=6
 url="https://postmarketos.org"
 license="BSD-3-Clause"
 arch="aarch64"
 options="!check !archcheck !tracedeps"
+# qcom-diag and soc-qcom-modem used to live in a nonfree_firmware
+# subpackage; pmaports policy since the 2024 default-nonfree-firmware
+# change is that nonfree firmware belongs in the package's own depends=,
+# not a separate subpackage (see docs/packaging/firmware-packages.md).
 depends="
+	qcom-diag
 	soc-qcom
+	soc-qcom-modem
 	soc-qcom-pd-mapper
 "
 source="iwd-main.conf"
 subpackages="
-	$pkgname-nonfree-firmware:nonfree_firmware
-	$pkgname-nonfree-firmware-openrc:nonfree_firmware_openrc
+	$pkgname-openrc:openrc
 	"
 
 package() {
 	mkdir -p "$pkgdir"
-}
-
-nonfree_firmware() {
-	pkgdesc="Modem, WiFi and GPU Firmware"
-	depends="
-	soc-qcom-modem
-	qcom-diag
-"
-
-	mkdir "$subpkgdir"
 	install -D -m644 "$srcdir"/iwd-main.conf \
-		"$subpkgdir"/etc/iwd/main.conf
+		"$pkgdir"/etc/iwd/main.conf
 }
 
-nonfree_firmware_openrc() {
-	install_if="$pkgname-nonfree-firmware=$pkgver-r$pkgrel openrc"
+openrc() {
+	pkgdesc="OpenRC service enablement for soc-qcom-msm8998"
+	install_if="$pkgname=$pkgver-r$pkgrel openrc"
 	install="$subpkgname.post-install $subpkgname.post-upgrade"
 	depends="qcom-diag-openrc openrc"
 

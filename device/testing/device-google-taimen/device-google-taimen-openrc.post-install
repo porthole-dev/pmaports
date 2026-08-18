@@ -1,0 +1,12 @@
+#!/bin/sh
+# OpenRC counterpart of taimen.preset's systemd enablement. Pulled in only
+# when the openrc meta-package is present (see openrc()'s install_if in the
+# APKBUILD), matching soc-qcom's qbootctl_openrc()/modem_openrc() shape.
+rc-update add taimen-modem-bringup default
+# sns-reg (main/sns-reg) ships /etc/init.d/sns-reg but does not enable
+# itself on any init -- see the APKBUILD's sns-reg comment.
+rc-update add sns-reg default
+# sysinit, not default: matches taimen-rescue.service's
+# DefaultDependencies=no + WantedBy=sysinit.target. See taimen-rescue.py's
+# header for why it must already be running before a PID-1 freeze.
+rc-update add taimen-rescue sysinit

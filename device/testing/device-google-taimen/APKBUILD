@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=51
+pkgrel=52
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -28,10 +28,18 @@ depends="
 "
 # post-upgrade is a symlink to post-install (the pmaports idiom, cf.
 # postmarketos-base-ui-cage). apk runs post-INSTALL only on a fresh install and
-# post-UPGRADE on an upgrade, so with post-install alone every `ln -sf` below is
-# silently skipped when the pkgrel is bumped -- apk still exits 0. Existing
-# symlinks survive, so this bites only for units a NEWER pkgrel adds: those
-# would never get enabled and the failure is silent.
+# post-UPGRADE on an upgrade, so with post-install alone the /etc/environment
+# append and dconf update below would be silently skipped on every pkgrel
+# bump -- apk still exits 0. Both are idempotent (marker-guarded / dconf
+# update itself is a no-op when nothing changed), so re-running on every
+# upgrade is harmless and is what actually keeps them applied when this
+# package or its dconf db drop-ins change.
+#
+# Service enablement is NOT done here any more (P1-12): taimen.preset covers
+# systemd for taimen-modem-bringup, sns-reg, taimen-rescue and neard, and the
+# openrc() subpackage below (install_if-gated, same shape as qbootctl's)
+# covers OpenRC for the three that need it -- see that subpackage's own
+# post-install. Neither post-install symlinks anything any more.
 install="$pkgname.post-install $pkgname.post-upgrade"
 makedepends="devicepkg-dev"
 source="
@@ -85,6 +93,7 @@ source="
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
 	$pkgname-nonfree-firmware:nonfree_firmware
+	$pkgname-openrc:openrc
 	"
 
 build() {
@@ -97,7 +106,8 @@ package() {
 	# WLAN/modem bring-up ordering. This used to live in /etc/local.d on the
 	# device only, which meant every clean install silently came up with no
 	# working modem. Ship it, and ship both init wrappers: the matching one is
-	# enabled by the post-install, the other is an inert file.
+	# enabled (taimen.preset for systemd, the openrc() subpackage for OpenRC),
+	# the other is an inert file.
 	install -Dm755 "$srcdir"/taimen-modem-bringup \
 		"$pkgdir"/usr/bin/taimen-modem-bringup
 	install -Dm755 "$srcdir"/taimen-modem-bringup.initd \
@@ -121,8 +131,9 @@ package() {
 
 	# systemd preset policy -- see the file's header. Without this,
 	# `systemctl preset-all` obeys pmOS's 99-default.preset "disable *" and
-	# deletes the multi-user.target.wants symlink the post-install makes, so
-	# the device boots with no modem. Must sort before 99-default.preset.
+	# the modem/sns-reg/rescue/neard units never get their .wants symlink
+	# created in the first place, so the device boots with no modem. Must
+	# sort before 99-default.preset.
 	install -Dm644 "$srcdir"/taimen.preset \
 		"$pkgdir"/usr/lib/systemd/system-preset/91-taimen.preset
 
@@ -327,6 +338,19 @@ package() {
 		"$pkgdir"/usr/share/applications/taimen-nfc-toggle.desktop
 }
 
+openrc() {
+	pkgdesc="OpenRC service enablement (taimen-modem-bringup, sns-reg, taimen-rescue)"
+	# Pulled in only on an OpenRC system, exactly like soc-qcom's
+	# qbootctl_openrc()/modem_openrc(). The systemd side of the same three
+	# units is taimen.preset, not a subpackage -- presets need no install_if
+	# gate because `systemctl preset` is a harmless no-op when systemd is
+	# not the running init.
+	install_if="$pkgname=$pkgver-r$pkgrel openrc"
+	install="$subpkgname.post-install $subpkgname.post-upgrade"
+	depends="openrc"
+	mkdir "$subpkgdir"
+}
+
 kernel_mainline() {
 	pkgdesc="Close to mainline kernel"
 	# The -6.18 aport, not the 6.0 one. Both exist in pmaports and both build
@@ -377,7 +401,7 @@ e1f59cf40a3a58840a86ebc9bd82a78ea0a9ad7d45fd37f6430e47210bb02d636defd487341a8e50
 bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd87e6a44b2814973e9dc849e275695e203a5516b6e4d665a5f  taimen-modem-bringup.initd
 cb7d96d5d0f2153ab76556100053162b0a4c90e2301723303b07e39559df762f4c6f5fc4cf3ef572a3212682d983c8daabd8cf1f349396517ab1c00309ecb75e  taimen-modem-bringup.service
 259349fe19752f3d9aac9651acdad3499058030e63587c6af68e1df1c0ddf602096fbccc892893ce02437e67c19b046522c1e80f604a68b48563e486ced143ca  ath-regd-override.conf
-bfb5d9ffe314f1ac18bd27baa4adf4a908e9005a0d0a472c74de72611672f85235fc5f198e3def1d192c2321dccedcd8e4ebc37fe836d36eb689db34b591baa9  taimen.preset
+c211e4c5e20b7cc440516a998ac5fdf12fde624a6e59fe459b5c63c95eee09cd47b56fcd8a7832d905721056174e85219023ce26ece59a0e22bbac3b8ec291d8  taimen.preset
 640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
 2690c1a30952b293a5e3b46b6e07c54e3b03c759a3b83d3c04b77d2ff2d886fd930625fdca7f5bea5254dd418d2cfa7765e5ebbeca2064542a70c4ee5592e6a8  groups.conf
 cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7d8476548b3d9c4d6cb24ff9fd289d00b2ca8a06c82afe3c2  sns-reg-registry.conf

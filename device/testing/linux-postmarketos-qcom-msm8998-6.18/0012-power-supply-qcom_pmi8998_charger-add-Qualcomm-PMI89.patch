@@ -1,5 +1,5 @@
 From 5da67f3f3cea3ebd8be828527b99c9ccaaf89c3d Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:38:06 +0200
 Subject: [PATCH 12/33] power: supply: qcom_pmi8998_charger: add Qualcomm
  PMI8998 charger driver
@@ -17,6 +17,8 @@ should decide whether to keep this one, switch taimen to
 qcom_smbx.c, or merge functionality between them. Only one should be
 enabled at a time.
 
+Signed-off-by: Casey Connolly <casey.connolly@linaro.org>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/power/supply/Kconfig                |   18 +

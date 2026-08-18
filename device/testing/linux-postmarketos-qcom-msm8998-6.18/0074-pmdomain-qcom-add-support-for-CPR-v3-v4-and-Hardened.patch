@@ -1,7 +1,7 @@
 From 4259b9ebff442cfccf12abe6763ba136318d8ffd Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Tue, 24 Nov 2020 20:39:22 +0100
-Subject: [PATCH 074/113] pmdomain: qcom: add support for CPR v3, v4 and
+Subject: [PATCH 074/115] pmdomain: qcom: add support for CPR v3, v4 and
  Hardened
 
 Core Power Reduction is a closed-loop voltage regulation technology found

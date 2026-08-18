@@ -1,7 +1,7 @@
 From 5c26b4cbdee74c6604e54eeb7602de2cab8ce406 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 13:02:28 +0200
-Subject: [PATCH 050/113] drm/msm/dpu: fall back to pp done when there is no
+Subject: [PATCH 050/115] drm/msm/dpu: fall back to pp done when there is no
  CTL_START interrupt
 
 Not every DPU generates a CTL_START interrupt: on MSM8998 the downstream

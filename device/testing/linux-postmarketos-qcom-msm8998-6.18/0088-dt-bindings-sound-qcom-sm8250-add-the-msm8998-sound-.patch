@@ -1,7 +1,7 @@
 From 411a0e512344fd4f4da29cb79dbe7bffecacf93e Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:24:24 +0200
-Subject: [PATCH 088/113] dt-bindings: sound: qcom,sm8250: add the msm8998
+Subject: [PATCH 088/115] dt-bindings: sound: qcom,sm8250: add the msm8998
  sound card
 
 The msm8998 machine driver binds on "qcom,msm8998-sndcard" and shares

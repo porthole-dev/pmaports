@@ -1,7 +1,7 @@
 From b5448781019d58f212f3a187b6ce7f963eb0d86e Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 18:24:12 +0200
-Subject: [PATCH 066/113] power: supply: qcom_fg: fix inverted
+Subject: [PATCH 066/115] power: supply: qcom_fg: fix inverted
  POWER_SUPPLY_PROP_CURRENT_NOW sign
 
 qcom_fg_get_current() and qcom_fg_gen3_get_current() report the raw,

@@ -1,7 +1,7 @@
 From 1984f732dd3ff8a929b1482500007d5289e15b18 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 20:05:18 +0200
-Subject: [PATCH 044/113] ASoC: qcom: lpass-msm8998: add missing const on
+Subject: [PATCH 044/115] ASoC: qcom: lpass-msm8998: add missing const on
  variant pointers
 
 struct lpass_data.variant is const (sound/soc/qcom/lpass.h), and every

@@ -1,7 +1,7 @@
 From e1701b65a7566327f604c3087c96a57271ccb979 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 18:16:22 +0200
-Subject: [PATCH 036/113] media: qcom: camss: csiphy: take the settle rate from
+Subject: [PATCH 036/115] media: qcom: camss: csiphy: take the settle rate from
  the timer clock
 
 csiphy_set_clock_rates() stores the rate of every clock it rates in

@@ -1,7 +1,7 @@
 From 9a81d044bfef766f9406f787d700e7ec673b5c56 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 18:52:18 +0200
-Subject: [PATCH 090/113] ASoC: wcd934x: unmute the TX PGA after the decimator
+Subject: [PATCH 090/115] ASoC: wcd934x: unmute the TX PGA after the decimator
  is powered
 
 Capture carries no audio at all: every sample in the stream is the same

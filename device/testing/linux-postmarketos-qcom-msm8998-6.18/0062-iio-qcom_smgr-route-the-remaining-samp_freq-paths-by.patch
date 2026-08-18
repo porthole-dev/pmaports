@@ -1,7 +1,7 @@
 From 593c6cf5794462f9925e3df9828508e4a7c3eebe Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:10:52 +0200
-Subject: [PATCH 062/113] iio: qcom_smgr: route the remaining samp_freq paths
+Subject: [PATCH 062/115] iio: qcom_smgr: route the remaining samp_freq paths
  by data type
 
 Two leftover instances of the same defect family already fixed for the

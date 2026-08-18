@@ -1,7 +1,7 @@
-From 289bcc793356031c660bd8acee9bc804660a73c0 Mon Sep 17 00:00:00 2001
+From f110b25e75ec42071a73f6238efafbc8f7be5f82 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 16:20:53 +0200
-Subject: [PATCH 106/113] ASoC: wcd934x: parse the mic bias voltages from the
+Subject: [PATCH 108/115] ASoC: wcd934x: parse the mic bias voltages from the
  devicetree
 
 Converting the driver to the shared wcd helper moved the mic bias

@@ -1,7 +1,7 @@
 From 2e9445953c8b280955cf00d4f779150f2e9edb52 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Wed, 29 Jul 2026 11:41:26 +0200
-Subject: [PATCH 059/113] net: ipa: don't starve non-command channels with a
+Subject: [PATCH 059/115] net: ipa: don't starve non-command channels with a
  WRR weight of 0
 
 gsi_channel_program() programs the channel QOS register and leaves

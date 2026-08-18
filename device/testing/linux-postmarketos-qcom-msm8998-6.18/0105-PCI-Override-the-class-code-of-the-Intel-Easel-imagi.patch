@@ -1,7 +1,7 @@
-From c1d4500fd5681b0d7cb97596ed2d294e29cbb973 Mon Sep 17 00:00:00 2001
+From cfebff0f79a312befadfc0493cbf25b9a01afce7 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 15:58:45 +0200
-Subject: [PATCH 103/113] PCI: Override the class code of the Intel Easel
+Subject: [PATCH 105/115] PCI: Override the class code of the Intel Easel
  imaging coprocessor
 
 Easel (8086:3140), the imaging coprocessor on the Google Pixel 2,

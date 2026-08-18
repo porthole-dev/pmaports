@@ -1,7 +1,7 @@
-From 4f2c7940f73de139c6e375affc9cd19fd517bb8f Mon Sep 17 00:00:00 2001
+From 27010dd035037af0ee0075c49b5543075c466b28 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 11:07:15 +0200
-Subject: [PATCH 100/113] ASoC: wcd934x: apply the vendor register init
+Subject: [PATCH 102/115] ASoC: wcd934x: apply the vendor register init
  sequence
 
 wcd934x_hw_init() writes three registers and leaves the rest of the part

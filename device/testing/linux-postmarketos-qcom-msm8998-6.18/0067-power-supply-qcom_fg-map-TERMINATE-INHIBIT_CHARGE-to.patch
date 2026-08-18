@@ -1,7 +1,7 @@
 From 7d9eca7fb1b51b2ca8739e72d6d7c1cc86dca383 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 18:24:30 +0200
-Subject: [PATCH 067/113] power: supply: qcom_fg: map TERMINATE/INHIBIT_CHARGE
+Subject: [PATCH 067/115] power: supply: qcom_fg: map TERMINATE/INHIBIT_CHARGE
  to STATUS_FULL
 
 qcom_fg_get_prop_batt_status() reads BATTERY_CHARGER_STATUS_1 and maps

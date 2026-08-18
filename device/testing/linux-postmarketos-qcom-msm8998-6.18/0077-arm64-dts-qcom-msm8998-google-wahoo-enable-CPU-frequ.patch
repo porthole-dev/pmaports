@@ -1,7 +1,7 @@
 From e526d204ee6ed28246c6cd7540c4ae1c2f4faaa8 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:25:28 +0200
-Subject: [PATCH 077/113] arm64: dts: qcom: msm8998-google-wahoo: enable CPU
+Subject: [PATCH 077/115] arm64: dts: qcom: msm8998-google-wahoo: enable CPU
  frequency scaling
 
 The Pixel 2 bootloader leaves the OSM unprogrammed and does not write

@@ -1,7 +1,7 @@
 From 4b9a090414afbc16702859f1bcc8b8edec7b7c16 Mon Sep 17 00:00:00 2001
 From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:42:23 +0200
-Subject: [PATCH 030/113] arm64: dts: qcom: msm8998-google-walleye: add Pixel 2
+Subject: [PATCH 030/115] arm64: dts: qcom: msm8998-google-walleye: add Pixel 2
  board
 
 Adds the board devicetree for the Google Pixel 2 (walleye), the

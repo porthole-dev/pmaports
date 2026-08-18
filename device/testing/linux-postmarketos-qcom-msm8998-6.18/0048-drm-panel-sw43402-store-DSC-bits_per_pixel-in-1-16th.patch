@@ -1,7 +1,7 @@
 From 833ac6704060b53ffcf27143f802c1d9c4fc02d1 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 13:01:50 +0200
-Subject: [PATCH 048/113] drm/panel: sw43402: store DSC bits_per_pixel in
+Subject: [PATCH 048/115] drm/panel: sw43402: store DSC bits_per_pixel in
  1/16th units
 
 drm_dsc_config.bits_per_pixel is defined in 1/16th-of-a-bit units, but the

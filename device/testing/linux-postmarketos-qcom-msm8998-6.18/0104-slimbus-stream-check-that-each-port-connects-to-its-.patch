@@ -1,7 +1,7 @@
-From fe893460d82af2e3efaf9e09555c58d2f655ce30 Mon Sep 17 00:00:00 2001
+From a7372c9900e4666a6d09b8feff9e5638042681e5 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 11:09:50 +0200
-Subject: [PATCH 102/113] slimbus: stream: check that each port connects to its
+Subject: [PATCH 104/115] slimbus: stream: check that each port connects to its
  channel
 
 slim_stream_prepare() discards the return of

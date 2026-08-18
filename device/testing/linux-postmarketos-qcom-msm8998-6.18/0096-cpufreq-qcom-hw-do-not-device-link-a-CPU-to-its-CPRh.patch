@@ -1,7 +1,7 @@
-From 2916373458dbc0966eab5ebb24799b1b261bff9c Mon Sep 17 00:00:00 2001
+From 2a8119f1adc5051b7dd7135e12bb7c7080e890cc Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 21:55:12 +0200
-Subject: [PATCH 094/113] cpufreq: qcom-hw: do not device-link a CPU to its
+Subject: [PATCH 096/115] cpufreq: qcom-hw: do not device-link a CPU to its
  CPRh domain
 
 Attaching the CPRh power domain hangs MSM8998 before the driver has
@@ -32,10 +32,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 7 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/cpufreq/qcom-cpufreq-hw.c b/drivers/cpufreq/qcom-cpufreq-hw.c
-index d0a9aca5fc56..3ec105db61a2 100644
+index 0da123b524f4..786b461ef5ed 100644
 --- a/drivers/cpufreq/qcom-cpufreq-hw.c
 +++ b/drivers/cpufreq/qcom-cpufreq-hw.c
-@@ -514,11 +514,17 @@ static int qcom_cpufreq_gen_params(struct device *cpu_dev,
+@@ -543,11 +543,17 @@ static int qcom_cpufreq_gen_params(struct device *cpu_dev,
  	 * It must run while that table is still empty, which is why the CPRh
  	 * corner setup is deferred to qcom_cpr3_cprh_init() below instead of
  	 * happening in the domain's attach_dev callback.

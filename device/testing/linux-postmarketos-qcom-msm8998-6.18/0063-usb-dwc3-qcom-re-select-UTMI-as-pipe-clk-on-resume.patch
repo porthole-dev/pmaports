@@ -1,7 +1,7 @@
 From 78d185fc1074659ef513eb99976ad7e24518dce4 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:12:08 +0200
-Subject: [PATCH 063/113] usb: dwc3: qcom: re-select UTMI as pipe clk on resume
+Subject: [PATCH 063/115] usb: dwc3: qcom: re-select UTMI as pipe clk on resume
 
 On msm8998 (Google Pixel 2 XL) the USB gadget does not survive s2idle.
 After resume the UDC still reports state=configured / current_speed=

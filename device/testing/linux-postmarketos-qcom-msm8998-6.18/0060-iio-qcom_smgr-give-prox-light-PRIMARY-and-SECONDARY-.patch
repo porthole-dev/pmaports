@@ -1,7 +1,7 @@
 From 9280f622eedaea6834ba2720867ab70823a880e3 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:09:56 +0200
-Subject: [PATCH 060/113] iio: qcom_smgr: give prox/light PRIMARY and SECONDARY
+Subject: [PATCH 060/115] iio: qcom_smgr: give prox/light PRIMARY and SECONDARY
  their own completion
 
 qcom-smgr-prox-light subscribes to two reports on one sensor id: PRIMARY

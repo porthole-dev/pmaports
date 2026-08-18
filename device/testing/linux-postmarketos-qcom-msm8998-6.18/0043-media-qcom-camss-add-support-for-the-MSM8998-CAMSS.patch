@@ -1,7 +1,7 @@
 From c57b0d155a7ba3ec75766cf49d62df12b49c83e5 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 18:17:12 +0200
-Subject: [PATCH 043/113] media: qcom: camss: add support for the MSM8998 CAMSS
+Subject: [PATCH 043/115] media: qcom: camss: add support for the MSM8998 CAMSS
 
 MSM8998 is SDM660's CAMSS: CSID v5.0, ISPIF v3.0 and VFE 4.8 sit at the
 same offsets and answer to the same programming, so the whole of it comes

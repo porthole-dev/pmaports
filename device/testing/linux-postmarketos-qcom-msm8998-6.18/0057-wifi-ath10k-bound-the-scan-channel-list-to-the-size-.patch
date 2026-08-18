@@ -1,7 +1,7 @@
 From 2a4261703d276ef9c66697ffc5a73b9370ae8061 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Tue, 28 Jul 2026 12:48:26 +0200
-Subject: [PATCH 057/113] wifi: ath10k: bound the scan channel list to the size
+Subject: [PATCH 057/115] wifi: ath10k: bound the scan channel list to the size
  of the WMI array
 
 struct wmi_start_scan_arg carries a fixed u16 channels[64], and

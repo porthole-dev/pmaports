@@ -1,7 +1,7 @@
 From 8c88f835f5f67cf71346f1b06735ab766d6b1614 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:12:37 +0200
-Subject: [PATCH 070/113] drm/msm/devfreq: wake the GPU at the top OPP, not at
+Subject: [PATCH 070/115] drm/msm/devfreq: wake the GPU at the top OPP, not at
  twice the last one
 
 msm_devfreq_active() boosts whenever the GPU has been idle for longer

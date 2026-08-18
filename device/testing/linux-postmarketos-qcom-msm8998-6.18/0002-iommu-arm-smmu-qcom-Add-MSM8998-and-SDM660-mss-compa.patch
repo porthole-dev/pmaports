@@ -1,7 +1,7 @@
 From 87a341e2209c563a8714cbfcbce5dce097ce0231 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Tue, 10 Aug 2021 20:42:48 +0200
-Subject: [PATCH 002/113] iommu/arm-smmu-qcom: Add MSM8998 and SDM660 mss
+Subject: [PATCH 002/115] iommu/arm-smmu-qcom: Add MSM8998 and SDM660 mss
  compatibles for identity
 
 Add MSM8998 and SDM660's mss-pil compatibles to switch the default

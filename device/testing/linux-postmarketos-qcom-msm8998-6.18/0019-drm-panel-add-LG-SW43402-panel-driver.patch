@@ -1,7 +1,7 @@
 From 89ff3d3461456a6b451aa0c370f00100685c1d1b Mon Sep 17 00:00:00 2001
 From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:34:33 +0200
-Subject: [PATCH 019/113] drm/panel: add LG SW43402 panel driver
+Subject: [PATCH 019/115] drm/panel: add LG SW43402 panel driver
 
 Adds a DRM panel driver for the LG SW43402, a 1440x2880 DSI command
 mode panel with DSC used on the Google Pixel 2 XL (taimen). Generated

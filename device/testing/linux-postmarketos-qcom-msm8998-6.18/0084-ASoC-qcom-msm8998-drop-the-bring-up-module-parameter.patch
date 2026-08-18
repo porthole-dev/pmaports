@@ -1,7 +1,7 @@
 From e3c751be9c9cba6ce2b48e3bae0bdad8694238ad Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:18:17 +0200
-Subject: [PATCH 084/113] ASoC: qcom: msm8998: drop the bring-up module
+Subject: [PATCH 084/115] ASoC: qcom: msm8998: drop the bring-up module
  parameters
 
 be_rate and slim_tx_channels were added to sweep the backend rate and

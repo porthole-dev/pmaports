@@ -1,7 +1,7 @@
 From 5941921893c9695e9e5eb3544caec3894654f94f Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:15:37 +0200
-Subject: [PATCH 079/113] ASoC: wcd934x: open the slave port when the stream
+Subject: [PATCH 079/115] ASoC: wcd934x: open the slave port when the stream
  starts
 
 The codec's SLIMbus TX port dies on its first underflow and never

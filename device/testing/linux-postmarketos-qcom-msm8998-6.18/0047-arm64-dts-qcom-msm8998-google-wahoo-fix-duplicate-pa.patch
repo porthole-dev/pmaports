@@ -1,7 +1,7 @@
 From c13adc12bdfa647931df95f38bcb9aecedadf839 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 11:57:40 +0200
-Subject: [PATCH 047/113] arm64: dts: qcom: msm8998-google-wahoo: fix duplicate
+Subject: [PATCH 047/115] arm64: dts: qcom: msm8998-google-wahoo: fix duplicate
  panel-ldo node name
 
 The two fixed regulators for the panel shared the node name

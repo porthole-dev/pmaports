@@ -1,7 +1,7 @@
 From 0a37faa5f22e37b02353e808a82b3ea68c623f8a Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:12:31 +0200
-Subject: [PATCH 064/113] usb: dwc3: qcom: restore the VBUS override on resume
+Subject: [PATCH 064/115] usb: dwc3: qcom: restore the VBUS override on resume
  too
 
 The pipe-clk fix got the core initialising cleanly again -- the "failed

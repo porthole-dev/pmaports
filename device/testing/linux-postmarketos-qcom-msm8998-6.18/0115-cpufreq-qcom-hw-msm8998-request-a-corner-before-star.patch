@@ -1,7 +1,7 @@
-From c7513c3ff44e0e021fcf291bd6b31b42b0678a29 Mon Sep 17 00:00:00 2001
+From 1469c67dbecefaa34747c2353e6276255b87a471 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 17:09:11 +0200
-Subject: [PATCH 113/113] cpufreq: qcom-hw: msm8998: request a corner before
+Subject: [PATCH 115/115] cpufreq: qcom-hw: msm8998: request a corner before
  starting the OSM
 
 The OSM is started with whatever the boot chain left in the performance
@@ -22,10 +22,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 10 insertions(+)
 
 diff --git a/drivers/cpufreq/qcom-cpufreq-hw.c b/drivers/cpufreq/qcom-cpufreq-hw.c
-index 9037f511ac79..871c8750477b 100644
+index d2911c07de13..2b1824758293 100644
 --- a/drivers/cpufreq/qcom-cpufreq-hw.c
 +++ b/drivers/cpufreq/qcom-cpufreq-hw.c
-@@ -1531,6 +1531,16 @@ static int qcom_cpufreq_hw_osm_setup(struct device *cpu_dev,
+@@ -1594,6 +1594,16 @@ static int qcom_cpufreq_hw_osm_setup(struct device *cpu_dev,
  	if (ret)
  		return ret;
  

@@ -1,7 +1,7 @@
 From 78060df31013df16b43adfa2a426ea486962095d Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:25:35 +0200
-Subject: [PATCH 073/113] media: i2c: imx179: drop the bring-up rail-drop
+Subject: [PATCH 073/115] media: i2c: imx179: drop the bring-up rail-drop
  module parameter
 
 The tk_raildrop parameter cut a regulator out from under a live sensor to

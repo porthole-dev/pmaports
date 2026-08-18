@@ -1,7 +1,7 @@
 From f0d5746fd29eef5d430c1a2cfb77409150560351 Mon Sep 17 00:00:00 2001
 From: Yassine Oudjana <y.oudjana@protonmail.com>
 Date: Sat, 8 Aug 2026 16:10:54 +0200
-Subject: [PATCH 020/113] net: qrtr: turn QRTR into a bus
+Subject: [PATCH 020/115] net: qrtr: turn QRTR into a bus
 
 The upcoming iio/qcom_smgr driver talks to the Snapdragon Sensor Core
 over QRTR as a per-service client: it needs to bind against a

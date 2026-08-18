@@ -1,7 +1,7 @@
-From 04e04f4657605cc62732ac2655ec0a920fa77ee1 Mon Sep 17 00:00:00 2001
+From cef7c5edf3a738a7c2a0eeadf13d55a5829d2241 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 10:46:47 +0200
-Subject: [PATCH 098/113] arm64: dts: qcom: msm8998: add the IPA block
+Subject: [PATCH 100/115] arm64: dts: qcom: msm8998: add the IPA block
 
 msm8998.dtsi reserves the two IPA memory regions but never describes the
 block itself, so drivers/net/ipa never binds and the modem has no data

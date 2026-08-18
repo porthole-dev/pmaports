@@ -1,7 +1,7 @@
 From 6596b77a261cc88c1b905842d06b29229c6b8a25 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Wed, 20 Jan 2021 22:33:36 +0100
-Subject: [PATCH 004/113] clk: qcom: gcc-msm8998: Mark hmss/gpu-ahb critical
+Subject: [PATCH 004/115] clk: qcom: gcc-msm8998: Mark hmss/gpu-ahb critical
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---

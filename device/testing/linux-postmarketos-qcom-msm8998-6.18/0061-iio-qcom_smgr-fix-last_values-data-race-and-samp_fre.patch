@@ -1,7 +1,7 @@
 From 07635182a32a0b9be17dd71345d7031d0fa2d3a3 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:10:33 +0200
-Subject: [PATCH 061/113] iio: qcom_smgr: fix last_values data race and
+Subject: [PATCH 061/115] iio: qcom_smgr: fix last_values data race and
  samp_freq slot routing
 
 Two defects found in a sensor-path audit:

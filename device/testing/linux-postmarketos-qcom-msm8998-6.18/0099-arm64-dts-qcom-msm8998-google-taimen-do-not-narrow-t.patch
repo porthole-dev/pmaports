@@ -1,7 +1,7 @@
-From b939fd2ff9fbc60cf9b099dcfa7f87975c62f825 Mon Sep 17 00:00:00 2001
+From 6dc4a1c79ff86de59de5a98e66fb73c60eccd542 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 22:34:28 +0200
-Subject: [PATCH 097/113] arm64: dts: qcom: msm8998-google-taimen: do not
+Subject: [PATCH 099/115] arm64: dts: qcom: msm8998-google-taimen: do not
  narrow the PCIe bus range
 
 The PCIe0 override trims bus-range to <0x00 0x01> on the grounds that one

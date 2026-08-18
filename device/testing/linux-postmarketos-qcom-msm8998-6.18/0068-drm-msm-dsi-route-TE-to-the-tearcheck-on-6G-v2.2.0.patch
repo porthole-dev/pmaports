@@ -1,7 +1,7 @@
 From 4c7f78fcd9a15f1769b9d531b2cf8b7cd0b482b6 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:11:18 +0200
-Subject: [PATCH 068/113] drm/msm/dsi: route TE to the tearcheck on 6G v2.2.0
+Subject: [PATCH 068/115] drm/msm/dsi: route TE to the tearcheck on 6G v2.2.0
 
 On msm8998 the panel's TE signal never reached the DPU tearcheck: the
 pingpong line counter free-ran (raw INT_COUNT_VAL samples spread

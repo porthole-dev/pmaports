@@ -1,7 +1,7 @@
 From ff49344758d98b1642dd08956d0cb6ac57031ca3 Mon Sep 17 00:00:00 2001
 From: Jami Kettunen <jami.kettunen@protonmail.com>
 Date: Sat, 8 Aug 2026 15:39:06 +0200
-Subject: [PATCH 024/113] ASoC: qcom: add msm8998 machine driver
+Subject: [PATCH 024/115] ASoC: qcom: add msm8998 machine driver
 
 Adds the ASoC machine driver for Qualcomm MSM8998 / APQ8098, used for
 audio on the Google Pixel 2 XL (taimen).

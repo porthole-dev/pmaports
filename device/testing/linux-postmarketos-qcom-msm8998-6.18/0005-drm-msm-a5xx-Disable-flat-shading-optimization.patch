@@ -1,7 +1,7 @@
 From fe767e2ccd026b9462a8a3c70d426dec53ca2255 Mon Sep 17 00:00:00 2001
 From: Konrad Dybcio <konrad.dybcio@somainline.org>
 Date: Sun, 20 Sep 2020 00:28:16 +0200
-Subject: [PATCH 005/113] drm/msm/a5xx: Disable flat shading optimization
+Subject: [PATCH 005/115] drm/msm/a5xx: Disable flat shading optimization
 
 Port over the command from downstream to prevent undefined
 behaviour.

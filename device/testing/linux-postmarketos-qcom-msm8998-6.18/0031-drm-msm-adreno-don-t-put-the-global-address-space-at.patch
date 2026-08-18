@@ -1,7 +1,7 @@
 From 003768424616a0bdd4b2813f2af7876ecf8a6e6b Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 16:15:56 +0200
-Subject: [PATCH 031/113] drm/msm/adreno: don't put the global address space at
+Subject: [PATCH 031/115] drm/msm/adreno: don't put the global address space at
  2^48
 
 adreno_iommu_create_vm() masked the vm base with GENMASK_ULL(48, 0).

@@ -1,7 +1,7 @@
 From 4e9510221bb5a4956250a153b65ab2a7397dce95 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 16:16:14 +0200
-Subject: [PATCH 032/113] drm/msm/adreno: base the TTBR1 global vm in the
+Subject: [PATCH 032/115] drm/msm/adreno: base the TTBR1 global vm in the
  sign-extendable half
 
 The GPU issues 48-bit VAs. Within the forced-TTBR1 aperture

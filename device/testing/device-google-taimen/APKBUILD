@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -369,7 +369,7 @@ openrc() {
 	# taimen-modem-bringup and taimen-rescue need no such guarantee any
 	# more: amove below moves their init scripts into this subpackage, so
 	# they exist by construction before this post-install can run.
-	depends="$pkgname=$pkgver-r$pkgrel openrc sns-reg"
+	depends="$pkgname=$pkgver-r$pkgrel openrc sns-reg neard-openrc"
 	amove etc/init.d/taimen-modem-bringup etc/init.d/taimen-rescue
 }
 

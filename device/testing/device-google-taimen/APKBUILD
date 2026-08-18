@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=52
+pkgrel=53
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -345,6 +345,22 @@ openrc() {
 	# units is taimen.preset, not a subpackage -- presets need no install_if
 	# gate because `systemctl preset` is a harmless no-op when systemd is
 	# not the running init.
+	#
+	# neard (P1-13) is deliberately not a fourth unit here -- this is a
+	# written exception, not silence. Checked directly against the built
+	# .apk files (cache_apk_aarch64/neard-0.20-r0*.apk and
+	# neard-systemd-0.20-r0*.apk): main/neard ships usr/libexec/nfc/neard
+	# and no /etc/init.d script, and main/neard-systemd ships only
+	# usr/lib/systemd/system/neard.service. There is no neard-openrc
+	# subpackage and no init script anywhere upstream to symlink to or
+	# `rc-update add`, so there is nothing this package could add here.
+	# Writing our own /etc/init.d/neard would mean carrying an init
+	# script for a generic Alpine daemon in a device package, which is
+	# upstream's job, not ours (upstream-first). This decision changes
+	# the day Alpine's main/neard aport starts shipping an OpenRC init
+	# script (its own or a neard-openrc subpackage) -- at that point add
+	# `rc-update add neard default` to this subpackage's post-install,
+	# the same way the other three units are handled.
 	install_if="$pkgname=$pkgver-r$pkgrel openrc"
 	install="$subpkgname.post-install $subpkgname.post-upgrade"
 	depends="openrc"

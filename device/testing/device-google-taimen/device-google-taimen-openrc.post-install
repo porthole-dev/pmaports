@@ -10,3 +10,7 @@ rc-update add sns-reg default
 # DefaultDependencies=no + WantedBy=sysinit.target. See taimen-rescue.py's
 # header for why it must already be running before a PID-1 freeze.
 rc-update add taimen-rescue sysinit
+# neard-openrc ships /etc/init.d/neard and installs itself automatically
+# via install_if once neard (a top-level depends= of the parent package)
+# and openrc are both present -- see the APKBUILD's openrc() comment.
+rc-update add neard default

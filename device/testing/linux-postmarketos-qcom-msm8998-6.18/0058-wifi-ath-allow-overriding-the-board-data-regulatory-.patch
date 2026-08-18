@@ -1,7 +1,7 @@
 From 9950d8b45472ed6c7eae1d8b88dd0cabcf2c41b2 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Wed, 29 Jul 2026 11:42:50 +0200
-Subject: [PATCH 058/113] wifi: ath: allow overriding the board-data regulatory
+Subject: [PATCH 058/115] wifi: ath: allow overriding the board-data regulatory
  domain
 
 taimen's WLAN board data reports regdomain 0x8348 -- the country flag

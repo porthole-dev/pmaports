@@ -1,7 +1,7 @@
 From a6bda6d269ee7c886861a10d325ce929534be0aa Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Mon, 9 Aug 2021 17:18:05 +0200
-Subject: [PATCH 085/113] arm64: dts: qcom: msm8998: Add APR services
+Subject: [PATCH 085/115] arm64: dts: qcom: msm8998: Add APR services
  configuration
 
 Add the standard APR Q6 services configuration for MSM8998, used by

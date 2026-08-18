@@ -1,7 +1,7 @@
 From dc189ceac8f39e8a7fa7da78bc14a1ee17b7fbeb Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:40:10 +0200
-Subject: [PATCH 026/113] arm64: dts: qcom: msm8998: add cooling, CAMSS/CCI and
+Subject: [PATCH 026/115] arm64: dts: qcom: msm8998: add cooling, CAMSS/CCI and
  GPU fixes
 
 Adds SoC-level devicetree content the Google Pixel 2 XL (taimen) port

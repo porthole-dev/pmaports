@@ -1,7 +1,7 @@
 From dc2e8f2b797e7e44409567a68135e531843bf6bc Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:32:33 +0200
-Subject: [PATCH 015/113] misc: easel-mipi: add Easel MIPI bridge driver
+Subject: [PATCH 015/115] misc: easel-mipi: add Easel MIPI bridge driver
 
 On the Google Pixel 2 / 2 XL both camera sensors' CSI lanes terminate
 on Easel (Google Pixel Visual Core / Intel Monette Hill) before being

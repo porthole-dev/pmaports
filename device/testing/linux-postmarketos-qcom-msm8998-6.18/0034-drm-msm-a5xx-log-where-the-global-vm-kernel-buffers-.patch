@@ -1,7 +1,7 @@
 From 9497afc3d972f922faede913268c63d7b688342c Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 16:23:27 +0200
-Subject: [PATCH 034/113] drm/msm/a5xx: log where the global-vm kernel buffers
+Subject: [PATCH 034/115] drm/msm/a5xx: log where the global-vm kernel buffers
  landed
 
 taimen-v6.0 carries commit 44273b7dd069 ("drm/msm/a5xx: report the SMMU

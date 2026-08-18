@@ -1,7 +1,7 @@
-From 0e1c1cd404db2cc7b99c61f900749841b50e5412 Mon Sep 17 00:00:00 2001
+From 07f33c3f32ad8d58cda8a9c1522da779ae5036d5 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 10:46:57 +0200
-Subject: [PATCH 099/113] arm64: dts: qcom: msm8998-google-wahoo: enable IPA
+Subject: [PATCH 101/115] arm64: dts: qcom: msm8998-google-wahoo: enable IPA
 
 Enable the IPA block so the modem gets a data path, and have the AP load
 the GSI firmware rather than the modem.

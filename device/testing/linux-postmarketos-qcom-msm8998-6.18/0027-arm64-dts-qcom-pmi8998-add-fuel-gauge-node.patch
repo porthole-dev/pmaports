@@ -1,7 +1,7 @@
 From 93eae9c2facf4963990bffede1fd98eec3e50492 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:40:31 +0200
-Subject: [PATCH 027/113] arm64: dts: qcom: pmi8998: add fuel gauge node
+Subject: [PATCH 027/115] arm64: dts: qcom: pmi8998: add fuel gauge node
 
 Adds the pmi8998_fg fuel-gauge node consumed by the qcom_fg driver,
 needed on the Google Pixel 2 XL (taimen) to report battery state of

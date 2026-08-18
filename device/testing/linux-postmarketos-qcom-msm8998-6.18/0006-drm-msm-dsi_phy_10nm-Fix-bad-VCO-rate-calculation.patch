@@ -1,7 +1,7 @@
 From 428a48edf52cfc536aa5cc188782076f6dd91660 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Tue, 27 Jul 2021 12:35:49 +0300
-Subject: [PATCH 006/113] drm/msm/dsi_phy_10nm: Fix bad VCO rate calculation
+Subject: [PATCH 006/115] drm/msm/dsi_phy_10nm: Fix bad VCO rate calculation
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---

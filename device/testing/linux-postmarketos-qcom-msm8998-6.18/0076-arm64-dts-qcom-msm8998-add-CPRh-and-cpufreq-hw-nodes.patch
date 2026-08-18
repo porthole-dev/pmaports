@@ -1,7 +1,7 @@
 From bba8e204011e756d174299333e89db1e19a8bbc5 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Wed, 23 Dec 2020 12:10:53 +0100
-Subject: [PATCH 076/113] arm64: dts: qcom: msm8998: add CPRh and cpufreq-hw
+Subject: [PATCH 076/115] arm64: dts: qcom: msm8998: add CPRh and cpufreq-hw
  nodes
 
 Describe everything the CPUs need to scale: the qfprom cells holding the

@@ -1,7 +1,7 @@
-From 690a93c76a6cf756743d3cda6a44ea572e5f1c4a Mon Sep 17 00:00:00 2001
+From 1ccdd7246efb32be791de78885e939ef58cd3a77 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 15:58:46 +0200
-Subject: [PATCH 104/113] misc: easel-mipi: drop the open-coded BAR assignment
+Subject: [PATCH 106/115] misc: easel-mipi: drop the open-coded BAR assignment
 
 The BARs were left unplaced because Easel's zero class code kept the
 PCI core from sizing a bridge window for them; assigning them from

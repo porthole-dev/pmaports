@@ -1,7 +1,7 @@
 From e0f3dcfe5839c569a0d8db4bd30ca3c77c6c4a2d Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:17:52 +0200
-Subject: [PATCH 083/113] slimbus: qcom-ngd-ctrl: remove data channels when a
+Subject: [PATCH 083/115] slimbus: qcom-ngd-ctrl: remove data channels when a
  stream is disabled
 
 The controller defines and activates its data channels but never removes

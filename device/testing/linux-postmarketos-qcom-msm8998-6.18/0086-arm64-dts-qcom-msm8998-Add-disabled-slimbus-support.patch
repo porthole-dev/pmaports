@@ -1,7 +1,7 @@
 From 5a674ee59f39e0d242a68b1e3370451791859642 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Mon, 9 Aug 2021 19:47:04 +0200
-Subject: [PATCH 086/113] arm64: dts: qcom: msm8998: Add disabled slimbus
+Subject: [PATCH 086/115] arm64: dts: qcom: msm8998: Add disabled slimbus
  support
 
 Add generic slimbus configuration to MSM8998 and keep it disabled.

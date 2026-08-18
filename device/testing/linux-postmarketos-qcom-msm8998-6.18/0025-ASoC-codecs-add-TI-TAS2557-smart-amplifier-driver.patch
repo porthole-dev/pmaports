@@ -1,7 +1,7 @@
 From 22d4be75db50440c800a9e28d56bec3f0cfa2834 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:39:38 +0200
-Subject: [PATCH 025/113] ASoC: codecs: add TI TAS2557 smart amplifier driver
+Subject: [PATCH 025/115] ASoC: codecs: add TI TAS2557 smart amplifier driver
 
 Adds a codec driver for the Texas Instruments TAS2557 mono/dual-mono
 smart amplifier, used for the speaker path on the Google Pixel 2 XL

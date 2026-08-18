@@ -1,7 +1,7 @@
 From 5ee78fe553210e3cf3bf8910376aa3fbbaa10557 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Fri, 31 Jul 2026 13:05:42 +0200
-Subject: [PATCH 055/113] nfc: nxp-nci: fix NFC dying permanently after a power
+Subject: [PATCH 055/115] nfc: nxp-nci: fix NFC dying permanently after a power
  cycle
 
 Turning the adapter off and on again left NFC dead until reboot. Every

@@ -1,7 +1,7 @@
 From 754bc2e04f751ecda49a1819d12873fd8bb51326 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 18:16:48 +0200
-Subject: [PATCH 039/113] media: qcom: camss: vfe-4-8: override the write
+Subject: [PATCH 039/115] media: qcom: camss: vfe-4-8: override the write
  master clock gating
 
 vfe_set_cgc_override() is a stub here, so the RDI path calls it from

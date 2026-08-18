@@ -1,7 +1,7 @@
 From 8128d8e20dbf3d117a3c49b87e3d50c2b84343e8 Mon Sep 17 00:00:00 2001
 From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:40:51 +0200
-Subject: [PATCH 028/113] arm64: dts: qcom: msm8998-google-wahoo: add Pixel 2
+Subject: [PATCH 028/115] arm64: dts: qcom: msm8998-google-wahoo: add Pixel 2
  family shared dtsi
 
 Adds the shared devicetree include for Google's "wahoo" msm8998

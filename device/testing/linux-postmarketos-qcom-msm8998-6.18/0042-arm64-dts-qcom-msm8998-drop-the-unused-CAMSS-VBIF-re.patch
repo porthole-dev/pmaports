@@ -1,7 +1,7 @@
 From 30b563c5514047d6006a4e109bfd77a6344a20c4 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 18:17:02 +0200
-Subject: [PATCH 042/113] arm64: dts: qcom: msm8998: drop the unused CAMSS VBIF
+Subject: [PATCH 042/115] arm64: dts: qcom: msm8998: drop the unused CAMSS VBIF
  reset
 
 The camss node declares a reset for the camera VBIF that no driver ever

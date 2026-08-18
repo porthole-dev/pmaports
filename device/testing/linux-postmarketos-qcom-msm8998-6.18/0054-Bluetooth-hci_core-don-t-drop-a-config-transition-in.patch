@@ -1,7 +1,7 @@
 From ef3c04632ff16e8ddee3d41906350a163c8da2ab Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Wed, 29 Jul 2026 12:27:07 +0200
-Subject: [PATCH 054/113] Bluetooth: hci_core: don't drop a config transition
+Subject: [PATCH 054/115] Bluetooth: hci_core: don't drop a config transition
  in hci_power_on()
 
 A configuration change -- MGMT_OP_SET_PUBLIC_ADDRESS or

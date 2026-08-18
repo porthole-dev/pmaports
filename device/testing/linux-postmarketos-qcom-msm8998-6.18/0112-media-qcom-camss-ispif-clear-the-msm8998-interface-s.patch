@@ -1,7 +1,7 @@
-From ec6d9d7e9bb1458317780d1d588fcd87c8ccd5b1 Mon Sep 17 00:00:00 2001
+From 26c102bc3f126832842f89c8633fcbb08e806add Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Tue, 18 Aug 2026 13:58:08 +0200
-Subject: [PATCH 110/113] media: qcom: camss: ispif: clear the msm8998
+Subject: [PATCH 112/115] media: qcom: camss: ispif: clear the msm8998
  interface state on reset
 
 The msm8998 ISPIF block reset leaves the interface registers alone, so

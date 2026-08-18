@@ -1,7 +1,7 @@
 From f7909240d6348f6068dc77d2e0556b129f3a34a6 Mon Sep 17 00:00:00 2001
 From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:41:39 +0200
-Subject: [PATCH 029/113] arm64: dts: qcom: msm8998-google-taimen: add Pixel 2
+Subject: [PATCH 029/115] arm64: dts: qcom: msm8998-google-taimen: add Pixel 2
  XL board
 
 Adds the board devicetree for the Google Pixel 2 XL (taimen), on top

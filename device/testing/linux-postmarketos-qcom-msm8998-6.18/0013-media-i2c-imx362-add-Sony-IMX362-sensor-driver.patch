@@ -1,7 +1,7 @@
 From 4cc0b4cb7f4674a70daa7bd1d7cd53efd80c2980 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:31:11 +0200
-Subject: [PATCH 013/113] media: i2c: imx362: add Sony IMX362 sensor driver
+Subject: [PATCH 013/115] media: i2c: imx362: add Sony IMX362 sensor driver
 
 Adds a V4L2 sensor driver for the Sony IMX362, used as the
 rear-facing camera on the Google Pixel 2 XL (taimen). It rides a

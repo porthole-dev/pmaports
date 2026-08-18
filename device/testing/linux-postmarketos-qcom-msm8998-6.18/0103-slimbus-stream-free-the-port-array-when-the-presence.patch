@@ -1,7 +1,7 @@
-From e36fee48a6262709754978997129384f2bc0dd33 Mon Sep 17 00:00:00 2001
+From cd1d2891322e9db514c048d83b19f0893ee8b785 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 11:09:24 +0200
-Subject: [PATCH 101/113] slimbus: stream: free the port array when the
+Subject: [PATCH 103/115] slimbus: stream: free the port array when the
  presence rate is rejected
 
 slim_stream_prepare() allocates rt->ports before it looks up the

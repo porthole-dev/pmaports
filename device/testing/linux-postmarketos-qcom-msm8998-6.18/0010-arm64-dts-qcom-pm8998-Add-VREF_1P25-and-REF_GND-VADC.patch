@@ -1,7 +1,7 @@
 From 2fa6a40388aa23c8ce46b92012b24bed22d3a2e7 Mon Sep 17 00:00:00 2001
 From: Konrad Dybcio <konrad.dybcio@somainline.org>
 Date: Mon, 14 Dec 2020 17:19:11 +0100
-Subject: [PATCH 010/113] arm64: dts: qcom: pm8998: Add VREF_1P25 and REF_GND
+Subject: [PATCH 010/115] arm64: dts: qcom: pm8998: Add VREF_1P25 and REF_GND
  VADC channels
 
 Signed-off-by: Konrad Dybcio <konrad.dybcio@somainline.org>

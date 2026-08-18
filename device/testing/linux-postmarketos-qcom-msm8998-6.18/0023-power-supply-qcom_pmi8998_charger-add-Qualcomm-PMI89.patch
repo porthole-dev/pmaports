@@ -1,7 +1,7 @@
 From 7b8da9247a67a21863ea0b02977e54dc5e9ebf03 Mon Sep 17 00:00:00 2001
 From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:38:06 +0200
-Subject: [PATCH 023/113] power: supply: qcom_pmi8998_charger: add Qualcomm
+Subject: [PATCH 023/115] power: supply: qcom_pmi8998_charger: add Qualcomm
  PMI8998 charger driver
 
 Adds a power supply driver for the "SMB2" switch-mode battery charger

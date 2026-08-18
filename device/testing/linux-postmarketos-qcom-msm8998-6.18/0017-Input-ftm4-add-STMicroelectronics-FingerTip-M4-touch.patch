@@ -1,7 +1,7 @@
 From bbb880d4849271e73bc96d3160b7cc036f49faea Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:33:31 +0200
-Subject: [PATCH 017/113] Input: ftm4 - add STMicroelectronics FingerTip M4
+Subject: [PATCH 017/115] Input: ftm4 - add STMicroelectronics FingerTip M4
  touchscreen driver
 
 Adds a driver for the STMicroelectronics FingerTip M4 (FTM4) I2C

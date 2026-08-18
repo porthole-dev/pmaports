@@ -1,7 +1,7 @@
-From 6ef0494a3c27d2e8dc48e5dfee62da653686b5a8 Mon Sep 17 00:00:00 2001
+From aa485622d0d9b48b3ae5c3664769311b9d501d05 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 22:25:46 +0200
-Subject: [PATCH 095/113] cpufreq: qcom-hw: let the genpd core bind the CPRh
+Subject: [PATCH 097/115] cpufreq: qcom-hw: let the genpd core bind the CPRh
  required-opp device
 
 Since __genpd_dev_pm_attach() learned to call genpd_set_required_opp_dev(),
@@ -24,10 +24,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 6 insertions(+), 6 deletions(-)
 
 diff --git a/drivers/cpufreq/qcom-cpufreq-hw.c b/drivers/cpufreq/qcom-cpufreq-hw.c
-index 3ec105db61a2..d1a7b86d21d2 100644
+index 786b461ef5ed..183af7d92e98 100644
 --- a/drivers/cpufreq/qcom-cpufreq-hw.c
 +++ b/drivers/cpufreq/qcom-cpufreq-hw.c
-@@ -509,11 +509,11 @@ static int qcom_cpufreq_gen_params(struct device *cpu_dev,
+@@ -538,11 +538,11 @@ static int qcom_cpufreq_gen_params(struct device *cpu_dev,
  {
  	struct dev_pm_domain_list *cpr_pd_list = NULL;
  	/*
@@ -44,7 +44,7 @@ index 3ec105db61a2..d1a7b86d21d2 100644
  	 *
  	 * PD_FLAG_NO_DEV_LINK because the consumer here is a CPU device, which
  	 * never probes and never runtime suspends, so a device link to the
-@@ -524,7 +524,7 @@ static int qcom_cpufreq_gen_params(struct device *cpu_dev,
+@@ -553,7 +553,7 @@ static int qcom_cpufreq_gen_params(struct device *cpu_dev,
  	struct dev_pm_domain_attach_data attach_data = {
  		.pd_names = cprh_genpd_names,
  		.num_pd_names = 1,

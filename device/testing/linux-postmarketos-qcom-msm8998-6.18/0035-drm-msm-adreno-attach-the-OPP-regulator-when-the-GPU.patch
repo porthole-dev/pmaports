@@ -1,7 +1,7 @@
 From 562882fb757191081f4bce8fe67460184cdf99ae Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 16:26:21 +0200
-Subject: [PATCH 035/113] drm/msm/adreno: attach the OPP regulator when the GPU
+Subject: [PATCH 035/115] drm/msm/adreno: attach the OPP regulator when the GPU
  wires one up
 
 taimen-v6.0 carries commit 0e6d9faf3bc6 ("drm/msm/a5xx: voltage-scaled

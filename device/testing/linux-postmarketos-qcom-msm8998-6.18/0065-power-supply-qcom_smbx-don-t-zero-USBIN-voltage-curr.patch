@@ -1,7 +1,7 @@
 From 4d4940ad9d90a03975e28ec349174ac5163a1cca Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:12:41 +0200
-Subject: [PATCH 065/113] power: supply: qcom_smbx: don't zero USBIN
+Subject: [PATCH 065/115] power: supply: qcom_smbx: don't zero USBIN
  voltage/current when full
 
 smb_get_iio_chan() backs both POWER_SUPPLY_PROP_CURRENT_NOW and

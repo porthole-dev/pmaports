@@ -1,7 +1,7 @@
 From 98a6b95383897d58ab056a98184e2d70ffbcc80c Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 13:12:30 +0200
-Subject: [PATCH 052/113] drm/msm/dsi: serialize cmd-mode DCS transfers against
+Subject: [PATCH 052/115] drm/msm/dsi: serialize cmd-mode DCS transfers against
  DPU frame kickoff
 
 A DCS command sent while the DPU is composing corrupts this DSC panel:

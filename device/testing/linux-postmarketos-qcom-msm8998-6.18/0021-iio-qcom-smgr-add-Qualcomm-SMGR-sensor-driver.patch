@@ -1,7 +1,7 @@
 From c3395563c24f24e4d2b445af41e4f9a2905baa92 Mon Sep 17 00:00:00 2001
 From: Yassine Oudjana <y.oudjana@protonmail.com>
 Date: Sat, 8 Aug 2026 15:37:09 +0200
-Subject: [PATCH 021/113] iio: qcom-smgr: add Qualcomm SMGR sensor driver
+Subject: [PATCH 021/115] iio: qcom-smgr: add Qualcomm SMGR sensor driver
 
 Adds an IIO driver for the Sensor Manager (SMGR) QMI service exposed
 by the Qualcomm Snapdragon Sensor Core (SSC) on msm8998, used on the

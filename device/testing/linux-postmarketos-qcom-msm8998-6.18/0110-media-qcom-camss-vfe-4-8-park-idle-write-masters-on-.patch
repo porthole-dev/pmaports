@@ -1,7 +1,7 @@
-From 106ea553402f7b6193e4ddb93371ce7201716af7 Mon Sep 17 00:00:00 2001
+From f7ad09f8aafb92c0ea75dcc7f9adf63a89d0239d Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Tue, 18 Aug 2026 13:08:10 +0200
-Subject: [PATCH 108/113] media: qcom: camss: vfe-4-8: park idle write masters
+Subject: [PATCH 110/115] media: qcom: camss: vfe-4-8: park idle write masters
  on a scratch page
 
 When a write master is disabled the driver leaves the last frame

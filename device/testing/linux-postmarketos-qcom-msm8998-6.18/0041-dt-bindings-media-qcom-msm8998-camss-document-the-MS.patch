@@ -1,7 +1,7 @@
 From 0c3dd568d365921cbe85338075aa24ce5ad2a687 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 18:17:01 +0200
-Subject: [PATCH 041/113] dt-bindings: media: qcom,msm8998-camss: document the
+Subject: [PATCH 041/115] dt-bindings: media: qcom,msm8998-camss: document the
  MSM8998 CAMSS
 
 MSM8998 carries the same CAMSS as SDM660 - CSID v5.0, ISPIF v3.0 and

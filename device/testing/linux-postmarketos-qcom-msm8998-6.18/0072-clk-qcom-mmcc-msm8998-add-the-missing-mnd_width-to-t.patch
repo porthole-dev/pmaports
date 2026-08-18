@@ -1,7 +1,7 @@
 From 66b5fd04bf78c19734288bb4a0f9cfe030202781 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 3 Aug 2026 00:07:06 +0200
-Subject: [PATCH 072/113] clk: qcom: mmcc-msm8998: add the missing mnd_width to
+Subject: [PATCH 072/115] clk: qcom: mmcc-msm8998: add the missing mnd_width to
  the MCLK RCGs
 
 mclk0..3_clk_src are declared without .mnd_width, so it defaults to 0. But

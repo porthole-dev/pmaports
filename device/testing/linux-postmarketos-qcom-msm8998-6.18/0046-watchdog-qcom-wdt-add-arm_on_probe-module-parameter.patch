@@ -1,7 +1,7 @@
 From bf215dab1aba16d62bba909c81e5c14cca6a7e21 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 11:57:40 +0200
-Subject: [PATCH 046/113] watchdog: qcom-wdt: add arm_on_probe module parameter
+Subject: [PATCH 046/115] watchdog: qcom-wdt: add arm_on_probe module parameter
 
 Some bootloaders (Google Pixel 2 XL) hand over with the watchdog
 stopped, so a boot that dies before userspace waits for a human

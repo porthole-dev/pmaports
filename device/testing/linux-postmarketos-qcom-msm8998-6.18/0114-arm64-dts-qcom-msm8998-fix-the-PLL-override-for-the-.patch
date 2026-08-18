@@ -1,7 +1,7 @@
-From da14212d94070d1d94eb6c57bf3b1e02869d1b22 Mon Sep 17 00:00:00 2001
+From dd9e9e642a8f8369f4b55f809af3869ff49873f8 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 10 Aug 2026 17:09:11 +0200
-Subject: [PATCH 112/113] arm64: dts: qcom: msm8998: fix the PLL override for
+Subject: [PATCH 114/115] arm64: dts: qcom: msm8998: fix the PLL override for
  the 8th CPU corner
 
 The vendor OSM tables give 0x03220022 as the PLL override for the eighth

@@ -1,7 +1,7 @@
 From efbd0ae1062772db4951da78fff1e0a3a23d18fa Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 19:01:18 +0200
-Subject: [PATCH 092/113] pmdomain: qcom: cpr3: arm the CPRh loop only once the
+Subject: [PATCH 092/115] pmdomain: qcom: cpr3: arm the CPRh loop only once the
  OSM runs
 
 Programming the CPRh corner table hangs MSM8998 dead: no console, no USB

@@ -1,7 +1,7 @@
 From f275d59ff6f6f0da9f2102bcf89a3fc3a6ddb0a2 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Tue, 28 Jul 2026 10:14:06 +0200
-Subject: [PATCH 056/113] wifi: ath10k: snoc: the MSA carveout is Device
+Subject: [PATCH 056/115] wifi: ath10k: snoc: the MSA carveout is Device
  memory, use memcpy_fromio()
 
 ath10k_setup_msa_resources() maps the fixed "memory-region" MSA carveout with

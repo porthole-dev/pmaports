@@ -1,7 +1,7 @@
 From 8cd9a781cee4e9751579320ce9c4e9a2fb76d9e9 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:30:46 +0200
-Subject: [PATCH 012/113] media: i2c: imx179: add Sony IMX179 sensor driver
+Subject: [PATCH 012/115] media: i2c: imx179: add Sony IMX179 sensor driver
 
 Adds a V4L2 sensor driver for the Sony IMX179, used as the
 front-facing camera on the Google Pixel 2 XL (taimen), where it sits

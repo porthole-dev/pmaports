@@ -1,7 +1,7 @@
 From 3cbd8b170d0bb4ed13825dcb8c35e3ebb0203273 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Thu, 17 Jun 2021 22:42:25 +0200
-Subject: [PATCH 075/113] cpufreq: qcom-hw: implement CPRh aware OSM
+Subject: [PATCH 075/115] cpufreq: qcom-hw: implement CPRh aware OSM
  programming
 
 On MSM8998 neither the bootloader nor TrustZone programs the Operating

@@ -1,7 +1,7 @@
 From 4adae053e0a37c966752c94ec16fc357ce5f5397 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 21:16:21 +0200
-Subject: [PATCH 045/113] arm64: dts: qcom: msm8998-google-wahoo: mark ramoops
+Subject: [PATCH 045/115] arm64: dts: qcom: msm8998-google-wahoo: mark ramoops
  region no-map
 
 CONFIG_PSTORE_RAM has been enabled and this board already carries a

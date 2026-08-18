@@ -1,7 +1,7 @@
 From 2386bd44ece802b8def2642cf86250e6fe50c6c5 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 9 Aug 2026 17:11:46 +0200
-Subject: [PATCH 069/113] drm/msm: pipeline commits by dropping the
+Subject: [PATCH 069/115] drm/msm: pipeline commits by dropping the
  post-kickoff flush wait
 
 msm_atomic_commit_tail() waited for the flush to complete immediately

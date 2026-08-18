@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=47
+pkgrel=48
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -45,6 +45,7 @@ source="
 	sns-reg-registry.conf
 	taimen-dconf-profile
 	taimen-dconf-sensors
+	taimen-dconf-greeter
 	taimen-proximity.rules
 	taimen-accel-matrix.rules
 	phosh-desktop-env.conf
@@ -162,6 +163,11 @@ package() {
 	install -Dm644 "$srcdir"/taimen-dconf-profile "$pkgdir"/etc/dconf/profile/user
 	install -Dm644 "$srcdir"/taimen-dconf-sensors \
 		"$pkgdir"/etc/dconf/db/local.d/01-taimen-sensors
+
+	# Land the greeter on phosh instead of the unstartable gnome session --
+	# see taimen-dconf-greeter for what that costs when it is not set.
+	install -Dm644 "$srcdir"/taimen-dconf-greeter \
+		"$pkgdir"/etc/dconf/db/local.d/02-taimen-greeter
 	install -Dm644 "$srcdir"/taimen-proximity.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-proximity.rules
 	install -Dm644 "$srcdir"/taimen-accel-matrix.rules \
@@ -364,6 +370,7 @@ bfb5d9ffe314f1ac18bd27baa4adf4a908e9005a0d0a472c74de72611672f85235fc5f198e3def1d
 cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7d8476548b3d9c4d6cb24ff9fd289d00b2ca8a06c82afe3c2  sns-reg-registry.conf
 c24db92ededd9b6e936e557a458167f981156bb70e66add92918de0a6cd6ba9cc2b94d0531c87ef21b4aa2ee02fa924db366253acac6daf72c18efa97f6262dc  taimen-dconf-profile
 5506422fb48be5730036de5e94b66b519091e6cd53c044536cf7c62b80f5660087b1ccbe57e117b2b95453d5ab8a940e83a5b472c0e45e68d1f399ecbb7dcd4c  taimen-dconf-sensors
+be4d6fff0242c91d9db74269067e56baa752fa8906853515bb885d5aa76d053ca8d6996b94cfb2db631bda51ea9b35fbc737b9cc1180642016609f83468fbf51  taimen-dconf-greeter
 20bba033222c5979b0c93083a8a5d04a410eb4332112c1fea9c38a6d159d39fccd05533fee7546c01f79ace97a76c69204243efe5266be7ea8eaead807df1213  taimen-proximity.rules
 e9a8ad48c0b9e250ace1e6cea004f628ebf741fcdfe6d767f1fc4da953c8205c87f84b4e61a15a6a82582790e241b06ce20e220c2165c365062c293d0335de7d  taimen-accel-matrix.rules
 6cb9e6ebcc0cd5677afa99372405b24f56b3b854885917fcf344d8ccce0b42bf9488144893dacb5bb52b0deef3103f01755fff14a5a318e0a0151875363e5a46  phosh-desktop-env.conf

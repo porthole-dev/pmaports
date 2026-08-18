@@ -39,7 +39,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 #   a530_* GPU firmware comes from firmware-qcom-adreno-a530.
 pkgname=firmware-google-taimen
 pkgver=20250505
-pkgrel=1
+pkgrel=2
 pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -83,6 +83,14 @@ package() {
 	install -Dm644 adsp.mbn slpi_v2.mbn ipa_fws.mbn wlanmdsp.mbn modemuw.jsn \
 		-t "$_fw"/qcom/msm8998/wahoo/
 	install -Dm644 a540_zap.elf "$_fw"/qcom/msm8998/wahoo/a540_zap.mbn
+
+	# The Adreno 540 GPMU firmware. firmware-qcom-adreno-a530 ships the a530
+	# parts and a530v3_gpmu.fw2, but nothing upstream carries a540_gpmu.fw2,
+	# and msm asks for it by that exact name. Without it adreno_request_fw()
+	# fails with -ENOENT, the GPU never initialises, wlroots cannot create a
+	# renderer, phoc exits, and greetd gives up -- i.e. no display at all,
+	# with nothing in the log that mentions the GPU unless you go looking.
+	install -Dm644 a540_gpmu.fw2 -t "$_fw"/qcom/
 
 	# mba.mbn / modem.mbn: still the old first-party extraction -- see header.
 	install -Dm644 "$srcdir"/qcom/msm8998/wahoo/mba.mbn \

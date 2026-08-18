@@ -3,24 +3,28 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=50
+pkgrel=51
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
 options="!check !archcheck"
-# qbootctl marks each boot successful in the Android A/B interface. Without it
-# the bootloader decrements the slot's retry counter every boot and eventually
-# refuses the slot, even though pmOS booted fine -- see the post-install. The
-# -openrc/-systemd subpackages come in on their own via install_if, exactly as
-# rmtfs's do, so do NOT list them here.
+# soc-qcom-qbootctl marks each boot successful in the Android A/B interface.
+# Without it the bootloader decrements the slot's retry counter every boot
+# and eventually refuses the slot, even though pmOS booted fine. Its -openrc
+# subpackage comes in on its own via install_if, exactly as rmtfs's does, and
+# runs `rc-update add qbootctl default`; on systemd the unit is already
+# unconditionally enabled by postmarketos-base-systemd's 90-base.preset
+# ("enable qbootctl.service"). So do NOT hand-symlink either init here or in
+# the post-install, and do NOT list the -openrc subpackage here.
 depends="
 	alsa-ucm-conf
 	linux-pam
 	mkbootimg
 	neard
 	postmarketos-base
-	qbootctl
 	sns-reg
+	soc-qcom-msm8998
+	soc-qcom-qbootctl
 "
 # post-upgrade is a symlink to post-install (the pmaports idiom, cf.
 # postmarketos-base-ui-cage). apk runs post-INSTALL only on a fresh install and
@@ -330,14 +334,26 @@ kernel_mainline() {
 	# into the rootfs, gave it ownership of /boot/vmlinuz, and left every
 	# 6.18 package build unable to place its kernel -- the device booted
 	# whatever the 6.0-named package last contained.
-	depends="linux-postmarketos-qcom-msm8998-6.18 soc-qcom-msm8998"
+	#
+	# soc-qcom-msm8998 moved to the top-level depends= (it is a device
+	# runtime dependency, not a kernel-specific one) -- see that depends=
+	# block's comment.
+	depends="linux-postmarketos-qcom-msm8998-6.18"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 
 nonfree_firmware() {
 	pkgdesc="Firmware for modem, GPU zap shader, WiFi, Bluetooth, ADSP and SLPI"
-	# rmtfs and qcom-diag are named explicitly rather than relying on
-	# soc-qcom-msm8998-nonfree-firmware to pull them in; both are required
+	# pd-mapper and tqftpserv used to be listed here explicitly. Both are now
+	# transitively pulled in through the top-level soc-qcom-msm8998 depend:
+	# soc-qcom-msm8998 -> soc-qcom-pd-mapper -> pd-mapper, and
+	# soc-qcom-msm8998 -> soc-qcom -> tqftpserv. Listing them again here
+	# would be redundant, so they were dropped.
+	#
+	# qcom-diag is NOT covered by that chain -- soc-qcom-msm8998 only pulls
+	# qcom-diag in through its own nonfree_firmware subpackage, which nothing
+	# here depends on -- so it stays explicit, and so does rmtfs, which isn't
+	# reachable from soc-qcom or soc-qcom-msm8998 at all. Both are required
 	# before the modem will stay up.
 	#
 	# Do NOT ship units for these here. rmtfs-systemd and qcom-diag-systemd
@@ -347,10 +363,8 @@ nonfree_firmware() {
 	# Upstream's rmtfs.service already runs exactly "rmtfs -r -P -s".
 	depends="
 		firmware-google-taimen
-		pd-mapper
 		qcom-diag
 		rmtfs
-		tqftpserv
 	"
 	mkdir "$subpkgdir"
 }

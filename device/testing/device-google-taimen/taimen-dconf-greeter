@@ -1,0 +1,17 @@
+# Which session phrog lands on when nothing has told it otherwise.
+#
+# phrog globs wayland-sessions/*.desktop out of XDG_DATA_DIRS and preselects
+# `last-session`, whose schema default is "" -- so with the key unset it takes
+# the first entry it found, and "gnome" sorts before "phosh".
+#
+# On this device that is expensive rather than merely wrong. gnome-shell is
+# installed but cannot start: it requires the Gdm-1.0 typelib, which no
+# package here provides, so main.js throws and org.gnome.Shell@user.service
+# fails 'protocol'. Measured 2026-08-18: the doomed attempt costs 11 s, the
+# failure tears the whole user session down, and phosh only comes up on the
+# second login -- 76 s from PIN to a usable shell, of which ~60 s is this.
+#
+# `last-session` is documented as the last session that *successfully*
+# launched, so a session that always fails can never displace this default.
+[mobi/phosh/phrog]
+last-session='phosh'

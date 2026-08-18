@@ -1,5 +1,5 @@
 From 4f83694dd959b0418b71dcfd196c2d2715cb0a95 Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:41:39 +0200
 Subject: [PATCH 18/33] arm64: dts: qcom: msm8998-google-taimen: add Pixel 2 XL
  board
@@ -19,6 +19,8 @@ address is a best-effort guess (0x10, the common IMX179 default)
 since the vendor DT does not carry it -- the downstream camera
 framework gets it from a userspace sensor library instead.
 
+Signed-off-by: Casey Connolly <casey.connolly@linaro.org>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/Makefile             |   1 +

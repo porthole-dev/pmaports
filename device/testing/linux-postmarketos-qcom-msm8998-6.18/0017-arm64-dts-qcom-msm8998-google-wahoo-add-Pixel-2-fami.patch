@@ -1,5 +1,5 @@
 From bce4c8070fd7139d707b68254a809ecf228497c5 Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:40:51 +0200
 Subject: [PATCH 17/33] arm64: dts: qcom: msm8998-google-wahoo: add Pixel 2
  family shared dtsi
@@ -21,6 +21,8 @@ than at this port's 6.0 fork point, and a SoC-wide reservation of a
 board-specific carveout address would widen the blast radius for no
 functional gain.
 
+Signed-off-by: Casey Connolly <casey.connolly@linaro.org>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-wahoo.dtsi   | 688 ++++++++++++++++++

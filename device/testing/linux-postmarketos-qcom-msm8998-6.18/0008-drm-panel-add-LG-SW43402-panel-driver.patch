@@ -1,5 +1,5 @@
 From b510ab2d5cb57c69851d57e255a69531b7321dbb Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Casey Connolly <casey.connolly@linaro.org>
 Date: Sat, 8 Aug 2026 15:34:33 +0200
 Subject: [PATCH 08/33] drm/panel: add LG SW43402 panel driver
 
@@ -28,6 +28,8 @@ it is exposed as display_on_delay_ms since the right value is a
 function of how fast the compositor gets a first frame out, which
 varies by userspace stack.
 
+Signed-off-by: Casey Connolly <casey.connolly@linaro.org>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/panel/Kconfig            |  11 +

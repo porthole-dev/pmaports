@@ -1,5 +1,5 @@
 From f062a5238de9f9239a79ed299f57b8b4a181682c Mon Sep 17 00:00:00 2001
-From: Giuseppe Maggio <jertlok@proton.me>
+From: Joel Selvaraj <jo@jsfamily.in>
 Date: Sat, 8 Aug 2026 15:37:41 +0200
 Subject: [PATCH 11/33] power: supply: qcom_fg: add Qualcomm PMIC fuel gauge
  driver
@@ -15,6 +15,12 @@ off or suspended, so this driver's functionality is limited to
 reporting capacity, matching the constraint documented on the
 neighbouring CHARGER_QCOM_SMB2 driver for the same PMIC family.
 
+Signed-off-by: Joel Selvaraj <jo@jsfamily.in>
+Co-developed-by: Yassine Oudjana <y.oudjana@protonmail.com>
+Signed-off-by: Yassine Oudjana <y.oudjana@protonmail.com>
+Co-developed-by: Jami Kettunen <jami.kettunen@protonmail.com>
+Signed-off-by: Jami Kettunen <jami.kettunen@protonmail.com>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/power/supply/Kconfig   |   10 +

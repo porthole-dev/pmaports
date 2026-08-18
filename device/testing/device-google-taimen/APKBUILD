@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=0.1
-pkgrel=48
+pkgrel=49
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -330,7 +330,12 @@ package() {
 
 kernel_mainline() {
 	pkgdesc="Close to mainline kernel"
-	depends="linux-postmarketos-qcom-msm8998 soc-qcom-msm8998"
+	# The -6.18 aport, not the 6.0 one. Both exist in pmaports and both build
+	# from this project's tree, so naming the 6.0 package here installed it
+	# into the rootfs, gave it ownership of /boot/vmlinuz, and left every
+	# 6.18 package build unable to place its kernel -- the device booted
+	# whatever the 6.0-named package last contained.
+	depends="linux-postmarketos-qcom-msm8998-6.18 soc-qcom-msm8998"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 

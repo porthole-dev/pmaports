@@ -15,7 +15,8 @@ count. The first off() deletes the link and clears the pointer while the
 other user still holds a reference, and the second off() then calls
 device_link_del(NULL):
 
-  Unable to handle kernel NULL pointer dereference at virtual address 0000000000000324
+  Unable to handle kernel NULL pointer dereference at virtual
+  address 0000000000000324
   pc : device_link_put_kref+0xc/0xa4
   lr : device_link_del+0x2c/0x44
   Call trace:

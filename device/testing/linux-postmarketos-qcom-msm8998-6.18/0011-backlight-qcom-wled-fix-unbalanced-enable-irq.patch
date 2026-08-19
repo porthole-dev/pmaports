@@ -38,6 +38,7 @@ In Xiaomi Poco F1, the qcom wled driver warns
 Fix it by storing and checking the state of ovp irq during enabling
 and disabling of the irq.
 
+Signed-off-by: Joel Selvaraj <jo@jsfamily.in>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/video/backlight/qcom-wled.c | 13 +++++++++++--

@@ -50,6 +50,25 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 #
 # Not included, deliberately:
 #   a530_* GPU firmware comes from firmware-qcom-adreno-a530.
+#
+# WARNING -- INSTALLING THIS PACKAGE FLASHES boot_b.
+#
+# Files under /lib/firmware fire mkinitfs's apk trigger, mkinitfs calls
+# boot-deploy, and boot-deploy on this device ends with `dd` of a freshly
+# built boot.img onto the boot_b partition. So a routine `apk add
+# firmware-google-taimen`, and equally a routine `apk fix`, is a FLASH -- in
+# the middle of whatever else is running. It is not a slot switch and it does
+# not change which kernel is installed, but an interrupted write does leave
+# an unbootable slot.
+#
+# To land the files without any of that:
+#
+#     apk add --no-scripts firmware-google-taimen
+#
+# Nothing this package ships is read from the initramfs -- the modem, ath10k
+# and the GPU all load after switch-root -- so skipping the trigger costs
+# nothing. Drop --no-scripts only when you actually want a new boot.img.
+
 pkgname=firmware-google-taimen
 pkgver=20250505
 pkgrel=3

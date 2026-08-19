@@ -11,16 +11,29 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # (taimen-rp1a.201005.004.a1-factory-2f5c4987, docs/BLOBS.md) before the
 # switch. Full comparison and evidence log: docs/campaign/ws-07-vendor-blobs.md.
 #
-# NOT yet migrated: mba.mbn / modem.mbn (remoteproc_mss). TheMuppets carries
-# modem firmware as a single combined radio/modem.img, a different container
-# shape than the split mba.mbn + modem.mdt+bNN this device actually boots (see
-# docs/BLOBS.md); nobody has done the PIL-segment diff to prove they match, so
-# they are NOT included in this migration and still come from the old
-# first-party extraction tarball below (regenerate per docs/BLOBS.md sections
-# 2-4 on a fresh checkout -- factory-image vendor.img plus a live pull off the
-# device's own modem_a partition, gitignored, not in git). Once that diff is
-# done and comes back equivalent, drop the old tarball and fold modem into the
-# TheMuppets source like everything else.
+# mba.mbn / modem.mbn (remoteproc_mss) do NOT come from TheMuppets: its
+# lineage-22.2 tree carries no modem firmware for taimen at all -- no mba.mbn
+# and no radio/ image, only mcfg_sw carrier configs (checked 2026-08-19 over
+# the full 1135-entry file list of the pinned commit). They come instead from
+# Google's own factory image, which ships the modem partition verbatim as
+# radio-taimen-$_baseband.img: an 8-byte "BOOTLDR!" container whose first
+# member is the FAT16 filesystem of the modem_a partition, holding
+# image/mba.mbn and image/modem.mdt + modem.b00..b27.
+#
+# That is a first-party, permanently-hosted, checksummed URL -- the cleanest
+# licence story available for this blob -- and its bytes are proven identical
+# to what the device actually boots: all 28 modem files hash-match the live
+# read-only pull off this phone's own modem_a partition (docs/BLOBS.md), and
+# pil-squashing them reproduces the previously shipped modem.mbn byte for
+# byte (sha256 748b8704...48c61be, 56070368 B, 26/29 segments).
+#
+# The cost is the download: Google publishes only the whole 1.8 GB factory
+# zip, of which one 59 MB member is used. unpack() below streams just that
+# member out with `unzip -p` instead of extracting the archive, so the build
+# never writes the other 1.7 GB, but abuild still has to fetch it once into
+# the distfiles cache. If that is unacceptable to a builder, the fallback is
+# the firmware-google-sargo pattern -- a small maintainer-hosted repo holding
+# only radio-taimen-$_baseband.img, pinned by commit.
 #
 # ath10k board-2.bin / firmware-5.bin are GENERATED at build time from
 # TheMuppets' bdwlan.bin + bdwlan.b09 with qca-swiss-army-knife (board-2.json
@@ -39,13 +52,13 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 #   a530_* GPU firmware comes from firmware-qcom-adreno-a530.
 pkgname=firmware-google-taimen
 pkgver=20250505
-pkgrel=2
+pkgrel=3
 pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
 license="proprietary"
 options="!check !archcheck !strip !tracedeps !spdx pmb:cross-native"
-makedepends="qca-swiss-army-knife pil-squasher"
+makedepends="qca-swiss-army-knife pil-squasher 7zip unzip"
 depends="
 	firmware-qcom-adreno-a530
 	linux-firmware-ath10k
@@ -53,21 +66,54 @@ depends="
 "
 _commit="d1a4f0d0ea34157875751c812c9887550e216c5a"
 _repo="TheMuppets/proprietary_vendor_google_taimen"
-# Old first-party extraction, kept ONLY for mba.mbn/modem.mbn -- see header.
-# Not in git (proprietary, ~39 MB); regenerate per docs/BLOBS.md on a fresh
-# checkout before building.
-_modemver=20201005
+# The last taimen factory image (Android 11, October 2020 -- taimen reached
+# end-of-life on this build, so there is nothing newer). Its radio member is
+# the modem firmware; see the header.
+_factory="taimen-rp1a.201005.004.a1-factory-2f5c4987"
+_baseband="g8998-00034-2006052136"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/$_repo/archive/$_commit.tar.gz
+	$_factory.zip::https://dl.google.com/dl/android/aosp/$_factory.zip
 	board-2.json
-	$pkgname-$_modemver.tar.gz
 	"
 builddir="$srcdir/proprietary_vendor_google_taimen-$_commit/proprietary/vendor/firmware"
+
+# The factory zip is 1.8 GB and abuild's default unpack would extract all of
+# it, including the 1.7 GB image-*.zip nobody here wants. Stream out the one
+# member that is needed instead.
+unpack() {
+	msg "Unpacking $pkgname-$_commit.tar.gz"
+	tar -C "$srcdir" -xzf "$srcdir"/$pkgname-$_commit.tar.gz
+
+	msg "Extracting radio-taimen-$_baseband.img from $_factory.zip"
+	unzip -p "$srcdir"/$_factory.zip \
+		"*/radio-taimen-$_baseband.img" > "$srcdir"/radio.img
+}
 
 build() {
 	pil-squasher adsp.mbn adsp.mdt
 	pil-squasher slpi_v2.mbn slpi_v2.mdt
 	pil-squasher ipa_fws.mbn ipa_fws.mdt
+
+	# radio.img is a "BOOTLDR!" container: 8-byte magic, u32 image count,
+	# u32 payload offset, u32 total size, then one 68-byte descriptor per
+	# image (char name[64] + u32 size). Image 0 is "modem", the FAT16
+	# filesystem of the modem_a partition. Read the offset and that first
+	# size out of the header rather than hardcoding them.
+	local _off _sz
+	_off=$(od -An -tu4 -j12 -N4 -v "$srcdir"/radio.img | tr -d ' ')
+	_sz=$(od -An -tu4 -j84 -N4 -v "$srcdir"/radio.img | tr -d ' ')
+	tail -c +$((_off + 1)) "$srcdir"/radio.img | head -c "$_sz" > modem.fat
+
+	# The FAT declares the full 80 MiB partition while the image carries
+	# only the used clusters, so 7z reports "unexpected end of archive"
+	# and exits 2 with every file correctly extracted. Tolerate that and
+	# assert on the files instead.
+	7z x -y -o"$srcdir"/modemfs modem.fat > /dev/null || true
+	[ -f "$srcdir"/modemfs/image/mba.mbn ] || \
+		die "no mba.mbn in radio.img -- container layout changed?"
+	pil-squasher "$srcdir"/modemfs/image/modem.mbn \
+		"$srcdir"/modemfs/image/modem.mdt
 
 	cp "$srcdir"/board-2.json .
 	ath10k-bdencoder -c board-2.json -o board-2.bin
@@ -92,9 +138,16 @@ package() {
 	# with nothing in the log that mentions the GPU unless you go looking.
 	install -Dm644 a540_gpmu.fw2 -t "$_fw"/qcom/
 
-	# mba.mbn / modem.mbn: still the old first-party extraction -- see header.
-	install -Dm644 "$srcdir"/qcom/msm8998/wahoo/mba.mbn \
-		"$srcdir"/qcom/msm8998/wahoo/modem.mbn \
+	# mba.mbn / modem.mbn: from Google's factory image -- see header.
+	# modemr.jsn comes from there too: it is the modem ROOT protection-domain
+	# map, and pd-mapper needs it alongside modemuw.jsn (the modem USER pd,
+	# which carries the wlan/fw service ath10k_snoc blocks on). With only one
+	# of the two, pd-mapper exits "no pd maps available" and WiFi never comes
+	# up. It lives on the modem partition, not in vendor.img, so it was lost
+	# when the rest of this package moved to TheMuppets in pkgrel 1.
+	install -Dm644 "$srcdir"/modemfs/image/mba.mbn \
+		"$srcdir"/modemfs/image/modem.mbn \
+		"$srcdir"/modemfs/image/modemr.jsn \
 		-t "$_fw"/qcom/msm8998/wahoo/
 
 	install -Dm644 crbtfw21.tlv crnv21.bin -t "$_fw"/qca/
@@ -109,6 +162,6 @@ package() {
 
 sha512sums="
 65ebd3c01f5633f8d9818c8410332ccb0f336b0ef8bd99b7b2f046814585395548ce9a432628623672dc811a9ea20aa945925743eed24242866ed3b5983cccea  firmware-google-taimen-d1a4f0d0ea34157875751c812c9887550e216c5a.tar.gz
+fa9bc0679f3a5f4c6c85afdf43670827a6f2eaabb81e90067254ecb683c2265e52f1f1cca6cf58ebea9c85d097fc07f13c1f202be599e52e31bfaa279badd863  taimen-rp1a.201005.004.a1-factory-2f5c4987.zip
 0c38e60200837c0d0dc1a84e910b230723de17a9c6c1fce52a84303de38cf43867368c0d42126163395641f432a2eb80abd58809ddb1d66514ed46394a395047  board-2.json
-e11fdff317c90468e889927c246ac25a5f6235fd18399dbf35177de6f4f6b632e2ffdb856e5a19a71223fac9e169cdade5563cc4d2f442281cfc45c20990ef2e  firmware-google-taimen-20201005.tar.gz
 "

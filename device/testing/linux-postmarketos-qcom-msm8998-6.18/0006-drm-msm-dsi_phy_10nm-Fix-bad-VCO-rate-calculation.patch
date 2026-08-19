@@ -3,6 +3,7 @@ From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Tue, 27 Jul 2021 12:35:49 +0300
 Subject: [PATCH 006/115] drm/msm/dsi_phy_10nm: Fix bad VCO rate calculation
 
+Signed-off-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/dsi/phy/dsi_phy_10nm.c | 7 +++----

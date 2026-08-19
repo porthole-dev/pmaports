@@ -10,6 +10,7 @@ at the moment of writing.
 Skip the TTBR1 quirk for these two SoCs as to get Adreno in a usable
 state.
 
+Signed-off-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iommu/arm/arm-smmu/arm-smmu-qcom.c | 4 +++-

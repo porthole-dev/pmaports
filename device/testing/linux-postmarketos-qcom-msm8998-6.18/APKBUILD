@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=26
+pkgrel=27
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -169,6 +169,7 @@ source="
 	0116-wifi-ath10k-handle-the-DROP-HTT-tx-completion-status.patch
 	0117-wifi-ath10k-restart-the-firmware-when-a-key-install-.patch
 	0118-ASoC-codecs-wcd-mbhc-v2-fix-double-release-of-the-MI.patch
+	0119-media-qcom-camss-vfe-reference-count-the-power-domai.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -200,7 +201,7 @@ package() {
 }
 sha512sums="
 88599ffdec96d150c1feb9b261ba93bb0301a9d0e1ad6bef7aeab1f5372cbfc57d8b43c7e902bd8f76921d1dbd8189663c142ea869e51d0e2b483b150ee00fe0  linux-6.18.tar.xz
-5688d1d986a07aad89bf95dc2d7d9a4f180eca557956a0590d94cb30bcb7990497c5215a4e026f0f39d70b7afc3979de8f66b2a4c6c18bd4660c71b912e917e7  config-postmarketos-qcom-msm8998-6.18.aarch64
+3151dbb16888f880a6b3a1795ca6f949c9dadd60f332829bea5f5dcfc4d7ae8d91e01329557f9e943674f8b0c0ab837ba1c92bbf201b8b5fe988bfc1d6c43392  config-postmarketos-qcom-msm8998-6.18.aarch64
 12a4bf47f5afc523938a9bcc0b550bdbde05521cb06a67b7018ab8da56cfe01ce47810a039ea4bb83abeb8130b77d28186359476ee2050033b9be8d58c5a29d3  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 f04e67f59e0fdf5dacb765e0be3fb169820f5c61c8977757e9d81566ed455bbc576e7a0be638202e800250a40822291d9e9649bb9d7d2edf2d8b51883f2434cc  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 0b258fec013018a30d104ea193825efaf7c284d21baa85dc5d057ec6b33fe5142c8b1b3bca3b5adea97790fd5acf904253524d15b70a8353e1f2e628cc6ecde9  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -319,4 +320,5 @@ f20baabbfe5d0c3cb71217a9393e65eb504f210ad570967c08b171ba6d422249a8757d3a4a5468e1
 bb129388bfe84548f922e6e29a9216aa3f5cb2a1121a5dea27f74976ad764a182445747002afccc8f3fcd1f53371e3730514f81a6dc9bcc1aaf8fd135034a53b  0116-wifi-ath10k-handle-the-DROP-HTT-tx-completion-status.patch
 ac7e98262605ba4eec9f323c70053696fc60f18dff86a7be89ed490f24ba1f252138b3349b9fb1b2c76f482f105a348beb0d8234667417f4fcbf30f172140a79  0117-wifi-ath10k-restart-the-firmware-when-a-key-install-.patch
 8a09b961123b845d7aa633c8982990c37eaffd196569e34861262c6370a2e22c62c4635d11f168457393ac1f01a7571212989d7f000fbb330d25265c675915e7  0118-ASoC-codecs-wcd-mbhc-v2-fix-double-release-of-the-MI.patch
+96522910b41ea1aa194dbe0eade0e625b8dcbc0f54ac18bf084a6f9edab8651e2cb702764b8ccdc0f54648293daf332af4adc855a15231513e3581c9280bbc0f  0119-media-qcom-camss-vfe-reference-count-the-power-domai.patch
 "

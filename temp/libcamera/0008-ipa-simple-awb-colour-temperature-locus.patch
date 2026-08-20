@@ -1,0 +1,107 @@
+
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -20,12 +20,26 @@
+ namespace libcamera {
+ 
+ LOG_DEFINE_CATEGORY(IPASoftAwb)
+ 
+ namespace ipa::soft::algorithms {
+ 
++int Awb::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
++{
++	Interpolator<Vector<double, 2>> gains;
++
++	if (gains.readYaml(tuningData["colourGains"], "ct", "gains") < 0)
++		LOG(IPASoftAwb, Info)
++			<< "No 'colourGains' locus in the tuning file, "
++			<< "falling back to plain grey world";
++	else
++		colourGains_ = std::move(gains);
++
++	return 0;
++}
++
+ int Awb::configure(IPAContext &context,
+ 		   [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+ 	auto &gains = context.activeState.awb.gains;
+ 	gains = { { 1.0, 1.0, 1.0 } };
+ 
+@@ -98,12 +112,29 @@ void Awb::process(IPAContext &context,
+ 	gains = smoothedGains_;
+ 
+ 	RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
+ 	context.activeState.awb.temperatureK = estimateCCT(rgbGains);
+ 	metadata.set(controls::ColourTemperature, context.activeState.awb.temperatureK);
+ 
++	/*
++	 * Constrain the result to the sensor's calibrated colour temperature
++	 * locus. The grey world average of a scene that is not itself grey (a
++	 * wooden desk, foliage) sits off the locus, and re-deriving the gains
++	 * from the temperature discards that off-locus component, which is
++	 * where most of the error lives. Interpolator::getInterpolated()
++	 * clamps to the ends of the curve, so a temperature outside the
++	 * calibrated range uses the nearest calibrated point rather than an
++	 * extrapolation.
++	 */
++	if (colourGains_) {
++		const Vector<double, 2> &locus = colourGains_->getInterpolated(
++			context.activeState.awb.temperatureK);
++		gains = { { static_cast<float>(locus[0]), 1.0f,
++			    static_cast<float>(locus[1]) } };
++	}
++
+ 	LOG(IPASoftAwb, Debug)
+ 		<< "gain R/B: " << gains << "; temperature: "
+ 		<< context.activeState.awb.temperatureK;
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Awb, "Awb")
+--- a/src/ipa/simple/algorithms/awb.h
++++ b/src/ipa/simple/algorithms/awb.h
+@@ -4,36 +4,44 @@
+  *
+  * Auto white balance
+  */
+ 
+ #pragma once
+ 
++#include <optional>
++
++#include "libcamera/internal/vector.h"
++
++#include <libipa/interpolator.h>
++
+ #include "algorithm.h"
+ 
+ namespace libcamera {
+ 
+ namespace ipa::soft::algorithms {
+ 
+ class Awb : public Algorithm
+ {
+ public:
+ 	Awb() = default;
+ 	~Awb() = default;
+ 
++	int init(IPAContext &context, const ValueNode &tuningData) override;
+ 	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
+ 	void prepare(IPAContext &context,
+ 		     const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+ 		     DebayerParams *params) override;
+ 	void process(IPAContext &context,
+ 		     const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+ 		     const SwIspStats *stats,
+ 		     ControlList &metadata) override;
+ 
+ private:
++	std::optional<Interpolator<Vector<double, 2>>> colourGains_;
+ 	RGB<float> smoothedGains_;
+ 	bool smoothedValid_ = false;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+ 

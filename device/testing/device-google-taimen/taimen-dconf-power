@@ -1,0 +1,24 @@
+# Suspend on idle, including while charging.
+#
+# The kernel side works: a measured s2idle cycle on 2026-08-20 returned
+# rc=0 success=1 fail=0 with the boot_id unchanged, froze userspace in 0.004s,
+# and advanced sched_clock only ~4s across 21s of wall time -- a real power
+# collapse. What was missing was any policy that asks for it.
+#
+# gsd-power shipped sleep-inactive-ac-type='nothing', and this phone counts as
+# "on AC" whenever it is plugged in over USB -- which, on a development device,
+# is essentially always. So the one code path that would have suspended it was
+# the one path never taken. Set both AC and battery to suspend.
+#
+# See taimen-dconf-profile for why this is a dconf system database and not a
+# gschema override.
+#
+# NOTE, not fixable here: an open ssh session takes a block-mode sleep
+# inhibitor ("sshd: Active PAM session"), so the phone cannot auto-suspend
+# while anyone is logged in over ssh. Any agent testing suspend must close its
+# session first or drive it explicitly with tools/tk-suspend-cycle.sh.
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-type='suspend'
+sleep-inactive-ac-timeout=900
+sleep-inactive-battery-type='suspend'
+sleep-inactive-battery-timeout=900

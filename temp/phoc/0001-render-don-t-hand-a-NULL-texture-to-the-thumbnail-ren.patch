@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 20 Aug 2026 15:20:00 +0200
+Subject: [PATCH] render: don't hand a NULL texture to the thumbnail render pass
+
+view_render_to_buffer_iterator() guards on wlr_surface_has_buffer() and then
+passes wlr_surface_get_texture() straight into wlr_render_pass_add_texture()
+without checking it. Those are not the same condition: has_buffer() asks
+whether the surface has a committed buffer, while get_texture() returns the
+renderer's texture for that buffer, which is a separate object and can be NULL
+even when a buffer is committed.
+
+When it is NULL the render pass dereferences it and phoc dies:
+
+  #0  wlr_render_pass_add_texture
+  #1  view_render_to_buffer_iterator
+  #2  surface_for_each_surface
+  #3  thumbnail_frame_handle_copy
+      libffi -> libwayland-server -> wl_event_loop_dispatch
+  #9  wayland_event_source_dispatch    src/server.c:171
+
+Reproduced on a Pixel 2 XL (msm8998, Adreno 540, mainline 6.18) by driving
+Firefox until the GPU faults. The A540 hits a fault, the msm driver runs
+hangcheck recovery and resets the GPU, and shortly afterwards phosh asks for a
+window thumbnail -- opening the on-screen keyboard is enough, since the
+re-layout drives a screencopy. The texture has not survived the reset, and
+phoc segfaults, which takes the whole session down and looks to the user like
+the phone rebooting.
+
+The neighbouring output render path already gets this right; render_surface_
+iterator() in the same file does:
+
+	struct wlr_texture *texture = wlr_surface_get_texture (surface);
+	if (!texture)
+		return;
+
+so make the thumbnail path agree with it. A surface whose texture is gone is
+simply skipped, the thumbnail comes out missing that surface, and the
+compositor stays up.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ src/render.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/render.c b/src/render.c
+index 1111111..2222222 100644
+--- a/src/render.c
++++ b/src/render.c
+@@ -413,6 +413,9 @@ view_render_to_buffer_iterator (struct wlr_surface *surface, int sx, int sy, voi
+     return;
+
+   texture = wlr_surface_get_texture (surface);
++  if (!texture)
++    return;
++
+   phoc_view_get_geometry (data->view, &geo);
+   wlr_surface_get_buffer_source_box (surface, &src_box);
+
+--
+2.51.0

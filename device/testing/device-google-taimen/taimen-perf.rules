@@ -1,7 +1,34 @@
-# Adreno 540 devfreq: default simple_ondemand polls every 50 ms, so the first
-# frames of any animation render at the 257 MHz floor before the governor
-# reacts -- up to three dropped frames at 60 Hz. 10 ms reacts within one frame.
-ACTION=="add", SUBSYSTEM=="devfreq", KERNEL=="5000000.gpu", ATTR{polling_interval}="10"
+# Adreno 540 devfreq: leave polling_interval at its upstream 50 ms.
+#
+# This rule used to force it to 10 ms, reasoning that a 50 ms poll leaves the
+# first frames of an animation at the 257 MHz floor. That problem is real and
+# is already solved better, by waking the GPU at the top OPP on activity after
+# an idle gap (aport 0070). Forcing 10 ms then BREAKS that solution, because
+# the two share a number:
+#
+#   msm_devfreq_active() takes a PM QoS floor at the top OPP and
+#   msm_devfreq_boost_work() releases it exactly polling_ms later
+#   (msm_gpu_devfreq.c:277-283) -- and devfreq's polling_interval store writes
+#   back into that same profile struct.
+#
+# So a 10 ms poll made the boost expire after 10 ms, against a 16.6 ms frame at
+# 60 Hz. Every frame then boosted to 710 MHz, lapsed, fell to 257, and boosted
+# again: a core PLL reprogram and a core rail move twice per frame, on a GPU
+# with no GMU to do it out of band. At 50 ms the floor outlives the frame
+# interval, the next frame re-arms it before it lapses, and the GPU simply
+# stays at the top for as long as you keep interacting.
+#
+# MEASURED 2026-08-20 on kernel #35, same boot, same Firefox scroll:
+#   polling=10: 16585 devfreq transitions, 2303 direct 257->710 and 1896 back,
+#               every intermediate OPP unused
+#   polling=50: 151 transitions, 19 direct 257->710, intermediates in use,
+#               19.7 s of residency at 710, and tk-fps.py held 59.7-59.9 fps
+#               with 0 underruns where the recorded baseline for this device
+#               was "60-71 repeatedly, 25-41 common, 3-14 frequent collapses"
+#
+# If a future session wants to retune this, the governor's own knobs are in
+# debugfs already -- /sys/kernel/debug/dri/0/devfreq/{upthreshold,
+# downdifferential,idle_clamp} -- so it needs no rebuild and no new code.
 
 # Keep the GPU out of runtime suspend across short interaction pauses; msm's
 # 250 ms default means every touch after a reading pause pays the resume +

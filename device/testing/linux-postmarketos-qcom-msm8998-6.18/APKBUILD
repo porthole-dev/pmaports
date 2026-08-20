@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=29
+pkgrel=30
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -173,6 +173,9 @@ source="
 	0121-cpufreq-qcom-hw-msm8998-do-not-enable-the-droop-FSMs.patch
 	0122-arm64-dts-qcom-msm8998-add-the-L2-SAW4-AVS-power-man.patch
 	0123-cpufreq-qcom-hw-cpr3-msm8998-default-the-bring-up-ga.patch
+	0124-drm-msm-Fix-shrinker-deadlock.patch
+	0125-drm-gpu-msm-forbid-mem-reclaim-from-reset.patch
+	0126-drm-msm-always-recover-the-gpu.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -327,4 +330,7 @@ a953f88c33c044d85582b850c198fe83fb11c8a556ad85a4b487755742f53f73d2a006893a162467
 a1ba29f03bd51df0bd6eaa07263ab77aa82010e323b1c89b95daceba96bf0d3a64862ea5841ee79c8e41da13daeee984c4ec580ac3a9594fec476f475335b440  0121-cpufreq-qcom-hw-msm8998-do-not-enable-the-droop-FSMs.patch
 35a172ae35497f3163f4404019a709185f01f39e735d5781bd47205ca943fdbc8695e6dcb5e7e41263d0ae838c002398d12e176a9d93e70cc2d5f5cfee60d7a0  0122-arm64-dts-qcom-msm8998-add-the-L2-SAW4-AVS-power-man.patch
 800edbb639de65646248bfe219f813719ff86f476ecb31339682d5a68189fcb1c91f8c6bc55ab02574be0174bbcc79a5f01943448a34f9dbd1448a6e3ea8971a  0123-cpufreq-qcom-hw-cpr3-msm8998-default-the-bring-up-ga.patch
+d18a30bae037321371b6fdea95d11996720dce0b97475143777a0b165879b2a8961249d206a38f9887b2f93d23a20332e0984055df3d097bd1d11949836495c3  0124-drm-msm-Fix-shrinker-deadlock.patch
+44c523b8151c9e81ad8af112a9902c6ec1e6f282d0cca323f6c033e7af033c160171adc7296dcc0e59c0d9bcc17bb680ea839f322e73fd905612d585bdcdeafd  0125-drm-gpu-msm-forbid-mem-reclaim-from-reset.patch
+e4e63a555acf07a88b567d60f0121b6549afbe08cc7b980eaaaa2679d2251838f4ecb604ab9649ae0a8ffbb2657b264ff4784b7616fb90e2851af5f65b838660  0126-drm-msm-always-recover-the-gpu.patch
 "

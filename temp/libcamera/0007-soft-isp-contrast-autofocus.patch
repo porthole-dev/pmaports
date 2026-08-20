@@ -181,7 +181,7 @@ single lens writer via LensPosition metadata. Request LensPosition
 +} /* namespace libcamera */
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.cpp
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,206 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Contrast-based autofocus for the software ISP.
@@ -209,10 +209,17 @@ single lens writer via LensPosition metadata. Request LensPosition
 +namespace ipa::soft::algorithms {
 +
 +/* Focus range and step sizes, in raw actuator units. */
-+static constexpr int32_t kPosMin = 200;
-+static constexpr int32_t kPosMax = 3900;
-+static constexpr int32_t kCoarseStep = 370;
-+static constexpr int32_t kFineStep = 90;
++/*
++ * Raw actuator units. The lc898214xd exposes 0..581, 0 = infinity and 581 =
++ * macro: the hardware code is signed 12-bit and the mechanism only spans
++ * +324..-257, so the old 200..3900 sweep spent most of its travel writing
++ * wrapped codes past the mechanical stop (kernel: "the focus code is signed").
++ * Ten coarse steps across the real range, refined at ~1/4 of a coarse step.
++ */
++static constexpr int32_t kPosMin = 0;
++static constexpr int32_t kPosMax = 581;
++static constexpr int32_t kCoarseStep = 58;
++static constexpr int32_t kFineStep = 15;
 +/* Rescan when sharpness stays below this fraction of the locked value. */
 +static constexpr float kRescanRatio = 0.55f;
 +static constexpr unsigned int kRescanFrames = 6;

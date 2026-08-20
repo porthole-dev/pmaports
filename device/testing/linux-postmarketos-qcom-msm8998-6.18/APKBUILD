@@ -180,7 +180,7 @@ source="
 	0128-wifi-ath10k-fix-lock-protection-in-ath10k_wmi_event_.patch
 	0129-wifi-ath10k-fix-station-lookup-failure-during-discon.patch
 	0130-wifi-ath10k-skip-WMI-and-beacon-transmission-when-de.patch
-	0131-media-qcom-camss-csiphy-keep-the-computed-settle-cou.patch
+	0131-media-qcom-camss-csiphy-add-a-module-parameter-to-sw.patch
 	0132-drm-msm-do-not-tear-down-shared-VM-mappings-on-GEM-h.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -343,6 +343,6 @@ ab52b29f00b1119681811ff36c69dc250e7dba964d87745eceb2ee9955bd97d49e3e8a1f88c57944
 5217bc6157d5d0f04a0a37f1de003e91dd461e3dcce433c5b8d6bafa2d343c3a5881193f5e0fc845ccc5f24f9b4bac751cb30fbda6dddc7ab050ad79a3223386  0128-wifi-ath10k-fix-lock-protection-in-ath10k_wmi_event_.patch
 448144c63bd0b3125a95d37e3a8ac29349042dc3cff2187c475801fbc1ba8048f68c9c06a0185ff7bfa35c3742bea22a6ba1bd54197db476e07835a52fa161ac  0129-wifi-ath10k-fix-station-lookup-failure-during-discon.patch
 70e432225eefdfc6437514fc52f385137c5c843c125e5ba0464e8d355410434da2b9aa08c56ba05998621da23d317d86ece792ceb8d35cfad5094e32f7bc13c4  0130-wifi-ath10k-skip-WMI-and-beacon-transmission-when-de.patch
-b033085a19ed28509d79bd4af8dad9e8821d104c22b4dce4952d91ca2822b1ab17373ac9d57c0012bf622d5035504be78a3f7bcd5dfe90837d7c266023ed1769  0131-media-qcom-camss-csiphy-keep-the-computed-settle-cou.patch
+aba8d0773e4383d39e10bd8c3af3cc566ede0f0384b183e45d9860d20f8dcbce0023591a5ba053ca08054fcacef82d2311f000ae72b81cbd2040a71efdf8d35c  0131-media-qcom-camss-csiphy-add-a-module-parameter-to-sw.patch
 bd450fdd043825497205a01612a05256bb314b27980bb7803afa83e5f42ff28ab32c236c4258ea8a94397f4d3f21faa396a4d9b2d60cc060bf9968cc4fe1c07c  0132-drm-msm-do-not-tear-down-shared-VM-mappings-on-GEM-h.patch
 "

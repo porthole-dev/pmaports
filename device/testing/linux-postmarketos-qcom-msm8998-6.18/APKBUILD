@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=30
+pkgrel=31
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -176,6 +176,10 @@ source="
 	0124-drm-msm-Fix-shrinker-deadlock.patch
 	0125-drm-gpu-msm-forbid-mem-reclaim-from-reset.patch
 	0126-drm-msm-always-recover-the-gpu.patch
+	0127-wifi-ath10k-fix-skb-leak-on-incomplete-msdu-during-r.patch
+	0128-wifi-ath10k-fix-lock-protection-in-ath10k_wmi_event_.patch
+	0129-wifi-ath10k-fix-station-lookup-failure-during-discon.patch
+	0130-wifi-ath10k-skip-WMI-and-beacon-transmission-when-de.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -207,7 +211,7 @@ package() {
 }
 sha512sums="
 88599ffdec96d150c1feb9b261ba93bb0301a9d0e1ad6bef7aeab1f5372cbfc57d8b43c7e902bd8f76921d1dbd8189663c142ea869e51d0e2b483b150ee00fe0  linux-6.18.tar.xz
-b9413a9d47272b84958efa8b133a0f410c7587167469c92ba81c2acd99d17a2225e38941e954912d665c440bccc5928eff971a1bf50d9ed13d11428c7774158e  config-postmarketos-qcom-msm8998-6.18.aarch64
+77140a3b304e045063c26c717a70d2c2cd1dba4e9dac88506b685ab1e505e6db746ee12f548f9d386c65bb563e96b0422f1dcd6547eb451a74720a4d83f16efe  config-postmarketos-qcom-msm8998-6.18.aarch64
 e8758db2fac89658a9a5045ad09a1da57944810316bdd8024bf7f4136882325e2dfe52d60a2ecf43901c30f822a6b6d8188d3c068d6415b5bbdc9ad77234d56c  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 f04e67f59e0fdf5dacb765e0be3fb169820f5c61c8977757e9d81566ed455bbc576e7a0be638202e800250a40822291d9e9649bb9d7d2edf2d8b51883f2434cc  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 0b258fec013018a30d104ea193825efaf7c284d21baa85dc5d057ec6b33fe5142c8b1b3bca3b5adea97790fd5acf904253524d15b70a8353e1f2e628cc6ecde9  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -333,4 +337,8 @@ a1ba29f03bd51df0bd6eaa07263ab77aa82010e323b1c89b95daceba96bf0d3a64862ea5841ee79c
 d18a30bae037321371b6fdea95d11996720dce0b97475143777a0b165879b2a8961249d206a38f9887b2f93d23a20332e0984055df3d097bd1d11949836495c3  0124-drm-msm-Fix-shrinker-deadlock.patch
 44c523b8151c9e81ad8af112a9902c6ec1e6f282d0cca323f6c033e7af033c160171adc7296dcc0e59c0d9bcc17bb680ea839f322e73fd905612d585bdcdeafd  0125-drm-gpu-msm-forbid-mem-reclaim-from-reset.patch
 e4e63a555acf07a88b567d60f0121b6549afbe08cc7b980eaaaa2679d2251838f4ecb604ab9649ae0a8ffbb2657b264ff4784b7616fb90e2851af5f65b838660  0126-drm-msm-always-recover-the-gpu.patch
+ab52b29f00b1119681811ff36c69dc250e7dba964d87745eceb2ee9955bd97d49e3e8a1f88c5794498ad779ed938aebeff521426f5849b672d0f467659693f5a  0127-wifi-ath10k-fix-skb-leak-on-incomplete-msdu-during-r.patch
+5217bc6157d5d0f04a0a37f1de003e91dd461e3dcce433c5b8d6bafa2d343c3a5881193f5e0fc845ccc5f24f9b4bac751cb30fbda6dddc7ab050ad79a3223386  0128-wifi-ath10k-fix-lock-protection-in-ath10k_wmi_event_.patch
+448144c63bd0b3125a95d37e3a8ac29349042dc3cff2187c475801fbc1ba8048f68c9c06a0185ff7bfa35c3742bea22a6ba1bd54197db476e07835a52fa161ac  0129-wifi-ath10k-fix-station-lookup-failure-during-discon.patch
+70e432225eefdfc6437514fc52f385137c5c843c125e5ba0464e8d355410434da2b9aa08c56ba05998621da23d317d86ece792ceb8d35cfad5094e32f7bc13c4  0130-wifi-ath10k-skip-WMI-and-beacon-transmission-when-de.patch
 "

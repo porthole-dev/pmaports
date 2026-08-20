@@ -1,0 +1,47 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 21 Aug 2026 01:00:00 +0200
+Subject: [PATCH] software_isp: run stats every frame
+
+EXPERIMENT. Every IPA algorithm returns early when stats are not valid, so
+autofocus can only advance its scan on a frame that carries stats. Measured on
+msm8998 (Pixel 2 XL, imx362) 2026-08-21: 13 scan steps at a median of exactly
+4.0 delivered frames each, on a pipeline running a solid 30.0 fps. That cadence
+is the entirety of AF's 3.18 s convergence; ~0.8 s is expected at one stat per
+frame.
+
+The constant exists for AGC, not AF: exposure changes take up to 3 frames to
+apply, and this sensor reports no delay model. So this must be judged on AE
+stability and CPU cost as well as AF speed. If AE oscillates, the principled
+fix is a per-algorithm cadence rather than one global constant serving two
+different requirements.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -39,12 +39,20 @@
+ 	~SwStatsCpu() = default;
+ 
+ 	/*
+-	 * The combination of pipeline + sensor delays means that
+-	 * exposure changes can take up to 3 frames to get applied,
+-	 * Run stats once every 4 frames to ensure any previous
+-	 * exposure changes have been applied.
++	 * Every frame. Autofocus can only step on a frame that carries stats,
++	 * so a cadence of 4 quadruples AF convergence: measured on msm8998
++	 * 2026-08-21, 13 scan steps at a median of exactly 4.0 delivered
++	 * frames each on a solid 30.0 fps pipeline, which is the whole of its
++	 * 3.18 s. ~0.8 s expected at 1.
++	 *
++	 * The 4 existed for AGC: pipeline + sensor delays mean an exposure
++	 * change takes up to 3 frames to apply, and this sensor reports no
++	 * delay model. So judge AE stability and CPU cost alongside AF speed.
++	 * If AE oscillates, the fix is a per-algorithm cadence -- stats every
++	 * frame, AGC/AWB skipping frames off the 4-boundary -- not one global
++	 * constant serving two different requirements.
+ 	 */
+-	static constexpr uint32_t kStatPerNumFrames = 4;
++	static constexpr uint32_t kStatPerNumFrames = 1;
+ 
+ 	bool isValid() const { return sharedStats_.fd().isValid(); }
+ 

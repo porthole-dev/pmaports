@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=8
+pkgrel=9
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -74,6 +74,7 @@ source="
 	taimen-dconf-profile
 	taimen-dconf-sensors
 	taimen-dconf-greeter
+	taimen-dconf-power
 	taimen-proximity.rules
 	taimen-accel-matrix.rules
 	phosh-desktop-env.conf
@@ -96,6 +97,9 @@ source="
 	taimen-perf.rules
 	taimen-perf.conf
 	taimen-gsk.conf
+	taimen-panic.conf
+	taimen-dnssec.conf
+	taimen-tuned.conf
 	taimen-display-panel.json
 	taimen-gmobile-overlay.conf
 	taimen-uclamp-session
@@ -198,6 +202,10 @@ package() {
 	# see taimen-dconf-greeter for what that costs when it is not set.
 	install -Dm644 "$srcdir"/taimen-dconf-greeter \
 		"$pkgdir"/etc/dconf/db/local.d/02-taimen-greeter
+
+	# Suspend on idle, including on AC -- see the file for the measurement.
+	install -Dm644 "$srcdir"/taimen-dconf-power \
+		"$pkgdir"/etc/dconf/db/local.d/03-taimen-power
 	install -Dm644 "$srcdir"/taimen-proximity.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-proximity.rules
 	install -Dm644 "$srcdir"/taimen-accel-matrix.rules \
@@ -268,6 +276,15 @@ package() {
 		"$pkgdir"/usr/lib/tmpfiles.d/taimen-perf.conf
 	install -Dm644 "$srcdir"/taimen-gsk.conf \
 		"$pkgdir"/usr/lib/environment.d/60-taimen-gsk.conf
+
+	# Forensics and boot-path fixes; each file carries its own measurement.
+	# 99- so kernel.panic wins over Alpine's 00-alpine.conf.
+	install -Dm644 "$srcdir"/taimen-panic.conf \
+		"$pkgdir"/usr/lib/sysctl.d/99-taimen-panic.conf
+	install -Dm644 "$srcdir"/taimen-dnssec.conf \
+		"$pkgdir"/usr/lib/systemd/resolved.conf.d/10-taimen-dnssec.conf
+	install -Dm644 "$srcdir"/taimen-tuned.conf \
+		"$pkgdir"/usr/lib/systemd/system/tuned.service.d/10-taimen-no-network.conf
 
 	# Rounded display corners. gmobile (linked into phoc/phosh) ships no
 	# panel data for "google,taimen" -- see taimen-gmobile-overlay.conf's
@@ -433,6 +450,7 @@ cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7
 c24db92ededd9b6e936e557a458167f981156bb70e66add92918de0a6cd6ba9cc2b94d0531c87ef21b4aa2ee02fa924db366253acac6daf72c18efa97f6262dc  taimen-dconf-profile
 5506422fb48be5730036de5e94b66b519091e6cd53c044536cf7c62b80f5660087b1ccbe57e117b2b95453d5ab8a940e83a5b472c0e45e68d1f399ecbb7dcd4c  taimen-dconf-sensors
 be4d6fff0242c91d9db74269067e56baa752fa8906853515bb885d5aa76d053ca8d6996b94cfb2db631bda51ea9b35fbc737b9cc1180642016609f83468fbf51  taimen-dconf-greeter
+ccc83c0111c5fd66a71d4ef4fb45a37064e1ca50a18bbe8f1ddae7fbc99a0ea78e52165950e227e2a46df708a93f48730c91492aa816c5777b76c918672c53b0  taimen-dconf-power
 20bba033222c5979b0c93083a8a5d04a410eb4332112c1fea9c38a6d159d39fccd05533fee7546c01f79ace97a76c69204243efe5266be7ea8eaead807df1213  taimen-proximity.rules
 e9a8ad48c0b9e250ace1e6cea004f628ebf741fcdfe6d767f1fc4da953c8205c87f84b4e61a15a6a82582790e241b06ce20e220c2165c365062c293d0335de7d  taimen-accel-matrix.rules
 6cb9e6ebcc0cd5677afa99372405b24f56b3b854885917fcf344d8ccce0b42bf9488144893dacb5bb52b0deef3103f01755fff14a5a318e0a0151875363e5a46  phosh-desktop-env.conf
@@ -454,7 +472,10 @@ e275c99030b79d51b59ca8cca0c6acad6319ced0dd4c2e8c0f72c2fce3acea6fbe6d6c4ac461eaaa
 fe7a7ea7bc5410ce6076ba12252ce43f5f26c24d9c92d98f5969ca861c45dad109e3e75dfe7a647a268aa5a5e15dfdf63d87e2f46b63b071d3110933a0f96e3c  taimen-ambient-nudge.service
 84e83c62ef805fa26bb27697f7ea5e3d5146407ebd066d40dbe2f7a3398d12f0be4e60f2ac3403eb3578000617a1bc392c555ca5df8ef67615e746f2472fb093  taimen-perf.rules
 4d627702857106f4166b011185a7e26573b14f78d833fb21d1be5decda87188a1c2e8d9774f647fe3602205730960fa0522ed95e9a42dcf5278dbc6edff6fa9b  taimen-perf.conf
-51918a0be58c993d27648d081f9239270ef7220bea5d0f666fa47e4ae273cf623d9fb615fc55fb12a76f4171f5f127dd24e488b89f8f6f7365cc048cb5726459  taimen-gsk.conf
+099af1a90fb815ae24831cca5e167f46f53aa9b50517d0d44abe2613aa904545dd3259d9aad8f2f2075130e76ff91dc8081ab719f115f7e0a4b4884f83ab0b78  taimen-gsk.conf
+e0badf485e131afddf5d4a8d8d2a470a822e02112044cb8a062968ab9d6b3c2b4fd9a6fcc0d89763938455b14f833e533a94d02c9c20c6eea04f82f2b4e4801b  taimen-panic.conf
+232f64d440f776a811d16790a7fa115a6b36e1808dc952ba3cf7d33ab248d2f13ce7a305e62add149934f907b4a3e5e9af38648b69c92ca491ed0c83d222c8f8  taimen-dnssec.conf
+b6794fdfcb9b59b8c41af4d0fac85dcf8e8f6cccfc6e5f1ffd8dbab58d5c94fdbc812fee4d41627df2c8eafd686a1e65af89bce6bf6edf977533db3593a9a0ba  taimen-tuned.conf
 cc92f89d97a6ac7939e56592cb88370699dd2d224841266ac236e2c8cb13531ee025808ba681cf98d203df9ba2115b5899c61bd137de61cb5ee6882f5c574690  taimen-display-panel.json
 ab94261603b59d51495704a8da5b3955b17748df64bc0759272e2715d433e0f0dc76d97c9c6e6b9294169d0655a0ff7f73fc74dcf13c6e2a6612c27f227b66e7  taimen-gmobile-overlay.conf
 10c422e52e0434d45748399430c689a1ff65ff0763c150ec6cf7f80af3d7bc503532e88e17550878c15404e36b6fd392d57dfbf7dd6db2ebfdf59b493f2ebdc5  taimen-uclamp-session

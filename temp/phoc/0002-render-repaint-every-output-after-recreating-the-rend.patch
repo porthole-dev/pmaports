@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 20 Aug 2026 19:10:00 +0200
+Subject: [PATCH] render: repaint every output after recreating the renderer
+
+recreate_renderer() swaps in a new wlr_renderer and allocator after a GPU
+reset and re-inits render on every output, but never marks any of them
+damaged. Nothing in the tree repaints an output that has not been damaged, so
+after a reset the screen keeps whatever the dead renderer last left in the
+framebuffer, and only regions that some client happens to damage on its own
+are ever redrawn.
+
+The result is a compositor that is technically alive and visibly wrong.
+Measured on a Pixel 2 XL (msm8998, Adreno 540, mainline 6.18), where the A540
+faults under load and the msm driver resets it several times a session: after
+a reset the app grid stays on screen underneath everything, the notification
+shade draws over it without ever clearing it so the icons show through, and
+windows that were closed before the reset remain ghosted on top. Applications
+that animate -- a browser, say -- come back on their own, because they damage
+themselves; static layer-surfaces such as the panel and the on-screen keyboard
+never do, and stay stale until something else forces a full repaint.
+
+Damage each output as it is re-inited. phoc_output_damage_whole() is the
+existing helper for exactly this, and desktop.c already uses the same
+wl_list_for_each + phoc_output_damage_whole pattern after a layout change for
+the same reason.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ src/render.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/render.c b/src/render.c
+index 1111111..2222222 100644
+--- a/src/render.c
++++ b/src/render.c
+@@ -137,8 +137,12 @@ recreate_renderer (void *data)
+   wlr_compositor = phoc_server_get_compositor (server);
+   wlr_compositor_set_renderer (wlr_compositor, wlr_renderer);
+
+-  wl_list_for_each (output, &desktop->outputs, link)
++  wl_list_for_each (output, &desktop->outputs, link) {
+     wlr_output_init_render (output->wlr_output, self->wlr_allocator, self->wlr_renderer);
++    /* The old renderer's contents are gone, so nothing on screen is valid any
++     * more. Without this only self-damaging clients ever repaint. */
++    phoc_output_damage_whole (output);
++  }
+
+   wlr_allocator_destroy (old_wlr_allocator);
+   wlr_renderer_destroy (old_wlr_renderer);
+--
+2.51.0

@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=36
+pkgrel=37
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -184,6 +184,7 @@ source="
 	0132-drm-msm-do-not-tear-down-shared-VM-mappings-on-GEM-h.patch
 	0133-wifi-ath10k-move-recovery-check-logic-into-a-new-work.patch
 	0134-wifi-ath10k-shorten-the-QMI-transaction-timeout-to-t.patch
+	0135-drm-panel-lg-sw43402-rate-limit-brightness-to-one-DC.patch
 	0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -350,5 +351,6 @@ aba8d0773e4383d39e10bd8c3af3cc566ede0f0384b183e45d9860d20f8dcbce0023591a5ba053ca
 bd450fdd043825497205a01612a05256bb314b27980bb7803afa83e5f42ff28ab32c236c4258ea8a94397f4d3f21faa396a4d9b2d60cc060bf9968cc4fe1c07c  0132-drm-msm-do-not-tear-down-shared-VM-mappings-on-GEM-h.patch
 6776d6d3eb7fd33052e73f5ecda7161dd5ef157ab502058b2d16e40af5bcb7509f0e3383b19f741cf231204608cc0471b183c25b51192c5fd02647d4ca49e8d5  0133-wifi-ath10k-move-recovery-check-logic-into-a-new-work.patch
 424feaa46df9aa0c24f7ed04056fcd49677ffc42b1fab298b876c0c8f97cd7f9e860947d4d8110e7e1b00054e4ffc96202b7cfc5cfa7c5e7d318ae3568a9efe3  0134-wifi-ath10k-shorten-the-QMI-transaction-timeout-to-t.patch
+a7d9d4444183578be4cdff975da1afc5e2100cd76bfa290cdfb790404b06be02340e0966b10bdb19d0a5f1190641e988e720d1ca935ef1478dce9a52b5d8c8d2  0135-drm-panel-lg-sw43402-rate-limit-brightness-to-one-DC.patch
 8004e58033e6506836d7dd9dd2ce16244b22b1e978dd6901434de3b7336d6ccec9911aa566f5f211fa780955c47b756e787956fbebf7fa078dc26183efb03030  0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
 "

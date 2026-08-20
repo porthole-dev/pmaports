@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=37
+pkgrel=39
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -186,6 +186,8 @@ source="
 	0134-wifi-ath10k-shorten-the-QMI-transaction-timeout-to-t.patch
 	0135-drm-panel-lg-sw43402-rate-limit-brightness-to-one-DC.patch
 	0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
+	0137-drm-msm-dsi-say-why-the-cmd-frame-interlock-let-a-fr.patch
+	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -353,4 +355,6 @@ bd450fdd043825497205a01612a05256bb314b27980bb7803afa83e5f42ff28ab32c236c4258ea8a
 424feaa46df9aa0c24f7ed04056fcd49677ffc42b1fab298b876c0c8f97cd7f9e860947d4d8110e7e1b00054e4ffc96202b7cfc5cfa7c5e7d318ae3568a9efe3  0134-wifi-ath10k-shorten-the-QMI-transaction-timeout-to-t.patch
 a7d9d4444183578be4cdff975da1afc5e2100cd76bfa290cdfb790404b06be02340e0966b10bdb19d0a5f1190641e988e720d1ca935ef1478dce9a52b5d8c8d2  0135-drm-panel-lg-sw43402-rate-limit-brightness-to-one-DC.patch
 8004e58033e6506836d7dd9dd2ce16244b22b1e978dd6901434de3b7336d6ccec9911aa566f5f211fa780955c47b756e787956fbebf7fa078dc26183efb03030  0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
+d7c609ccf31d5eac4da55ef83e8af8c1682f3338ff82574998aa101168dc191cf76496546a111f880618959011d76fd52ad83e82399e908f81815b06acea77e6  0137-drm-msm-dsi-say-why-the-cmd-frame-interlock-let-a-fr.patch
+5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

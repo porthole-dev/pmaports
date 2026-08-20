@@ -11,6 +11,37 @@ algorithms:
   - BlackLevel:
       blackLevel: 4096
   - Awb:
+      # Colour-temperature locus, extracted from the vendor chromatix
+      # (libchromatix_imx362_pixel_res0_snapshot_3a.so, .data 0x30..0xb0: 16
+      # (R/G, B/G) reference points, of which 10 are distinct). The gains are
+      # the reciprocals of those raw ratios; each 'ct' key is what libipa's
+      # estimateCCT() returns for that same reference point, so a genuinely
+      # grey scene maps back onto itself and the curve acts purely as a
+      # projection. Reference points closer together than the 100 K CCM
+      # threshold are merged -- estimateCCT() cannot separate them and
+      # interpolating between them would sawtooth.
+      #
+      # Cross-check: an independently measured white reference under a ~3400 K
+      # lamp gave raw R/G 0.746, B/G 0.367 (neutralising gains R 1.340,
+      # B 2.724); this curve at that point's own temperature (3419 K) gives
+      # R 1.337, B 2.693 -- 0.2% and 1.1% off.
+      colourGains:
+        - ct: 2574
+          gains: [ 0.9102, 3.6590 ]
+        - ct: 2778
+          gains: [ 1.0476, 3.9428 ]
+        - ct: 3117
+          gains: [ 1.1545, 2.8958 ]
+        - ct: 3937
+          gains: [ 1.6507, 2.3443 ]
+        - ct: 4785
+          gains: [ 1.8119, 1.7665 ]
+        - ct: 5091
+          gains: [ 1.8797, 1.6617 ]
+        - ct: 6151
+          gains: [ 2.1119, 1.4334 ]
+        - ct: 7390
+          gains: [ 2.2843, 1.2789 ]
   - Ccm:
       ccms:
         - ct: 2300

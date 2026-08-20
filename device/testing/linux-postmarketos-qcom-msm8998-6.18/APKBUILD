@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=34
+pkgrel=35
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -182,6 +182,8 @@ source="
 	0130-wifi-ath10k-skip-WMI-and-beacon-transmission-when-de.patch
 	0131-media-qcom-camss-csiphy-add-a-module-parameter-to-sw.patch
 	0132-drm-msm-do-not-tear-down-shared-VM-mappings-on-GEM-h.patch
+	0133-wifi-ath10k-move-recovery-check-logic-into-a-new-work.patch
+	0134-wifi-ath10k-shorten-the-QMI-transaction-timeout-to-t.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -345,4 +347,6 @@ ab52b29f00b1119681811ff36c69dc250e7dba964d87745eceb2ee9955bd97d49e3e8a1f88c57944
 70e432225eefdfc6437514fc52f385137c5c843c125e5ba0464e8d355410434da2b9aa08c56ba05998621da23d317d86ece792ceb8d35cfad5094e32f7bc13c4  0130-wifi-ath10k-skip-WMI-and-beacon-transmission-when-de.patch
 aba8d0773e4383d39e10bd8c3af3cc566ede0f0384b183e45d9860d20f8dcbce0023591a5ba053ca08054fcacef82d2311f000ae72b81cbd2040a71efdf8d35c  0131-media-qcom-camss-csiphy-add-a-module-parameter-to-sw.patch
 bd450fdd043825497205a01612a05256bb314b27980bb7803afa83e5f42ff28ab32c236c4258ea8a94397f4d3f21faa396a4d9b2d60cc060bf9968cc4fe1c07c  0132-drm-msm-do-not-tear-down-shared-VM-mappings-on-GEM-h.patch
+6776d6d3eb7fd33052e73f5ecda7161dd5ef157ab502058b2d16e40af5bcb7509f0e3383b19f741cf231204608cc0471b183c25b51192c5fd02647d4ca49e8d5  0133-wifi-ath10k-move-recovery-check-logic-into-a-new-work.patch
+424feaa46df9aa0c24f7ed04056fcd49677ffc42b1fab298b876c0c8f97cd7f9e860947d4d8110e7e1b00054e4ffc96202b7cfc5cfa7c5e7d318ae3568a9efe3  0134-wifi-ath10k-shorten-the-QMI-transaction-timeout-to-t.patch
 "

@@ -41,3 +41,36 @@ enable sns-reg.service
 # counterpart exists for neard: Alpine's neard package ships no /etc/init.d
 # script at all, so there is nothing to enable there (tracked separately).
 enable neard.service
+
+# tuned / tuned-ppd: do not start them at boot.
+#
+# tuned.service is the only unit on this device ordered both After=network.target
+# and before graphical.target, so it dragged NetworkManager and the modem
+# bring-up onto the path to the user session. Measured 2026-08-20:
+#
+#   graphical.target @18.910s
+#   +-tuned-ppd.service @16.823s +2.084s
+#     +-tuned.service @14.281s +2.501s
+#       +-network.target @14.188s
+#         +-NetworkManager.service @13.971s
+#           +-taimen-modem-bringup.service @12.156s +1.757s
+#
+# Nothing needs them before a user asks for a power profile, and both
+# PowerProfiles bus names are D-Bus activatable straight back to tuned-ppd:
+#   /usr/share/dbus-1/system-services/org.freedesktop.UPower.PowerProfiles.service
+#   /usr/share/dbus-1/system-services/net.hadess.PowerProfiles.service
+#   -> SystemdService=tuned-ppd.service   (which Requires=tuned.service)
+# so GNOME Settings still gets its power profiles, just on demand.
+#
+# tuned-ppd is pulled in by postmarketos-base-ui-gnome, so it cannot simply be
+# removed from depends.
+#
+# NOTE: an earlier attempt shipped a tuned.service.d drop-in doing
+#   [Unit]
+#   After=
+#   After=basic.target
+# That does NOT work -- verified on this device's systemd: the empty After=
+# did not reset the list, the original After=...network.target survived, and
+# basic.target was merely appended. Disabling the unit is what actually works.
+disable tuned.service
+disable tuned-ppd.service

@@ -118,7 +118,6 @@ source="
 	0065-power-supply-qcom_smbx-don-t-zero-USBIN-voltage-curr.patch
 	0066-power-supply-qcom_fg-fix-inverted-POWER_SUPPLY_PROP_.patch
 	0067-power-supply-qcom_fg-map-TERMINATE-INHIBIT_CHARGE-to.patch
-	0068-drm-msm-dsi-route-TE-to-the-tearcheck-on-6G-v2.2.0.patch
 	0069-drm-msm-pipeline-commits-by-dropping-the-post-kickof.patch
 	0070-drm-msm-devfreq-wake-the-GPU-at-the-top-OPP-not-at-t.patch
 	0071-clk-qcom-gcc-msm8998-the-MMSS-and-GPU-GPLL0_DIV-feed.patch
@@ -201,7 +200,7 @@ package() {
 }
 sha512sums="
 88599ffdec96d150c1feb9b261ba93bb0301a9d0e1ad6bef7aeab1f5372cbfc57d8b43c7e902bd8f76921d1dbd8189663c142ea869e51d0e2b483b150ee00fe0  linux-6.18.tar.xz
-3151dbb16888f880a6b3a1795ca6f949c9dadd60f332829bea5f5dcfc4d7ae8d91e01329557f9e943674f8b0c0ab837ba1c92bbf201b8b5fe988bfc1d6c43392  config-postmarketos-qcom-msm8998-6.18.aarch64
+b5ea0d507136768f8fdf8e8b6216aa4488924ba91abc288ce7a92340acc8594d934ceb7d71e89880cdd3a38ea6616ff1075e233678b0c9e459bcc842ccb61080  config-postmarketos-qcom-msm8998-6.18.aarch64
 e8758db2fac89658a9a5045ad09a1da57944810316bdd8024bf7f4136882325e2dfe52d60a2ecf43901c30f822a6b6d8188d3c068d6415b5bbdc9ad77234d56c  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 f04e67f59e0fdf5dacb765e0be3fb169820f5c61c8977757e9d81566ed455bbc576e7a0be638202e800250a40822291d9e9649bb9d7d2edf2d8b51883f2434cc  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 0b258fec013018a30d104ea193825efaf7c284d21baa85dc5d057ec6b33fe5142c8b1b3bca3b5adea97790fd5acf904253524d15b70a8353e1f2e628cc6ecde9  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -269,7 +268,6 @@ a7cdb839825fdfafe1c96c577cd7e9e405f086e7f4a5e2591cd45c19187bb407cab38c5f11b765d2
 91c37b7c83695aaba572c53770616f20282008474a293d59887e9ac7b732d13d3b427c3e4c1a638c7357162b9a480f796890c38e0487da33042898a93f788acf  0065-power-supply-qcom_smbx-don-t-zero-USBIN-voltage-curr.patch
 9eb46f510bcabcf09bccb363fc828d4d4453eb3f308da5435240a5f3ca29f0ebef75ad23fb4aa2d0bf90f085604c840adc052ff9af48db90b6df105e2c38f246  0066-power-supply-qcom_fg-fix-inverted-POWER_SUPPLY_PROP_.patch
 1ca8725c44539a4ee4d249efe2e88765705bb9b8dd6b3b3415d2dc8d624a0ea16abc86e6ec8135d435d9be462734783abb3b0fa4d4e5352c67d2daa14ee1cdf6  0067-power-supply-qcom_fg-map-TERMINATE-INHIBIT_CHARGE-to.patch
-210457b58de564ffa41a567fc5a72a6be3488d92dfa13ba4fb441b93d6d7b52721058a2eed8185c48eaa390128f10986aba104692297821abf48d5e36fbaf81e  0068-drm-msm-dsi-route-TE-to-the-tearcheck-on-6G-v2.2.0.patch
 79f89b99f9aef3a17a0a5468a9ee9a43c0d31cb396f560a37c3cd5ea82433f11942af6db406db1d17d50db6d77863dcffb928c19ab765a51b676bb5b25703876  0069-drm-msm-pipeline-commits-by-dropping-the-post-kickof.patch
 38b1b92e70c6cf7948ae486b686ac8a4f890eeafabb1627260791ac1611ba4ffb931265d58d600db91baf56f99462f85f55488fef2cfc547d655795e8463a53a  0070-drm-msm-devfreq-wake-the-GPU-at-the-top-OPP-not-at-t.patch
 c825dcf22a96a49167a3755e2081e491887cd35be60bdbab4650b6abd4cf21f84f6e3554ca5ec0c2e648a15d1608fd46876c5e3456397eebc78af559af5667f7  0071-clk-qcom-gcc-msm8998-the-MMSS-and-GPU-GPLL0_DIV-feed.patch

@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=28
+pkgrel=29
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -169,6 +169,10 @@ source="
 	0117-wifi-ath10k-restart-the-firmware-when-a-key-install-.patch
 	0118-ASoC-codecs-wcd-mbhc-v2-fix-double-release-of-the-MI.patch
 	0119-media-qcom-camss-vfe-reference-count-the-power-domai.patch
+	0120-cpufreq-qcom-hw-msm8998-program-the-APM-threshold-co.patch
+	0121-cpufreq-qcom-hw-msm8998-do-not-enable-the-droop-FSMs.patch
+	0122-arm64-dts-qcom-msm8998-add-the-L2-SAW4-AVS-power-man.patch
+	0123-cpufreq-qcom-hw-cpr3-msm8998-default-the-bring-up-ga.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -319,4 +323,8 @@ bb129388bfe84548f922e6e29a9216aa3f5cb2a1121a5dea27f74976ad764a182445747002afccc8
 ac7e98262605ba4eec9f323c70053696fc60f18dff86a7be89ed490f24ba1f252138b3349b9fb1b2c76f482f105a348beb0d8234667417f4fcbf30f172140a79  0117-wifi-ath10k-restart-the-firmware-when-a-key-install-.patch
 8a09b961123b845d7aa633c8982990c37eaffd196569e34861262c6370a2e22c62c4635d11f168457393ac1f01a7571212989d7f000fbb330d25265c675915e7  0118-ASoC-codecs-wcd-mbhc-v2-fix-double-release-of-the-MI.patch
 0b3a47a554d323c567f6155bdc7cd71add9adaa2a72d738b8e922cf5d1e3be9c9ba36b89e6ea670cee107cf5b0d4b8f38bb51e1c29fbdfed8f1cafb51146451c  0119-media-qcom-camss-vfe-reference-count-the-power-domai.patch
+a953f88c33c044d85582b850c198fe83fb11c8a556ad85a4b487755742f53f73d2a006893a16246776187a95b1b07a2e56b021b67f6513749c9571f94260a94d  0120-cpufreq-qcom-hw-msm8998-program-the-APM-threshold-co.patch
+a1ba29f03bd51df0bd6eaa07263ab77aa82010e323b1c89b95daceba96bf0d3a64862ea5841ee79c8e41da13daeee984c4ec580ac3a9594fec476f475335b440  0121-cpufreq-qcom-hw-msm8998-do-not-enable-the-droop-FSMs.patch
+35a172ae35497f3163f4404019a709185f01f39e735d5781bd47205ca943fdbc8695e6dcb5e7e41263d0ae838c002398d12e176a9d93e70cc2d5f5cfee60d7a0  0122-arm64-dts-qcom-msm8998-add-the-L2-SAW4-AVS-power-man.patch
+800edbb639de65646248bfe219f813719ff86f476ecb31339682d5a68189fcb1c91f8c6bc55ab02574be0174bbcc79a5f01943448a34f9dbd1448a6e3ea8971a  0123-cpufreq-qcom-hw-cpr3-msm8998-default-the-bring-up-ga.patch
 "

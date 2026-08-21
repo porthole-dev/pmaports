@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=40
+pkgrel=41
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -186,6 +186,7 @@ source="
 	0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
 	0137-drm-msm-dsi-say-why-the-cmd-frame-interlock-let-a-fr.patch
 	0138-net-ipa-add-stop_on_suspend-to-force-GSI-channel-sto.patch
+	0139-drm-msm-dsi-count-frames-instead-of-flagging-them-so.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -354,5 +355,6 @@ a7d9d4444183578be4cdff975da1afc5e2100cd76bfa290cdfb790404b06be02340e0966b10bdb19
 8004e58033e6506836d7dd9dd2ce16244b22b1e978dd6901434de3b7336d6ccec9911aa566f5f211fa780955c47b756e787956fbebf7fa078dc26183efb03030  0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
 d7c609ccf31d5eac4da55ef83e8af8c1682f3338ff82574998aa101168dc191cf76496546a111f880618959011d76fd52ad83e82399e908f81815b06acea77e6  0137-drm-msm-dsi-say-why-the-cmd-frame-interlock-let-a-fr.patch
 02ae06fd4e9c2804d97ea5cf6bd31a18a521610e5cf0990867c0bb485d5f0f973d8e8895e5bba888e85fe3386da18a0722e8d0b3f23a4e8ef5e6b278e817d699  0138-net-ipa-add-stop_on_suspend-to-force-GSI-channel-sto.patch
+29d317d0fc54d3bfc6ff36873e911e7b3ab63e7f033a0911327039f1226bd307a115781cf910b5a81cbb9820a4a2463cf8505b73ab0bf0faacaaede3a7176b43  0139-drm-msm-dsi-count-frames-instead-of-flagging-them-so.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

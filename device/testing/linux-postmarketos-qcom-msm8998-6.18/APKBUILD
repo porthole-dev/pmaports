@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=39
+pkgrel=40
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -73,7 +73,6 @@ source="
 	0020-net-qrtr-turn-QRTR-into-a-bus.patch
 	0021-iio-qcom-smgr-add-Qualcomm-SMGR-sensor-driver.patch
 	0022-power-supply-qcom_fg-add-Qualcomm-PMIC-fuel-gauge-dr.patch
-	0023-power-supply-qcom_pmi8998_charger-add-Qualcomm-PMI89.patch
 	0024-ASoC-qcom-add-msm8998-machine-driver.patch
 	0025-ASoC-codecs-add-TI-TAS2557-smart-amplifier-driver.patch
 	0026-arm64-dts-qcom-msm8998-add-cooling-CAMSS-CCI-and-GPU.patch
@@ -144,7 +143,6 @@ source="
 	0092-pmdomain-qcom-cpr3-arm-the-CPRh-loop-only-once-the-O.patch
 	0093-cpufreq-qcom-hw-BRINGUP-walk-the-OSM-setup-one-step-.patch
 	0094-pmdomain-qcom-cpr3-BRINGUP-walk-the-CPRh-setup-one-p.patch
-	0095-arm64-dts-qcom-msm8998-google-wahoo-describe-the-mea.patch
 	0096-cpufreq-qcom-hw-do-not-device-link-a-CPU-to-its-CPRh.patch
 	0097-cpufreq-qcom-hw-let-the-genpd-core-bind-the-CPRh-req.patch
 	0098-clk-qcom-mmcc-msm8998-keep-the-MMSS-config-NoC-AHB-c.patch
@@ -187,6 +185,7 @@ source="
 	0135-drm-panel-lg-sw43402-rate-limit-brightness-to-one-DC.patch
 	0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
 	0137-drm-msm-dsi-say-why-the-cmd-frame-interlock-let-a-fr.patch
+	0138-net-ipa-add-stop_on_suspend-to-force-GSI-channel-sto.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -242,7 +241,6 @@ b20d44dd36dbf10f93fe82096ccb51b1e39dc316395703de47ac305f410977a374a9f6f467185a47
 84486adb9c738fb626e79201283854dff7e4e3707de110c2bb285c0a732047c9950498168d30684d8a149ada411d1bd681d2d24f9e2f9aa229a1fd14bb4fe930  0020-net-qrtr-turn-QRTR-into-a-bus.patch
 aeaf8604c6c07be42170741d585f3cf8a202a6fb83884a02c918edc1f4e7f4f6fda8c9dbf0122aa3563907df1e660040b703b1d8b585ebacf09a787dd814d352  0021-iio-qcom-smgr-add-Qualcomm-SMGR-sensor-driver.patch
 490536772df1ebf5bc1dc95c60da24360d35e2d98cf252b570bddd2f1d1bdd5285550c75c45f5014ddc1805772813b46db8509d5fea9cc38a1032401be8bd1d3  0022-power-supply-qcom_fg-add-Qualcomm-PMIC-fuel-gauge-dr.patch
-277ef82d436908015da532b556e5d444c9756aa0495e6f1b9018550d58bc8feb2d47f8e1fb6c24ab2ede074c98ce38562999f310d21155089e509cf4da697f76  0023-power-supply-qcom_pmi8998_charger-add-Qualcomm-PMI89.patch
 504de550a0f6be54d1bc13bdff477eff19085f72dfa1a87077a2457ccf6519d4cdb1a68a5c53b29c4e03b09da4620f065044e1980aa193f88f996703904f361e  0024-ASoC-qcom-add-msm8998-machine-driver.patch
 7342d25da705e0f5aa23e54167f8eff11508e64443759f7285785f58f35058fe48f2e47ac4357a012ad978449d3f9bf90ad0512a2037720e76c41444cb2f72e6  0025-ASoC-codecs-add-TI-TAS2557-smart-amplifier-driver.patch
 f99f429e9b15f228b290e6b69057ca1bf67c680e95e4a5de13bf389c96546d3e1263489c71af27421453aae8d11706b6caad9a6198906877989b21baa39a4da8  0026-arm64-dts-qcom-msm8998-add-cooling-CAMSS-CCI-and-GPU.patch
@@ -313,7 +311,6 @@ a59c938baa5a9941f8a84eedf050388936873430b968eb718d56fce0e0883806c229445d0689c2f1
 24d55c1b7c474d2985a24622f98761c65fba3dbf5638c34a597ed8367e017b8c5917fd94c6909bebcdba9ab319172510d8a728f69b167807598cbae68b204961  0092-pmdomain-qcom-cpr3-arm-the-CPRh-loop-only-once-the-O.patch
 f749984d4331e984412d21a109a5cf166be48df68bf1f31783b051f39e54ec3962c29a450f08408dee0e0e537e6a5752ea066b6c6cf0efa4e427362715648c2a  0093-cpufreq-qcom-hw-BRINGUP-walk-the-OSM-setup-one-step-.patch
 6b0b7f39166583c875bc694b5923be556a76800eca4ec278c42ac8f945218765036d649d97e8760fb43bb6df7efc62d3f2be02be1b6df15b21ba53c57d9bf628  0094-pmdomain-qcom-cpr3-BRINGUP-walk-the-CPRh-setup-one-p.patch
-122f633f085e7512114d19b17c6bbaac28169b931de5cff7a9639513a62d4867c91eea74cb62db6daea972e75fa518e13b522c027533fe406d38aaaecf79c32c  0095-arm64-dts-qcom-msm8998-google-wahoo-describe-the-mea.patch
 2fc0f0bc4eef7f75ed9b16e91bdf6f3bc65a552c117d60bfae2ade6610313b539a1f951eaaa7f04ddd52f36eda109139fed9e7978560b69a3cbc6bd6c06cb4b0  0096-cpufreq-qcom-hw-do-not-device-link-a-CPU-to-its-CPRh.patch
 96fb2b2581d75de2fa1997374a57ee209b692963341e0c09dbe7b87e2df2249968d9a08c599c6d23832e6011d069d4bf455de7ffc5a7060488550d0a95637287  0097-cpufreq-qcom-hw-let-the-genpd-core-bind-the-CPRh-req.patch
 b1fb50389a375333bd72f5a66ef1ce1fd13a12c1c3c68ff60e4759bbc8cc6bedd0587eb524411a4961f74f35e597a891141cddb592d2cb210b1e1938e8ce666f  0098-clk-qcom-mmcc-msm8998-keep-the-MMSS-config-NoC-AHB-c.patch
@@ -356,5 +353,6 @@ bd450fdd043825497205a01612a05256bb314b27980bb7803afa83e5f42ff28ab32c236c4258ea8a
 a7d9d4444183578be4cdff975da1afc5e2100cd76bfa290cdfb790404b06be02340e0966b10bdb19d0a5f1190641e988e720d1ca935ef1478dce9a52b5d8c8d2  0135-drm-panel-lg-sw43402-rate-limit-brightness-to-one-DC.patch
 8004e58033e6506836d7dd9dd2ce16244b22b1e978dd6901434de3b7336d6ccec9911aa566f5f211fa780955c47b756e787956fbebf7fa078dc26183efb03030  0136-media-i2c-lc898214xd-write-the-focus-code-into-the-D.patch
 d7c609ccf31d5eac4da55ef83e8af8c1682f3338ff82574998aa101168dc191cf76496546a111f880618959011d76fd52ad83e82399e908f81815b06acea77e6  0137-drm-msm-dsi-say-why-the-cmd-frame-interlock-let-a-fr.patch
+02ae06fd4e9c2804d97ea5cf6bd31a18a521610e5cf0990867c0bb485d5f0f973d8e8895e5bba888e85fe3386da18a0722e8d0b3f23a4e8ef5e6b278e817d699  0138-net-ipa-add-stop_on_suspend-to-force-GSI-channel-sto.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

@@ -1,0 +1,125 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 21 Aug 2026 22:40:00 +0200
+Subject: [PATCH] firmware: qcom: scm: add the SCM_SVC_PWR reset calls
+
+Qualcomm's secure world owns a small power service, SCM_SVC_PWR (0x09), with
+two calls that belong to the system reset path:
+
+  0x01  disable the SPMI PMIC arbiter
+  0x02  deassert PS_HOLD
+
+Mainline has never implemented either, because on every SoC for which
+qcom,pshold was described so far the bare register write in msm-poweroff is
+enough to drop PS_HOLD. It is not enough everywhere: on msm8998 the write to
+0x010ac000 is ignored and only the secure-world call takes the platform down.
+
+Add the two calls. Both are made from the restart path with interrupts off, so
+both use qcom_scm_call_atomic(); each passes a single zero argument, which
+keeps the SMC inside the register-argument window and away from the tzmem
+pool. Neither returns anything useful, and the deassert does not return at all
+when the firmware honours it, so both are void.
+
+Availability has to be answered before the restart path is entered, because
+__qcom_scm_is_call_available() may sleep. Export a query for the PS_HOLD
+deassert so a caller can cache the answer at probe time. The arbiter halt is
+strictly best-effort and needs no such query.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/drivers/firmware/qcom/qcom_scm.h
++++ b/drivers/firmware/qcom/qcom_scm.h
+@@ -113,6 +113,10 @@
+ #define QCOM_SCM_SVC_INFO		0x06
+ #define QCOM_SCM_INFO_IS_CALL_AVAIL	0x01
+ 
++#define QCOM_SCM_SVC_PWR			0x09
++#define QCOM_SCM_PWR_IO_DISABLE_PMIC_ARBITER	0x01
++#define QCOM_SCM_PWR_IO_DEASSERT_PS_HOLD	0x02
++
+ #define QCOM_SCM_SVC_MP				0x0c
+ #define QCOM_SCM_MP_RESTORE_SEC_CFG		0x02
+ #define QCOM_SCM_MP_IOMMU_SECURE_PTBL_SIZE	0x03
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -876,6 +876,63 @@
+ EXPORT_SYMBOL_GPL(qcom_scm_io_writel);
+ 
+ /**
++ * qcom_scm_deassert_ps_hold_available() - is PS_HOLD owned by the secure world?
++ *
++ * May sleep: __qcom_scm_is_call_available() issues a non-atomic SCM call, so a
++ * caller that needs the answer on the restart path must ask at probe time and
++ * cache it.
++ *
++ * Return: true if the firmware implements the PS_HOLD deassert.
++ */
++bool qcom_scm_deassert_ps_hold_available(void)
++{
++	return __qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_PWR,
++					    QCOM_SCM_PWR_IO_DEASSERT_PS_HOLD);
++}
++EXPORT_SYMBOL_GPL(qcom_scm_deassert_ps_hold_available);
++
++/**
++ * qcom_scm_deassert_ps_hold() - drop PS_HOLD through the secure world
++ *
++ * Takes the platform down. Does not return when the firmware honours it, so
++ * the caller must have a fallback for the case where it does.
++ */
++void qcom_scm_deassert_ps_hold(void)
++{
++	struct qcom_scm_desc desc = {
++		.svc = QCOM_SCM_SVC_PWR,
++		.cmd = QCOM_SCM_PWR_IO_DEASSERT_PS_HOLD,
++		.arginfo = QCOM_SCM_ARGS(1),
++		.args[0] = 0,
++		.owner = ARM_SMCCC_OWNER_SIP,
++	};
++
++	qcom_scm_call_atomic(__scm->dev, &desc, NULL);
++}
++EXPORT_SYMBOL_GPL(qcom_scm_deassert_ps_hold);
++
++/**
++ * qcom_scm_halt_spmi_pmic_arbiter() - stop SPMI traffic to the PMIC
++ *
++ * Dropping PS_HOLD in the middle of an SPMI transaction locks up some PMICs,
++ * so the vendor halts the arbiter first. Best-effort: a firmware without the
++ * call simply returns an error, which is why this has no availability query.
++ */
++void qcom_scm_halt_spmi_pmic_arbiter(void)
++{
++	struct qcom_scm_desc desc = {
++		.svc = QCOM_SCM_SVC_PWR,
++		.cmd = QCOM_SCM_PWR_IO_DISABLE_PMIC_ARBITER,
++		.arginfo = QCOM_SCM_ARGS(1),
++		.args[0] = 0,
++		.owner = ARM_SMCCC_OWNER_SIP,
++	};
++
++	qcom_scm_call_atomic(__scm->dev, &desc, NULL);
++}
++EXPORT_SYMBOL_GPL(qcom_scm_halt_spmi_pmic_arbiter);
++
++/**
+  * qcom_scm_restore_sec_cfg_available() - Check if secure environment
+  * supports restore security config interface.
+  *
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -83,6 +83,10 @@
+ int qcom_scm_io_readl(phys_addr_t addr, unsigned int *val);
+ int qcom_scm_io_writel(phys_addr_t addr, unsigned int val);
+ 
++bool qcom_scm_deassert_ps_hold_available(void);
++void qcom_scm_deassert_ps_hold(void);
++void qcom_scm_halt_spmi_pmic_arbiter(void);
++
+ bool qcom_scm_restore_sec_cfg_available(void);
+ int qcom_scm_restore_sec_cfg(u32 device_id, u32 spare);
+ int qcom_scm_set_gpu_smmu_aperture(unsigned int context_bank);
+-- 
+2.51.0

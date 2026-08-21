@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 21 Aug 2026 22:50:00 +0200
+Subject: [PATCH] power: reset: msm-poweroff: outrank PSCI when the firmware
+ owns PS_HOLD
+
+With the secure-world deassert wired up, msm-poweroff can actually take the
+platform down on msm8998, so it should be the handler that does -- PSCI's
+SYSTEM_RESET is a cold reset there and destroys the ramoops region.
+
+Gate the priority on the same cached availability the deassert uses, so the
+configuration that was measured broken becomes unreachable by construction:
+where the firmware does not answer for PS_HOLD, the handler stays at 128 and
+PSCI keeps the job exactly as before. On msm8998 without the SCM call, winning
+the arbitration meant the SoC never reset and the hardware watchdog rescued it
+-- a 49 s reboot ending in androidboot.bootreason=watchdog.
+
+Also drop the ten-second delay to one. It predates sys_off handler chaining:
+returning NOTIFY_DONE lets the next handler try, and a platform that is going
+to reset has done so long before a second is up. Ten seconds only guarantees
+the watchdog gets there first, which is precisely the failure above.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/drivers/power/reset/msm-poweroff.c
++++ b/drivers/power/reset/msm-poweroff.c
+@@ -34,7 +34,16 @@
+ 		qcom_scm_deassert_ps_hold();
+ 
+ 	writel(0, msm_ps_hold);
+-	mdelay(10000);
++
++	/*
++	 * Both routes above are asynchronous, so give the platform a moment to
++	 * go down -- but only a moment. The historical ten seconds predate
++	 * sys_off handler chaining: returning NOTIFY_DONE lets the next handler
++	 * (PSCI, at a lower priority) try instead, and a device that is going
++	 * to reset has done so long before a second is up. Waiting the full ten
++	 * only guarantees the hardware watchdog gets there first.
++	 */
++	mdelay(1000);
+ 
+ 	return NOTIFY_DONE;
+ }
+@@ -49,8 +58,21 @@
+ 	dev_info(&pdev->dev, "PS_HOLD deassert: %s\n",
+ 		 scm_owns_ps_hold ? "secure world" : "register write only");
+ 
++	/*
++	 * PSCI registers its restart handler at 129. Outranking it is only
++	 * correct where PS_HOLD actually takes the platform down: where the
++	 * bare register write is ignored and the firmware does not implement
++	 * the deassert either, winning the arbitration means the SoC never
++	 * resets and the hardware watchdog rescues it seconds later. Measured
++	 * on msm8998 before the SCM call existed: a 49 s reboot ending in
++	 * bootreason=watchdog.
++	 *
++	 * So take priority only on the firmwares that answer for PS_HOLD, and
++	 * leave everyone else exactly where they were.
++	 */
+ 	devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_RESTART,
+-				      128, do_msm_poweroff, NULL);
++				      scm_owns_ps_hold ? SYS_OFF_PRIO_HIGH : 128,
++				      do_msm_poweroff, NULL);
+ 
+ 	devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_POWER_OFF,
+ 				      SYS_OFF_PRIO_DEFAULT, do_msm_poweroff,
+-- 
+2.51.0

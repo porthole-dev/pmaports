@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 21 Aug 2026 22:20:00 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: describe the qcom,pshold restart
+ register
+
+msm8998 is the only SoC in its family with no restart node: msm8916, msm8994,
+msm8953, sdm630 and sc8280xp all describe qcom,pshold. The downstream
+msm8998.dtsi has it at the same address this adds, 0x10ac000, so the
+description is simply missing upstream.
+
+Describe it. Note that on its own this changes nothing: msm-poweroff registers
+its restart handler at priority 128 and the PSCI handler sits at 129, so PSCI
+still performs every restart.
+
+That is deliberate, and the reason is worth recording. Raising msm-poweroff
+above PSCI was tried and reverted, because mainline's reset is only half of
+what this SoC needs. Downstream does:
+
+	msm_restart_prepare(cmd);      /* latch the PMIC warm or hard */
+	halt_spmi_pmic_arbiter();      /* SCM_IO_DISABLE_PMIC_ARBITER */
+	deassert_ps_hold();
+	mdelay(10000);
+
+and deassert_ps_hold() issues SCM_IO_DEASSERT_PS_HOLD, falling through to
+__raw_writel(0, msm_ps_hold) only "in case the scm_call returns". Mainline
+implements only that fallback, and on msm8998 the bare write is ignored: with
+msm-poweroff winning the arbitration, an orderly reboot stopped resetting the
+SoC and the hardware watchdog rescued it ~30 s later, measured as a 49 s
+down-gap and androidboot.bootreason=watchdog where it had previously read
+reboot. Mainline qcom_scm has no SCM_SVC_PWR support at all, so making this
+work needs a new SCM call, not a DT change.
+
+Keep the node so the hardware is described correctly and so that work has
+somewhere to attach.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -4303,6 +4303,11 @@
+ 			power-domains = <&mmcc BIMC_SMMU_GDSC>;
+ 		};
+ 
++		restart@10ac000 {
++			compatible = "qcom,pshold";
++			reg = <0x010ac000 0x4>;
++		};
++
+ 		imem@146bf000 {
+ 			compatible = "simple-mfd";
+ 			reg = <0x146bf000 0x1000>;
+-- 
+2.51.0

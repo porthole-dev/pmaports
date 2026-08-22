@@ -4914,7 +4914,7 @@ CONFIG_INTERCONNECT_QCOM=y
 # CONFIG_INTERCONNECT_QCOM_MSM8939 is not set
 # CONFIG_INTERCONNECT_QCOM_MSM8974 is not set
 # CONFIG_INTERCONNECT_QCOM_MSM8996 is not set
-# INTERCONNECT_QCOM_MSM8998 does not exist on this tree -- there is no driver
+CONFIG_INTERCONNECT_QCOM_MSM8998=y
 # to select. Our 6.0 base has drivers/interconnect/qcom/msm8998.c; it was lost
 # when this port moved to the pristine v6.18 base and has not been
 # forward-ported. This is known debt that blocks IPA/mobile data. v6.18 has

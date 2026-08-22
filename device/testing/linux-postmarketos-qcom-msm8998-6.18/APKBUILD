@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=58
+pkgrel=60
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -192,9 +192,17 @@ source="
 	0142-firmware-qcom-scm-add-the-SCM_SVC_PWR-reset-calls.patch
 	0143-power-reset-msm-poweroff-deassert-PS_HOLD-through-th.patch
 	0144-power-reset-msm-poweroff-outrank-PSCI-when-the-firmwa.patch
-	0145-PCI-qcom-DO-NOT-MERGE-keep-the-controller-powered-ac.patch
 	0146-wifi-ath10k-reset-recovery-bookkeeping-when-the-devi.patch
 	0147-wifi-ath10k-snoc-use-one-predicate-for-the-irq-disab.patch
+	0148-dt-bindings-PCI-qcom-Add-endpoint-powered-off-in-sus.patch
+	0149-PCI-qcom-Leave-the-controller-alone-in-suspend-when-.patch
+	0150-arm64-dts-qcom-msm8998-google-taimen-Easel-powers-of.patch
+	0151-arm64-dts-qcom-msm8998-xo-active-only.patch
+	0152-dt-bindings-interconnect-qcom-msm8998.patch
+	0153-interconnect-qcom-add-msm8998-driver.patch
+	0154-arm64-dts-qcom-msm8998-interconnect-nodes.patch
+	0155-arm64-dts-qcom-msm8998-interconnect-consumers.patch
+	0156-regulator-qcom_smd-add-sleep-set-support.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -227,7 +235,7 @@ package() {
 }
 sha512sums="
 88599ffdec96d150c1feb9b261ba93bb0301a9d0e1ad6bef7aeab1f5372cbfc57d8b43c7e902bd8f76921d1dbd8189663c142ea869e51d0e2b483b150ee00fe0  linux-6.18.tar.xz
-77140a3b304e045063c26c717a70d2c2cd1dba4e9dac88506b685ab1e505e6db746ee12f548f9d386c65bb563e96b0422f1dcd6547eb451a74720a4d83f16efe  config-postmarketos-qcom-msm8998-6.18.aarch64
+a0ceeb98441df05d8a0b785a48e0d2ecedb521662a78620ae23bcbefd45462bc469a005db4f91586675fe3bfe1cb407f003021a5d9da0fcf44ce541f523641af  config-postmarketos-qcom-msm8998-6.18.aarch64
 e8758db2fac89658a9a5045ad09a1da57944810316bdd8024bf7f4136882325e2dfe52d60a2ecf43901c30f822a6b6d8188d3c068d6415b5bbdc9ad77234d56c  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 f04e67f59e0fdf5dacb765e0be3fb169820f5c61c8977757e9d81566ed455bbc576e7a0be638202e800250a40822291d9e9649bb9d7d2edf2d8b51883f2434cc  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 0b258fec013018a30d104ea193825efaf7c284d21baa85dc5d057ec6b33fe5142c8b1b3bca3b5adea97790fd5acf904253524d15b70a8353e1f2e628cc6ecde9  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -369,8 +377,16 @@ cdc6581530bee3a9160d332db8084a827aa866265a4d183440fa1241df4b43264bd93396e6b8df6a
 84ab82bfe9c030fe6186f6380a2875a2a621cfd93a81f580bafafc2d948e11d47df8e29d552f23daa962258e8bd3ec4d0668cf1efd47c8d768bdc4a6e7064bff  0142-firmware-qcom-scm-add-the-SCM_SVC_PWR-reset-calls.patch
 f3374c945c1ca55569c69b978f84e5ab58842906eb755a8587d3c42ad472307493bcb8e4978e0bf2b85dccce39fa8d967bdb2b4da61b8039bda5747157af0952  0143-power-reset-msm-poweroff-deassert-PS_HOLD-through-th.patch
 0c7bc8256fa7413eb5b98dc9c52cae05770e776718afb61344185b36e57ecdde388248017bbf145cc58c7e6cf8a1048ccf5951a546bb69d7fbe686ee3df645fe  0144-power-reset-msm-poweroff-outrank-PSCI-when-the-firmwa.patch
-ed17fe55b781338edc564eb1c16abcf79888676a194e67715f84aa881b8cd26cc1d61e50edfc2c91fa27eeaa99ed8120610d86c6b13b504a7cc48b60bda8f8d5  0145-PCI-qcom-DO-NOT-MERGE-keep-the-controller-powered-ac.patch
 6718c3124a1b016fc6fb9649955ee17aaff689fc8e902fc09316cba00c29850464322f29a3ef85aa4721c7365fd2dc699adf88971d967b4f998c19ac6ccfc501  0146-wifi-ath10k-reset-recovery-bookkeeping-when-the-devi.patch
 fdc85d381c0b365661c9fc884544dbb0edbb4fef3dc557c91b276ec395fb3a03c84fe2bfc4c9f8c7e22a7e7662843e8b1cf63b3c32b0f366cf529f7e111945f3  0147-wifi-ath10k-snoc-use-one-predicate-for-the-irq-disab.patch
+ee3870cbce78ff387cd7c9b55864a47b697b3024556813c21087c150816d08ab1d9fe0938d0c009772744c29e4b43e8f8dc7d561b887e30ed47f25ab4eb24725  0148-dt-bindings-PCI-qcom-Add-endpoint-powered-off-in-sus.patch
+56f900c670952c372307671c4b6fbbb8f0393571865f879afd168dd5f08086d0b5b7966627f3a24980eaf0d21cd70b51c96e86ddc6e7e4cc9e8e64138e83e37a  0149-PCI-qcom-Leave-the-controller-alone-in-suspend-when-.patch
+7613839f61a7e78c98c46763403eb16a282db7d073f4cbd585b7e0ab0d53385cea009bbb9d05eb9cf7f6ea978ef6a28ba0f9a568826e3a8fabd8ea7086eb613b  0150-arm64-dts-qcom-msm8998-google-taimen-Easel-powers-of.patch
+e05349d40967b30da936dcfaec434412788c7e28b538f7b7f6eff666877c5c6260594ce9eb66b0b6615ba67614a85eee799eda58ce34250795ee7d8ec7b83662  0151-arm64-dts-qcom-msm8998-xo-active-only.patch
+8d60dcde25cba80b5b7959eeca449ced6e8a46bdd65a55de8ba6db2b94666de07eaff312b6d9157f00f8b4aa136c0116a9c3218527b6138013a4466d3b77c84c  0152-dt-bindings-interconnect-qcom-msm8998.patch
+f3e8b414aa5c9f3b9e7d1f67d22eea88627ab4a7dad49158c21743a40f03e231030d87246505acf4a76d9a1eec7c9594f65f5ce26a3ebb3f757a1445412ee84e  0153-interconnect-qcom-add-msm8998-driver.patch
+a2b55cf24eab56876153e02a1237ddba1a5db474ff5826e2e46e6fbe1bb3d946b5e6450ebc44db0fe956d5eae9053285813e9ea30df31765e79cf6103fc1a131  0154-arm64-dts-qcom-msm8998-interconnect-nodes.patch
+5872f2f3ca6310c3682dbd11b3c9637c7cfa02791b8c1a7501770aaad4749cc47e4afb38e9754d8feeaa7bd8f53a9c35438ccef7ea554facaf5fbab5ae045d17  0155-arm64-dts-qcom-msm8998-interconnect-consumers.patch
+2981f9f0f888ad5b99dc5f737972e1d809df2f07bfd10d5b1e5d6898e815ea7d5aa15724d18e84158c0595e881ae186e4b1486443c0c458a7429573b6324916b  0156-regulator-qcom_smd-add-sleep-set-support.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

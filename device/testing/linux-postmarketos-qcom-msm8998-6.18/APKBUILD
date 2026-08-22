@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=64
+pkgrel=65
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -211,6 +211,9 @@ source="
 	0162-cpuidle-dt-allow-a-state-to-be-disabled-by-default.patch
 	0163-arm64-dts-qcom-msm8998-add-the-MPM-interrupt-control.patch
 	0164-arm64-dts-qcom-msm8998-add-the-system-power-collapse.patch
+	0165-interconnect-qcom-msm8998-compensate-BIMC-AB-votes.patch
+	0166-arm64-dts-qcom-msm8998-add-the-BWMON-to-scale-DDR.patch
+	0167-arm64-dts-qcom-msm8998-let-the-GPU-vote-for-DDR-band.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -404,5 +407,8 @@ b0af5f4284e8729c26f9a69a33f485aeff70fb63d9d3447b716923b7d43306749fb83e5f34714522
 4cf470150ac5794d1c7849875048446c3a6dbfe3c9e805bdef24a173924f6b2050911056c41844fcc73fb3f4e7f7a16ebe8ab5d30b3d23573df74506ae92bbdd  0162-cpuidle-dt-allow-a-state-to-be-disabled-by-default.patch
 b404967970627e1598857868976ea1ea3dac131e9d21be088d0d7c5d69f34ea870f1e36b10c3ce8e5a54fd6d22a2f1f3fc5c138e5c50debed7dd043c18c3d056  0163-arm64-dts-qcom-msm8998-add-the-MPM-interrupt-control.patch
 17aedd802939129656d57f0a568ebcb12cf9f5727aad581f1165ddc1f35d77568a0c71cac275a096e0026f0c36b51d3d449de4b5825415911a26079b1d888660  0164-arm64-dts-qcom-msm8998-add-the-system-power-collapse.patch
+d1bc843e9df4d8c4f5e7cf04476b1d1ee050719f93eedf728a3fa3d20a7b80899174b15042d587e1648d5edc97c8971fce12326a9e282fcc830f95bc8a386358  0165-interconnect-qcom-msm8998-compensate-BIMC-AB-votes.patch
+dd17ef458d1d76c96172bab4ef57cf04b4bc2d8f5fb62d30133edb81b9b43c76cddbab78f1af6ddfdc7b2e26a14edff37967179a05eeab06a0a1c65ec7df73b3  0166-arm64-dts-qcom-msm8998-add-the-BWMON-to-scale-DDR.patch
+6829342a87cb3af211b87c8f06443dd1730b029a24dcb16f27a01095899456a7c8d1d65f0a83d152be8b145a8e008647d456223a9817e607fd9af98334064293  0167-arm64-dts-qcom-msm8998-let-the-GPU-vote-for-DDR-band.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

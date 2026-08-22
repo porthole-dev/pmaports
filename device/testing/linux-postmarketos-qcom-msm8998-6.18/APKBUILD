@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=60
+pkgrel=62
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -203,6 +203,9 @@ source="
 	0154-arm64-dts-qcom-msm8998-interconnect-nodes.patch
 	0155-arm64-dts-qcom-msm8998-interconnect-consumers.patch
 	0156-regulator-qcom_smd-add-sleep-set-support.patch
+	0157-regulator-bcm15602-easel-expose-direct-power-on-off-.patch
+	0158-PCI-qcom-add-root-port-link-sleep-wake-helpers-for-a.patch
+	0159-misc-easel-mipi-own-Easel-s-system-sleep-lifecycle-v.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -388,5 +391,8 @@ f3e8b414aa5c9f3b9e7d1f67d22eea88627ab4a7dad49158c21743a40f03e231030d87246505acf4
 a2b55cf24eab56876153e02a1237ddba1a5db474ff5826e2e46e6fbe1bb3d946b5e6450ebc44db0fe956d5eae9053285813e9ea30df31765e79cf6103fc1a131  0154-arm64-dts-qcom-msm8998-interconnect-nodes.patch
 5872f2f3ca6310c3682dbd11b3c9637c7cfa02791b8c1a7501770aaad4749cc47e4afb38e9754d8feeaa7bd8f53a9c35438ccef7ea554facaf5fbab5ae045d17  0155-arm64-dts-qcom-msm8998-interconnect-consumers.patch
 2981f9f0f888ad5b99dc5f737972e1d809df2f07bfd10d5b1e5d6898e815ea7d5aa15724d18e84158c0595e881ae186e4b1486443c0c458a7429573b6324916b  0156-regulator-qcom_smd-add-sleep-set-support.patch
+1bbb2e559f5fd2eb0addb4473f9ad78b0a403981c1e55296bb1963b9e4ad906cefd54805f1e34d510dfe409a29ac01480766bfa52e0973450bc01ed63a1ee600  0157-regulator-bcm15602-easel-expose-direct-power-on-off-.patch
+c37ee9a9118681508d32558761e796f531d0cc357919cb419d874e60d57e4aad2e9f98f8080808464f0913aaa2642aa6a98a3b418294f602f6b04d55501ec2a5  0158-PCI-qcom-add-root-port-link-sleep-wake-helpers-for-a.patch
+bdc3c7effc6686b17dad70279595212b820dd4cd543ee5dbeb8c81d6152b2d5105f81422faedb5661e8f55d8ae79ddf0bbaf5df04029643101f95a25b9336355  0159-misc-easel-mipi-own-Easel-s-system-sleep-lifecycle-v.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

@@ -1,0 +1,30 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 22 Aug 2026 14:15:00 +0200
+Subject: [PATCH] wifi: ath10k: snoc: use one predicate for the irq disable/enable pair
+
+ath10k_snoc_hif_stop() skips ath10k_snoc_irq_disable() when
+ATH10K_FLAG_CRASH_FLUSH is set, but ath10k_snoc_hif_start() skips the
+matching ath10k_snoc_irq_enable() on a different flag,
+ATH10K_SNOC_FLAG_RECOVERY. ath10k_core_restart() sets only the former,
+so a restart-initiated stop leaves the CE interrupt lines armed across
+ath10k_hw_power_off(); a late CE interrupt then services a register
+access against an unclocked block, which on msm8998 stalls the config
+NoC with no bus error. It is also the source of the "Unbalanced
+enable for IRQ" storm on every firmware restart. Use the same
+predicate on both sides of the balance.
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+
+--- a/drivers/net/wireless/ath/ath10k/snoc.c	2026-08-22 14:10:18.892366913 +0200
++++ b/drivers/net/wireless/ath/ath10k/snoc.c	2026-08-22 14:12:00.079603618 +0200
+@@ -923,7 +923,9 @@
+ 
+ static void ath10k_snoc_hif_stop(struct ath10k *ar)
+ {
+-	if (!test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags))
++	struct ath10k_snoc *ar_snoc = ath10k_snoc_priv(ar);
++
++	if (!test_bit(ATH10K_SNOC_FLAG_RECOVERY, &ar_snoc->flags))
+ 		ath10k_snoc_irq_disable(ar);
+ 
+ 	ath10k_core_napi_sync_disable(ar);

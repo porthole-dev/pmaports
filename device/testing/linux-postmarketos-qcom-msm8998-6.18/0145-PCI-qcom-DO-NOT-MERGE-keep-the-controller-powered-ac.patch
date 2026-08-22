@@ -1,0 +1,72 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 22 Aug 2026 12:05:00 +0200
+Subject: [PATCH] PCI: qcom: DO NOT MERGE: keep the controller powered across
+ sleep when the link is down
+
+On taimen the Easel coprocessor drops off the bus autonomously during
+the first s2idle sleep. The next suspend then sees the link down and
+takes the host_deinit branch; the host_init that follows in resume_noirq
+wedges the interconnect against the dead partner, every time (crumb
+witness: 1c00000.pcie and 0000:00:00.0 in dpm_resume_noirq, watchdog at
+alarm+21s). The first cycle -- controller left fully powered, no reinit
+-- survives every time.
+
+So skip the deinit when the link is down, keeping the controller in the
+measured-stable state: fully powered, dead link unreferenced. Runtime
+toggle so one build carries both arms:
+
+  pcie_qcom.keep_powered_on_linkdown=0   restores stock behaviour
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+
+--- a/drivers/pci/controller/dwc/pcie-qcom.c	2026-08-22 12:05:36.492779211 +0200
++++ b/drivers/pci/controller/dwc/pcie-qcom.c	2026-08-22 14:51:14.766407506 +0200
+@@ -40,6 +40,12 @@
+ #include "pcie-designware.h"
+ #include "pcie-qcom-common.h"
+ 
++/* DO NOT MERGE: taimen Easel bring-up instrument, see patch description. */
++static bool keep_powered_on_linkdown = true;
++module_param(keep_powered_on_linkdown, bool, 0644);
++MODULE_PARM_DESC(keep_powered_on_linkdown,
++		 "Skip host_deinit on link-down suspend (taimen Easel quirk)");
++
+ /* PARF registers */
+ #define PARF_SYS_CTRL				0x00
+ #define PARF_PM_CTRL				0x20
+@@ -1988,6 +1994,15 @@
+ 	if (!pcie)
+ 		return 0;
+ 
++	/* The measured-stable configuration on msm8998/Easel is the controller
++	 * left completely untouched across sleep: two residual watchdog resets
++	 * were crumb-attributed to this callback's remnants (opp/link-status
++	 * DBI traffic) even with the deinit gated. Every icc handle is NULL on
++	 * this platform, so skipping the whole pair loses nothing.
++	 */
++	if (keep_powered_on_linkdown)
++		return 0;
++
+ 	/*
+ 	 * Set minimum bandwidth required to keep data path functional during
+ 	 * suspend.
+@@ -2017,7 +2032,7 @@
+ 	 * powerdown state. This will affect the lifetime of the storage devices
+ 	 * like NVMe.
+ 	 */
+-	if (!dw_pcie_link_up(pcie->pci)) {
++	if (!keep_powered_on_linkdown && !dw_pcie_link_up(pcie->pci)) {
+ 		qcom_pcie_host_deinit(&pcie->pci->pp);
+ 		pcie->suspended = true;
+ 	}
+@@ -2048,6 +2063,9 @@
+ 	if (!pcie)
+ 		return 0;
+ 
++	if (keep_powered_on_linkdown)
++		return 0;
++
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM) {
+ 		ret = icc_enable(pcie->icc_cpu);
+ 		if (ret) {

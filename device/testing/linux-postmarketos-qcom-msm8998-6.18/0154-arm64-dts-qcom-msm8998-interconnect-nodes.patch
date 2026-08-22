@@ -1,0 +1,88 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Subject: [PATCH 4/6] arm64: dts: qcom: msm8998: Add interconnect provider
+ nodes
+
+Describe the seven NoC interconnect providers of MSM8998.  Register
+bases are taken from the downstream msm8998-bus.dtsi reg-names table
+(gnoc is a virtual fabric downstream; the APSS NoC base is carried for
+completeness, the driver does not touch it).
+
+With these nodes the interconnect driver probes, takes over the six
+RPM bus-clock resources that clk-smd-rpm kickstarts to INT_MAX at
+boot, and scales them down to the aggregated requests at sync_state.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -1591,6 +1591,12 @@
+ 			};
+ 		};
+ 
++		bimc: interconnect@1000000 {
++			compatible = "qcom,msm8998-bimc";
++			reg = <0x01000000 0x80000>;
++			#interconnect-cells = <2>;
++		};
++
+ 		tsens0: thermal@10ab000 {
+ 			compatible = "qcom,msm8998-tsens", "qcom,tsens-v2";
+ 			reg = <0x010ab000 0x1000>, /* TM */
+@@ -1613,6 +1619,24 @@
+ 			#thermal-sensor-cells = <1>;
+ 		};
+ 
++		cnoc: interconnect@1500000 {
++			compatible = "qcom,msm8998-cnoc";
++			reg = <0x01500000 0x10000>;
++			#interconnect-cells = <2>;
++		};
++
++		snoc: interconnect@1620000 {
++			compatible = "qcom,msm8998-snoc";
++			reg = <0x01620000 0x40000>;
++			#interconnect-cells = <2>;
++		};
++
++		a1noc: interconnect@1660000 {
++			compatible = "qcom,msm8998-a1noc";
++			reg = <0x01660000 0x20000>;
++			#interconnect-cells = <2>;
++		};
++
+ 		anoc1_smmu: iommu@1680000 {
+ 			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2";
+ 			reg = <0x01680000 0x10000>;
+@@ -1740,6 +1764,18 @@
+ 			vdda-pll-supply = <&vreg_l2a_1p2>;
+ 		};
+ 
++		a2noc: interconnect@1700000 {
++			compatible = "qcom,msm8998-a2noc";
++			reg = <0x01700000 0x40000>;
++			#interconnect-cells = <2>;
++		};
++
++		mnoc: interconnect@1740000 {
++			compatible = "qcom,msm8998-mnoc";
++			reg = <0x01740000 0x10000>;
++			#interconnect-cells = <2>;
++		};
++
+ 		ufshc: ufshc@1da4000 {
+ 			compatible = "qcom,msm8998-ufshc", "qcom,ufshc", "jedec,ufs-2.0";
+ 			reg = <0x01da4000 0x2500>;
+@@ -4434,6 +4470,12 @@
+ 			};
+ 		};
+ 
++		gnoc: interconnect@17900000 {
++			compatible = "qcom,msm8998-gnoc";
++			reg = <0x17900000 0x10000>;
++			#interconnect-cells = <2>;
++		};
++
+ 		cpufreq_hw: cpufreq-hw@17914800 {
+ 			compatible = "qcom,cpufreq-hw-8998";
+ 			reg = <0x017914800 0x100>,  <0x017814800 0x100>,

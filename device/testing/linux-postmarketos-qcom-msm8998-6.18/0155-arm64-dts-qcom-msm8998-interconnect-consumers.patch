@@ -1,0 +1,72 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Subject: [PATCH 5/6] arm64: dts: qcom: msm8998: Wire interconnect paths for
+ UFS, USB and MDSS
+
+Give the three bandwidth-critical DMA masters whose drivers already
+consume interconnect paths their DT wiring: UFS ("ufs-ddr"/"cpu-ufs"),
+the USB3 controller ("usb-ddr"/"apps-usb") and the display subsystem
+("mdp0-mem"/"cpu-cfg").
+
+This matters because the interconnect driver scales the previously
+pinned INT_MAX bus-clock votes down at sync_state: without consumer
+votes, storage, USB and display scanout would be left behind a
+19.2 MHz keep-alive floor.  With these paths the respective drivers
+vote for real bandwidth again.
+
+Other DMA masters (SDCC2, BLSP DMA) have no interconnect support in
+their drivers yet; they keep working through the RPM-side aggregation
+and the keep-alive floor, and can be wired up when their drivers learn
+to vote.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -8,6 +8,8 @@
+ #include <dt-bindings/clock/qcom,mmcc-msm8998.h>
+ #include <dt-bindings/clock/qcom,rpmcc.h>
+ #include <dt-bindings/firmware/qcom,scm.h>
++#include <dt-bindings/interconnect/qcom,msm8998.h>
++#include <dt-bindings/interconnect/qcom,rpm-icc.h>
+ #include <dt-bindings/power/qcom-rpmpd.h>
+ #include <dt-bindings/soc/qcom,apr.h>
+ #include <dt-bindings/thermal/thermal.h>
+@@ -1784,6 +1786,11 @@
+ 			phy-names = "ufsphy";
+ 			lanes-per-direction = <2>;
+ 			power-domains = <&gcc UFS_GDSC>;
++			interconnects = <&a1noc MASTER_UFS RPM_ALWAYS_TAG
++					 &bimc SLAVE_EBI RPM_ALWAYS_TAG>,
++					<&gnoc MASTER_APPS_PROC RPM_ALWAYS_TAG
++					 &cnoc SLAVE_UFS_CFG RPM_ALWAYS_TAG>;
++			interconnect-names = "ufs-ddr", "cpu-ufs";
+ 			status = "disabled";
+ 			#reset-cells = <1>;
+ 
+@@ -3102,6 +3109,12 @@
+ 
+ 			power-domains = <&gcc USB_30_GDSC>;
+ 
++			interconnects = <&a1noc MASTER_USB3 RPM_ALWAYS_TAG
++					 &bimc SLAVE_EBI RPM_ALWAYS_TAG>,
++					<&gnoc MASTER_APPS_PROC RPM_ALWAYS_TAG
++					 &cnoc SLAVE_USB3_0 RPM_ALWAYS_TAG>;
++			interconnect-names = "usb-ddr", "apps-usb";
++
+ 			resets = <&gcc GCC_USB_30_BCR>;
+ 
+ 			usb3_dwc3: usb@a800000 {
+@@ -3730,6 +3743,12 @@
+ 			power-domains = <&mmcc MDSS_GDSC>;
+ 			iommus = <&mmss_smmu 0>;
+ 
++			interconnects = <&mnoc MASTER_MDP_P0 RPM_ALWAYS_TAG
++					 &bimc SLAVE_EBI RPM_ALWAYS_TAG>,
++					<&gnoc MASTER_APPS_PROC RPM_ALWAYS_TAG
++					 &mnoc SLAVE_DISPLAY_CFG RPM_ALWAYS_TAG>;
++			interconnect-names = "mdp0-mem", "cpu-cfg";
++
+ 			#address-cells = <1>;
+ 			#size-cells = <1>;
+ 			ranges;

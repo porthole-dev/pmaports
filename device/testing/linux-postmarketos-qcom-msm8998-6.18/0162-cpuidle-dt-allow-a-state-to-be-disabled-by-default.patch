@@ -1,0 +1,36 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Subject: [PATCH] cpuidle: dt: allow an idle state to be disabled by default
+
+Map a new "idle-state-disabled-by-default" boolean onto
+CPUIDLE_FLAG_OFF, so a DT platform can register a state that neither
+the governors nor the s2idle path will use until userspace explicitly
+clears its per-CPU "disable" attribute.
+
+This is for states that are only safe inside system suspend.  On
+msm8998 the system-level power collapse state stops the XO, which stops
+the QTIMER: entered from normal idle, the next timer expiry is simply
+never delivered and the machine sleeps through every alarm.  Entered
+from s2idle -- after a sleep hook enables it -- wakeup comes from
+hardware MPM pins and the state is sound.  CPUIDLE_FLAG_OFF is the
+existing in-kernel mechanism for exactly this "registered but opt-in"
+semantic (registration ORs it into states_usage[].disable as
+CPUIDLE_STATE_DISABLED_BY_USER); it only lacked a DT spelling.
+
+Both selection paths honour the disable bit: find_deepest_state()
+skips disabled states for s2idle, and the governors skip them for
+normal idle, so an enable/disable pair around suspend gives a clean
+"s2idle only" gate with no new cpuidle mechanism.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/drivers/cpuidle/dt_idle_states.c
++++ b/drivers/cpuidle/dt_idle_states.c
+@@ -79,6 +79,8 @@
+ 	idle_state->flags = CPUIDLE_FLAG_RCU_IDLE;
+ 	if (of_property_read_bool(state_node, "local-timer-stop"))
+ 		idle_state->flags |= CPUIDLE_FLAG_TIMER_STOP;
++	if (of_property_read_bool(state_node, "idle-state-disabled-by-default"))
++		idle_state->flags |= CPUIDLE_FLAG_OFF;
+ 	/*
+ 	 * TODO:
+ 	 *	replace with kstrdup and pointer assignment when name

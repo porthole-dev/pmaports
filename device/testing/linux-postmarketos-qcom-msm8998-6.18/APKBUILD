@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=62
+pkgrel=63
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -206,6 +206,11 @@ source="
 	0157-regulator-bcm15602-easel-expose-direct-power-on-off-.patch
 	0158-PCI-qcom-add-root-port-link-sleep-wake-helpers-for-a.patch
 	0159-misc-easel-mipi-own-Easel-s-system-sleep-lifecycle-v.patch
+	0160-irqchip-qcom-mpm-complete-the-mailbox-transfer.patch
+	0161-irqchip-qcom-mpm-suspend-based-vMPM-handover-for-PC-.patch
+	0162-cpuidle-dt-allow-a-state-to-be-disabled-by-default.patch
+	0163-arm64-dts-qcom-msm8998-add-the-MPM-interrupt-control.patch
+	0164-arm64-dts-qcom-msm8998-add-the-system-power-collapse.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -238,7 +243,7 @@ package() {
 }
 sha512sums="
 88599ffdec96d150c1feb9b261ba93bb0301a9d0e1ad6bef7aeab1f5372cbfc57d8b43c7e902bd8f76921d1dbd8189663c142ea869e51d0e2b483b150ee00fe0  linux-6.18.tar.xz
-a0ceeb98441df05d8a0b785a48e0d2ecedb521662a78620ae23bcbefd45462bc469a005db4f91586675fe3bfe1cb407f003021a5d9da0fcf44ce541f523641af  config-postmarketos-qcom-msm8998-6.18.aarch64
+90932e304c1b9ca559db346f5034b7d69e1f3cfbaeb5bb81b16fb40361910e4c4fb84510ab5196cc55acad681a6416a67e847f480a3dbccf6da0ee9b80ee2f98  config-postmarketos-qcom-msm8998-6.18.aarch64
 e8758db2fac89658a9a5045ad09a1da57944810316bdd8024bf7f4136882325e2dfe52d60a2ecf43901c30f822a6b6d8188d3c068d6415b5bbdc9ad77234d56c  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 f04e67f59e0fdf5dacb765e0be3fb169820f5c61c8977757e9d81566ed455bbc576e7a0be638202e800250a40822291d9e9649bb9d7d2edf2d8b51883f2434cc  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 0b258fec013018a30d104ea193825efaf7c284d21baa85dc5d057ec6b33fe5142c8b1b3bca3b5adea97790fd5acf904253524d15b70a8353e1f2e628cc6ecde9  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -394,5 +399,10 @@ a2b55cf24eab56876153e02a1237ddba1a5db474ff5826e2e46e6fbe1bb3d946b5e6450ebc44db0f
 1bbb2e559f5fd2eb0addb4473f9ad78b0a403981c1e55296bb1963b9e4ad906cefd54805f1e34d510dfe409a29ac01480766bfa52e0973450bc01ed63a1ee600  0157-regulator-bcm15602-easel-expose-direct-power-on-off-.patch
 c37ee9a9118681508d32558761e796f531d0cc357919cb419d874e60d57e4aad2e9f98f8080808464f0913aaa2642aa6a98a3b418294f602f6b04d55501ec2a5  0158-PCI-qcom-add-root-port-link-sleep-wake-helpers-for-a.patch
 bdc3c7effc6686b17dad70279595212b820dd4cd543ee5dbeb8c81d6152b2d5105f81422faedb5661e8f55d8ae79ddf0bbaf5df04029643101f95a25b9336355  0159-misc-easel-mipi-own-Easel-s-system-sleep-lifecycle-v.patch
+b0af5f4284e8729c26f9a69a33f485aeff70fb63d9d3447b716923b7d43306749fb83e5f34714522b77a4ed425a08f5e950b24fbda8a8d1a7a8432c3fa08f1c8  0160-irqchip-qcom-mpm-complete-the-mailbox-transfer.patch
+35637b7c184dfcf0596f8b6f86d0984600f3a70aaf5b0a2a4ffc35b07cc7d8e29eeb23d442e4be93a6f5f5490199fd6f0a1cdac1506459d9a020367e6f04e4cd  0161-irqchip-qcom-mpm-suspend-based-vMPM-handover-for-PC-.patch
+4cf470150ac5794d1c7849875048446c3a6dbfe3c9e805bdef24a173924f6b2050911056c41844fcc73fb3f4e7f7a16ebe8ab5d30b3d23573df74506ae92bbdd  0162-cpuidle-dt-allow-a-state-to-be-disabled-by-default.patch
+b404967970627e1598857868976ea1ea3dac131e9d21be088d0d7c5d69f34ea870f1e36b10c3ce8e5a54fd6d22a2f1f3fc5c138e5c50debed7dd043c18c3d056  0163-arm64-dts-qcom-msm8998-add-the-MPM-interrupt-control.patch
+17aedd802939129656d57f0a568ebcb12cf9f5727aad581f1165ddc1f35d77568a0c71cac275a096e0026f0c36b51d3d449de4b5825415911a26079b1d888660  0164-arm64-dts-qcom-msm8998-add-the-system-power-collapse.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

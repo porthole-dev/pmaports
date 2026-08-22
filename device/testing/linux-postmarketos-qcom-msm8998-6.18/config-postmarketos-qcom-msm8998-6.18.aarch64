@@ -4813,7 +4813,7 @@ CONFIG_ARM_GIC_V3_ITS=y
 # CONFIG_XILINX_INTC is not set
 CONFIG_PARTITION_PERCPU=y
 # CONFIG_QCOM_PDC is not set
-# CONFIG_QCOM_MPM is not set
+CONFIG_QCOM_MPM=y
 # end of IRQ chip support
 
 # CONFIG_IPACK_BUS is not set

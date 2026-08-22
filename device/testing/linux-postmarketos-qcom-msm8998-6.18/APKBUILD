@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=63
+pkgrel=64
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -357,7 +357,7 @@ f20baabbfe5d0c3cb71217a9393e65eb504f210ad570967c08b171ba6d422249a8757d3a4a5468e1
 8d908668880ae5ad940fcd57d88d84df8cd156854f9821366d4befe61fe36172d45ce640c49a9e15102f21dd8e1c617688779b0634042b30ea3a3596122ecc8e  0114-arm64-dts-qcom-msm8998-fix-the-PLL-override-for-the-.patch
 348c52edacf3d88de48cf1854022dbcd0d802a2d3e7f9ac7c3271bd78e620c995c46261ae6073a0e9c65c29c9cbe97ec42e258f6ff7c1e9db1055a1777260859  0115-cpufreq-qcom-hw-msm8998-request-a-corner-before-star.patch
 bb129388bfe84548f922e6e29a9216aa3f5cb2a1121a5dea27f74976ad764a182445747002afccc8f3fcd1f53371e3730514f81a6dc9bcc1aaf8fd135034a53b  0116-wifi-ath10k-handle-the-DROP-HTT-tx-completion-status.patch
-ac7e98262605ba4eec9f323c70053696fc60f18dff86a7be89ed490f24ba1f252138b3349b9fb1b2c76f482f105a348beb0d8234667417f4fcbf30f172140a79  0117-wifi-ath10k-restart-the-firmware-when-a-key-install-.patch
+f3cef6915ec82cfbf9118bda0cd6ed1a979943043415b02e43347306b790a2c39078f03ff7ffcbea31c7f99433914d8240439cf422612485efe1e202f5848d65  0117-wifi-ath10k-restart-the-firmware-when-a-key-install-.patch
 8a09b961123b845d7aa633c8982990c37eaffd196569e34861262c6370a2e22c62c4635d11f168457393ac1f01a7571212989d7f000fbb330d25265c675915e7  0118-ASoC-codecs-wcd-mbhc-v2-fix-double-release-of-the-MI.patch
 0b3a47a554d323c567f6155bdc7cd71add9adaa2a72d738b8e922cf5d1e3be9c9ba36b89e6ea670cee107cf5b0d4b8f38bb51e1c29fbdfed8f1cafb51146451c  0119-media-qcom-camss-vfe-reference-count-the-power-domai.patch
 a953f88c33c044d85582b850c198fe83fb11c8a556ad85a4b487755742f53f73d2a006893a16246776187a95b1b07a2e56b021b67f6513749c9571f94260a94d  0120-cpufreq-qcom-hw-msm8998-program-the-APM-threshold-co.patch

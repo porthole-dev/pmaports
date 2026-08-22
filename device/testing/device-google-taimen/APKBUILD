@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=13
+pkgrel=14
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -78,7 +78,6 @@ source="
 	taimen-proximity.rules
 	taimen-accel-matrix.rules
 	phosh-desktop-env.conf
-	taimen-suspend-guard.conf
 	ucm/HiFi.conf
 	ucm/taimen.conf
 	iio-sensor-proxy-wait-for-ssc.conf
@@ -108,7 +107,6 @@ source="
 	taimen-rescue.initd
 	taimen-ambient-nudge.desktop
 	taimen-uclamp-session.desktop
-	taimen-suspend-guard-elogind.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -214,21 +212,13 @@ package() {
 	install -Dm644 "$srcdir"/phosh-desktop-env.conf \
 		"$pkgdir"/usr/lib/environment.d/60-phosh-desktop.conf
 
-	# Suspend hangs the SoC via ipa -- see the file's header. It goes on
-	# systemd-suspend.service and NOT on suspend.target: the stock target is
-	# ordered After= the service, so the service suspends the machine before
-	# the target's assertions are ever evaluated. On suspend.target this file
-	# was decorative from 2026-07-31 to 2026-08-02 (PLAN-daily-driver-v2.md
-	# 6.5a). suspend-then-hibernate reaches the same suspend path so it gets
-	# the same guard; plain hibernate cannot work here (no swap-to-disk).
-	install -Dm644 "$srcdir"/taimen-suspend-guard.conf \
-		"$pkgdir"/usr/lib/systemd/system/systemd-suspend.service.d/10-taimen-broken.conf
-	install -Dm644 "$srcdir"/taimen-suspend-guard.conf \
-		"$pkgdir"/usr/lib/systemd/system/systemd-suspend-then-hibernate.service.d/10-taimen-broken.conf
-	# elogind counterpart -- see the file's own header for why this is a
-	# static AllowSuspend=no rather than the same arm/disarm gate.
-	install -Dm644 "$srcdir"/taimen-suspend-guard-elogind.conf \
-		"$pkgdir"/etc/elogind/sleep.conf.d/10-taimen-broken.conf
+	# The suspend guard (10-taimen-broken.conf) is retired as of kernel
+	# 6.18-r58: both deterministic s2idle deaths are root-caused and fixed
+	# (PCIe/Easel link teardown; the ath10k stranded-recovery ladder), and
+	# the fix stack survived 85/85 cycles across the raw and systemd paths
+	# with WLAN associated (BP-11, 2026-08-22). If a regression brings a
+	# hang back, restore the guard from git history rather than debugging
+	# with suspend enabled.
 
 	# cpuidle mitigation for the s2idle hang -- see the script's own header
 	# and docs/campaign/ws-05-suspend.md for the root-caused A/B this is
@@ -446,7 +436,6 @@ ccc83c0111c5fd66a71d4ef4fb45a37064e1ca50a18bbe8f1ddae7fbc99a0ea78e52165950e227e2
 20bba033222c5979b0c93083a8a5d04a410eb4332112c1fea9c38a6d159d39fccd05533fee7546c01f79ace97a76c69204243efe5266be7ea8eaead807df1213  taimen-proximity.rules
 e9a8ad48c0b9e250ace1e6cea004f628ebf741fcdfe6d767f1fc4da953c8205c87f84b4e61a15a6a82582790e241b06ce20e220c2165c365062c293d0335de7d  taimen-accel-matrix.rules
 6cb9e6ebcc0cd5677afa99372405b24f56b3b854885917fcf344d8ccce0b42bf9488144893dacb5bb52b0deef3103f01755fff14a5a318e0a0151875363e5a46  phosh-desktop-env.conf
-8a208de92ac9239bd654c4d7317987fbfa729c6e756bc8204d61bf1c795de55b810ce39c44529e87e10b08dea14e4a3b274e3cf3f20daded415260253748e79b  taimen-suspend-guard.conf
 0d462f213e87f6fe4ca59b47f878842ab0556e9f698badaa3c35e2d3a0281430417a96a1ca84f3429d861e8fae8d5969793cad3ebb39c71179a946260c868436  HiFi.conf
 af25abcbe127f1c6f4256acec83b0d25addd0f1140fc449d8ce645f04057c4dc31cb3855640acd0c4b194f4028a037f0527fdfe00c69290e713e5fe92a9cce91  taimen.conf
 0c4b35807a836c2fbbc78afcdb12e10c439ef9ce76e01304657b542a8b48f30a084f954c9441e809ea2fd42e3b2100c779bc2312676924572068a68297705236  iio-sensor-proxy-wait-for-ssc.conf
@@ -476,5 +465,4 @@ b271bb6cea1ab2cc027bb0ba3f3e4d513d809571d0070015e6fd4938af20a3fda94723d5ac7ee4bf
 a4346603886f434ab15a614b8ed454601e810ca60b458491eed8e0548efc7772af722bf8f626d3301ed54fff358443be741e68f9d2ab48a28ba586213f222d14  taimen-rescue.initd
 e2c9528ccfb6a79226af530990bc5ca603ad63fa9a36439fdf344a04bc8af1b085659270d4d5e90682403524723796839c492ee2d87734b297800dbc5a913304  taimen-ambient-nudge.desktop
 2abb5206a413bc786aad46a9608ce41793fbcb561dce8f1ec050775733f04fe634e292187eaf7d9048f56197109cf2e00c261f89440c9c6eebab0f0446241c0f  taimen-uclamp-session.desktop
-dac6d1a3a1fceb692731373f936dd5e932ea7308ae4eeac37d0ba8abe4e86bb7abb6c4617fb5428ede7166ac7efc614395c331726273df2f2e828404dec14693  taimen-suspend-guard-elogind.conf
 "

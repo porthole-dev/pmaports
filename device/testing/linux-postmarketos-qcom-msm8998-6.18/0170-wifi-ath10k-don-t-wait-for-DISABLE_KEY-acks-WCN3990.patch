@@ -1,22 +1,20 @@
-From 6607b969203548cea24d0fc529913f834d812be8 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000003 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
-Date: Sat, 23 Aug 2026 02:45:00 +0200
-Subject: [PATCH] wifi: ath10k: don't wait for DISABLE_KEY acks WCN3990 never sends
+Date: Sat, 23 Aug 2026 12:10:00 +0200
+Subject: [PATCH] wifi: ath10k: don't wait for DISABLE_KEY acks WCN3990 never
+ sends
 
 ath10k_install_key() waits 3 s for the firmware to acknowledge every
 key command. Measured on a Pixel 2 XL (WCN3990 hw1.0): the DISABLE_KEY
 ack never arrives on any teardown leg - disconnect, roam or the
 pre-suspend teardown cfg80211 performs for a driver suspending without
-WoWLAN - even with the wait extended to 8 s, while the firmware carries
-on normally. The wait only stalls the wiphy for 3 s per key at suspend
-entry and on every roam. Send the command and return; SET_KEY keeps
-its wait and its recovery escalation.
+WoWLAN - even with the wait extended to 8 s, while the firmware
+carries on normally. The wait only stalls the wiphy for 3 s per key at
+suspend entry and on every roam. Send the command and return; SET_KEY
+keeps its wait and its recovery escalation.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/net/wireless/ath/ath10k/mac.c | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
-
 diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
 index 3728517..48554f4 100644
 --- a/drivers/net/wireless/ath/ath10k/mac.c
@@ -41,6 +39,3 @@ index 3728517..48554f4 100644
  	time_left = wait_for_completion_timeout(&ar->install_key_done, 3 * HZ);
  	if (time_left == 0) {
  		/* An unacknowledged SET_KEY leaves a link that is meant to
--- 
-2.55.0
-

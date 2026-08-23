@@ -1,53 +1,50 @@
-From 40126054eaba9b666f2e68790ce49c89648196e4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
-Date: Sat, 23 Aug 2026 02:45:00 +0200
-Subject: [PATCH] drm/msm: drop the GPU DDR bandwidth vote across suspend
+Date: Sat, 23 Aug 2026 12:10:00 +0200
+Subject: [PATCH] drm/msm: adreno: drop the GPU DDR vote across system suspend
 
-With per-OPP bandwidth votes wired, the GPU parks with its last OPP's
-interconnect vote standing while the GPU itself is fully collapsed. On
-msm8998 the RPM never applies its sleep set (no APSS power-collapse
-handshake), so that active-set vote holds DDR at the voted rate through
-every system suspend and through screen-on idle. Drop the OPP entirely
-when devfreq suspends - zeroing bandwidth, level and required-opps
-votes - and re-establish it on resume before devfreq restarts.
-Downstream kgsl likewise zeroes its bus votes on slumber.
+With per-OPP bandwidth votes wired, the GPU sleeps with its last OPP's
+interconnect vote standing. On msm8998 the RPM never applies its sleep
+set (no APSS power-collapse handshake), so that active-set vote holds
+DDR at the voted rate through every system suspend. Drop the OPP after
+pm_runtime_force_suspend(), when the GPU is fully quiescent - zeroing
+the bandwidth, level and required-opps votes for the sleep. The OPP is
+re-established lazily by the first devfreq target() after resume
+(opp_table->enabled is false, so the same-OPP early return does not
+trigger). Deliberately not hooked into runtime PM: a first cut in
+msm_devfreq_suspend() ran on every screen-off idle and was implicated
+in a lock/unlock crash.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/gpu/drm/msm/msm_gpu_devfreq.c | 13 +++++++++++++
- 1 file changed, 13 insertions(+)
-
-diff --git a/drivers/gpu/drm/msm/msm_gpu_devfreq.c b/drivers/gpu/drm/msm/msm_gpu_devfreq.c
-index dcfa4b0..9d01c43 100644
---- a/drivers/gpu/drm/msm/msm_gpu_devfreq.c
-+++ b/drivers/gpu/drm/msm/msm_gpu_devfreq.c
-@@ -239,6 +239,9 @@ void msm_devfreq_resume(struct msm_gpu *gpu)
- 	df->suspended = false;
- 	mutex_unlock(&df->lock);
+diff --git a/drivers/gpu/drm/msm/adreno/adreno_device.c b/drivers/gpu/drm/msm/adreno/adreno_device.c
+index 28f744f..67dff89 100644
+--- a/drivers/gpu/drm/msm/adreno/adreno_device.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_device.c
+@@ -6,6 +6,8 @@
+  * Copyright (c) 2014,2017 The Linux Foundation. All rights reserved.
+  */
  
-+	/* Restore the OPP (clock and bandwidth vote) dropped at suspend. */
-+	dev_pm_opp_set_rate(&gpu->pdev->dev, df->devfreq->previous_freq);
++#include <linux/pm_opp.h>
 +
- 	devfreq_resume_device(df->devfreq);
- }
+ #include "adreno_gpu.h"
  
-@@ -257,6 +260,16 @@ void msm_devfreq_suspend(struct msm_gpu *gpu)
+ bool hang_debug = false;
+@@ -379,6 +381,17 @@ out:
+ 	if (ret)
+ 		resume_scheduler(gpu);
  
- 	cancel_idle_work(df);
- 	cancel_boost_work(df);
-+
 +	/*
-+	 * Drop the OPP entirely so the interconnect vote goes to zero while
-+	 * the GPU is collapsed.  On msm8998 the RPM never applies its sleep
-+	 * set (no APSS power-collapse handshake), so a bandwidth vote left
-+	 * standing here holds DDR at that rate through every system suspend
-+	 * and through screen-on idle.  Downstream kgsl likewise zeroes its
-+	 * bus votes on slumber.
++	 * Drop the OPP entirely so the DDR bandwidth vote goes to zero for
++	 * the sleep.  On msm8998 the RPM never applies its sleep set (no
++	 * APSS power-collapse handshake), so a standing active-set vote
++	 * holds DDR at the voted rate through the whole system suspend.
++	 * The OPP is re-established lazily by the first devfreq target()
++	 * after resume; the GPU is fully quiescent here, so nothing races.
 +	 */
-+	dev_pm_opp_set_opp(&gpu->pdev->dev, NULL);
++	if (!ret)
++		dev_pm_opp_set_opp(dev, NULL);
++
+ 	return ret;
  }
  
- static void msm_devfreq_boost_work(struct kthread_work *work)
--- 
-2.55.0
-

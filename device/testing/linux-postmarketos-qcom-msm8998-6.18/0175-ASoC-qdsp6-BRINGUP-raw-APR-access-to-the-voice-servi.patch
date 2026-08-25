@@ -1,0 +1,448 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 25 Aug 2026 21:02:14 +0200
+Subject: ASoC: qdsp6: BRINGUP: raw APR access to the voice services
+
+DO NOT SUBMIT. An instrument, deleted once the driver it exists to
+develop is written. Kept in the series the way 0093/0094 are: marked in
+the subject so it cannot be mistaken for shippable work.
+
+msm8998 has no voice call audio under mainline because there is no voice
+service on the AP side to set up the modem-ADSP-codec session. Writing
+one means encoding a session sequence known only from downstream sources,
+written against a different APR stack and validated against a different
+ADSP firmware revision. Learning which half of it is wrong at one kernel
+build per attempt is not a workable loop.
+
+So put the sequence in userspace first. This driver binds the three voice
+services and forwards raw APR packets between them and debugfs. It knows
+nothing about the voice protocol and deliberately never will.
+
+It paid for itself: the sequence it produced now works in both directions
+on a live call, and what it measured is the specification the real driver
+has to implement.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/qcom/Kconfig             |  10 +
+ sound/soc/qcom/qdsp6/Makefile      |   1 +
+ sound/soc/qcom/qdsp6/q6voice-dbg.c | 381 +++++++++++++++++++++++++++++
+ 3 files changed, 392 insertions(+)
+ create mode 100644 sound/soc/qcom/qdsp6/q6voice-dbg.c
+
+diff --git a/sound/soc/qcom/Kconfig b/sound/soc/qcom/Kconfig
+index 705750ebb8a6..77b4366c1915 100644
+--- a/sound/soc/qcom/Kconfig
++++ b/sound/soc/qcom/Kconfig
+@@ -140,6 +140,16 @@ config SND_SOC_QDSP6_USB
+       with the SoC USB framework to initialize a session
+       with active USB SND devices.
+ 
++config SND_SOC_QDSP6_VOICE_DBG
++	tristate "Raw APR access to the QDSP6 voice services (bring-up)"
++	depends on QCOM_APR
++	depends on DEBUG_FS
++	help
++	  Bring-up instrument. Exposes the ADSP's MVM, CVS and CVP voice
++	  services as raw APR pipes under /sys/kernel/debug/q6voice, so the
++	  voice-call session sequence can be developed in userspace before it
++	  is written as a kernel driver. Not useful on a finished port.
++
+ config SND_SOC_QDSP6
+ 	tristate "SoC ALSA audio driver for QDSP6"
+ 	depends on QCOM_APR
+diff --git a/sound/soc/qcom/qdsp6/Makefile b/sound/soc/qcom/qdsp6/Makefile
+index 67267304e7e9..85ba8527bd36 100644
+--- a/sound/soc/qcom/qdsp6/Makefile
++++ b/sound/soc/qcom/qdsp6/Makefile
+@@ -18,3 +18,4 @@ obj-$(CONFIG_SND_SOC_QDSP6_APM_LPASS_DAI) += q6apm-lpass-dais.o
+ obj-$(CONFIG_SND_SOC_QDSP6_PRM) += q6prm.o
+ obj-$(CONFIG_SND_SOC_QDSP6_PRM_LPASS_CLOCKS) += q6prm-clocks.o
+ obj-$(CONFIG_SND_SOC_QDSP6_USB) += q6usb.o
++obj-$(CONFIG_SND_SOC_QDSP6_VOICE_DBG) += q6voice-dbg.o
+diff --git a/sound/soc/qcom/qdsp6/q6voice-dbg.c b/sound/soc/qcom/qdsp6/q6voice-dbg.c
+new file mode 100644
+index 000000000000..8522d3f522ac
+--- /dev/null
++++ b/sound/soc/qcom/qdsp6/q6voice-dbg.c
+@@ -0,0 +1,381 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * BRING-UP INSTRUMENT -- NOT FOR SUBMISSION.
++ *
++ * A debugfs pipe to the ADSP voice services (MVM/CVS/CVP).
++ *
++ * Mainline has no voice service, so a voice call on msm8998 has nothing on the
++ * AP side to set up the modem<->ADSP<->codec session. Writing that service is a
++ * large piece of work, and the session sequence it has to encode is only known
++ * from downstream sources -- which are for a different ADSP firmware revision
++ * and a different APR stack. Iterating on that sequence one kernel build at a
++ * time is the slow way to find out which half of it is wrong.
++ *
++ * This driver moves the sequence into userspace: it forwards raw APR packets
++ * between debugfs and the three voice services, and nothing else. It has no
++ * opinion about the protocol. Once a sequence is known to produce audio, it
++ * gets written as a real q6voice ASoC component and this file is deleted.
++ *
++ *   /sys/kernel/debug/q6voice/{mvm,cvs,cvp}
++ *
++ * write: "OPCODE SRC_PORT DEST_PORT TOKEN [PAYLOAD_BYTE ...]", all hex.
++ * read:  one queued response per read(), as
++ *        "opcode=%08x src=%04x dest=%04x token=%08x size=%u payload=<hex>",
++ *        or EOF when the queue is empty.
++ */
++
++#define pr_fmt(fmt) "q6voice-dbg: " fmt
++
++#include <linux/debugfs.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/slab.h>
++#include <linux/soc/qcom/apr.h>
++#include <linux/spinlock.h>
++#include <linux/uaccess.h>
++
++#define Q6VOICE_DBG_RING	16
++#define Q6VOICE_DBG_PAYLOAD	256
++/* opcode, src, dest, token, then one two-digit token per payload byte. */
++#define Q6VOICE_DBG_CMD_MAX	(4 * 9 + Q6VOICE_DBG_PAYLOAD * 3 + 1)
++
++struct q6voice_dbg_rx {
++	u32 opcode;
++	u32 token;
++	u16 src_port;
++	u16 dest_port;
++	u32 size;
++	u8 payload[Q6VOICE_DBG_PAYLOAD];
++};
++
++struct q6voice_dbg_svc {
++	const char *name;
++	u32 svc_id;
++	struct apr_device *adev;
++	/* protects ring, head, count and dropped */
++	spinlock_t lock;
++	struct q6voice_dbg_rx ring[Q6VOICE_DBG_RING];
++	unsigned int head;	/* next slot to write */
++	unsigned int count;	/* unread entries */
++	u32 dropped;
++};
++
++static struct q6voice_dbg_svc q6voice_dbg_svcs[] = {
++	{ .name = "mvm", .svc_id = APR_SVC_ADSP_MVM },
++	{ .name = "cvs", .svc_id = APR_SVC_ADSP_CVS },
++	{ .name = "cvp", .svc_id = APR_SVC_ADSP_CVP },
++};
++
++static struct dentry *q6voice_dbg_dir;
++
++static struct q6voice_dbg_svc *q6voice_dbg_find(u32 svc_id)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(q6voice_dbg_svcs); i++)
++		if (q6voice_dbg_svcs[i].svc_id == svc_id)
++			return &q6voice_dbg_svcs[i];
++
++	return NULL;
++}
++
++/*
++ * A board whose ADSP firmware does not host the audio protection domain has to
++ * delete qcom,protection-domain from its APR service nodes, or apr never
++ * registers them: of_register_apr_devices() takes the PD-less services on one
++ * pass and the PD-bearing ones on another, and a PD that never arrives is
++ * skipped by both, silently. A device tree that has that deletion for the
++ * audio services but not yet for the voice ones leaves exactly these three
++ * unreachable.
++ *
++ * Drop the property so the instrument works on such a tree as well. On a tree
++ * that already deletes it this finds nothing and says nothing.
++ *
++ * It takes effect at the next apr probe, so rebind the rpmsg device:
++ *
++ *   cd /sys/bus/rpmsg/drivers/qcom,apr
++ *   d=$(ls -d *apr_audio_svc*); echo $d > unbind; echo $d > bind
++ */
++static int q6voice_dbg_unhide_services(void)
++{
++	struct device_node *apr;
++	int freed = 0;
++
++	apr = of_find_compatible_node(NULL, NULL, "qcom,apr-v2");
++	if (!apr)
++		return 0;
++
++	for_each_child_of_node_scoped(apr, node) {
++		struct property *prop;
++		u32 svc_id;
++
++		if (of_property_read_u32(node, "reg", &svc_id))
++			continue;
++		if (!q6voice_dbg_find(svc_id))
++			continue;
++
++		prop = of_find_property(node, "qcom,protection-domain", NULL);
++		if (prop && !of_remove_property(node, prop))
++			freed++;
++	}
++
++	of_node_put(apr);
++
++	return freed;
++}
++
++static int q6voice_dbg_callback(struct apr_device *adev,
++				struct apr_resp_pkt *data)
++{
++	struct q6voice_dbg_svc *svc = dev_get_drvdata(&adev->dev);
++	struct apr_hdr *hdr = &data->hdr;
++	struct q6voice_dbg_rx *rx;
++	unsigned long flags;
++	u32 size;
++
++	size = min_t(u32, data->payload_size, Q6VOICE_DBG_PAYLOAD);
++
++	spin_lock_irqsave(&svc->lock, flags);
++
++	/*
++	 * Overwrite the oldest entry rather than drop the newest: a wedge is
++	 * diagnosed from what the ADSP said last, not from what it said first.
++	 */
++	if (svc->count == Q6VOICE_DBG_RING)
++		svc->dropped++;
++	else
++		svc->count++;
++
++	rx = &svc->ring[svc->head];
++	svc->head = (svc->head + 1) % Q6VOICE_DBG_RING;
++
++	rx->opcode = hdr->opcode;
++	rx->token = hdr->token;
++	rx->src_port = hdr->src_port;
++	rx->dest_port = hdr->dest_port;
++	rx->size = size;
++	if (size)
++		memcpy(rx->payload, data->payload, size);
++
++	spin_unlock_irqrestore(&svc->lock, flags);
++
++	return 0;
++}
++
++static bool q6voice_dbg_pop(struct q6voice_dbg_svc *svc,
++			    struct q6voice_dbg_rx *out)
++{
++	unsigned long flags;
++	unsigned int tail;
++	bool got = false;
++
++	spin_lock_irqsave(&svc->lock, flags);
++	if (svc->count) {
++		tail = (svc->head + Q6VOICE_DBG_RING - svc->count) %
++		       Q6VOICE_DBG_RING;
++		*out = svc->ring[tail];
++		svc->count--;
++		got = true;
++	}
++	spin_unlock_irqrestore(&svc->lock, flags);
++
++	return got;
++}
++
++static ssize_t q6voice_dbg_read(struct file *file, char __user *ubuf,
++				size_t len, loff_t *ppos)
++{
++	struct q6voice_dbg_svc *svc = file->private_data;
++	struct q6voice_dbg_rx rx;
++	size_t cap;
++	char *line;
++	int n, i;
++
++	if (!q6voice_dbg_pop(svc, &rx))
++		return 0;
++
++	cap = 96 + Q6VOICE_DBG_PAYLOAD * 2 + 2;
++	line = kmalloc(cap, GFP_KERNEL);
++	if (!line)
++		return -ENOMEM;
++
++	n = scnprintf(line, cap,
++		      "opcode=%08x src=%04x dest=%04x token=%08x size=%u payload=",
++		      rx.opcode, rx.src_port, rx.dest_port, rx.token, rx.size);
++	for (i = 0; i < rx.size; i++)
++		n += scnprintf(line + n, cap - n, "%02x", rx.payload[i]);
++	n += scnprintf(line + n, cap - n, "\n");
++
++	if (len < n) {
++		kfree(line);
++		return -EINVAL;
++	}
++	if (copy_to_user(ubuf, line, n)) {
++		kfree(line);
++		return -EFAULT;
++	}
++
++	kfree(line);
++	return n;
++}
++
++static ssize_t q6voice_dbg_write(struct file *file, const char __user *ubuf,
++				 size_t len, loff_t *ppos)
++{
++	struct q6voice_dbg_svc *svc = file->private_data;
++	u32 hdr_field[4];	/* opcode, src_port, dest_port, token */
++	struct apr_pkt *pkt;
++	size_t plen = 0;
++	char *buf, *cur;
++	int ret, i;
++
++	if (len >= Q6VOICE_DBG_CMD_MAX)
++		return -E2BIG;
++	if (!svc->adev)
++		return -ENODEV;
++
++	buf = memdup_user_nul(ubuf, len);
++	if (IS_ERR(buf))
++		return PTR_ERR(buf);
++
++	pkt = kzalloc(sizeof(pkt->hdr) + Q6VOICE_DBG_PAYLOAD, GFP_KERNEL);
++	if (!pkt) {
++		kfree(buf);
++		return -ENOMEM;
++	}
++
++	cur = buf;
++	for (i = 0; i < ARRAY_SIZE(hdr_field); i++) {
++		char *tok;
++
++		do {
++			tok = strsep(&cur, " \t\n\r");
++		} while (tok && !*tok);
++
++		if (!tok || kstrtou32(tok, 16, &hdr_field[i])) {
++			ret = -EINVAL;
++			goto out;
++		}
++	}
++
++	while (cur) {
++		char *tok = strsep(&cur, " \t\n\r");
++
++		if (!tok || !*tok)
++			continue;
++		if (plen == Q6VOICE_DBG_PAYLOAD) {
++			ret = -E2BIG;
++			goto out;
++		}
++		if (kstrtou8(tok, 16, &pkt->payload[plen])) {
++			ret = -EINVAL;
++			goto out;
++		}
++		plen++;
++	}
++
++	pkt->hdr.hdr_field = APR_SEQ_CMD_HDR_FIELD;
++	pkt->hdr.pkt_size = sizeof(pkt->hdr) + plen;
++	pkt->hdr.src_port = hdr_field[1];
++	pkt->hdr.dest_port = hdr_field[2];
++	pkt->hdr.token = hdr_field[3];
++	pkt->hdr.opcode = hdr_field[0];
++
++	ret = apr_send_pkt(svc->adev, pkt);
++	if (ret < 0)
++		goto out;
++	ret = len;
++out:
++	kfree(pkt);
++	kfree(buf);
++	return ret;
++}
++
++static int q6voice_dbg_open(struct inode *inode, struct file *file)
++{
++	file->private_data = inode->i_private;
++
++	return stream_open(inode, file);
++}
++
++static const struct file_operations q6voice_dbg_fops = {
++	.owner = THIS_MODULE,
++	.open = q6voice_dbg_open,
++	.read = q6voice_dbg_read,
++	.write = q6voice_dbg_write,
++};
++
++static int q6voice_dbg_probe(struct apr_device *adev)
++{
++	struct q6voice_dbg_svc *svc = q6voice_dbg_find(adev->svc_id);
++
++	if (!svc)
++		return -ENODEV;
++
++	svc->adev = adev;
++	dev_set_drvdata(&adev->dev, svc);
++	debugfs_create_file(svc->name, 0600, q6voice_dbg_dir, svc,
++			    &q6voice_dbg_fops);
++
++	dev_info(&adev->dev, "voice service %s reachable\n", svc->name);
++
++	return 0;
++}
++
++static void q6voice_dbg_remove(struct apr_device *adev)
++{
++	struct q6voice_dbg_svc *svc = dev_get_drvdata(&adev->dev);
++
++	debugfs_lookup_and_remove(svc->name, q6voice_dbg_dir);
++	svc->adev = NULL;
++}
++
++static const struct apr_device_id q6voice_dbg_id[] = {
++	{ "MVM", APR_DOMAIN_ADSP, APR_SVC_ADSP_MVM, 0 },
++	{ "CVS", APR_DOMAIN_ADSP, APR_SVC_ADSP_CVS, 0 },
++	{ "CVP", APR_DOMAIN_ADSP, APR_SVC_ADSP_CVP, 0 },
++	{ }
++};
++
++static struct apr_driver q6voice_dbg_driver = {
++	.probe = q6voice_dbg_probe,
++	.remove = q6voice_dbg_remove,
++	.callback = q6voice_dbg_callback,
++	.id_table = q6voice_dbg_id,
++	.driver = {
++		.name = "q6voice-dbg",
++	},
++};
++
++static int __init q6voice_dbg_init(void)
++{
++	int i, ret, freed;
++
++	for (i = 0; i < ARRAY_SIZE(q6voice_dbg_svcs); i++)
++		spin_lock_init(&q6voice_dbg_svcs[i].lock);
++
++	freed = q6voice_dbg_unhide_services();
++	if (freed)
++		pr_info("dropped an unreachable protection domain from %d voice service node(s); rebind qcom,apr to register them\n",
++			freed);
++
++	q6voice_dbg_dir = debugfs_create_dir("q6voice", NULL);
++
++	ret = apr_driver_register(&q6voice_dbg_driver);
++	if (ret)
++		debugfs_remove_recursive(q6voice_dbg_dir);
++
++	return ret;
++}
++module_init(q6voice_dbg_init);
++
++static void __exit q6voice_dbg_exit(void)
++{
++	apr_driver_unregister(&q6voice_dbg_driver);
++	debugfs_remove_recursive(q6voice_dbg_dir);
++}
++module_exit(q6voice_dbg_exit);
++
++MODULE_DESCRIPTION("Raw APR access to the ADSP voice services, for bring-up");
++MODULE_LICENSE("GPL");

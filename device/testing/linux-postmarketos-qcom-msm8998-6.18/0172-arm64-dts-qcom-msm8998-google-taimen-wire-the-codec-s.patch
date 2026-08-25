@@ -1,0 +1,82 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 25 Aug 2026 19:50:00 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: wire the codec's
+ second SLIMbus interface
+
+The WCD9341 exposes four SLIMbus interfaces; taimen only wires AIF1
+(SLIMBUS_0_RX/TX) for HiFi playback and capture. AIF2 -- the interface
+downstream uses for the voice-call path -- is not reachable at all.
+
+Everything needed is already in mainline: q6afe has the SLIMBUS_1 ports,
+q6afe-dai has the DAIs and DAPM widgets, and q6routing already exposes
+the SLIMBUS_1_RX audio mixer and the SLIMBUS_1_TX mixer. Only the DAI
+links were missing.
+
+This does not by itself make a voice call audible. Mainline has no voice
+service (no MVM/CVS/CVP) and q6routing exposes only MultiMedia1..8
+front-ends, so nothing can route a voice stream to this port from the
+application processor. The value is that the port becomes observable: if
+the modem drives SLIMBUS_1 autonomously, a capture from "SLIM Voice
+Capture" taken during a call will contain the downlink -- which decides
+whether a userspace loopback is viable or whether the voice service has
+to be implemented.
+
+Unused links are inert, so this costs nothing when no one opens them.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -129,6 +129,52 @@ codec {
+ 			};
+ 		};
+ 
++		/*
++		 * The codec's second SLIMbus interface (AIF2), which downstream
++		 * uses for the voice-call path. Wiring it as an ordinary DAI
++		 * link costs nothing when unused and makes the port reachable:
++		 * mainline already has the SLIMBUS_1 AFE ports, the q6afe DAIs
++		 * and the q6routing mixers -- only the links were missing.
++		 *
++		 * Note this does NOT by itself carry a call. Mainline has no
++		 * voice service (no MVM/CVS/CVP), and q6routing exposes only
++		 * MultiMedia1..8 front-ends, so nothing can route a voice stream
++		 * here from the AP. It exists so the port can be observed: if
++		 * the modem drives SLIMBUS_1 autonomously, a capture from
++		 * "SLIM Voice Capture" during a call will contain audio.
++		 */
++		slim-voice-dai-link {
++			link-name = "SLIM Voice Playback";
++
++			cpu {
++				sound-dai = <&q6afedai SLIMBUS_1_RX>;
++			};
++
++			platform {
++				sound-dai = <&q6routing>;
++			};
++
++			codec {
++				sound-dai = <&wcd9340 2>;
++			};
++		};
++
++		slim-voicecap-dai-link {
++			link-name = "SLIM Voice Capture";
++
++			cpu {
++				sound-dai = <&q6afedai SLIMBUS_1_TX>;
++			};
++
++			platform {
++				sound-dai = <&q6routing>;
++			};
++
++			codec {
++				sound-dai = <&wcd9340 3>;
++			};
++		};
++
+ 		quat-mi2s-dai-link {
+ 			link-name = "Quaternary MI2S Playback";
+ 

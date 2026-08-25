@@ -19,7 +19,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=70
+pkgrel=72
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -218,6 +218,8 @@ source="
 	0170-wifi-ath10k-don-t-wait-for-DISABLE_KEY-acks-WCN3990.patch
 	0171-tick-don-t-report-a-hard-lockup-on-CPUs-frozen-in-s2.patch
 	0172-arm64-dts-qcom-msm8998-google-taimen-wire-the-codec-s.patch
+	0173-arm64-dts-qcom-msm8998-add-the-ADSP-voice-services.patch
+	0174-arm64-dts-qcom-msm8998-google-taimen-drop-the-PD-on-.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -418,5 +420,7 @@ f1ba9c8ce1fc5baa5f61939a2452e30b47995714e9daaaa221dde962602826121486cf1f8154955a
 1c453c7a02fb8091ecc4cd99f4586b546c2167b46b2aab79db4d22445bd732f4fd5da34b6ff141af6bb15dfdd4f6566db51d64b8b30de36526a9f61081c9a796  0170-wifi-ath10k-don-t-wait-for-DISABLE_KEY-acks-WCN3990.patch
 e9a503ce62d5c0dc02f547e16eaa2de0f3aa3fe40c9c61c635540c6bd42350e4dfb3c5fc4dbefa0864cc64394c2a3207d3742d8fb72074e7fcb8ddae3721f2a5  0171-tick-don-t-report-a-hard-lockup-on-CPUs-frozen-in-s2.patch
 493fb8f0773fa7a31fa87cd6f14a33987ab401c6cf74667433eefd8fdc5636f69a8218b87177352b489f38babfb6609dfc1a499fe169797e1011030d2a3194fd  0172-arm64-dts-qcom-msm8998-google-taimen-wire-the-codec-s.patch
+ef3fd3cf02b341a3635e3f1639609a2962503c31911dbb6e7d0d026e5c15bf42a352481d0fff218ac645a9d173f04ebd1b1455c1b18ec408ef54197ae0a36984  0173-arm64-dts-qcom-msm8998-add-the-ADSP-voice-services.patch
+3964aeac3b79c64a278d7da8f0ee1ee08dad08150210373278a15cc2f2595ad180410040c86d661dd171b5e5d17f019339fda46b82b0ffb28b85f1489725bc9f  0174-arm64-dts-qcom-msm8998-google-taimen-drop-the-PD-on-.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

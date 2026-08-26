@@ -51,14 +51,42 @@ CALL_PATH = re.compile(r"/org/freedesktop/ModemManager1/Call/\d+")
 POLL_SECONDS = 1
 
 
-def voice_pcm(lines):
-    """hw:<card>,<device> of the VoiceMMode1 front-end, or None."""
+def voice_pcm(lines, name="VoiceMMode1"):
+    """hw:<card>,<device> of the named front-end, or None."""
     for line in lines:
-        if "VoiceMMode1" in line:
+        if name in line:
             card, device = line.split(":", 1)[0].split("-")
             return "hw:%d,%d" % (int(card), int(device))
 
     return None
+
+
+def tx_pump(device):
+    """Start an ASM capture on MultiMedia2 and keep it running for the call.
+
+    The uplink does not reach the modem without one. The voice front-end
+    powers the AFE TX port and the vocproc is created with tx=0x4001, and the
+    carrier still hears nothing; start a MultiMedia capture on SLIMBUS_0_TX
+    and the carrier hears immediately. Established 2026-08-26 by A/B/A on live
+    calls, with the voice session byte-identical either way -- same handles,
+    same ports, same topology -- so the vocproc is not the variable. Killing
+    this mid-call silences the uplink again within seconds.
+
+    WHAT THIS IS: scaffolding, not the fix. What the ADM client actually
+    provides is still open -- q6routing.c:135 says "no ASM session, no ADM
+    copp" for a voice front-end, and that is the line to go at. See
+    docs/FINDING-uplink-needs-a-tx-adm-client.md. Delete this the day the
+    voice front-end establishes it itself.
+
+    arecord, not the ctypes dance hold() does, because unlike the voice PCM
+    this is an ordinary ASM stream: it has to be STARTED and drained, and a
+    read on it succeeds. The reading is the point -- an opened-but-idle stream
+    gives the ADM nothing to do.
+    """
+    return subprocess.Popen(["arecord", "-D", device, "-c", "1",
+                             "-f", "S16_LE", "-r", "48000", "/dev/null"],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
 
 
 def _mmcli(*args):
@@ -122,10 +150,18 @@ def watch():
     if running():
         return 0
 
-    device = voice_pcm(open("/proc/asound/pcm"))
+    pcms = list(open("/proc/asound/pcm"))
+    device = voice_pcm(pcms)
     if not device:
         print("no VoiceMMode1 front-end on this card", file=sys.stderr)
         return 1
+
+    # Not fatal on its own: the downlink still works without it, and saying so
+    # once beats a call that is quietly half dead.
+    pump_device = voice_pcm(pcms, "MultiMedia2")
+    if not pump_device:
+        print("no MultiMedia2 front-end -- the uplink will not reach the modem",
+              file=sys.stderr)
 
     # UCM runs this from inside the sound server's sequence and waits for it,
     # so the watcher cannot be this process.
@@ -139,16 +175,29 @@ def watch():
 
     asound = ctypes.CDLL("libasound.so.2")
     handle = None
+    pump = None
     while True:
         wanted = call_active(call_states())
-        if wanted and handle is None:
-            handle = hold(asound, device)
+        if wanted:
             if handle is None:
-                print("%s capture would not open -- is the verb routed?"
-                      % device, file=sys.stderr)
-        elif not wanted and handle is not None:
-            asound.snd_pcm_close(handle)
-            handle = None
+                handle = hold(asound, device)
+                if handle is None:
+                    print("%s capture would not open -- is the verb routed?"
+                          % device, file=sys.stderr)
+            # Restarted rather than merely started, because the pump is a
+            # child process and can die on its own -- a stale SLIMBUS_0_TX
+            # route, or the stream being taken. Losing it silently loses the
+            # uplink for the rest of the call.
+            if pump_device and (pump is None or pump.poll() is not None):
+                pump = tx_pump(pump_device)
+        else:
+            if handle is not None:
+                asound.snd_pcm_close(handle)
+                handle = None
+            if pump is not None:
+                pump.terminate()
+                pump.wait()
+                pump = None
         time.sleep(POLL_SECONDS)
 
 
@@ -173,6 +222,15 @@ def selftest():
         == "hw:0,2"
     assert voice_pcm(["01-13: VoiceMMode1 (*) :  : playback 1"]) == "hw:1,13"
     assert voice_pcm(["00-00: MultiMedia1 (*) :  : playback 1"]) is None
+    # MultiMedia1 must not be mistaken for MultiMedia2: the pump has to land
+    # on the capture front-end wired to SLIMBUS_0_TX, and a substring match
+    # against the wrong one would look like it worked and carry no uplink.
+    assert voice_pcm(["00-00: MultiMedia1 (*) :  : playback 1 : capture 1",
+                      "00-01: MultiMedia2 (*) :  : capture 1",
+                      "00-02: VoiceMMode1 (*) :  : playback 1 : capture 1"],
+                     "MultiMedia2") == "hw:0,1"
+    assert voice_pcm(["00-00: MultiMedia1 (*) :  : capture 1"],
+                     "MultiMedia2") is None
     assert call_active(["active"])
     assert call_active(["ringing-in", "active"])
     assert not call_active(["dialing"])

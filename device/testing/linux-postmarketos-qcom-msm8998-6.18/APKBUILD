@@ -25,7 +25,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=87
+pkgrel=88
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -233,6 +233,9 @@ source="
 	0179-ASoC-qdsp6-q6routing-route-a-voice-front-end-to-the-.patch
 	0180-arm64-dts-qcom-msm8998-wire-up-the-voice-call-front-.patch
 	0181-ASoC-qdsp6-q6voice-say-what-the-session-did.patch
+	0182-drm-msm-don-t-submit-to-a-GPU-that-failed-to-resume.patch
+	0183-ASoC-qdsp6-q6voice-unwind-a-failed-session-instead-o.patch
+	0184-watchdog-qcom-BRINGUP-say-when-the-bark-fires-and-le.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -442,5 +445,8 @@ e18038ac81ea0208f4ca117ff26da76f57f6c90129d437871fea577c925c032a90cc77e2a58038f4
 a4cb663cff41fccd353ae4654b34d3bbe523e94e6e48e86c9f1e0b11b1a093923fffac1f3b943147a5fc293a0238ddc69351d9a3f313ec44d7bef225a1e3145c  0179-ASoC-qdsp6-q6routing-route-a-voice-front-end-to-the-.patch
 7f808602dbc53f053663398e02cfb01fdfa40dd26052b4763dff05335fc1b6f072c3f7a52c658889ee1b5cfcdcde81c478a5211493594a978378f3292cd3b548  0180-arm64-dts-qcom-msm8998-wire-up-the-voice-call-front-.patch
 fc82cf52cf4c50e7173cd5530748f5d22f76bb82cc18011b98d058868c6cf0df2a5cf13e93245ac5def3d3f2f621bdd5046f0ff2a42f92dc232f1476c577efbb  0181-ASoC-qdsp6-q6voice-say-what-the-session-did.patch
+e4d8ef206b3f65803e9fedab9034d89b6ee936ecb62c654b045b77fefa60c4b91ac2081c59b44eaf88b4e74ea0dd861a79b3c854d9e420b4756b2f98d1386ed2  0182-drm-msm-don-t-submit-to-a-GPU-that-failed-to-resume.patch
+537d0215a474f9fd12fc076b6657129dc32cbb9e0b71746d18c744214f88ddcd2fff2931a3fa7ef8ca8aafe316a132ef811a81ce4c2ed294e53f17798656eafc  0183-ASoC-qdsp6-q6voice-unwind-a-failed-session-instead-o.patch
+da8a94f6ce8fdb6636384a02cf46ada5b90ee18f76a282418e4c8530fde50bcd2ddb2739f5b7e7a9046b2d1b7d39eaad821ce9d25ee98c346833075b7d632d55  0184-watchdog-qcom-BRINGUP-say-when-the-bark-fires-and-le.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

@@ -33,9 +33,9 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig         |   4 +
  sound/soc/qcom/qdsp6/Makefile  |   1 +
- sound/soc/qcom/qdsp6/q6voice.c | 422 +++++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/q6voice.c | 433 +++++++++++++++++++++++++++++++++
  sound/soc/qcom/qdsp6/q6voice.h |   8 +
- 4 files changed, 435 insertions(+)
+ 4 files changed, 446 insertions(+)
  create mode 100644 sound/soc/qcom/qdsp6/q6voice.c
  create mode 100644 sound/soc/qcom/qdsp6/q6voice.h
 
@@ -73,10 +73,10 @@ index 85ba8527bd36..343729c7ee32 100644
  obj-$(CONFIG_SND_SOC_QDSP6_VOICE_DBG) += q6voice-dbg.o
 diff --git a/sound/soc/qcom/qdsp6/q6voice.c b/sound/soc/qcom/qdsp6/q6voice.c
 new file mode 100644
-index 000000000000..0086af96dab6
+index 000000000000..045ef66c5072
 --- /dev/null
 +++ b/sound/soc/qcom/qdsp6/q6voice.c
-@@ -0,0 +1,422 @@
+@@ -0,0 +1,433 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Voice call session management for the QDSP6 ADSP.
@@ -262,13 +262,10 @@ index 000000000000..0086af96dab6
 +		return -ETIMEDOUT;
 +	}
 +
-+	if (v->status == ADSP_EALREADY) {
-+		if (joined)
-+			*joined = true;
-+		return v->rsp_port;
-+	}
++	if (joined)
++		*joined = v->status == ADSP_EALREADY;
 +
-+	if (v->status) {
++	if (v->status && v->status != ADSP_EALREADY) {
 +		dev_err(&svc->adev->dev, "0x%08x rejected: 0x%x\n",
 +			opcode, v->status);
 +		return -EIO;
@@ -309,13 +306,15 @@ index 000000000000..0086af96dab6
 +	}
 +
 +	/*
-+	 * The join happens once per boot. A second CREATE does not re-join what
-+	 * the modem built: it allocates a fresh session and answers status 0
-+	 * for it, and a session that is not the modem's carries no call audio
-+	 * while reporting success at every step. So the control session is set
-+	 * up on the first call only, and every later call reuses it and
-+	 * rebuilds the vocproc alone -- which is also how a call is moved
-+	 * between devices downstream.
++	 * A session that was JOINED is kept for the life of the boot: a second
++	 * CREATE does not re-join what the modem built, it allocates a fresh
++	 * one and answers status 0 for it, and a session that is not the
++	 * modem's carries no call audio while reporting success at every step.
++	 * So a joined control session is set up once and every later call
++	 * reuses it, rebuilding the vocproc alone -- which is also how a call
++	 * is moved between devices downstream. One this driver created instead
++	 * is destroyed and forgotten by q6voice_stop(), so the next call gets
++	 * another chance to join.
 +	 */
 +	if (!v->mvm.handle) {
 +		q6voice_name(name);
@@ -418,6 +417,18 @@ index 000000000000..0086af96dab6
 +			    v->cvs.handle, NULL, 0, NULL);
 +		q6voice_cmd(v, &v->mvm, APRV2_IBASIC_CMD_DESTROY_SESSION,
 +			    v->mvm.handle, NULL, 0, NULL);
++
++		/*
++		 * Forget them, so the next call creates again -- and can join,
++		 * if the modem has come up in the meantime. A session created
++		 * while the modem had none is not the one a call runs on, and
++		 * keeping it means every later call reuses a session that
++		 * carries no audio. The sound server opens this front-end
++		 * once at boot to probe the profile, long before any call, so
++		 * this is the ordinary case and not a corner one.
++		 */
++		v->mvm.handle = 0;
++		v->cvs.handle = 0;
 +	}
 +
 +	v->cvp.handle = 0;

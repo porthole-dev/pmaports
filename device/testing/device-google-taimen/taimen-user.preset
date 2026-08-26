@@ -1,0 +1,10 @@
+# systemd USER preset policy for this device.
+#
+# Same trap as taimen.preset, one scope over: postmarketos-base-systemd's
+# trigger runs presets for user units too, and pmOS's default policy is
+# "disable *". A user unit this package ships without an enable line here is
+# silently switched off on the next install or upgrade. Observed on the
+# r20->r24 upgrade, which printed
+#   * Removed '/etc/systemd/user/default.target.wants/pipewire-pulse.service'.
+# and took the PulseAudio socket -- and therefore callaudiod -- with it.
+enable pipewire-pulse.service

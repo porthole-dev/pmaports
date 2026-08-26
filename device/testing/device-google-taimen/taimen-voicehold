@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+"""Hold the voice front-end PCM open for as long as a call is routed.
+
+A call carries no samples across the application processor: the modem exchanges
+speech with the ADSP and the ADSP drives the codec. But in this stack only an
+open PCM powers an AFE port, and q6voice starts the session once both
+directions have prepared -- so something has to open the front-end and leave it
+open. Android's audio HAL is what does that there. Nothing in a PipeWire
+session does: it creates the sink for the Voice Call profile and leaves it
+suspended, because nothing streams to a voice sink, and it never creates a
+source at all. Opening is the whole job; this deliberately never transfers,
+exactly as downstream's voice PCM (no .copy, no .pointer) requires.
+
+Started from the Voice Call verb's EnableSequence and stopped from HiFi's --
+NOT from Voice Call's DisableSequence. ACP models each UCM device as its own
+card profile, so pressing the loudspeaker button cycles the entire verb
+(measured: VERB-DISABLE, VERB-ENABLE, DEV-SPEAKER), and releasing the PCM there
+would tear the route down under a live ADSP session.
+
+Usage: taimen-voicehold start|stop|selftest
+"""
+import ctypes
+import os
+import signal
+import sys
+
+PIDFILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/run",
+                       "taimen-voicehold.pid")
+
+SND_PCM_STREAM_CAPTURE = 1
+SND_PCM_FORMAT_S16_LE = 2
+SND_PCM_ACCESS_RW_INTERLEAVED = 3
+
+
+def voice_pcm(lines):
+    """hw:<card>,<device> of the VoiceMMode1 front-end, or None."""
+    for line in lines:
+        if "VoiceMMode1" in line:
+            card, device = line.split(":", 1)[0].split("-")
+            return "hw:%d,%d" % (int(card), int(device))
+
+    return None
+
+
+def hold(asound, device):
+    """Open and prepare the uplink. Never transfers -- see the header."""
+    handle = ctypes.c_void_p()
+
+    if asound.snd_pcm_open(ctypes.byref(handle), device.encode(),
+                           SND_PCM_STREAM_CAPTURE, 0) < 0:
+        return None
+
+    if asound.snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE,
+                                 SND_PCM_ACCESS_RW_INTERLEAVED,
+                                 1, 48000, 1, 500000) < 0 or \
+       asound.snd_pcm_prepare(handle) < 0:
+        asound.snd_pcm_close(handle)
+        return None
+
+    return handle
+
+
+def running():
+    try:
+        with open(PIDFILE) as f:
+            os.kill(int(f.read()), 0)
+    except (OSError, ValueError):
+        return False
+
+    return True
+
+
+def start():
+    # ponytail: check-then-fork, not a lock. The verb enables once per profile
+    # change, so the window is theoretical; take a lock if that ever changes.
+    if running():
+        return 0
+
+    device = voice_pcm(open("/proc/asound/pcm"))
+    if not device:
+        print("no VoiceMMode1 front-end on this card", file=sys.stderr)
+        return 1
+
+    # UCM runs this from inside the sound server's sequence and waits for it,
+    # so the holder cannot be this process.
+    if os.fork():
+        return 0
+    os.setsid()
+
+    asound = ctypes.CDLL("libasound.so.2")
+    if not hold(asound, device):
+        print("%s capture would not open -- is the verb routed?" % device,
+              file=sys.stderr)
+        os._exit(1)
+
+    with open(PIDFILE, "w") as f:
+        f.write("%d\n" % os.getpid())
+
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+    while True:
+        signal.pause()
+
+
+def stop():
+    try:
+        with open(PIDFILE) as f:
+            os.kill(int(f.read()), signal.SIGTERM)
+    except (OSError, ValueError):
+        pass
+
+    try:
+        os.unlink(PIDFILE)
+    except OSError:
+        pass
+
+    return 0
+
+
+def selftest():
+    assert voice_pcm(["00-00: MultiMedia1 (*) :  : playback 1 : capture 1",
+                      "00-02: VoiceMMode1 (*) :  : playback 1 : capture 1"]) \
+        == "hw:0,2"
+    assert voice_pcm(["01-13: VoiceMMode1 (*) :  : playback 1"]) == "hw:1,13"
+    assert voice_pcm(["00-00: MultiMedia1 (*) :  : playback 1"]) is None
+    print("ok")
+
+    return 0
+
+
+if __name__ == "__main__":
+    verbs = {"start": start, "stop": stop, "selftest": selftest}
+    verb = verbs.get(sys.argv[1] if len(sys.argv) > 1 else "")
+    if not verb:
+        sys.exit(__doc__.strip().splitlines()[-1])
+    sys.exit(verb())

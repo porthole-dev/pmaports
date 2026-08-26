@@ -33,9 +33,9 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig         |   4 +
  sound/soc/qcom/qdsp6/Makefile  |   1 +
- sound/soc/qcom/qdsp6/q6voice.c | 433 +++++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/q6voice.c | 411 +++++++++++++++++++++++++++++++++
  sound/soc/qcom/qdsp6/q6voice.h |   8 +
- 4 files changed, 446 insertions(+)
+ 4 files changed, 424 insertions(+)
  create mode 100644 sound/soc/qcom/qdsp6/q6voice.c
  create mode 100644 sound/soc/qcom/qdsp6/q6voice.h
 
@@ -73,10 +73,10 @@ index 85ba8527bd36..343729c7ee32 100644
  obj-$(CONFIG_SND_SOC_QDSP6_VOICE_DBG) += q6voice-dbg.o
 diff --git a/sound/soc/qcom/qdsp6/q6voice.c b/sound/soc/qcom/qdsp6/q6voice.c
 new file mode 100644
-index 000000000000..045ef66c5072
+index 000000000000..7f19a2a51a82
 --- /dev/null
 +++ b/sound/soc/qcom/qdsp6/q6voice.c
-@@ -0,0 +1,433 @@
+@@ -0,0 +1,411 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Voice call session management for the QDSP6 ADSP.
@@ -109,11 +109,9 @@ index 000000000000..045ef66c5072
 +
 +#define VSS_IMVM_CMD_CREATE_PASSIVE_CONTROL_SESSION	0x000110FF
 +#define VSS_IMVM_CMD_ATTACH_STREAM			0x0001123C
-+#define VSS_IMVM_CMD_DETACH_STREAM			0x0001123D
 +#define VSS_IMVM_CMD_ATTACH_VOCPROC			0x0001123E
 +#define VSS_IMVM_CMD_DETACH_VOCPROC			0x0001123F
 +#define VSS_IMVM_CMD_START_VOICE			0x00011190
-+#define VSS_IMVM_CMD_STOP_VOICE				0x00011192
 +#define VSS_IMVM_CMD_SET_POLICY_DUAL_CONTROL		0x00011327
 +#define VSS_ISTREAM_CMD_CREATE_PASSIVE_CONTROL_SESSION	0x00011140
 +#define VSS_IVOCPROC_CMD_CREATE_FULL_CONTROL_SESSION_V2	0x000112BF
@@ -384,10 +382,13 @@ index 000000000000..045ef66c5072
 +/**
 + * q6voice_stop() - take the voice path back down
 + *
-+ * Only the vocproc is destroyed. The MVM and CVS belong to the modem whenever
-+ * they were joined, and destroying those does not merely end this call: the
-+ * modem creates them once during its own init, so every later call then finds
-+ * nothing to attach to and is silent until the modem is restarted.
++ * Only the vocproc is destroyed, and that is not conditional on anything. The
++ * MVM and CVS are the modem's whatever the create reported -- the CVS answers
++ * with the same handle for every session on this SoC -- and destroying them
++ * does not merely end this call: the modem builds them once during its own
++ * init, so every later call finds nothing to attach to and is silent until the
++ * modem restarts. Measured: making the joined flag report honestly turned this
++ * teardown on for the first time and cost two calls before the pattern showed.
 + */
 +int q6voice_stop(void)
 +{
@@ -407,29 +408,6 @@ index 000000000000..045ef66c5072
 +		    NULL, 0, NULL);
 +	q6voice_cmd(v, &v->cvp, APRV2_IBASIC_CMD_DESTROY_SESSION, v->cvp.handle,
 +		    NULL, 0, NULL);
-+
-+	if (!v->mvm.joined) {
-+		q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_STOP_VOICE, v->mvm.handle,
-+			    NULL, 0, NULL);
-+		q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_DETACH_STREAM, v->mvm.handle,
-+			    &v->cvs.handle, sizeof(v->cvs.handle), NULL);
-+		q6voice_cmd(v, &v->cvs, APRV2_IBASIC_CMD_DESTROY_SESSION,
-+			    v->cvs.handle, NULL, 0, NULL);
-+		q6voice_cmd(v, &v->mvm, APRV2_IBASIC_CMD_DESTROY_SESSION,
-+			    v->mvm.handle, NULL, 0, NULL);
-+
-+		/*
-+		 * Forget them, so the next call creates again -- and can join,
-+		 * if the modem has come up in the meantime. A session created
-+		 * while the modem had none is not the one a call runs on, and
-+		 * keeping it means every later call reuses a session that
-+		 * carries no audio. The sound server opens this front-end
-+		 * once at boot to probe the profile, long before any call, so
-+		 * this is the ordinary case and not a corner one.
-+		 */
-+		v->mvm.handle = 0;
-+		v->cvs.handle = 0;
-+	}
 +
 +	v->cvp.handle = 0;
 +	v->running = false;

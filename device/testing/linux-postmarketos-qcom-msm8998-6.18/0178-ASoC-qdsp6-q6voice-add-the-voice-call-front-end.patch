@@ -25,8 +25,8 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig             |   4 +
  sound/soc/qcom/qdsp6/Makefile      |   1 +
- sound/soc/qcom/qdsp6/q6voice-dai.c | 248 +++++++++++++++++++++++++++++
- 3 files changed, 253 insertions(+)
+ sound/soc/qcom/qdsp6/q6voice-dai.c | 295 +++++++++++++++++++++++++++++
+ 3 files changed, 300 insertions(+)
  create mode 100644 sound/soc/qcom/qdsp6/q6voice-dai.c
 
 diff --git a/sound/soc/qcom/Kconfig b/sound/soc/qcom/Kconfig
@@ -63,10 +63,10 @@ index 343729c7ee32..1ac8dee5078b 100644
  obj-$(CONFIG_SND_SOC_QDSP6_VOICE_DBG) += q6voice-dbg.o
 diff --git a/sound/soc/qcom/qdsp6/q6voice-dai.c b/sound/soc/qcom/qdsp6/q6voice-dai.c
 new file mode 100644
-index 000000000000..e0975a07e546
+index 000000000000..f964ba58f6ea
 --- /dev/null
 +++ b/sound/soc/qcom/qdsp6/q6voice-dai.c
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,295 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Voice call front-end for the QDSP6 ADSP.
@@ -101,12 +101,26 @@ index 000000000000..e0975a07e546
 +
 +#define DRV_NAME "q6voice-dai"
 +
++/*
++ * A stream that moves no data still has to look like a stream: ALSA expects a
++ * position that advances and a period that elapses, and without them the first
++ * transfer fails with -EIO. Drive both from a timer, the way sound/drivers
++ * dummy does, so the PCM behaves like the 48 kHz stream it claims to be while
++ * the samples themselves never leave the ADSP.
++ */
++struct q6voice_stream {
++	struct hrtimer timer;
++	struct snd_pcm_substream *substream;
++	ktime_t period;
++	unsigned int pos;		/* frames into the buffer */
++};
++
 +struct q6voice_dai {
 +	struct mutex lock;	/* pairs the two directions */
 +	u16 rx_port;
 +	u16 tx_port;
 +	bool started;
-+	u64 started_ns;
++	struct q6voice_stream stream[2];
 +};
 +
 +/*
@@ -164,7 +178,6 @@ index 000000000000..e0975a07e546
 +		return ret;
 +
 +	v->started = true;
-+	v->started_ns = ktime_get_ns();
 +
 +	return 0;
 +}
@@ -218,26 +231,55 @@ index 000000000000..e0975a07e546
 +	return 0;
 +}
 +
-+/*
-+ * No samples cross the application processor, so there is no DMA position to
-+ * report -- but a PCM that never advances looks like a stalled stream and the
-+ * first write fails with -EIO. Run the pointer off the wall clock instead,
-+ * which is what this stream really does: it occupies the route for as long as
-+ * the call lasts.
-+ */
++static enum hrtimer_restart q6voice_dai_tick(struct hrtimer *t)
++{
++	struct q6voice_stream *st = container_of(t, struct q6voice_stream, timer);
++	struct snd_pcm_runtime *runtime = st->substream->runtime;
++
++	st->pos += runtime->period_size;
++	if (st->pos >= runtime->buffer_size)
++		st->pos -= runtime->buffer_size;
++
++	hrtimer_forward_now(t, st->period);
++	snd_pcm_period_elapsed(st->substream);
++
++	return HRTIMER_RESTART;
++}
++
 +static snd_pcm_uframes_t
 +q6voice_dai_pointer(struct snd_soc_component *component,
 +		    struct snd_pcm_substream *substream)
 +{
-+	struct snd_pcm_runtime *runtime = substream->runtime;
 +	struct q6voice_dai *v = snd_soc_component_get_drvdata(component);
-+	u64 elapsed_ns = ktime_get_ns() - v->started_ns;
-+	u64 frames = div_u64(elapsed_ns * runtime->rate, NSEC_PER_SEC);
 +
-+	if (!runtime->buffer_size)
++	return v->stream[substream->stream].pos;
++}
++
++static int q6voice_dai_trigger(struct snd_soc_component *component,
++			       struct snd_pcm_substream *substream, int cmd)
++{
++	struct q6voice_dai *v = snd_soc_component_get_drvdata(component);
++	struct q6voice_stream *st = &v->stream[substream->stream];
++	struct snd_pcm_runtime *runtime = substream->runtime;
++
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++	case SNDRV_PCM_TRIGGER_RESUME:
++	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
++		st->substream = substream;
++		st->pos = 0;
++		st->period = ns_to_ktime(div_u64((u64)runtime->period_size *
++						 NSEC_PER_SEC, runtime->rate));
++		hrtimer_start(&st->timer, st->period, HRTIMER_MODE_REL_SOFT);
 +		return 0;
-+
-+	return do_div(frames, runtime->buffer_size);
++	case SNDRV_PCM_TRIGGER_STOP:
++	case SNDRV_PCM_TRIGGER_SUSPEND:
++	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
++		hrtimer_cancel(&st->timer);
++		return 0;
++	default:
++		return -EINVAL;
++	}
 +}
 +
 +static int q6voice_dai_pcm_new(struct snd_soc_component *component,
@@ -254,6 +296,7 @@ index 000000000000..e0975a07e546
 +	.open			= q6voice_dai_open,
 +	.close			= q6voice_dai_close,
 +	.prepare		= q6voice_dai_prepare,
++	.trigger		= q6voice_dai_trigger,
 +	.pointer		= q6voice_dai_pointer,
 +	.pcm_construct		= q6voice_dai_pcm_new,
 +	.legacy_dai_naming	= 1,
@@ -286,12 +329,16 @@ index 000000000000..e0975a07e546
 +{
 +	struct device *dev = &pdev->dev;
 +	struct q6voice_dai *v;
++	int i;
 +
 +	v = devm_kzalloc(dev, sizeof(*v), GFP_KERNEL);
 +	if (!v)
 +		return -ENOMEM;
 +
 +	mutex_init(&v->lock);
++	for (i = 0; i < ARRAY_SIZE(v->stream); i++)
++		hrtimer_setup(&v->stream[i].timer, q6voice_dai_tick,
++			      CLOCK_MONOTONIC, HRTIMER_MODE_REL_SOFT);
 +	dev_set_drvdata(dev, v);
 +
 +	return devm_snd_soc_register_component(dev, &q6voice_fe_component,

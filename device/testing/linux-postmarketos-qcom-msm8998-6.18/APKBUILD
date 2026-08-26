@@ -25,7 +25,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=81
+pkgrel=84
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -437,7 +437,7 @@ ef3fd3cf02b341a3635e3f1639609a2962503c31911dbb6e7d0d026e5c15bf42a352481d0fff218a
 c245593be12601d0a2b70cf37c23b886add3e10e608b9ffed361e39114bff0b9d40f8d5bdf454674d53a689d65092b99ff43d1b9aafb86a7bdb612db3fd2edc0  0175-ASoC-qdsp6-BRINGUP-raw-APR-access-to-the-voice-servi.patch
 dfc5e6208f243cfef8cb10ad112a2524e9e93b54f93123f0898dc574acf3179536677a02ef07758f136ba4ecb2ae0d586c4fb651096b142d7723034e3d2c6a28  0176-ASoC-tas2557-add-configuration-and-volume-controls.patch
 8c925daaa2e2e91769749c0c3b9408ec25149c55d17309a6550474f0697a848ef1a3f7c030fb5a55d9d52a443319225da637e66c7310384c39c15bc916737b91  0177-ASoC-qdsp6-q6voice-voice-call-session-management.patch
-38f0dd18a7857081618acdc2a7497b08cec2efb4aa97f6d0e65bbe5fa1a77c9ca2b2212469e6149c272a87cc75d3f1f6cd31291e95dba57378236dacd7014eee  0178-ASoC-qdsp6-q6voice-add-the-voice-call-front-end.patch
+81b9b5defb6cbac5cbb654c21f6d0710393419182c05f64b500bd38effe69679ae7d782ee5960e5239be8f0a919c7408c484118d694ed780a91df094bf37fd62  0178-ASoC-qdsp6-q6voice-add-the-voice-call-front-end.patch
 a4cb663cff41fccd353ae4654b34d3bbe523e94e6e48e86c9f1e0b11b1a093923fffac1f3b943147a5fc293a0238ddc69351d9a3f313ec44d7bef225a1e3145c  0179-ASoC-qdsp6-q6routing-route-a-voice-front-end-to-the-.patch
 7f808602dbc53f053663398e02cfb01fdfa40dd26052b4763dff05335fc1b6f072c3f7a52c658889ee1b5cfcdcde81c478a5211493594a978378f3292cd3b548  0180-arm64-dts-qcom-msm8998-wire-up-the-voice-call-front-.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch

@@ -1,0 +1,28 @@
+[Unit]
+Description=PipeWire PulseAudio
+# Alpine's pipewire-systemd ships pipewire-pulse.socket but NOT this service,
+# so the socket can never activate anything and %t/pulse/native is never
+# created. Every PulseAudio-API client then fails to connect; callaudiod
+# aborts on that and D-Bus re-activates it in a ~4s loop. Belongs upstream in
+# Alpine's pipewire aport -- this is a local stand-in, matching upstream
+# pipewire's own unit.
+Requires=pipewire-pulse.socket
+ConditionUser=!root
+Wants=pipewire.service
+After=pipewire.service pipewire-pulse.socket
+Conflicts=pulseaudio.service
+Before=pulseaudio.service
+
+[Service]
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+RestrictNamespaces=yes
+Type=simple
+ExecStart=/usr/bin/pipewire-pulse
+Restart=on-failure
+Slice=session.slice
+
+[Install]
+Also=pipewire-pulse.socket
+WantedBy=default.target

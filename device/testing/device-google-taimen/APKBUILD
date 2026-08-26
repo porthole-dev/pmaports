@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=23
+pkgrel=25
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -30,17 +30,21 @@ options="!check !archcheck"
 # qcom-diag-systemd already own /usr/lib/systemd/system/{rmtfs,diag-router}.service
 # via install_if="systemd <pkg>", so adding our own copies just makes apk
 # fail with "trying to overwrite ... owned by".
+# The audio backend is not a preference on this board, it is a requirement:
+# PulseAudio's capture reads silence here (measured, rms 2.0 where arecord on
+# the same PCM and the same mixer state reads 408), so the microphone is dead
+# and a call carries no uplink. The 52-taimen-voice.conf rule that holds the
+# call downlink open is a WirePlumber rule and is inert without it. A rootfs
+# reinstall picked the pulseaudio backend and cost a day of debugging a driver
+# that was not at fault -- so the port names the one it needs:
+#   postmarketos-base-ui-audio-backend-pipewire
+#
+# Comments must stay OUT of depends=: it is a quoted shell string, so a '#'
+# inside it is a literal dependency name, and abuild fails with
+# "dependency not found: #". That is why r21 was never installable.
 depends="
 	alsa-ucm-conf
 	firmware-google-taimen
-	# The audio backend is not a preference on this board, it is a
-	# requirement: PulseAudio's capture reads silence here (measured, rms
-	# 2.0 where arecord on the same PCM and the same mixer state reads
-	# 408), so the microphone is dead and a call carries no uplink. The
-	# 52-taimen-voice.conf rule that holds the call downlink open is a
-	# WirePlumber rule and is inert without it. A rootfs reinstall picked
-	# the pulseaudio backend and cost a day of debugging a driver that was
-	# not at fault -- so the port names the one it needs.
 	postmarketos-base-ui-audio-backend-pipewire
 	linux-pam
 	mkbootimg
@@ -77,6 +81,8 @@ source="
 	taimen-modem-bringup.service
 	modprobe.conf
 	taimen.preset
+	taimen-user.preset
+	taimen-pipewire-pulse.service
 	swclock-wait-for-rtc.conf
 	groups.conf
 	sns-reg-registry.conf
@@ -168,6 +174,16 @@ package() {
 	# sort before 99-default.preset.
 	install -Dm644 "$srcdir"/taimen.preset \
 		"$pkgdir"/usr/lib/systemd/system-preset/91-taimen.preset
+
+	# Alpine's pipewire-systemd ships pipewire-pulse.socket with no matching
+	# service, so the PulseAudio socket is never created and every client of
+	# that API -- callaudiod above all -- fails to connect and crash-loops.
+	# Installed under /etc so it cannot collide with the path Alpine will use
+	# when it ships one; delete both of these the day it does.
+	install -Dm644 "$srcdir"/taimen-pipewire-pulse.service \
+		"$pkgdir"/etc/systemd/user/pipewire-pulse.service
+	install -Dm644 "$srcdir"/taimen-user.preset \
+		"$pkgdir"/usr/lib/systemd/user-preset/91-taimen.preset
 
 	# swclock-offset-boot loses a probe race with rtc-pm8xxx, so the software
 	# clock is never restored and the machine boots days behind; NTP then steps
@@ -449,6 +465,8 @@ bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd8
 cb7d96d5d0f2153ab76556100053162b0a4c90e2301723303b07e39559df762f4c6f5fc4cf3ef572a3212682d983c8daabd8cf1f349396517ab1c00309ecb75e  taimen-modem-bringup.service
 259349fe19752f3d9aac9651acdad3499058030e63587c6af68e1df1c0ddf602096fbccc892893ce02437e67c19b046522c1e80f604a68b48563e486ced143ca  modprobe.conf
 7de85cc3b028c82788426deadff97bd9bbcddf4c41e3263f99e2cf17f3b5cf79a194c9793249325065af608250fa9bedbf287f986d28d02a9f394b5e0f80e6e8  taimen.preset
+b32551d380308b4c18fe8323f72f581c37227d382457d457db4116e71b83f9e4202b1094fad26892b7c3976d492e710820dc19cca5518da9d4283bbafb8e157c  taimen-user.preset
+a697a1b2fe3dd3d798e6cdc00e76de93076efca81969cc1bcbc61995d24d437438f6f99b191abe9f483d718be9559b100227457c112f78ad3f1593a54f3a0f50  taimen-pipewire-pulse.service
 640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
 2690c1a30952b293a5e3b46b6e07c54e3b03c759a3b83d3c04b77d2ff2d886fd930625fdca7f5bea5254dd418d2cfa7765e5ebbeca2064542a70c4ee5592e6a8  groups.conf
 cf10d2ec481dc514f2973aa67f4645d7596527590abd08c81ed324388bda479818797879a797a8a7d8476548b3d9c4d6cb24ff9fd289d00b2ca8a06c82afe3c2  sns-reg-registry.conf

@@ -7,14 +7,15 @@ speech with the ADSP and the ADSP drives the codec. But in this stack only an
 open PCM powers an AFE port, and q6voice starts the session once both
 directions have prepared -- so something has to open the front-end and leave it
 open. Android's audio HAL is what does that there. Nothing in a PipeWire
-session does: it creates the sink for the Voice Call profile and leaves it
-suspended, because nothing streams to a voice sink, and it never creates a
-source at all. Opening is the whole job; this deliberately never transfers,
-exactly as downstream's voice PCM (no .copy, no .pointer) requires.
+session does on its own: nothing streams to a voice sink, and it creates no
+source for this verb at all. Opening is the whole job; this deliberately never
+transfers, exactly as downstream's voice PCM (no .copy, no .pointer) requires.
 
-Holding the downlink costs the sound server its sink, and with it the in-call
-volume slider. That is the trade this board offers: a sink nothing writes to is
-worth less than a call you can hear.
+The DOWNLINK is not this script's job -- 52-taimen-voice.conf makes the sound
+server hold that one open with node.always-process, which is the mechanism
+built for a device node nothing is linked to. Taking it here instead would work
+until the sound server probed the profile, found the PCM busy and dropped the
+profile entirely. The uplink has no such owner: there is no source to hold.
 
 Started from the Voice Call verb's EnableSequence and stopped from HiFi's --
 NOT from Voice Call's DisableSequence. ACP models each UCM device as its own
@@ -32,7 +33,6 @@ import sys
 PIDFILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/run",
                        "taimen-voicehold.pid")
 
-SND_PCM_STREAM_PLAYBACK = 0
 SND_PCM_STREAM_CAPTURE = 1
 SND_PCM_FORMAT_S16_LE = 2
 SND_PCM_ACCESS_RW_INTERLEAVED = 3
@@ -48,22 +48,12 @@ def voice_pcm(lines):
     return None
 
 
-EBUSY = 16
-
-
-def hold(asound, device, direction):
-    """Open and prepare one direction. Never transfers -- see the header.
-
-    Returns the handle, True if something else already holds this direction
-    (which is just as good -- it is open), or None.
-    """
+def hold(asound, device):
+    """Open and prepare the uplink. Never transfers -- see the header."""
     handle = ctypes.c_void_p()
 
-    rc = asound.snd_pcm_open(ctypes.byref(handle), device.encode(),
-                             direction, 0)
-    if rc == -EBUSY:
-        return True
-    if rc < 0:
+    if asound.snd_pcm_open(ctypes.byref(handle), device.encode(),
+                           SND_PCM_STREAM_CAPTURE, 0) < 0:
         return None
 
     if asound.snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE,
@@ -103,18 +93,10 @@ def start():
         return 0
     os.setsid()
 
-    # BOTH directions, and that is the whole point: q6voice starts the session
-    # once playback and capture have prepared, and a PipeWire session prepares
-    # neither of them for a call. Measured on a live call -- the voice sink's
-    # PCM was opened only while the profile was being switched and closed again
-    # 300 ms later, so the downlink port never ran and the call was silent
-    # while every route, profile and session log looked right.
     asound = ctypes.CDLL("libasound.so.2")
-    held = [hold(asound, device, d) for d in (SND_PCM_STREAM_PLAYBACK,
-                                              SND_PCM_STREAM_CAPTURE)]
-    if not all(held):
-        print("%s: only %d of 2 directions are open -- is the verb routed?"
-              % (device, sum(1 for h in held if h)), file=sys.stderr)
+    if not hold(asound, device):
+        print("%s capture would not open -- is the verb routed?" % device,
+              file=sys.stderr)
         os._exit(1)
 
     with open(PIDFILE, "w") as f:

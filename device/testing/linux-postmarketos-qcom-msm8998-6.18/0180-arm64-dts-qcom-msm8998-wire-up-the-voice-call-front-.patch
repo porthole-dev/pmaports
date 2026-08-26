@@ -1,5 +1,5 @@
 From: Giuseppe Maggio <jertlok@proton.me>
-Date: Wed, 26 Aug 2026 02:10:06 +0200
+Date: Wed, 26 Aug 2026 10:47:07 +0200
 Subject: arm64: dts: qcom: msm8998: wire up the voice call front-end
 
 Gives the MVM service a dais child, the way q6asm carries the ASM dais,
@@ -17,10 +17,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  3 files changed, 22 insertions(+), 1 deletion(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
-index dc2a413cf8bc..6cbb0f905ccb 100644
+index dc2a413cf8bc..e4bae0859c11 100644
 --- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
 +++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
-@@ -79,7 +79,17 @@ sound {
+@@ -79,7 +79,9 @@ sound {
  				"DMIC4", "MIC BIAS4",
  				"DMIC5", "MIC BIAS4",
  				"MM_DL1", "MultiMedia1 Playback",
@@ -28,7 +28,13 @@ index dc2a413cf8bc..6cbb0f905ccb 100644
 +				"MultiMedia2 Capture", "MM_UL2",
 +				"VOICE_DL", "VoiceMMode1 Playback",
 +				"VoiceMMode1 Capture", "VOICE_UL";
-+
+ 
+ 		mm1-dai-link {
+ 			link-name = "MultiMedia1";
+@@ -97,6 +99,14 @@ cpu {
+ 			};
+ 		};
+ 
 +		voice-dai-link {
 +			link-name = "VoiceMMode1";
 +
@@ -36,9 +42,10 @@ index dc2a413cf8bc..6cbb0f905ccb 100644
 +				sound-dai = <&q6voicedai 0>;
 +			};
 +		};
++
+ 		slim-dai-link {
+ 			link-name = "SLIM Playback";
  
- 		mm1-dai-link {
- 			link-name = "MultiMedia1";
 diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
 index 2697f471db5c..a7b737389fd1 100644
 --- a/arch/arm64/boot/dts/qcom/msm8998.dtsi

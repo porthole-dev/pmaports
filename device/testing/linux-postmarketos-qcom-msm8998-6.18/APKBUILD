@@ -25,7 +25,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=88
+pkgrel=89
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -236,6 +236,7 @@ source="
 	0182-drm-msm-don-t-submit-to-a-GPU-that-failed-to-resume.patch
 	0183-ASoC-qdsp6-q6voice-unwind-a-failed-session-instead-o.patch
 	0184-watchdog-qcom-BRINGUP-say-when-the-bark-fires-and-le.patch
+	0185-ASoC-tas2557-expose-the-two-amps-as-separate-volume-.patch
 	0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
@@ -448,5 +449,6 @@ fc82cf52cf4c50e7173cd5530748f5d22f76bb82cc18011b98d058868c6cf0df2a5cf13e93245ac5
 e4d8ef206b3f65803e9fedab9034d89b6ee936ecb62c654b045b77fefa60c4b91ac2081c59b44eaf88b4e74ea0dd861a79b3c854d9e420b4756b2f98d1386ed2  0182-drm-msm-don-t-submit-to-a-GPU-that-failed-to-resume.patch
 537d0215a474f9fd12fc076b6657129dc32cbb9e0b71746d18c744214f88ddcd2fff2931a3fa7ef8ca8aafe316a132ef811a81ce4c2ed294e53f17798656eafc  0183-ASoC-qdsp6-q6voice-unwind-a-failed-session-instead-o.patch
 da8a94f6ce8fdb6636384a02cf46ada5b90ee18f76a282418e4c8530fde50bcd2ddb2739f5b7e7a9046b2d1b7d39eaad821ce9d25ee98c346833075b7d632d55  0184-watchdog-qcom-BRINGUP-say-when-the-bark-fires-and-le.patch
+e3c2a182c42afdbddc1304456aca97c7c080885fc980e5e36b40f4f6ba893a483482f8580fd86e4d42de8d3c1d362df7a6ba8b55d54ba8bf338807c7157df995  0185-ASoC-tas2557-expose-the-two-amps-as-separate-volume-.patch
 5ad0559687a0d559aa11aa62e2955b6d6ffc0faebde0995134781165484d2cbfbbc5276edc8a2576238dc06172cc10601aa33ba344d37f56981d32f1b9fa2687  0138-media-i2c-lc898214xd-the-focus-code-is-signed-and-th.patch
 "

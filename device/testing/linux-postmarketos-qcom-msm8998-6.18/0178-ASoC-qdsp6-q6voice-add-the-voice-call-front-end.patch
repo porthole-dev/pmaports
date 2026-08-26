@@ -25,8 +25,8 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig             |   4 +
  sound/soc/qcom/qdsp6/Makefile      |   1 +
- sound/soc/qcom/qdsp6/q6voice-dai.c | 230 +++++++++++++++++++++++++++++
- 3 files changed, 235 insertions(+)
+ sound/soc/qcom/qdsp6/q6voice-dai.c | 248 +++++++++++++++++++++++++++++
+ 3 files changed, 253 insertions(+)
  create mode 100644 sound/soc/qcom/qdsp6/q6voice-dai.c
 
 diff --git a/sound/soc/qcom/Kconfig b/sound/soc/qcom/Kconfig
@@ -63,10 +63,10 @@ index 343729c7ee32..1ac8dee5078b 100644
  obj-$(CONFIG_SND_SOC_QDSP6_VOICE_DBG) += q6voice-dbg.o
 diff --git a/sound/soc/qcom/qdsp6/q6voice-dai.c b/sound/soc/qcom/qdsp6/q6voice-dai.c
 new file mode 100644
-index 000000000000..60818f8b176d
+index 000000000000..e0975a07e546
 --- /dev/null
 +++ b/sound/soc/qcom/qdsp6/q6voice-dai.c
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,248 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Voice call front-end for the QDSP6 ADSP.
@@ -88,6 +88,7 @@ index 000000000000..60818f8b176d
 + * Copyright (c) 2026 Giuseppe Maggio
 + */
 +
++#include <linux/math64.h>
 +#include <linux/module.h>
 +#include <linux/of.h>
 +#include <linux/platform_device.h>
@@ -105,6 +106,7 @@ index 000000000000..60818f8b176d
 +	u16 rx_port;
 +	u16 tx_port;
 +	bool started;
++	u64 started_ns;
 +};
 +
 +/*
@@ -162,6 +164,7 @@ index 000000000000..60818f8b176d
 +		return ret;
 +
 +	v->started = true;
++	v->started_ns = ktime_get_ns();
 +
 +	return 0;
 +}
@@ -215,11 +218,26 @@ index 000000000000..60818f8b176d
 +	return 0;
 +}
 +
++/*
++ * No samples cross the application processor, so there is no DMA position to
++ * report -- but a PCM that never advances looks like a stalled stream and the
++ * first write fails with -EIO. Run the pointer off the wall clock instead,
++ * which is what this stream really does: it occupies the route for as long as
++ * the call lasts.
++ */
 +static snd_pcm_uframes_t
 +q6voice_dai_pointer(struct snd_soc_component *component,
 +		    struct snd_pcm_substream *substream)
 +{
-+	return 0;
++	struct snd_pcm_runtime *runtime = substream->runtime;
++	struct q6voice_dai *v = snd_soc_component_get_drvdata(component);
++	u64 elapsed_ns = ktime_get_ns() - v->started_ns;
++	u64 frames = div_u64(elapsed_ns * runtime->rate, NSEC_PER_SEC);
++
++	if (!runtime->buffer_size)
++		return 0;
++
++	return do_div(frames, runtime->buffer_size);
 +}
 +
 +static int q6voice_dai_pcm_new(struct snd_soc_component *component,

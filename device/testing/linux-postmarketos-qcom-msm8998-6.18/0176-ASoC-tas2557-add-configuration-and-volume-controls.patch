@@ -31,11 +31,11 @@ starts the stream.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- sound/soc/codecs/tas2557.c | 182 ++++++++++++++++++++++++++++++++++---
- 1 file changed, 171 insertions(+), 11 deletions(-)
+ sound/soc/codecs/tas2557.c | 202 +++++++++++++++++++++++++++++++++++--
+ 1 file changed, 191 insertions(+), 11 deletions(-)
 
 diff --git a/sound/soc/codecs/tas2557.c b/sound/soc/codecs/tas2557.c
-index 00e923126643..4d4d2ea563a9 100644
+index 00e923126643..14d4e1d8790f 100644
 --- a/sound/soc/codecs/tas2557.c
 +++ b/sound/soc/codecs/tas2557.c
 @@ -44,6 +44,9 @@
@@ -48,17 +48,18 @@ index 00e923126643..4d4d2ea563a9 100644
  #define TAS2557_MUTE_REG		TAS2557_REG(0, 0, 7)
  #define TAS2557_CRC_CHECKSUM_REG	TAS2557_REG(0, 0, 32)
  #define TAS2557_CRC_RESET_REG		TAS2557_REG(0, 0, 33)
-@@ -145,6 +148,9 @@ struct tas2557 {
+@@ -145,6 +148,10 @@ struct tas2557 {
  
  	int cur_program;
  	int cur_config;
 +	int want_config;		/* -1 until userspace picks one */
 +	const char **config_texts;
++	unsigned int *config_index;	/* enum item -> index into fw.configs */
 +	unsigned int nconfig_texts;
  	int loaded_config;
  	unsigned int width;
  	bool powered;
-@@ -963,23 +969,26 @@ static int tas2557_reset_and_init(struct tas2557 *tas)
+@@ -963,23 +970,38 @@ static int tas2557_reset_and_init(struct tas2557 *tas)
  }
  
  /*
@@ -90,13 +91,25 @@ index 00e923126643..4d4d2ea563a9 100644
  
 -	if (force_config >= 0 && force_config < f->nconfig)
 -		return force_config;
-+	if (tas->want_config >= 0 && tas->want_config < f->nconfig &&
-+	    f->configs[tas->want_config].rate == rate)
-+		return tas->want_config;
++	/*
++	 * want_config is an enum item, and the enum is a FILTERED view of
++	 * fw.configs -- the calibration entries are skipped when the texts are
++	 * built, so item N is not configs[N]. Using it as a firmware index
++	 * picked the wrong entry, and when that entry's rate did not match the
++	 * stream the selection was dropped on the floor and the first-match
++	 * scan below ran instead: choosing the loudspeaker silently kept
++	 * playing out of the earpiece.
++	 */
++	if (tas->want_config >= 0 && tas->want_config < tas->nconfig_texts) {
++		unsigned int idx = tas->config_index[tas->want_config];
++
++		if (f->configs[idx].rate == rate)
++			return idx;
++	}
  
  	/*
  	 * Configuration names carry their purpose: the calibration ones are for
-@@ -997,6 +1006,148 @@ static int tas2557_pick_config(struct tas2557 *tas, unsigned int rate)
+@@ -997,6 +1019,155 @@ static int tas2557_pick_config(struct tas2557 *tas, unsigned int rate)
  	return -EINVAL;
  }
  
@@ -220,16 +233,22 @@ index 00e923126643..4d4d2ea563a9 100644
 +{
 +	struct tas2557_fw *f = &tas->fw;
 +	const char **texts;
++	unsigned int *index;
 +	int i, n = 0;
 +
 +	texts = devm_kcalloc(tas->dev, f->nconfig, sizeof(*texts), GFP_KERNEL);
 +	if (!texts)
 +		return -ENOMEM;
 +
++	index = devm_kcalloc(tas->dev, f->nconfig, sizeof(*index), GFP_KERNEL);
++	if (!index)
++		return -ENOMEM;
++
 +	for (i = 0; i < f->nconfig; i++) {
 +		if (strncmp(f->configs[i].name, "configuration_", 14))
 +			continue;
 +
++		index[n] = i;
 +		texts[n++] = f->configs[i].name;
 +	}
 +
@@ -237,6 +256,7 @@ index 00e923126643..4d4d2ea563a9 100644
 +		return -EINVAL;
 +
 +	tas->config_texts = texts;
++	tas->config_index = index;
 +	tas->nconfig_texts = n;
 +
 +	return 0;
@@ -245,7 +265,7 @@ index 00e923126643..4d4d2ea563a9 100644
  /*
   * Downloading the DSP program is ~3000 i2c commands and takes far too long to
   * sit in trigger(), which runs under the PCM stream lock -- doing it there made
-@@ -1223,6 +1374,8 @@ static const struct snd_soc_dapm_route tas2557_dapm_routes[] = {
+@@ -1223,6 +1394,8 @@ static const struct snd_soc_dapm_route tas2557_dapm_routes[] = {
  };
  
  static const struct snd_soc_component_driver tas2557_component = {
@@ -254,7 +274,7 @@ index 00e923126643..4d4d2ea563a9 100644
  	.dapm_widgets = tas2557_dapm_widgets,
  	.num_dapm_widgets = ARRAY_SIZE(tas2557_dapm_widgets),
  	.dapm_routes = tas2557_dapm_routes,
-@@ -1247,6 +1400,7 @@ static int tas2557_i2c_probe(struct i2c_client *client)
+@@ -1247,6 +1420,7 @@ static int tas2557_i2c_probe(struct i2c_client *client)
  	tas->dev = &client->dev;
  	tas->cur_program = -1;
  	tas->cur_config = -1;
@@ -262,7 +282,7 @@ index 00e923126643..4d4d2ea563a9 100644
  	tas->loaded_config = -1;
  	i2c_set_clientdata(client, tas);
  
-@@ -1308,6 +1462,12 @@ static int tas2557_i2c_probe(struct i2c_client *client)
+@@ -1308,6 +1482,12 @@ static int tas2557_i2c_probe(struct i2c_client *client)
  		return ret;
  	}
  

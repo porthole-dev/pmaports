@@ -1,0 +1,113 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 26 Aug 2026 02:10:05 +0200
+Subject: ASoC: qdsp6: q6routing: route a voice front-end to the backends
+
+q6routing exposes MultiMedia1..8 and nothing else, so a voice front-end
+has no way to reach a backend and DPCM never powers one.
+
+A voice path is DAPM and nothing else. The ADSP owns the call: the modem
+exchanges speech with it directly and it renders into the AFE ports
+itself, so there is no ASM stream to register and no ADM copp to open --
+q6routing_stream_open() is called only from q6asm-dai, and not calling it
+is what makes a voice path correct rather than a special case inside it.
+The mixer control exists purely to complete the DAPM path so the backend
+is powered and its port started.
+
+This is also what lets a tone be mixed into a call: a voice session takes
+its RX port exclusively, and an ASM stream that tries to open the same
+port while voice holds it times out. Downstream keeps both a voice mixer
+and an audio mixer on one port for exactly this reason.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/qcom/qdsp6/q6routing.c | 54 +++++++++++++++++++++++++++++++-
+ 1 file changed, 53 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/qcom/qdsp6/q6routing.c b/sound/soc/qcom/qdsp6/q6routing.c
+index f49243daa517..fee913142475 100644
+--- a/sound/soc/qcom/qdsp6/q6routing.c
++++ b/sound/soc/qcom/qdsp6/q6routing.c
+@@ -50,9 +50,12 @@
+ 	msm_routing_put_audio_mixer),					\
+ 	SOC_SINGLE_EXT("MultiMedia8", id,				\
+ 	MSM_FRONTEND_DAI_MULTIMEDIA8, 1, 0, msm_routing_get_audio_mixer,\
+-	msm_routing_put_audio_mixer),
++	msm_routing_put_audio_mixer),					\
++	SOC_SINGLE_EXT("VoiceMMode1", id, 0, 1, 0,			\
++	msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),
+ 
+ #define Q6ROUTING_RX_DAPM_ROUTE(mix_name, s)	\
++	{ mix_name, "VoiceMMode1", "VOICE_DL" },\
+ 	{ mix_name, "MultiMedia1", "MM_DL1" },	\
+ 	{ mix_name, "MultiMedia2", "MM_DL2" },	\
+ 	{ mix_name, "MultiMedia3", "MM_DL3" },	\
+@@ -342,6 +345,7 @@ struct session_data {
+ struct msm_routing_data {
+ 	struct session_data sessions[MAX_SESSIONS];
+ 	struct session_data port_data[AFE_MAX_PORTS];
++	bool voice_port[AFE_MAX_PORTS];
+ 	struct device *dev;
+ 	struct mutex lock;
+ };
+@@ -516,6 +520,51 @@ static int msm_routing_put_audio_mixer(struct snd_kcontrol *kcontrol,
+ 	return 1;
+ }
+ 
++/*
++ * A voice path is DAPM and nothing else.
++ *
++ * The ADSP owns the call: the modem exchanges speech with it directly and it
++ * renders into the AFE ports itself, so there is no ASM stream to register and
++ * no ADM copp to open -- q6routing_stream_open() is called only from q6asm-dai
++ * and deliberately never for voice. All this control has to do is complete the
++ * DAPM path, so that the back-end is powered and its port started.
++ */
++static int msm_routing_get_voice_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_dapm_context *dapm =
++			snd_soc_dapm_kcontrol_dapm(kcontrol);
++	struct snd_soc_component *c = snd_soc_dapm_to_component(dapm);
++	struct msm_routing_data *data = dev_get_drvdata(c->dev);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++
++	ucontrol->value.integer.value[0] = data->voice_port[mc->reg] ? 1 : 0;
++
++	return 0;
++}
++
++static int msm_routing_put_voice_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_dapm_context *dapm =
++			snd_soc_dapm_kcontrol_dapm(kcontrol);
++	struct snd_soc_component *c = snd_soc_dapm_to_component(dapm);
++	struct msm_routing_data *data = dev_get_drvdata(c->dev);
++	struct snd_soc_dapm_update *update = NULL;
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	bool want = !!ucontrol->value.integer.value[0];
++
++	if (data->voice_port[mc->reg] == want)
++		return 0;
++
++	data->voice_port[mc->reg] = want;
++	snd_soc_dapm_mixer_update_power(dapm, kcontrol, want, update);
++
++	return 1;
++}
++
+ static const struct snd_kcontrol_new usb_rx_mixer_controls[] = {
+ 	Q6ROUTING_RX_MIXERS(USB_RX) };
+ 
+@@ -737,6 +786,9 @@ static const struct snd_kcontrol_new mmul8_mixer_controls[] = {
+ 	Q6ROUTING_TX_MIXERS(MSM_FRONTEND_DAI_MULTIMEDIA8) };
+ 
+ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
++	SND_SOC_DAPM_AIF_IN("VOICE_DL", NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("VOICE_UL", NULL, 0, SND_SOC_NOPM, 0, 0),
++
+ 	/* Mixer definitions */
+ 	SND_SOC_DAPM_MIXER("HDMI Mixer", SND_SOC_NOPM, 0, 0,
+ 			   hdmi_mixer_controls,

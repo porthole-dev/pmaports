@@ -33,9 +33,9 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig         |   4 +
  sound/soc/qcom/qdsp6/Makefile  |   1 +
- sound/soc/qcom/qdsp6/q6voice.c | 417 +++++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/q6voice.c | 422 +++++++++++++++++++++++++++++++++
  sound/soc/qcom/qdsp6/q6voice.h |   8 +
- 4 files changed, 430 insertions(+)
+ 4 files changed, 435 insertions(+)
  create mode 100644 sound/soc/qcom/qdsp6/q6voice.c
  create mode 100644 sound/soc/qcom/qdsp6/q6voice.h
 
@@ -73,10 +73,10 @@ index 85ba8527bd36..343729c7ee32 100644
  obj-$(CONFIG_SND_SOC_QDSP6_VOICE_DBG) += q6voice-dbg.o
 diff --git a/sound/soc/qcom/qdsp6/q6voice.c b/sound/soc/qcom/qdsp6/q6voice.c
 new file mode 100644
-index 000000000000..504b0df0c4d3
+index 000000000000..0086af96dab6
 --- /dev/null
 +++ b/sound/soc/qcom/qdsp6/q6voice.c
-@@ -0,0 +1,417 @@
+@@ -0,0 +1,422 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Voice call session management for the QDSP6 ADSP.
@@ -219,7 +219,12 @@ index 000000000000..504b0df0c4d3
 + * Returns the session handle the ADSP reports in src_port, which is how a
 + * create hands one back. @joined is set when the ADSP answered EALREADY, i.e.
 + * the modem had already done this; the caller must not then destroy what it
-+ * did not make.
++ * did not make. Only a CREATE may be asked that question: every other command
++ * in the sequence can answer EALREADY on its own account -- START_VOICE does
++ * it for a session this driver made a moment ago -- and taking that as a join
++ * marks a session we own as the modem's, so teardown leaves it behind. Enough
++ * of those and the ADSP answers the next CREATE with ADSP_ENORESOURCE and no
++ * call can be set up until the DSP restarts.
 + */
 +static int q6voice_cmd(struct q6voice *v, struct q6voice_svc *svc, u32 opcode,
 +		       u16 dest_port, const void *payload, size_t payload_size,
@@ -328,12 +333,12 @@ index 000000000000..504b0df0c4d3
 +		v->cvs.handle = ret;
 +
 +		ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_ATTACH_STREAM, v->mvm.handle,
-+				  &v->cvs.handle, sizeof(v->cvs.handle), &v->mvm.joined);
++				  &v->cvs.handle, sizeof(v->cvs.handle), NULL);
 +		if (ret < 0)
 +			goto out;
 +
 +		ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_SET_POLICY_DUAL_CONTROL,
-+				  v->mvm.handle, "\x01", 1, &v->mvm.joined);
++				  v->mvm.handle, "\x01", 1, NULL);
 +		if (ret < 0)
 +			goto out;
 +	}
@@ -359,12 +364,12 @@ index 000000000000..504b0df0c4d3
 +		goto out;
 +
 +	ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_ATTACH_VOCPROC, v->mvm.handle,
-+			  &v->cvp.handle, sizeof(v->cvp.handle), &v->mvm.joined);
++			  &v->cvp.handle, sizeof(v->cvp.handle), NULL);
 +	if (ret < 0)
 +		goto out;
 +
 +	ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_START_VOICE, v->mvm.handle,
-+			  NULL, 0, &v->mvm.joined);
++			  NULL, 0, NULL);
 +	if (ret < 0)
 +		goto out;
 +

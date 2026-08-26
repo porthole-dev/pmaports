@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=20
+pkgrel=21
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -33,6 +33,15 @@ options="!check !archcheck"
 depends="
 	alsa-ucm-conf
 	firmware-google-taimen
+	# The audio backend is not a preference on this board, it is a
+	# requirement: PulseAudio's capture reads silence here (measured, rms
+	# 2.0 where arecord on the same PCM and the same mixer state reads
+	# 408), so the microphone is dead and a call carries no uplink. The
+	# 52-taimen-voice.conf rule that holds the call downlink open is a
+	# WirePlumber rule and is inert without it. A rootfs reinstall picked
+	# the pulseaudio backend and cost a day of debugging a driver that was
+	# not at fault -- so the port names the one it needs.
+	postmarketos-base-ui-audio-backend-pipewire
 	linux-pam
 	mkbootimg
 	neard

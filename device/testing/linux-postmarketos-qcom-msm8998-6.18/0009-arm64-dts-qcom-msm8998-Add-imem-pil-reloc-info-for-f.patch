@@ -1,8 +1,8 @@
-From d0de922cafccaf2bd942b7c24626220f6fc88b91 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Mon, 9 Aug 2021 16:48:22 +0200
-Subject: [PATCH 009/115] arm64: dts: qcom: msm8998: Add imem pil-reloc-info
- for firmware loading
+Subject: [PATCH] arm64: dts: qcom: msm8998: Add imem pil-reloc-info for
+ firmware loading
 
 Firmware loading (mainly the modem) may require IMEM PIL relocation
 informations: specify this imem region in dt for qcom_pil_info to

@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 19 Aug 2026 13:11:51 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: add the L2 SAW4 AVS power managers
+
+CPRh on msm8998 does not talk to the PMIC itself: the voltage steps it
+issues are consumed by the per-cluster L2 SAW4 AVS port.  The spm
+driver has carried the msm8998 gold/silver L2 data all along, but no
+msm8998 DT ever instantiated the nodes, so AVS_CTL is left as the boot
+chain left it (disabled) and CPRh's first up-step is never serviced.
+
+Measured on taimen with the OSM gated on: gold's CPRH_STATUS latches
+corner 31 (the MEM-ACC crossover) with the rail frozen at the corner-0
+voltage, and the OSM's first DCVS transition waits forever.  The
+downstream tree boots these blocks from msm8998-pm.dtsi with
+qcom,saw2-avs-ctl 0x1010031 before CPRh ever comes up.
+
+Use the vendor's 0x4580458 AVS limit for both clusters; the values in
+the mainline table clamp silver at 1056 mV, below its CPRh ceilings.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 15 +++++++++++++++
+ drivers/soc/qcom/spm.c                | 10 ++++++++--
+ 2 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 25659ed83532..215faa7aa325 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -4454,6 +4454,21 @@ cpufreq_hw: cpufreq-hw@17914800 {
+ 			status = "disabled";
+ 		};
+ 
++		/*
++		 * The L2 SAW4 AVS ports consume the voltage steps CPRh
++		 * issues; without AVS_CTL programmed the rail never moves
++		 * and the OSM's first up-transition waits forever.
++		 */
++		saw_gold_l2: power-manager@17812000 {
++			compatible = "qcom,msm8998-gold-saw2-v4.1-l2", "qcom,saw2";
++			reg = <0x17812000 0x1000>;
++		};
++
++		saw_silver_l2: power-manager@17912000 {
++			compatible = "qcom,msm8998-silver-saw2-v4.1-l2", "qcom,saw2";
++			reg = <0x17912000 0x1000>;
++		};
++
+ 		/* Gold and Silver cluster */
+ 		apc_cprh: power-controller@179c8000 {
+ 			compatible = "qcom,msm8998-cprh";
+diff --git a/drivers/soc/qcom/spm.c b/drivers/soc/qcom/spm.c
+index f75659fff287..29d5de6e8c10 100644
+--- a/drivers/soc/qcom/spm.c
++++ b/drivers/soc/qcom/spm.c
+@@ -104,16 +104,22 @@ static const struct spm_reg_data spm_reg_660_silver_l2  = {
+ 	.avs_limit = 0x4580458,
+ };
+ 
++/*
++ * The wahoo vendor tree programs 0x4580458 (1112 mV) on both clusters
++ * (msm8998-pm.dtsi qcom,saw2-avs-limit); the values that came with this
++ * table (0x4700470 gold / 0x4200420 silver) clamp silver at 1056 mV,
++ * below its top CPRh ceilings.
++ */
+ static const struct spm_reg_data spm_reg_8998_gold_l2  = {
+ 	.reg_offset = spm_reg_offset_v4_1,
+ 	.avs_ctl = 0x1010031,
+-	.avs_limit = 0x4700470,
++	.avs_limit = 0x4580458,
+ };
+ 
+ static const struct spm_reg_data spm_reg_8998_silver_l2  = {
+ 	.reg_offset = spm_reg_offset_v4_1,
+ 	.avs_ctl = 0x1010031,
+-	.avs_limit = 0x4200420,
++	.avs_limit = 0x4580458,
+ };
+ 
+ static const u16 spm_reg_offset_v3_0[SPM_REG_NR] = {

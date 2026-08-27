@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 25 Aug 2026 20:58:07 +0200
+Subject: [PATCH] irqchip/qcom-mpm: complete the mailbox transfer
+
+The APCS IPC mailbox declares neither txdone_irq nor txdone_poll, so the
+core falls back to TXDONE_BY_ACK and waits for the client to tick the TX
+state machine.  mpm_pd_power_off() never does: after the first
+mbox_send_message() the channel's active_req stays set forever, every
+later doorbell is queued behind it and never written to the IPC
+register, and after MBOX_TX_QUEUE_LEN sleeps the send starts failing
+with -ENOBUFS.  Only the very first sleep entry since boot ever
+notified RPM.
+
+The IPC write completes synchronously inside send_data(), so the
+transfer is done the moment mbox_send_message() returns.  Acknowledge
+it on the spot, like every other APCS IPC client does.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/irqchip/irq-qcom-mpm.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/irqchip/irq-qcom-mpm.c b/drivers/irqchip/irq-qcom-mpm.c
+index 8d569f7c5a7a..100e987cfff2 100644
+--- a/drivers/irqchip/irq-qcom-mpm.c
++++ b/drivers/irqchip/irq-qcom-mpm.c
+@@ -306,6 +306,14 @@ static int mpm_pd_power_off(struct generic_pm_domain *genpd)
+ 	if (ret < 0)
+ 		return ret;
+ 
++	/*
++	 * The APCS IPC write completes in send_data() and the channel has
++	 * no tx-done mechanism (TXDONE_BY_ACK), so tick the state machine
++	 * ourselves or the second and every later message stays queued
++	 * behind a forever-active request and never reaches RPM.
++	 */
++	mbox_client_txdone(priv->mbox_chan, 0);
++
+ 	return 0;
+ }
+ 

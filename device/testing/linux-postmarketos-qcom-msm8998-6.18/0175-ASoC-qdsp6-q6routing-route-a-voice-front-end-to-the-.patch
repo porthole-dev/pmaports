@@ -1,0 +1,288 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 26 Aug 2026 02:10:05 +0200
+Subject: [PATCH] ASoC: qdsp6: q6routing: route a voice front-end to the
+ backends
+
+q6routing exposes MultiMedia1..8 and nothing else, so a voice front-end
+has no way to reach a backend and DPCM never powers one.
+
+A voice path is DAPM and nothing else. The ADSP owns the call: the modem
+exchanges speech with it directly and it renders into the AFE ports
+itself, so there is no ASM stream to register and no ADM copp to open --
+q6routing_stream_open() is called only from q6asm-dai, and not calling it
+is what makes a voice path correct rather than a special case inside it.
+The mixer control exists purely to complete the DAPM path so the backend
+is powered and its port started.
+
+This is also what lets a tone be mixed into a call: a voice session takes
+its RX port exclusively, and an ASM stream that tries to open the same
+port while voice holds it times out. Downstream keeps both a voice mixer
+and an audio mixer on one port for exactly this reason.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/qcom/qdsp6/q6routing.c | 192 ++++++++++++++++++++++++++++++-
+ 1 file changed, 191 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/qcom/qdsp6/q6routing.c b/sound/soc/qcom/qdsp6/q6routing.c
+index f49243daa517..0279eba1e6e6 100644
+--- a/sound/soc/qcom/qdsp6/q6routing.c
++++ b/sound/soc/qcom/qdsp6/q6routing.c
+@@ -50,9 +50,12 @@
+ 	msm_routing_put_audio_mixer),					\
+ 	SOC_SINGLE_EXT("MultiMedia8", id,				\
+ 	MSM_FRONTEND_DAI_MULTIMEDIA8, 1, 0, msm_routing_get_audio_mixer,\
+-	msm_routing_put_audio_mixer),
++	msm_routing_put_audio_mixer),					\
++	SOC_SINGLE_EXT("VoiceMMode1", id, 0, 1, 0,			\
++	msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),
+ 
+ #define Q6ROUTING_RX_DAPM_ROUTE(mix_name, s)	\
++	{ mix_name, "VoiceMMode1", "VOICE_DL" },\
+ 	{ mix_name, "MultiMedia1", "MM_DL1" },	\
+ 	{ mix_name, "MultiMedia2", "MM_DL2" },	\
+ 	{ mix_name, "MultiMedia3", "MM_DL3" },	\
+@@ -129,6 +132,137 @@
+ 	{ mix_name, "TX_CODEC_DMA_TX_4", "TX_CODEC_DMA_TX_4"},	\
+ 	{ mix_name, "TX_CODEC_DMA_TX_5", "TX_CODEC_DMA_TX_5"}
+ 
++/* The same backends, for a voice front-end: no ASM session, no ADM copp. */
++#define Q6ROUTING_VOICE_TX_MIXERS					\
++	SOC_SINGLE_EXT("PRI_MI2S_TX", PRIMARY_MI2S_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_MI2S_TX", SECONDARY_MI2S_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_MI2S_TX", TERTIARY_MI2S_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_MI2S_TX", QUATERNARY_MI2S_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_MI2S_TX", QUINARY_MI2S_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SLIMBUS_0_TX", SLIMBUS_0_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SLIMBUS_1_TX", SLIMBUS_1_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SLIMBUS_2_TX", SLIMBUS_2_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SLIMBUS_3_TX", SLIMBUS_3_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SLIMBUS_4_TX", SLIMBUS_4_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SLIMBUS_5_TX", SLIMBUS_5_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SLIMBUS_6_TX", SLIMBUS_6_TX, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_0", PRIMARY_TDM_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_1", PRIMARY_TDM_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_2", PRIMARY_TDM_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_3", PRIMARY_TDM_TX_3, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_4", PRIMARY_TDM_TX_4, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_5", PRIMARY_TDM_TX_5, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_6", PRIMARY_TDM_TX_6, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("PRIMARY_TDM_TX_7", PRIMARY_TDM_TX_7, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_0", SECONDARY_TDM_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_1", SECONDARY_TDM_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_2", SECONDARY_TDM_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_3", SECONDARY_TDM_TX_3, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_4", SECONDARY_TDM_TX_4, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_5", SECONDARY_TDM_TX_5, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_6", SECONDARY_TDM_TX_6, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("SEC_TDM_TX_7", SECONDARY_TDM_TX_7, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_0", TERTIARY_TDM_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_1", TERTIARY_TDM_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_2", TERTIARY_TDM_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_3", TERTIARY_TDM_TX_3, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_4", TERTIARY_TDM_TX_4, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_5", TERTIARY_TDM_TX_5, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_6", TERTIARY_TDM_TX_6, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TERT_TDM_TX_7", TERTIARY_TDM_TX_7, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_0", QUATERNARY_TDM_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_1", QUATERNARY_TDM_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_2", QUATERNARY_TDM_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_3", QUATERNARY_TDM_TX_3, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_4", QUATERNARY_TDM_TX_4, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_5", QUATERNARY_TDM_TX_5, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_6", QUATERNARY_TDM_TX_6, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUAT_TDM_TX_7", QUATERNARY_TDM_TX_7, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_0", QUINARY_TDM_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_1", QUINARY_TDM_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_2", QUINARY_TDM_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_3", QUINARY_TDM_TX_3, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_4", QUINARY_TDM_TX_4, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_5", QUINARY_TDM_TX_5, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_6", QUINARY_TDM_TX_6, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("QUIN_TDM_TX_7", QUINARY_TDM_TX_7, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("WSA_CODEC_DMA_TX_0", WSA_CODEC_DMA_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("WSA_CODEC_DMA_TX_1", WSA_CODEC_DMA_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("WSA_CODEC_DMA_TX_2", WSA_CODEC_DMA_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("VA_CODEC_DMA_TX_0", VA_CODEC_DMA_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("VA_CODEC_DMA_TX_1", VA_CODEC_DMA_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("VA_CODEC_DMA_TX_2", VA_CODEC_DMA_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_0", TX_CODEC_DMA_TX_0, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_1", TX_CODEC_DMA_TX_1, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_2", TX_CODEC_DMA_TX_2, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_3", TX_CODEC_DMA_TX_3, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_4", TX_CODEC_DMA_TX_4, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),	\
++	SOC_SINGLE_EXT("TX_CODEC_DMA_TX_5", TX_CODEC_DMA_TX_5, 0, 1, 0,		\
++		msm_routing_get_voice_mixer, msm_routing_put_voice_mixer),
++
+ #define Q6ROUTING_TX_MIXERS(id)						\
+ 	SOC_SINGLE_EXT("PRI_MI2S_TX", PRIMARY_MI2S_TX,			\
+ 		id, 1, 0, msm_routing_get_audio_mixer,			\
+@@ -342,6 +476,7 @@ struct session_data {
+ struct msm_routing_data {
+ 	struct session_data sessions[MAX_SESSIONS];
+ 	struct session_data port_data[AFE_MAX_PORTS];
++	bool voice_port[AFE_MAX_PORTS];
+ 	struct device *dev;
+ 	struct mutex lock;
+ };
+@@ -516,6 +651,51 @@ static int msm_routing_put_audio_mixer(struct snd_kcontrol *kcontrol,
+ 	return 1;
+ }
+ 
++/*
++ * A voice path is DAPM and nothing else.
++ *
++ * The ADSP owns the call: the modem exchanges speech with it directly and it
++ * renders into the AFE ports itself, so there is no ASM stream to register and
++ * no ADM copp to open -- q6routing_stream_open() is called only from q6asm-dai
++ * and deliberately never for voice. All this control has to do is complete the
++ * DAPM path, so that the back-end is powered and its port started.
++ */
++static int msm_routing_get_voice_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_dapm_context *dapm =
++			snd_soc_dapm_kcontrol_dapm(kcontrol);
++	struct snd_soc_component *c = snd_soc_dapm_to_component(dapm);
++	struct msm_routing_data *data = dev_get_drvdata(c->dev);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++
++	ucontrol->value.integer.value[0] = data->voice_port[mc->reg] ? 1 : 0;
++
++	return 0;
++}
++
++static int msm_routing_put_voice_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_dapm_context *dapm =
++			snd_soc_dapm_kcontrol_dapm(kcontrol);
++	struct snd_soc_component *c = snd_soc_dapm_to_component(dapm);
++	struct msm_routing_data *data = dev_get_drvdata(c->dev);
++	struct snd_soc_dapm_update *update = NULL;
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	bool want = !!ucontrol->value.integer.value[0];
++
++	if (data->voice_port[mc->reg] == want)
++		return 0;
++
++	data->voice_port[mc->reg] = want;
++	snd_soc_dapm_mixer_update_power(dapm, kcontrol, want, update);
++
++	return 1;
++}
++
+ static const struct snd_kcontrol_new usb_rx_mixer_controls[] = {
+ 	Q6ROUTING_RX_MIXERS(USB_RX) };
+ 
+@@ -712,6 +892,9 @@ static const struct snd_kcontrol_new rx_codec_dma_rx_7_mixer_controls[] = {
+ 	Q6ROUTING_RX_MIXERS(RX_CODEC_DMA_RX_7) };
+ 
+ 
++static const struct snd_kcontrol_new voice_tx_mixer_controls[] = {
++	Q6ROUTING_VOICE_TX_MIXERS };
++
+ static const struct snd_kcontrol_new mmul1_mixer_controls[] = {
+ 	Q6ROUTING_TX_MIXERS(MSM_FRONTEND_DAI_MULTIMEDIA1) };
+ 
+@@ -737,6 +920,9 @@ static const struct snd_kcontrol_new mmul8_mixer_controls[] = {
+ 	Q6ROUTING_TX_MIXERS(MSM_FRONTEND_DAI_MULTIMEDIA8) };
+ 
+ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
++	SND_SOC_DAPM_AIF_IN("VOICE_DL", NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("VOICE_UL", NULL, 0, SND_SOC_NOPM, 0, 0),
++
+ 	/* Mixer definitions */
+ 	SND_SOC_DAPM_MIXER("HDMI Mixer", SND_SOC_NOPM, 0, 0,
+ 			   hdmi_mixer_controls,
+@@ -940,6 +1126,8 @@ static const struct snd_soc_dapm_widget msm_qdsp6_widgets[] = {
+ 	SND_SOC_DAPM_MIXER("USB_RX Audio Mixer", SND_SOC_NOPM, 0, 0,
+ 			   usb_rx_mixer_controls,
+ 			   ARRAY_SIZE(usb_rx_mixer_controls)),
++	SND_SOC_DAPM_MIXER("VoiceMMode1 Mixer", SND_SOC_NOPM, 0, 0,
++		voice_tx_mixer_controls, ARRAY_SIZE(voice_tx_mixer_controls)),
+ 	SND_SOC_DAPM_MIXER("MultiMedia1 Mixer", SND_SOC_NOPM, 0, 0,
+ 		mmul1_mixer_controls, ARRAY_SIZE(mmul1_mixer_controls)),
+ 	SND_SOC_DAPM_MIXER("MultiMedia2 Mixer", SND_SOC_NOPM, 0, 0,
+@@ -1033,6 +1221,7 @@ static const struct snd_soc_dapm_route intercon[] = {
+ 	Q6ROUTING_RX_DAPM_ROUTE("RX_CODEC_DMA_RX_6 Audio Mixer", "RX_CODEC_DMA_RX_6"),
+ 	Q6ROUTING_RX_DAPM_ROUTE("RX_CODEC_DMA_RX_7 Audio Mixer", "RX_CODEC_DMA_RX_7"),
+ 	Q6ROUTING_RX_DAPM_ROUTE("USB_RX Audio Mixer", "USB_RX"),
++	Q6ROUTING_TX_DAPM_ROUTE("VoiceMMode1 Mixer"),
+ 	Q6ROUTING_TX_DAPM_ROUTE("MultiMedia1 Mixer"),
+ 	Q6ROUTING_TX_DAPM_ROUTE("MultiMedia2 Mixer"),
+ 	Q6ROUTING_TX_DAPM_ROUTE("MultiMedia3 Mixer"),
+@@ -1042,6 +1231,7 @@ static const struct snd_soc_dapm_route intercon[] = {
+ 	Q6ROUTING_TX_DAPM_ROUTE("MultiMedia7 Mixer"),
+ 	Q6ROUTING_TX_DAPM_ROUTE("MultiMedia8 Mixer"),
+ 
++	{"VOICE_UL", NULL, "VoiceMMode1 Mixer"},
+ 	{"MM_UL1", NULL, "MultiMedia1 Mixer"},
+ 	{"MM_UL2", NULL, "MultiMedia2 Mixer"},
+ 	{"MM_UL3", NULL, "MultiMedia3 Mixer"},

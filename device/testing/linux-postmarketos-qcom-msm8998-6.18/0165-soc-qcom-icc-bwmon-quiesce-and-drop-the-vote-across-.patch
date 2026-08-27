@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 23 Aug 2026 12:10:00 +0200
+Subject: [PATCH] soc: qcom: icc-bwmon: quiesce and drop the vote across sleep
+
+The bwmon carries no PM ops: across a system suspend the monitor stays
+enabled and its last interconnect vote stands. On SMD-RPM msm8998 the
+vote is active-set only but the RPM never applies its sleep set, so a
+standing vote holds DDR at the last measured rate for the whole
+suspend. Disable the monitor and drop the OPP on suspend;
+bwmon_start() reprograms everything from scratch on resume and the
+first sample re-votes honestly. Validated across an 8-hour overnight
+suspend.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/soc/qcom/icc-bwmon.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/drivers/soc/qcom/icc-bwmon.c b/drivers/soc/qcom/icc-bwmon.c
+index 597f9025e422..66db83db3f2d 100644
+--- a/drivers/soc/qcom/icc-bwmon.c
++++ b/drivers/soc/qcom/icc-bwmon.c
+@@ -873,12 +873,43 @@ static const struct of_device_id bwmon_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, bwmon_of_match);
+ 
++static int bwmon_suspend(struct device *dev)
++{
++	struct icc_bwmon *bwmon = dev_get_drvdata(dev);
++
++	/*
++	 * Quiesce the monitor and drop the interconnect vote.  On SMD-RPM
++	 * SoCs the vote is active-set only, but msm8998's RPM never applies
++	 * its sleep set (no APSS power-collapse handshake), so a vote left
++	 * standing here holds DDR at the last measured rate through the
++	 * whole system suspend.
++	 */
++	bwmon_disable(bwmon);
++	bwmon->target_kbps = 0;
++	bwmon->current_kbps = 0;
++
++	return dev_pm_opp_set_opp(dev, NULL);
++}
++
++static int bwmon_resume(struct device *dev)
++{
++	struct icc_bwmon *bwmon = dev_get_drvdata(dev);
++
++	/* bwmon_start() reprograms the monitor from scratch. */
++	bwmon_start(bwmon);
++
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(bwmon_pm_ops, bwmon_suspend, bwmon_resume);
++
+ static struct platform_driver bwmon_driver = {
+ 	.probe = bwmon_probe,
+ 	.remove = bwmon_remove,
+ 	.driver = {
+ 		.name = "qcom-bwmon",
+ 		.of_match_table = bwmon_of_match,
++		.pm = pm_sleep_ptr(&bwmon_pm_ops),
+ 	},
+ };
+ module_platform_driver(bwmon_driver);

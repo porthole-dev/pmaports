@@ -1,8 +1,8 @@
-From 2699aef9442c598f9b04b03ebba1a29307af1c09 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Tue, 10 Aug 2021 20:38:28 +0200
-Subject: [PATCH 001/115] iommu/arm-smmu-qcom: Skip the TTBR1 quirk for MSM8998
- and SDM630
+Subject: [PATCH] iommu/arm-smmu-qcom: Skip the TTBR1 quirk for MSM8998 and
+ SDM630
 
 Similarly to MSM8996 DragonBoard 820c, MSM8998 and SDM630 are equipped
 with Adreno 5xx series, which doesn't have separate pagetables support

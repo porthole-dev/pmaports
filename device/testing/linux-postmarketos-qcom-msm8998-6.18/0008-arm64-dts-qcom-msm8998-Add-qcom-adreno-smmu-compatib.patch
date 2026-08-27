@@ -1,8 +1,7 @@
-From f81038d02eb849f7e059294d9c9afd735f97b581 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Date: Mon, 9 Aug 2021 16:35:27 +0200
-Subject: [PATCH 008/115] arm64: dts: qcom: msm8998: Add qcom,adreno-smmu
- compatible
+Subject: [PATCH] arm64: dts: qcom: msm8998: Add qcom,adreno-smmu compatible
 
 Signed-off-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>

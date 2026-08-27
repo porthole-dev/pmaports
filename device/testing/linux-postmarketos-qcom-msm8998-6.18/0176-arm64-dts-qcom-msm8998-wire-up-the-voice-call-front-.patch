@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 26 Aug 2026 10:47:07 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: wire up the voice call front-end
+
+Gives the MVM service a dais child, the way q6asm carries the ASM dais,
+and has q6voice populate it. On taimen add the front-end dai-link and the
+routing that joins it to the mixers.
+
+The service nodes themselves were already there but inert; this is what
+gives them a driver to bind to.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 12 +++++++++++-
+ arch/arm64/boot/dts/qcom/msm8998.dtsi              |  6 ++++++
+ sound/soc/qcom/qdsp6/q6voice.c                     |  5 +++++
+ 3 files changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index dc2a413cf8bc..e4bae0859c11 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -79,7 +79,9 @@ sound {
+ 				"DMIC4", "MIC BIAS4",
+ 				"DMIC5", "MIC BIAS4",
+ 				"MM_DL1", "MultiMedia1 Playback",
+-				"MultiMedia2 Capture", "MM_UL2";
++				"MultiMedia2 Capture", "MM_UL2",
++				"VOICE_DL", "VoiceMMode1 Playback",
++				"VoiceMMode1 Capture", "VOICE_UL";
+ 
+ 		mm1-dai-link {
+ 			link-name = "MultiMedia1";
+@@ -97,6 +99,14 @@ cpu {
+ 			};
+ 		};
+ 
++		voice-dai-link {
++			link-name = "VoiceMMode1";
++
++			cpu {
++				sound-dai = <&q6voicedai 0>;
++			};
++		};
++
+ 		slim-dai-link {
+ 			link-name = "SLIM Playback";
+ 
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 2697f471db5c..a7b737389fd1 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -4636,9 +4636,15 @@ q6routing: routing {
+ 					};
+ 
+ 					q6mvm: service@9 {
++						compatible = "qcom,q6voice";
+ 						reg = <APR_SVC_ADSP_MVM>;
+ 						qcom,protection-domain = "avs/audio",
+ 									 "msm/adsp/audio_pd";
++
++						q6voicedai: dais {
++							compatible = "qcom,q6voice-dais";
++							#sound-dai-cells = <1>;
++						};
+ 					};
+ 
+ 					q6cvs: service@a {
+diff --git a/sound/soc/qcom/qdsp6/q6voice.c b/sound/soc/qcom/qdsp6/q6voice.c
+index 7f19a2a51a82..41035f41f7a4 100644
+--- a/sound/soc/qcom/qdsp6/q6voice.c
++++ b/sound/soc/qcom/qdsp6/q6voice.c
+@@ -22,6 +22,7 @@
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/of_platform.h>
+ #include <linux/slab.h>
+ #include <linux/soc/qcom/apr.h>
+ #include <linux/wait.h>
+@@ -367,6 +368,10 @@ static int q6voice_probe(struct apr_device *adev)
+ 	svc->adev = adev;
+ 	dev_set_drvdata(dev, v);
+ 
++	/* the front-end hangs off the MVM node, as the ASM dais hang off q6asm */
++	if (adev->svc_id == APR_SVC_ADSP_MVM)
++		return devm_of_platform_populate(dev);
++
+ 	return 0;
+ }
+ 

@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 22 Aug 2026 16:21:45 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: Easel powers off in
+ suspend
+
+Easel removes its own power during the first system sleep; the link
+never comes back and the kernel cannot restore it. Mark the root port
+with endpoint-powered-off-in-suspend so qcom-pcie keeps the controller
+powered and untouched across sleep instead of running the link-down
+host_deinit()/host_init() pair against the dead partner, which wedges
+the SoC interconnect on the second s2idle cycle (measured: 5/5 hangs
+attributed to dpm_resume_noirq at 1c00000.pcie / 0000:00:00.0; with
+the controller left untouched, 85/85 clean cycles).
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index c1a0594a438c..5839108cbfed 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -642,6 +642,19 @@ &pcie0 {
+ 	 * suppresses bind attrs, so there is no way to retry afterwards.
+ 	 */
+ 	vddpe-3v3-supply = <&easel_vddpe>;
++
++	pcie@0 {
++		/*
++		 * Easel powers itself off the bus during the first system
++		 * sleep and only its own PMIC/firmware can bring it back.
++		 * Tell the controller driver, so it leaves the port alone
++		 * across suspend instead of powering the host off on the
++		 * link-down suspend and reinitializing it on resume against
++		 * the absent partner -- which wedges the SoC interconnect,
++		 * deterministically, on the second s2idle cycle.
++		 */
++		endpoint-powered-off-in-suspend;
++	};
+ };
+ 
+ &blsp2_i2c3 {

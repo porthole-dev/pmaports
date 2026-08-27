@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 17:25:28 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-wahoo: enable CPU frequency
+ scaling
+
+The Pixel 2 bootloader leaves the OSM unprogrammed and does not write
+protect it, so the kernel can own CPU DVFS on this board.  Until now the
+CPUs ran at the frequency the bootloader picked, which left the gold
+cluster running slower than the silver one under load.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../boot/dts/qcom/msm8998-google-wahoo.dtsi   | 21 +++++++------------
+ 1 file changed, 7 insertions(+), 14 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+index 8e29213fc6c0..be6edb5d0c36 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+@@ -146,20 +146,13 @@ bluetooth {
+ 	};
+ };
+ 
+-/*
+- * milestone-2 TODO: 6.18's msm8998.dtsi carries no apc_cprh/cpufreq_hw
+- * nodes at all (no CPR calibration, no cpufreq-hw block) -- that whole
+- * subsystem was never ported here, unlike our 6.0 base. Re-add once
+- * apc_cprh/cpufreq_hw land in msm8998.dtsi upstream or get hand-ported.
+- *
+- * &apc_cprh {
+- *	status = "okay";
+- * };
+- *
+- * &cpufreq_hw {
+- *	status = "okay";
+- * };
+- */
++&apc_cprh {
++	status = "okay";
++};
++
++&cpufreq_hw {
++	status = "okay";
++};
+ 
+ &pm8005_lsid1 {
+ 	pm8005-regulators {

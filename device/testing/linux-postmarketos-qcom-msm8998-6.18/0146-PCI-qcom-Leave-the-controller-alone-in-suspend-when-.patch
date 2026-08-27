@@ -1,0 +1,113 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 22 Aug 2026 16:21:08 +0200
+Subject: [PATCH] PCI: qcom: Leave the controller alone in suspend when the EP
+ powers off
+
+On the Google Pixel 2 XL (msm8998, "qcom,pcie-msm8996"), the Easel
+coprocessor (Intel 8086:3140) behind the controller's single root port
+powers itself off the bus during the first system sleep. Its power
+sequencing is owned by the device's own firmware and PMIC; the kernel
+neither causes this nor can undo it by retraining the link.
+
+The suspend path then wedges the SoC deterministically on the second
+s2idle cycle:
+
+  - cycle 1 suspend: link up, nothing to do. During the sleep the
+    endpoint drops off the bus. Cycle 1 resume: pcie->suspended is
+    false, nothing to do. The controller is now powered with a dead
+    link.
+  - cycle 2 suspend: dw_pcie_link_up() reports link down, so
+    qcom_pcie_suspend_noirq() runs qcom_pcie_host_deinit().
+  - cycle 2 resume: qcom_pcie_host_init() runs against the absent link
+    partner and wedges the interconnect - sometimes inside the
+    controller's own resume callback, sometimes at the root port's
+    first config access right after. The DPM watchdog fires and the
+    device resets.
+
+RAM-persistent breadcrumb instrumentation attributed five out of five
+such hangs to the dpm_resume_noirq phase, in the controller's device
+(1c00000.pcie) or the root port (0000:00:00.0). Gating only the
+host_deinit()/host_init() pair was not enough: two residual hangs were
+attributed to the remainder of the resume callback, whose
+qcom_pcie_icc_opp_update() performs a link-status DBI read via
+dw_pcie_link_up() - on this platform even that access hangs the noirq
+phase once the partner is gone. The only configuration measured stable
+is the controller left completely untouched across the sleep cycle,
+exactly as it is left after the (always successful) first cycle: 85
+consecutive s2idle cycles with zero failures, versus a historical
+ceiling of one clean cycle pair, with the endpoint enumerated and WLAN
+associated throughout.
+
+When the root port carries the endpoint-powered-off-in-suspend
+property, skip both noirq callbacks entirely: keep the controller
+powered across sleep and do not touch the link, the DBI space, or the
+interconnect votes. The cost is the idle power of an inert controller
+kept on across sleep, on boards that opt in via DT.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/pci/controller/dwc/pcie-qcom.c | 29 ++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/drivers/pci/controller/dwc/pcie-qcom.c b/drivers/pci/controller/dwc/pcie-qcom.c
+index c48a20602d7f..82713eb19f9d 100644
+--- a/drivers/pci/controller/dwc/pcie-qcom.c
++++ b/drivers/pci/controller/dwc/pcie-qcom.c
+@@ -285,6 +285,7 @@ struct qcom_pcie {
+ 	struct list_head ports;
+ 	bool suspended;
+ 	bool use_pm_opp;
++	bool ep_powered_off_in_suspend;
+ };
+ 
+ #define to_qcom_pcie(x)		dev_get_drvdata((x)->dev)
+@@ -1925,6 +1926,15 @@ static int qcom_pcie_probe(struct platform_device *pdev)
+ 			goto err_pm_runtime_put;
+ 	}
+ 
++	for_each_available_child_of_node_scoped(dev->of_node, of_port) {
++		if (of_node_is_type(of_port, "pci") &&
++		    of_property_read_bool(of_port,
++					  "endpoint-powered-off-in-suspend")) {
++			pcie->ep_powered_off_in_suspend = true;
++			break;
++		}
++	}
++
+ 	platform_set_drvdata(pdev, pcie);
+ 
+ 	irq = platform_get_irq_byname_optional(pdev, "global");
+@@ -1988,6 +1998,21 @@ static int qcom_pcie_suspend_noirq(struct device *dev)
+ 	if (!pcie)
+ 		return 0;
+ 
++	/*
++	 * If the endpoint is powered off in system suspend by an agent the
++	 * kernel does not control, the link is dead or dying and neither
++	 * end of it can be safely operated on. Taking the link-down branch
++	 * below powers the controller off, and the host reinitialization
++	 * this queues up for resume then runs against an absent link
++	 * partner, which wedges the SoC interconnect on msm8998. Even the
++	 * bare link-status DBI read in qcom_pcie_icc_opp_update() hangs the
++	 * noirq resume phase in this state. Leave the controller fully
++	 * powered and untouched across the sleep cycle: the one
++	 * configuration measured stable on such boards.
++	 */
++	if (pcie->ep_powered_off_in_suspend)
++		return 0;
++
+ 	/*
+ 	 * Set minimum bandwidth required to keep data path functional during
+ 	 * suspend.
+@@ -2048,6 +2073,10 @@ static int qcom_pcie_resume_noirq(struct device *dev)
+ 	if (!pcie)
+ 		return 0;
+ 
++	/* The controller was left untouched by qcom_pcie_suspend_noirq(). */
++	if (pcie->ep_powered_off_in_suspend)
++		return 0;
++
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM) {
+ 		ret = icc_enable(pcie->icc_cpu);
+ 		if (ret) {

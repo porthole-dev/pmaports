@@ -1,7 +1,7 @@
-From 9111bbde1db073c162a619aea04efdcf3f5d8702 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:34:04 +0200
-Subject: [PATCH 018/115] Input: drv2624 - add TI DRV2624 haptics driver
+Subject: [PATCH] Input: drv2624 - add TI DRV2624 haptics driver
 
 Adds a driver for the Texas Instruments DRV2624 haptics driver IC,
 used for the vibration motor on the Google Pixel 2 XL (taimen). The

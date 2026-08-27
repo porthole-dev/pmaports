@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 28 Jul 2026 10:14:06 +0200
+Subject: [PATCH] wifi: ath10k: snoc: the MSA carveout is Device memory, use
+ memcpy_fromio()
+
+ath10k_setup_msa_resources() maps the fixed "memory-region" MSA carveout with
+devm_memremap(..., MEMREMAP_WT). arm64 defines no ioremap_wt(), so asm-generic
+folds MEMREMAP_WT onto plain ioremap(), i.e. PROT_DEVICE_nGnRE. Device memory
+does not tolerate the unaligned accesses that arm64's memcpy() emits for the
+head and tail of a copy, so ath10k_snoc_dump_msa_region() can take an alignment
+fault (ESR FSC 0x21) while dumping the region after a firmware crash -- an oops
+in the QMI event workqueue, in the middle of crash handling.
+
+This is latent rather than routinely hit: the function returns early unless a
+ramdump buffer has been allocated, so it only fires with coredump ramdumps
+enabled. It was found from the write side of the same mapping, where arm64's
+__memset() reaches its `dc zva` fast path and faults immediately -- DC ZVA on
+Device memory is architecturally an alignment fault.
+
+memcpy_fromio() is correct for both cases: it is required for the memremap()
+path, and it is merely a slower-but-valid byte/word copy for the
+dmam_alloc_coherent() fallback, which is ordinary memory.
+
+Found on Google Pixel 2 XL (msm8998/wahoo), which takes the fixed-carveout
+path because its WLAN firmware rejects a dynamically allocated MSA.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/net/wireless/ath/ath10k/snoc.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath10k/snoc.c b/drivers/net/wireless/ath/ath10k/snoc.c
+index b3f6424c17d3..dd1175dd13b7 100644
+--- a/drivers/net/wireless/ath/ath10k/snoc.c
++++ b/drivers/net/wireless/ath/ath10k/snoc.c
+@@ -5,6 +5,7 @@
+ 
+ #include <linux/bits.h>
+ #include <linux/clk.h>
++#include <linux/io.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -1455,12 +1456,22 @@ static void ath10k_msa_dump_memory(struct ath10k *ar,
+ 	hdr->start = cpu_to_le32((unsigned long)ar->msa.vaddr);
+ 	hdr->length = cpu_to_le32(ar->msa.mem_size);
+ 
++	/*
++	 * msa.vaddr may come from devm_memremap(..., MEMREMAP_WT) below. arm64
++	 * has no ioremap_wt(), so asm-generic maps MEMREMAP_WT onto plain
++	 * ioremap() == PROT_DEVICE_nGnRE, and plain memcpy() is not valid on
++	 * Device memory: its unaligned head/tail accesses fault (FSC 0x21).
++	 * memcpy_fromio() is correct for both this and the dmam_alloc_coherent
++	 * fallback, which is ordinary memory.
++	 */
+ 	if (current_region->len < ar->msa.mem_size) {
+-		memcpy(buf, ar->msa.vaddr, current_region->len);
++		memcpy_fromio(buf, (const void __iomem *)ar->msa.vaddr,
++			      current_region->len);
+ 		ath10k_warn(ar, "msa dump length is less than msa size %x, %x\n",
+ 			    current_region->len, ar->msa.mem_size);
+ 	} else {
+-		memcpy(buf, ar->msa.vaddr, ar->msa.mem_size);
++		memcpy_fromio(buf, (const void __iomem *)ar->msa.vaddr,
++			      ar->msa.mem_size);
+ 	}
+ }
+ 

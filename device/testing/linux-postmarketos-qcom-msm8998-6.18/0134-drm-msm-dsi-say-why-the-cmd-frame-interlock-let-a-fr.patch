@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 21 Aug 2026 00:17:33 +0200
+Subject: [PATCH] drm/msm/dsi: say why the cmd/frame interlock let a frame
+ through
+
+dsi-collide fired twice during a brightness ramp on a kernel with
+cmd_frame_serialize=Y, which the protocol says cannot happen: a kickoff takes
+cmd_mutex before CTL_START, a transfer holds cmd_mutex across the DMA, and a
+transfer that starts while a frame is pending waits for CMD_MDP_DONE. Both
+CTL_START paths route through dpu_encoder_kickoff(), so on paper there is no
+window.
+
+Reading the code further only produces more theories, so make the detector
+report the state that would distinguish them. Exactly one of these has to be
+false when it fires:
+
+  sync=0    cmd_sync_host was not this host, so msm_dsi_cmd_kickoff_begin()
+            and the frame_pending wait BOTH silently no-op
+  pend=1    a frame was pending and we transmitted anyway
+  waited=2  the 100 ms wait timed out and we transmitted anyway
+  waited=0  the wait was skipped entirely
+
+Diagnostic only; no behaviour change.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/dsi/dsi_host.c | 24 ++++++++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+index 068f2b69e10b..b12579824d4a 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -176,6 +176,8 @@ struct msm_dsi_host {
+ 	 */
+ 	wait_queue_head_t frame_wait;
+ 	bool frame_pending;
++	/* diagnostic: 0 = wait skipped, 1 = waited and frame cleared, 2 = timed out */
++	u8 collide_waited;
+ 	u32 mdp_done_cnt;
+ 
+ 	u32 err_work_state;
+@@ -1611,9 +1613,25 @@ static int dsi_cmd_dma_tx(struct msm_dsi_host *msm_host, int len)
+ 	if (!(msm_host->mode_flags & MIPI_DSI_MODE_VIDEO)) {
+ 		u32 status = dsi_read(msm_host, REG_DSI_STATUS0);
+ 
++		/*
++		 * When this fires the interlock let a frame through, so print
++		 * why. Measured 2026-08-21: it fired twice on a brightness
++		 * ramp with cmd_frame_serialize=Y, which the protocol says is
++		 * impossible -- kickoff takes cmd_mutex (held here) and the
++		 * transfer waits on frame_pending. Exactly one of these must
++		 * be false: sync=0 means cmd_sync_host was not this host, so
++		 * BOTH sides silently no-op; pend=1 means the wait was skipped
++		 * or timed out; waited=1 with pend=1 means it timed out and we
++		 * transmitted anyway.
++		 */
+ 		if (status & DSI_STATUS0_CMD_MODE_MDP_BUSY)
+-			pr_warn("dsi-collide: frame started during cmd DMA, status=%08x ret=%d\n",
+-				status, ret);
++			pr_warn("dsi-collide: frame started during cmd DMA, status=%08x ret=%d sync=%d ser=%d pend=%d waited=%d mdp_done=%u\n",
++				status, ret,
++				READ_ONCE(cmd_sync_host) == msm_host,
++				cmd_frame_serialize,
++				READ_ONCE(msm_host->frame_pending),
++				msm_host->collide_waited,
++				msm_host->mdp_done_cnt);
+ 	}
+ 
+ 	return ret;
+@@ -1915,10 +1933,12 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
+ 	 * controller (CMD_MDP_DONE). The reverse direction is covered by
+ 	 * msm_dsi_cmd_kickoff_begin() taking cmd_mutex, which we now hold.
+ 	 */
++	msm_host->collide_waited = 0;
+ 	if (cmd_frame_serialize && READ_ONCE(cmd_sync_host) == msm_host) {
+ 		long rc = wait_event_timeout(msm_host->frame_wait,
+ 					!READ_ONCE(msm_host->frame_pending),
+ 					msecs_to_jiffies(100));
++		msm_host->collide_waited = rc ? 1 : 2;	/* 2 = timed out */
+ 		if (!rc)
+ 			pr_warn("dsi-framewait: frame_pending stuck (mdp_done irqs=%u)\n",
+ 				msm_host->mdp_done_cnt);

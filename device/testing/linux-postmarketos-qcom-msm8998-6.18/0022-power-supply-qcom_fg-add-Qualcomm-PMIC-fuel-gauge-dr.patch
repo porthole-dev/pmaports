@@ -1,8 +1,7 @@
-From 46e0d469f1964dc10eceb0de9beb5be39b0f9610 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Joel Selvaraj <jo@jsfamily.in>
 Date: Sat, 8 Aug 2026 15:37:41 +0200
-Subject: [PATCH 022/115] power: supply: qcom_fg: add Qualcomm PMIC fuel gauge
- driver
+Subject: [PATCH] power: supply: qcom_fg: add Qualcomm PMIC fuel gauge driver
 
 Adds a power supply driver for the fuel gauge (FG) block found on
 Qualcomm PMI8998 and related PMICs, used on the Google Pixel 2 XL

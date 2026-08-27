@@ -1,0 +1,41 @@
+# Pay GNOME Software's AppStream parse once at login, in the background,
+# instead of on every tap of its icon.
+#
+# Measured on this device (BP-02, re-measured 2026-08-28 on kernel #99):
+# gnome-software puts its process up in 540 ms but does not stop burning CPU
+# for 5.0 s, single-threaded, 3.4 CPU-seconds. The cost is parsing
+# /var/lib/swcatalog/xml/alpinelinux-edge-community.xml.gz -- 5.5 MB gzipped,
+# 19.7 MB of XML -- which libxmlb imports before it can decide the compiled
+# silo is current. Storing it uncompressed changes nothing (BP-02 B-4b), so it
+# is the parse, not the decompression.
+#
+# The real fix is upstream: gnome-software MR !2395 ("Attempt to load existing
+# xmlb file on startup rather than building one", commit 5ee27bd9d) shipped in
+# 51~alpha and cuts startup ~40%. Alpine edge is on 50.3-r0 and has no 51, so
+# there is nothing to upgrade to yet. Delete this unit when it lands.
+#
+# Type=exec, not Type=dbus: BP-02 specified Type=dbus with
+# BusName=org.gnome.Software, but /usr/lib/systemd/user/gnome-software.service
+# already declares exactly that name. Two units owning one well-known name is a
+# race nobody needs, and the only thing BusName= buys here is readiness
+# tracking that nothing waits on.
+[Unit]
+Description=Pre-warm GNOME Software's AppStream silo
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionPathExists=/usr/bin/gnome-software
+
+[Service]
+# Measured 2026-08-28: the prewarm buys 4960 ms -> 1420 ms on time-to-window
+# (3.5x, -3.54 s) but costs 56 CPU-seconds and 178 MB RSS to get there --
+# four times BP-02's 14 CPU-s estimate. That is too much to run against
+# phosh's own startup, so hold it back until the session is up. BP-02 0-1
+# names this mitigation; the number that triggered it is above.
+ExecStartPre=/bin/sleep 20
+Type=exec
+ExecStart=/usr/bin/gnome-software --gapplication-service
+Slice=app.slice
+Restart=no
+
+[Install]
+WantedBy=graphical-session.target

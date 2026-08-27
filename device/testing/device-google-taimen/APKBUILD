@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=28
+pkgrel=29
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -42,9 +42,20 @@ options="!check !archcheck"
 # Comments must stay OUT of depends=: it is a quoted shell string, so a '#'
 # inside it is a literal dependency name, and abuild fails with
 # "dependency not found: #". That is why r21 was never installable.
+#
+# pinephone-callaudiod, on a Pixel: it is the call-audio daemon that
+# understands the profiles PipeWire actually builds. A UCM verb with two
+# playback devices on one PCM cannot become one profile with two ports --
+# ACP refuses to put two devices sharing a PlaybackPCM in the same profile
+# (spa/plugins/alsa/acp/alsa-ucm.c, devset_supports_device) -- so this board
+# gets 'Voice Call (Earpiece)' and 'Voice Call (Speaker)'. Upstream
+# callaudiod switches the loudspeaker on and off by setting a sink PORT, and
+# the sink in either profile has exactly one, so its EnableSpeaker can never
+# do anything here. The replacement switches the card profile instead.
 depends="
 	alsa-ucm-conf
 	firmware-google-taimen
+	pinephone-callaudiod
 	postmarketos-base-ui-audio-backend-pipewire
 	linux-pam
 	mkbootimg

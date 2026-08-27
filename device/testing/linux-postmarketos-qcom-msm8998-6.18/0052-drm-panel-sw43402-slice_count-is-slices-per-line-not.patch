@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 13:48:26 +0200
+Subject: [PATCH] drm/panel: sw43402: slice_count is slices per line, not per
+ packet
+
+The driver set slice_count = 1, correct for the tree it was written
+against, whose dsi_update_dsc_timing() read the field as slice-per-packet
+and derived the real slice count from hdisplay / slice_width itself.
+
+msm now uses the field with its standard meaning: slice_per_intf,
+total_bytes_per_intf, pkt_per_line and the MDP stream width all scale
+with it. With 1 on this two-slice panel the DSI frames half a line per
+packet: the left slice of every line decodes, the right slice
+desynchronises into DSC noise. Set the real value, 1440/720 = 2.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/panel/panel-lg-sw43402.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-lg-sw43402.c b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+index 34e0f1f4b6a5..2f6ce7ad1e21 100644
+--- a/drivers/gpu/drm/panel/panel-lg-sw43402.c
++++ b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+@@ -476,7 +476,14 @@ static int lg_sw43402_probe(struct mipi_dsi_device *dsi)
+ 
+ 	dsc->slice_height = 16;
+ 	dsc->slice_width = 720;
+-	dsc->slice_count = 1;
++	/*
++	 * Slices per line (1440/720), the field's standard meaning: msm sizes
++	 * the MDP stream from it (bytes per line, packets per line). The old
++	 * fork read it as slice-per-packet and recomputed slices itself, so 1
++	 * was correct there; here 1 halves the stream and only the left slice
++	 * of each line decodes.
++	 */
++	dsc->slice_count = 2;
+ 	dsc->bits_per_component = 8;
+ 	dsc->bits_per_pixel = 8 << 4; /* 1/16th units, 8.0 bpp; 6.18 msm rejects fractional */
+ 	dsc->block_pred_enable = true;

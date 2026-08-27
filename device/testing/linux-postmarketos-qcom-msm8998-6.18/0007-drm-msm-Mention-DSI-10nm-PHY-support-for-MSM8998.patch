@@ -1,7 +1,7 @@
-From 417d6918b79da9fc92b58ba67469ca372a729892 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jami Kettunen <jami.kettunen@protonmail.com>
 Date: Tue, 27 Apr 2021 20:24:20 +0300
-Subject: [PATCH 007/115] drm/msm: Mention DSI 10nm PHY support for MSM8998
+Subject: [PATCH] drm/msm: Mention DSI 10nm PHY support for MSM8998
 
 Signed-off-by: Jami Kettunen <jami.kettunen@protonmail.com>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>

@@ -1,7 +1,7 @@
-From 178feebed2388816714d0175e2f5919bca149b40 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:32:56 +0200
-Subject: [PATCH 016/115] regulator: bcm15602-easel: add BCM15602 PMIC driver
+Subject: [PATCH] regulator: bcm15602-easel: add BCM15602 PMIC driver
 
 Adds a minimal regulator driver for the Broadcom BCM15602 PMIC that
 powers Easel (Google Pixel Visual Core) on the Google Pixel 2 / 2 XL.

@@ -1,8 +1,8 @@
-From 5c4c75dc378d753343829e5276f2fbadca700648 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 8 Aug 2026 15:31:59 +0200
-Subject: [PATCH 014/115] media: i2c: lc898214xd: add ON Semi LC898214XD AF
- actuator driver
+Subject: [PATCH] media: i2c: lc898214xd: add ON Semi LC898214XD AF actuator
+ driver
 
 Adds a V4L2 subdev driver for the ON Semiconductor LC898214XD
 closed-loop voice-coil-motor controller, used for autofocus on the

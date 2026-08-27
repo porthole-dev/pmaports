@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 13:02:28 +0200
+Subject: [PATCH] drm/msm/dpu: fall back to pp done when there is no CTL_START
+ interrupt
+
+Not every DPU generates a CTL_START interrupt: on MSM8998 the downstream
+driver defines only the two PP CWB overflow bits in INTR2, and on a
+Pixel 2 XL the 9..13 bits never assert while frames demonstrably complete
+(PP_LINE_COUNT reaches vdisplay and the DSI raises CMD_MDP_DONE). The irq
+registration paths already skip a zero irq index, but
+wait_for_commit_done() still waited on the missing interrupt whenever the
+CTL_START readback had already self-cleared, so every commit timed out.
+Wait for pp done instead when the catalog declares no start interrupt.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c
+index 0ec6d67c7c70..bdd80bf68615 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c
+@@ -681,7 +681,9 @@ static int dpu_encoder_phys_cmd_wait_for_commit_done(
+ 	if (!dpu_encoder_phys_cmd_is_master(phys_enc))
+ 		return 0;
+ 
+-	if (phys_enc->hw_ctl->ops.is_started(phys_enc->hw_ctl))
++	/* Hardware without a CTL_START interrupt can only wait on pp done */
++	if (!phys_enc->irq[INTR_IDX_CTL_START] ||
++	    phys_enc->hw_ctl->ops.is_started(phys_enc->hw_ctl))
+ 		return dpu_encoder_phys_cmd_wait_for_tx_complete(phys_enc);
+ 
+ 	return _dpu_encoder_phys_cmd_wait_for_ctl_start(phys_enc);

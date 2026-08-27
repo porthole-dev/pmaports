@@ -1,0 +1,338 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 17:24:10 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: add audio
+
+Describe the WCD9341 codec on SLIMbus, the q6 frontends and backends the
+board uses, and the sound card that ties them to the TAS2557 speaker
+amplifiers already present on Quaternary MI2S.
+
+Three board facts are not obvious from the vendor devicetree:
+
+The audio DSP reaches its PCM buffers only through the LPASS SMMU, so
+that has to be enabled here. Without it the q6asm dais device gets no
+IOMMU group, falls back to direct DMA and hands the DSP a raw physical
+address - measured above 4 GB on this board. Everything then configures
+cleanly and the SoC dies the instant the DSP touches the buffer.
+
+Google's adsp firmware does not host the "avs/audio" protection domain
+the SoC devicetree names: the locator answers but never lists the
+service, so the lookup fails, no APR device is registered, and the sound
+card sits in deferred probe forever. Dropping the property makes
+apr_probe() register the services directly.
+
+The microphone-to-bias pairing is not one to one, and only part of the
+vendor's routing list can be used: MADINPUT is a downstream widget with
+no counterpart here, and the "MIC BIASn" -> microphone half of each pair
+feeds a supply widget from a source, which mainline's DAPM does not
+accept. Both name widgets that do not exist and hang the boot at the
+splash rather than merely failing the card.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 277 +++++++++++++++---
+ 1 file changed, 232 insertions(+), 45 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index 1fa9abbb35f7..53822f7ba62c 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -24,40 +24,6 @@ wahoo_batt: battery {
+ 		operating-range-celsius = <0 45>;
+ 	};
+ 
+-	/*
+-	 * Codec MCLK -- there is a KNOWN, MEASURED inconsistency here that is
+-	 * NOT yet resolved. See docs/HANDOFF-audio.md §2.5 before touching it.
+-	 *
+-	 * The codec only understands 9.6 or 12.288 MHz (the two encodings in
+-	 * WCD934X_CODEC_RPM_CLK_MCLK_CFG), the driver programs the 9.6 setting,
+-	 * and every MCLK-derived divider is computed from the clock-frequency
+-	 * below. But RPM_SMD_LN_BB_CLK2 is an XO *buffer*: mainline registers it
+-	 * with clk_smd_rpm_branch_ops, which has no .set_rate, so the
+-	 * clk_set_rate(extclk, 9600000) in wcd934x_comp_set_sysclk() returns 0
+-	 * and changes nothing. clk_summary reports bb_clk2 at 19200000 and the
+-	 * codec driver now warns about the mismatch at probe.
+-	 *
+-	 * The vendor's msm8998-audio.dtsi routes the codec's `wcd_clk` through
+-	 * `clock_audio` -> `clk_audio_pmi_clk`, which audio-ext-clk-up.c defines
+-	 * as a 1:1 clk_fixed_factor over **div_clk1** gated by pm8998 gpio13 --
+-	 * i.e. the same arrangement yoshino and sagit use, not this one.
+-	 *
+-	 * Pointing extclk at RPM_SMD_DIV_CLK1 was TRIED (2026-07-30) and did NOT
+-	 * change anything measurable: div_clk1 kept reporting 19200000 through a
+-	 * full capture, and the half-rate symptom was identical. So it is left on
+-	 * LN_BB_CLK2 -- the configuration the working 12/12 mic result was
+-	 * measured on -- rather than shipping an unvalidated clock change.
+-	 *
+-	 * Before trying again, settle what div_clk1's rate actually IS: mainline
+-	 * caches RPM clock rates (clk_smd_rpm_recalc_rate returns r->rate) and
+-	 * DEFINE_CLK_SMD_RPM initialises that to INT_MAX, so a reported
+-	 * 19200000 is not obviously the hardware truth. Note also that going via
+-	 * yoshino's gpio-gate-clock needs CONFIG_COMMON_CLK_GPIO=y in the
+-	 * pmaports config -- without it the node gets no driver, devm_clk_get()
+-	 * defers forever and there is no sound card at all. That was measured
+-	 * too.
+-	 */
+-
+ 	/*
+ 	 * Volume up only. Volume down is not a GPIO on this board -- it is
+ 	 * wired to the PMIC's RESIN pin, which is also why Power+VolDown is the
+@@ -78,6 +44,107 @@ key-volume-up {
+ 			wakeup-source;
+ 		};
+ 	};
++
++	sound {
++		compatible = "qcom,msm8998-sndcard";
++		model = "Google-Pixel-2-XL";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&quat_mi2s_active &quat_mi2s_sd1_active>;
++
++		/*
++		 * Capture-side routing only: this board has no headphone jack
++		 * and the speakers are reached over Quaternary MI2S rather than
++		 * through the codec, so there is no RX path to describe here.
++		 *
++		 * The microphone-to-bias pairing is not one to one - DMIC0/1
++		 * share MIC BIAS1, DMIC2/3 share BIAS3 and DMIC4/5 share BIAS4.
++		 * The MCLK routes are what take the capture from silence to
++		 * audio: wcd934x leaves MCLK a supply widget that nothing else
++		 * pulls up.
++		 */
++		audio-routing = "RX_BIAS", "MCLK",
++				"MIC BIAS1", "MCLK",
++				"MIC BIAS2", "MCLK",
++				"MIC BIAS3", "MCLK",
++				"MIC BIAS4", "MCLK",
++				"AMIC1", "MIC BIAS1",
++				"AMIC2", "MIC BIAS2",
++				"AMIC3", "MIC BIAS3",
++				"AMIC4", "MIC BIAS4",
++				"DMIC0", "MIC BIAS1",
++				"DMIC1", "MIC BIAS1",
++				"DMIC2", "MIC BIAS3",
++				"DMIC3", "MIC BIAS3",
++				"DMIC4", "MIC BIAS4",
++				"DMIC5", "MIC BIAS4",
++				"MM_DL1", "MultiMedia1 Playback",
++				"MultiMedia2 Capture", "MM_UL2";
++
++		mm1-dai-link {
++			link-name = "MultiMedia1";
++
++			cpu {
++				sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
++			};
++		};
++
++		mm2-dai-link {
++			link-name = "MultiMedia2";
++
++			cpu {
++				sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA2>;
++			};
++		};
++
++		slim-dai-link {
++			link-name = "SLIM Playback";
++
++			cpu {
++				sound-dai = <&q6afedai SLIMBUS_0_RX>;
++			};
++
++			platform {
++				sound-dai = <&q6routing>;
++			};
++
++			codec {
++				sound-dai = <&wcd9340 0>;
++			};
++		};
++
++		slimcap-dai-link {
++			link-name = "SLIM Capture";
++
++			cpu {
++				sound-dai = <&q6afedai SLIMBUS_0_TX>;
++			};
++
++			platform {
++				sound-dai = <&q6routing>;
++			};
++
++			codec {
++				sound-dai = <&wcd9340 1>;
++			};
++		};
++
++		quat-mi2s-dai-link {
++			link-name = "Quaternary MI2S Playback";
++
++			cpu {
++				sound-dai = <&q6afedai QUATERNARY_MI2S_RX>;
++			};
++
++			platform {
++				sound-dai = <&q6routing>;
++			};
++
++			codec {
++				sound-dai = <&speaker_amp>;
++			};
++		};
++	};
+ };
+ 
+ /* Volume down. The pon node carries it; mainline leaves it disabled. */
+@@ -247,18 +314,138 @@ nfc@28 {
+ };
+ 
+ /*
+- * milestone-2 TODO (ASoC / slimbus / qdsp6, explicitly out of milestone-1
+- * scope): our full audio wiring -- slimbam/slim/slim_ngd (WCD9340 codec
+- * on SLIMbus), q6core/q6afe/q6asm/q6adm property overrides, lpass_q6_smmu,
+- * q6asmdai frontends, q6afedai Quaternary MI2S, and the &sound machine
+- * card -- has no base nodes to attach to. 6.18's msm8998.dtsi carries no
+- * APR/q6core/q6afe/q6asm/q6adm/slimbus/sound nodes at all yet, unlike our
+- * 6.0 base (see taimen-v6.0:arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+- * lines 249-572 for the full original block with its debugging rationale).
+- * sound/soc/qcom/{msm8998.c,lpass-msm8998.c} are carried forward as source
+- * (milestone 1), but the whole APR/qdsp6/slimbus DT + driver stack needs
+- * porting into msm8998.dtsi before this board override can come back.
++ * The codec is a WCD9341 ("tavil"), enumerating as slim217,250 - which is what
++ * the vendor's elemental address [00 01 50 02 17 02] decodes to. Reset on
++ * tlmm 64 and interrupt on tlmm 54 match the vendor devicetree, and every
++ * supply is pm8998_s4.
++ *
++ * The speakers are not reached through the codec: both amplifiers hang off
++ * Quaternary MI2S, and this board has no headphone jack, so the codec's only
++ * job here is capture.
++ */
++&slimbam {
++	status = "okay";
++};
++
++&slim {
++	status = "okay";
++
++	slim@1 {
++		reg = <1>;
++		#address-cells = <2>;
++		#size-cells = <0>;
++
++		wcd9340_ifd: ifd@0,0 {
++			compatible = "slim217,250";
++			reg = <0 0>;
++		};
++
++		wcd9340: codec@1,0 {
++			compatible = "slim217,250";
++			reg = <1 0>;
++
++			reset-gpios = <&tlmm 64 GPIO_ACTIVE_HIGH>;
++			slim-ifc-dev = <&wcd9340_ifd>;
++
++			interrupt-parent = <&tlmm>;
++			interrupts = <54 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++
++			clock-names = "extclk";
++			clocks = <&rpmcc RPM_SMD_LN_BB_CLK2>;
++			clock-frequency = <9600000>;
++			clock-output-names = "mclk";
++			#clock-cells = <0>;
++
++			vdd-buck-supply = <&vreg_s4a_1p8>;
++			vdd-buck-sido-supply = <&vreg_s4a_1p8>;
++			vdd-tx-supply = <&vreg_s4a_1p8>;
++			vdd-rx-supply = <&vreg_s4a_1p8>;
++			vdd-io-supply = <&vreg_s4a_1p8>;
++
++			qcom,micbias1-microvolt = <1800000>;
++			qcom,micbias2-microvolt = <1800000>;
++			qcom,micbias3-microvolt = <1800000>;
++			qcom,micbias4-microvolt = <1800000>;
++
++			#address-cells = <1>;
++			#size-cells = <1>;
++			#sound-dai-cells = <1>;
++
++			wcdgpio: gpio@42 {
++				compatible = "qcom,wcd9340-gpio";
++				reg = <0x42 0x2>;
++				gpio-controller;
++				#gpio-cells = <2>;
++			};
++		};
++	};
++};
++
++/*
++ * Google's wahoo adsp firmware does not host the "avs/audio" protection
++ * domain: the locator answers but never lists the service, so PDR fails the
++ * lookup, no APR device is registered and the sound card waits forever.
++ * Without the property apr_probe() registers the services directly.
+  */
++&q6core {
++	/delete-property/ qcom,protection-domain;
++};
++
++&q6afe {
++	/delete-property/ qcom,protection-domain;
++};
++
++&q6asm {
++	/delete-property/ qcom,protection-domain;
++};
++
++&q6adm {
++	/delete-property/ qcom,protection-domain;
++};
++
++/*
++ * The audio DSP reaches its PCM buffers only through this SMMU. With it
++ * disabled the q6asm dais device gets no IOMMU group, falls back to direct
++ * DMA and hands the DSP a raw physical address - measured above 4 GB on this
++ * board, which the DSP cannot reach. Everything then configures cleanly and
++ * the SoC dies the moment the DSP first touches the buffer.
++ */
++&lpass_q6_smmu {
++	status = "okay";
++};
++
++/* MultiMedia1..4, the frontends this board uses. */
++&q6asmdai {
++	dai@0 {
++		reg = <0>;
++	};
++
++	dai@1 {
++		reg = <1>;
++	};
++
++	dai@2 {
++		reg = <2>;
++	};
++
++	dai@3 {
++		reg = <3>;
++	};
++};
++
++/*
++ * Quaternary MI2S is the only path to the internal speakers: the stereo
++ * TAS2557 pair is wired to SD1 with the SoC as bit- and frame-clock master,
++ * so only that data line is claimed and gpio60/SD0 is left alone.
++ */
++&q6afedai {
++	dai@22 {
++		reg = <QUATERNARY_MI2S_RX>;
++		qcom,sd-lines = <1>;
++	};
++};
+ 
+ &tlmm {
+ 	/* Quaternary MI2S to the TAS2557 speaker amps: SCK/WS on 58/59, data on

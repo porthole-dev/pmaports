@@ -1,0 +1,169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 27 Aug 2026 11:08:05 +0200
+Subject: [PATCH] ASoC: tas2557: keep the DAC gain across a configuration
+ download
+
+Loading a firmware configuration resets the part and downloads its register
+set, SPK_CTRL among them, so the DAC gain goes back to whatever the image
+carries -- 15 on this board -- and nothing tells userspace. A reload happens
+on every output change and on the first stream after an idle, so the gain a
+sound server set is silently discarded again and again.
+
+The result is a volume slider that has not moved and an amplifier at full
+scale. The next volume-down does not step by one, it jumps to wherever the
+slider is, and every volume-up after it recovers a single step: on taimen a
+call started at 15 with the UI at 40%, and one press took it to 5.
+
+Measured: with the gain set to 6, a configuration change plus one stream
+read it back as 15, with the driver's "loaded ..." line in between as the
+control that the download really ran.
+
+So keep the gain in the driver and write it back after each download, in
+power_up() -- after the DSP comes up, which re-applies the program's own
+register values, and before the unmute, so nothing is audible at the wrong
+level. The controls read the kept value rather than the register for the
+same reason the driver has to keep it at all: between a download and the
+next power-up the register is not what anyone asked for.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/codecs/tas2557.c | 66 ++++++++++++++++++++++++--------------
+ 1 file changed, 42 insertions(+), 24 deletions(-)
+
+diff --git a/sound/soc/codecs/tas2557.c b/sound/soc/codecs/tas2557.c
+index f11085ce6724..c73186b9433e 100644
+--- a/sound/soc/codecs/tas2557.c
++++ b/sound/soc/codecs/tas2557.c
+@@ -154,6 +154,7 @@ struct tas2557 {
+ 	unsigned int nconfig_texts;
+ 	int loaded_config;
+ 	unsigned int width;
++	u8 gain[2];			/* DAC gain per amp; the part forgets it */
+ 	bool powered;
+ };
+ 
+@@ -1076,21 +1077,36 @@ static int tas2557_gain_get(struct snd_kcontrol *kcontrol,
+ {
+ 	struct snd_soc_component *c = snd_soc_kcontrol_component(kcontrol);
+ 	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
+-	int idx, ret;
+-	u8 v;
++	int idx;
+ 
+-	for (idx = 0; idx < 2; idx++) {
+-		ret = tas2557_read(tas, idx, TAS2557_SPK_CTRL_REG, &v);
+-		if (ret < 0)
+-			return ret;
+-
+-		ucontrol->value.integer.value[idx] =
+-			FIELD_GET(TAS2557_DAC_GAIN_MASK, v);
+-	}
++	for (idx = 0; idx < 2; idx++)
++		ucontrol->value.integer.value[idx] = tas->gain[idx];
+ 
+ 	return 0;
+ }
+ 
++/*
++ * The gain lives in the part, and the part forgets it.
++ *
++ * Loading a configuration resets the device and downloads ~3000 registers,
++ * SPK_CTRL among them, so every reload takes the DAC gain back to the value
++ * the firmware image carries -- and a reload happens on every output change
++ * and every stream after an idle. Nothing told userspace, so the sound
++ * server's idea of the volume and the amplifier's drifted apart silently: the
++ * slider had not moved, the amp was at full scale, and the first volume-down
++ * jumped by however far apart the two had become.
++ *
++ * So the driver keeps the gain and puts it back after each download.
++ */
++static int tas2557_set_gain(struct tas2557 *tas, int idx, u8 gain)
++{
++	tas->gain[idx] = gain;
++
++	return tas2557_update_bits(tas, BIT(idx), TAS2557_SPK_CTRL_REG,
++				   TAS2557_DAC_GAIN_MASK,
++				   FIELD_PREP(TAS2557_DAC_GAIN_MASK, gain));
++}
++
+ static int tas2557_gain_put(struct snd_kcontrol *kcontrol,
+ 			    struct snd_ctl_elem_value *ucontrol)
+ {
+@@ -1104,9 +1120,7 @@ static int tas2557_gain_put(struct snd_kcontrol *kcontrol,
+ 		if (want < 0 || want > TAS2557_DAC_GAIN_MAX)
+ 			return -EINVAL;
+ 
+-		ret = tas2557_update_bits(tas, BIT(idx), TAS2557_SPK_CTRL_REG,
+-					  TAS2557_DAC_GAIN_MASK,
+-					  FIELD_PREP(TAS2557_DAC_GAIN_MASK, want));
++		ret = tas2557_set_gain(tas, idx, want);
+ 		if (ret < 0)
+ 			return ret;
+ 		if (ret > 0)
+@@ -1138,14 +1152,8 @@ static int tas2557_amp_gain_get(struct snd_kcontrol *kcontrol,
+ 	struct snd_soc_component *c = snd_soc_kcontrol_component(kcontrol);
+ 	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
+ 	int idx = kcontrol->private_value;
+-	int ret;
+-	u8 v;
+-
+-	ret = tas2557_read(tas, idx, TAS2557_SPK_CTRL_REG, &v);
+-	if (ret < 0)
+-		return ret;
+ 
+-	ucontrol->value.integer.value[0] = FIELD_GET(TAS2557_DAC_GAIN_MASK, v);
++	ucontrol->value.integer.value[0] = tas->gain[idx];
+ 
+ 	return 0;
+ }
+@@ -1157,13 +1165,14 @@ static int tas2557_amp_gain_put(struct snd_kcontrol *kcontrol,
+ 	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
+ 	int idx = kcontrol->private_value;
+ 	long want = ucontrol->value.integer.value[0];
++	int ret;
+ 
+ 	if (want < 0 || want > TAS2557_DAC_GAIN_MAX)
+ 		return -EINVAL;
+ 
+-	return tas2557_update_bits(tas, BIT(idx), TAS2557_SPK_CTRL_REG,
+-				   TAS2557_DAC_GAIN_MASK,
+-				   FIELD_PREP(TAS2557_DAC_GAIN_MASK, want));
++	ret = tas2557_set_gain(tas, idx, want);
++
++	return ret < 0 ? ret : !!ret;
+ }
+ 
+ static int tas2557_amp_gain_info(struct snd_kcontrol *kcontrol,
+@@ -1321,7 +1330,7 @@ static int tas2557_setup(struct tas2557 *tas, unsigned int rate)
+ static int tas2557_power_up(struct tas2557 *tas)
+ {
+ 	struct tas2557_config *cfg;
+-	int ret;
++	int idx, ret;
+ 
+ 	if (tas->powered || tas->loaded_config < 0)
+ 		return 0;
+@@ -1342,6 +1351,13 @@ static int tas2557_power_up(struct tas2557 *tas)
+ 	if (ret < 0)
+ 		return ret;
+ 
++	/* The download reset it to whatever the firmware image carries. */
++	for (idx = 0; idx < 2; idx++) {
++		ret = tas2557_set_gain(tas, idx, tas->gain[idx]);
++		if (ret < 0)
++			return ret;
++	}
++
+ 	ret = tas2557_run_seq(tas, cfg->devices, tas2557_unmute_seq);
+ 	if (ret < 0)
+ 		return ret;
+@@ -1500,6 +1516,8 @@ static int tas2557_i2c_probe(struct i2c_client *client)
+ 	tas->cur_config = -1;
+ 	tas->want_config = -1;
+ 	tas->loaded_config = -1;
++	tas->gain[0] = TAS2557_DAC_GAIN_MAX;
++	tas->gain[1] = TAS2557_DAC_GAIN_MAX;
+ 	i2c_set_clientdata(client, tas);
+ 
+ 	/*

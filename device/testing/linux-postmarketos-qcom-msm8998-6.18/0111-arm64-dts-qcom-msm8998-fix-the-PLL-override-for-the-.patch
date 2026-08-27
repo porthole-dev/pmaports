@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 10 Aug 2026 17:09:11 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: fix the PLL override for the 8th
+ CPU corner
+
+The vendor OSM tables give 0x03220022 as the PLL override for the eighth
+virtual corner on both clusters -- 806.4 MHz on gold, 825.6 MHz on silver.
+Both entries were transcribed with the high half as 0x0320, which programs
+the wrong droop-detector level for that corner while every other row in
+both tables is byte-exact against the vendor data.
+
+Fixes: c5d7d4dd8420 ("arm64: dts: qcom: msm8998: add CPRh and cpufreq-hw nodes")
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 8afe41b286b6..25659ed83532 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -503,7 +503,7 @@ opp-902400000 {
+ 		opp-806400000 {
+ 			opp-hz = /bits/ 64 <806400000>;
+ 			required-opps = <&cprh_opp8>;
+-			qcom,pll-override = <0x3200022>;
++			qcom,pll-override = <0x3220022>;
+ 			qcom,pll-div = <1>;
+ 			qcom,spare-data = <1>;
+ 		};
+@@ -648,7 +648,7 @@ opp-883200000 {
+ 		opp-825600000 {
+ 			opp-hz = /bits/ 64 <825600000>;
+ 			required-opps = <&cprh_opp8>;
+-			qcom,pll-override = <0x3200022>;
++			qcom,pll-override = <0x3220022>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-748800000 {

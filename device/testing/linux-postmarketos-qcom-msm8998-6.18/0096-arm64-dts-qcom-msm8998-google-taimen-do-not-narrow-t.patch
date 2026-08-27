@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 22:34:28 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: do not narrow the
+ PCIe bus range
+
+The PCIe0 override trims bus-range to <0x00 0x01> on the grounds that one
+endpoint is all that is behind the port. The root port disagrees: it comes
+out of the bootloader with subordinate = 0xff, and Linux does not renumber
+a bridge it did not itself configure, so the child bus cannot claim its
+number.
+
+	pci_bus 0000:01: busn_res: can not insert [bus 01-ff]
+		under [bus 00-01] (conflicts with (null) [bus 00-01])
+
+Drop the override and inherit <0x00 0xff> from msm8998.dtsi. The config
+region does not constrain this: the DWC core retargets its iATU on every
+config access rather than mapping flat ECAM, so 128K is ample regardless of
+how many bus numbers the range covers.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index 53822f7ba62c..c1a0594a438c 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -611,15 +611,23 @@ &pcie0 {
+ 	 * The config window has to move out of the way too (it sits at
+ 	 * 0x1b100000 in msm8998.dtsi, which the enlarged BAR window would
+ 	 * overlap -- "resource collision ... cannot initialize host").
+-	 * Downstream puts it at 0x1b010000/128K; ECAM for one bus needs 1M,
+-	 * and bus-range is trimmed to match what is actually behind this port.
++	 * Downstream puts it at 0x1b010000/128K, which is ample: the DWC core
++	 * retargets its iATU per config access rather than mapping flat ECAM,
++	 * so the region only has to hold one access, not one bus.
++	 *
++	 * Do NOT narrow bus-range to match the one endpoint. The root port
++	 * comes out of the bootloader with subordinate = 0xff and Linux does
++	 * not renumber it, so a narrower range makes the child bus fail to
++	 * claim its number:
++	 *
++	 *	pci_bus 0000:01: busn_res: can not insert [bus 01-ff]
++	 *		under [bus 00-01] (conflicts with (null) [bus 00-01])
+ 	 */
+ 	reg = <0x01c00000 0x2000>,
+ 	      <0x1b000000 0xf1d>,
+ 	      <0x1b000f20 0xa8>,
+ 	      <0x1b010000 0x20000>;
+ 	reg-names = "parf", "dbi", "elbi", "config";
+-	bus-range = <0x00 0x01>;
+ 
+ 	ranges = <0x01000000 0x0 0x1b030000 0x1b030000 0x0 0x20000>,
+ 		 <0x02000000 0x0 0x1b100000 0x1b100000 0x0 0xf00000>;

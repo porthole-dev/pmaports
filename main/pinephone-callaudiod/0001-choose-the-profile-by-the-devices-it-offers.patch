@@ -1,0 +1,128 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 27 Aug 2026 11:20:00 +0200
+Subject: [PATCH] choose the profile by the devices it offers, not by the
+ PinePhone's names
+
+This replaces callaudiod because PulseAudio 17 and PipeWire 1.2 build one
+card profile per UCM device instead of one profile with a port per device
+-- but it then hardcodes the profile names the PinePhone's UCM happens to
+produce, and every other device with a Voice Call verb produces different
+ones. The Pixel 2 XL has 'HiFi', 'Voice Call (Earpiece)' and 'Voice Call
+(Speaker)': its voice verb declares no capture device, because a call's
+microphone never reaches the CPU on that board, so the profiles carry one
+device each and HiFi is not decorated at all.
+
+Three things follow, none of them PinePhone-specific:
+
+  - a suffix list needs the single-device names as well, and a profile that
+    is just the verb has to be usable when no suffix matches at all;
+  - a verb need not have a source, so the microphone half of a mode change
+    must be skippable rather than raise StopIteration;
+  - a phone has more than one card the moment a Bluetooth headset connects,
+    so the main card is the one that can carry a call, not the only one.
+
+The PinePhone's own selection is unchanged: its decorated names are still
+tried first and still match first.
+--- a/pinephone-callaudiod	2026-08-27 11:06:16.778224694 +0200
++++ b/pinephone-callaudiod	2026-08-27 11:06:16.779586187 +0200
+@@ -70,14 +70,24 @@
+ 	def __init__(self):
+ 		main_card_name = None
+ 		hdmi_card_name = None
++		other_card_name = None
+ 
++		# A phone has more than one card as soon as a Bluetooth headset
++		# connects, so the main card is the one that can carry a call
++		# rather than the only one there is.
+ 		for card_name in Pactl.list_cards():
+ 			if 'hdmi' in card_name:
+-				assert hdmi_card_name is None
+ 				hdmi_card_name = card_name
+-			else:
+-				assert main_card_name is None
++			elif any(
++				profile_name.startswith('Voice Call')
++				for profile_name in Pactl.list_available_profiles(card_name)
++			):
+ 				main_card_name = card_name
++			elif other_card_name is None:
++				other_card_name = card_name
++
++		if main_card_name is None:
++			main_card_name = other_card_name
+ 
+ 		assert main_card_name is not None
+ 
+@@ -92,16 +102,16 @@
+ 		return self.__main_card_name
+ 
+ 	@property
+-	def main_card_hifi_source_name(self) -> str:
++	def main_card_hifi_source_name(self) -> str | None:
+ 		if self.__main_card_hifi_source_name is None:
+-			self.__main_card_hifi_source_name = next(Pactl.list_sources())
++			self.__main_card_hifi_source_name = next(Pactl.list_sources(), None)
+ 
+ 		return self.__main_card_hifi_source_name
+ 
+ 	@property
+-	def main_card_voice_call_source_name(self) -> str:
++	def main_card_voice_call_source_name(self) -> str | None:
+ 		if self.__main_card_voice_call_source_name is None:
+-			self.__main_card_voice_call_source_name = next(Pactl.list_sources())
++			self.__main_card_voice_call_source_name = next(Pactl.list_sources(), None)
+ 
+ 		return self.__main_card_voice_call_source_name
+ 
+@@ -164,6 +174,11 @@
+ 			profile_name = f'{profile_name} ({profile_suffix})'
+ 			found_profile = True
+ 			break
++	else:
++		# Where a verb's profiles hold a single device each, the profile is
++		# not decorated at all: the Pixel 2 XL's HiFi profile is plain
++		# 'HiFi', next to 'Voice Call (Earpiece)' and 'Voice Call (Speaker)'.
++		found_profile = profile_name in available_profiles
+ 
+ 	assert found_profile
+ 
+@@ -181,6 +196,11 @@
+ 		case Mode.CALL:
+ 			source = pulseaudio_state.main_card_voice_call_source_name
+ 
++	# On the Pixel 2 XL a call's microphone never reaches the CPU -- the DSP
++	# takes it straight off the codec -- so the voice profile has no source.
++	if source is None:
++		return
++
+ 	match choice.mic:
+ 		case Mic.MUTED:
+ 			subprocess.run([
+@@ -244,10 +264,13 @@
+ 			'Headphones, Headset',
+ 			'Headphones, Mic',
+ 			'Mic, Speaker', # HiFi mode uses speakers by default, not earpiece.
++			'Headphones',
++			'Speaker',
+ 		),
+ 		speaker_forced_profile_suffixes=(
+ 			'Headset, Speaker',
+ 			'Mic, Speaker',
++			'Speaker',
+ 		),
+ 	)
+ 	__call_mode_choice = Choice(
+@@ -257,10 +280,13 @@
+ 			'Headphones, Headset',
+ 			'Headphones, Mic',
+ 			'Earpiece, Mic',
++			'Headphones',
++			'Earpiece',
+ 		),
+ 		speaker_forced_profile_suffixes=(
+ 			'Headset, Speaker',
+ 			'Mic, Speaker',
++			'Speaker',
+ 		),
+ 	)
+ 

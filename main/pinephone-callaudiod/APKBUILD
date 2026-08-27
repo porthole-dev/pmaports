@@ -1,7 +1,7 @@
 maintainer="Arnav Singh <me@arnavion.dev>"
 pkgname=pinephone-callaudiod
 pkgver=0.1.3
-pkgrel=1
+pkgrel=2
 pkgdesc="Call audio routing daemon"
 url="https://github.com/Arnavion/pinephone-callaudiod"
 arch="noarch"
@@ -17,6 +17,7 @@ provides="callaudiod=$pkgver-r$pkgrel"
 provider_priority=1
 source="
 	$pkgname-$pkgver.tar.gz::https://github.com/Arnavion/pinephone-callaudiod/archive/v$pkgver.tar.gz
+	0001-choose-the-profile-by-the-devices-it-offers.patch
 	"
 # no tests
 options="!check"
@@ -31,4 +32,5 @@ package() {
 
 sha512sums="
 ae70947ebb52849b0e5429d0740240986b832975e470bbbe7122c3be5eb25df6b725e44c50cfd33a239219172b9dc344f457e298dec9531791728ff33cf769ee  pinephone-callaudiod-0.1.3.tar.gz
+2b639fa570485400fe203033f781935a080a4480994738ad6b070d220826693fad3f7df567f712c1373d2acffb621a9594e88fa88c71527d603b31533b32a729  0001-choose-the-profile-by-the-devices-it-offers.patch
 "

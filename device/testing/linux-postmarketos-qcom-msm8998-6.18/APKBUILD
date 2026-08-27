@@ -25,7 +25,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=90
+pkgrel=91
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -240,6 +240,8 @@ source="
 	0181-ASoC-tas2557-expose-the-two-amps-as-separate-volume-.patch
 	0182-ASoC-tas2557-keep-the-DAC-gain-across-a-configuratio.patch
 	0183-ASoC-tas2557-drop-an-unused-variable-in-hw_params.patch
+	0184-ASoC-tas2557-make-the-bottom-of-the-volume-control-s.patch
+	0185-ASoC-qdsp6-q6voice-a-control-for-the-vocproc-s-downl.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -453,6 +455,8 @@ ebe06e60239b374e22b060cabe328e9a91f11c5e18bf1874a15220db499deaa541a237f90f09c8af
 26f1554eb6b38ebaacf27c0c103314000d9974d7e86ed532c902a3e4424667b18f1d4247c5256b8a61d9e9e6ca9d7950b5c345780efb98ef08b30a737439af0a  0179-ASoC-qdsp6-q6voice-unwind-a-failed-session-instead-o.patch
 9bd622ad41e81bade4cd05db942778a651b9d55944b419ce823777f040f122cb562ebc12cf6034f990e7cc1dc3f4bdbd069c0fddbe09db13237cf5598d2bc369  0180-watchdog-qcom-BRINGUP-say-when-the-bark-fires-and-le.patch
 60b9ba227219f7b5b9cbd7d5af689d1bfeaba22407617f52c7d48ae318112a1501b26f36f6e0a56449378385f68046b1dd658d6a23e5fa930c65e18bf343e130  0181-ASoC-tas2557-expose-the-two-amps-as-separate-volume-.patch
-1a91890a42dd1ebaa50e1fc37ad0ce4d73b12514d8e9ced9c62ae0329ced2d368bb2c42223ea2096b64390115ec2c296f723b3aa163a1090dc5e17d3339f958d  0182-ASoC-tas2557-keep-the-DAC-gain-across-a-configuratio.patch
-636b07e09449a7a421ff82cfb70a8cbcff36eb0890f19122cad89bc888ff195533dc762c6a7ef547ab941a5b76c8c4a599710bba97dbe05b060009c1c6f92cef  0183-ASoC-tas2557-drop-an-unused-variable-in-hw_params.patch
+a6661678296d2f3618cd38e9c38b2faf5f1579c4ba1c35ae6f829b8d118dc81a9d46b404246afc519cfb050475438df934fcd9fd89cf6967e651355653ed1de7  0182-ASoC-tas2557-keep-the-DAC-gain-across-a-configuratio.patch
+d00ff2f85d02c26da17f0a05a30674983d66f1aed668cdb0e41105393d5b6afd747a29987bcc67e50f70ab0822937549993e96aabcc2dbfc4ee024b6f082f308  0183-ASoC-tas2557-drop-an-unused-variable-in-hw_params.patch
+4337986d3092300f59906c201741075d37389488a7a52c21d3eb4c9a0d1df6bd4187cca63be191bf4ad1cf8df0524e0cfcd6a6e9680a21227ab7fdbe6dfa4887  0184-ASoC-tas2557-make-the-bottom-of-the-volume-control-s.patch
+df6e0424f6f6a83b9b5908a7539a0cea435efcdae228b91bcb2e8755b13f3e9a9cf342ccb0c11ddc6729e1a889d9f6903af294e188deb275898a1c1f4240a5cf  0185-ASoC-qdsp6-q6voice-a-control-for-the-vocproc-s-downl.patch
 "

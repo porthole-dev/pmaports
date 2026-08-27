@@ -1,0 +1,157 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 27 Aug 2026 12:29:08 +0200
+Subject: [PATCH] ASoC: tas2557: make the bottom of the volume control silence
+
+The DAC gain field bottoms out at its smallest step, which is quiet but
+audible. So a sound server taking the volume to zero leaves the speaker
+playing while the UI draws a muted icon over it -- reported from the device
+as "I can see the disabled icon when reaching zero, but it doesn't actually
+mute; it's just extra low".
+
+The part has a real mute and the power sequences already use it. Expose it
+as "Speaker Playback Switch" so a UCM device can declare a PlaybackSwitch and
+the sink gains HW_MUTE_CTRL, and assert the same bit whenever the gain
+reaches 0, so the control means what it looks like at both ends.
+
+Kept across a reload for the same reason the gain is: the unmute in the
+power-up sequence would otherwise undo it on the next configuration
+download.
+
+Confirmed on the device: zero is silent, and it is silent in a call.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/codecs/tas2557.c | 94 ++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 91 insertions(+), 3 deletions(-)
+
+diff --git a/sound/soc/codecs/tas2557.c b/sound/soc/codecs/tas2557.c
+index d93b17f1c6ad..0fcd090b0bdb 100644
+--- a/sound/soc/codecs/tas2557.c
++++ b/sound/soc/codecs/tas2557.c
+@@ -155,6 +155,7 @@ struct tas2557 {
+ 	int loaded_config;
+ 	unsigned int width;
+ 	u8 gain[2];			/* DAC gain per amp; the part forgets it */
++	bool muted;			/* likewise, and the sequences undo it */
+ 	bool powered;
+ };
+ 
+@@ -1098,13 +1099,93 @@ static int tas2557_gain_get(struct snd_kcontrol *kcontrol,
+  *
+  * So the driver keeps the gain and puts it back after each download.
+  */
++static int tas2557_apply_mute(struct tas2557 *tas, int idx)
++{
++	/*
++	 * Gain 0 is the smallest step, not silence -- so a volume slider taken
++	 * to the bottom leaves the speaker quietly playing while the UI draws
++	 * a muted icon over it. Make the bottom of the control mean what it
++	 * looks like.
++	 */
++	bool mute = tas->muted || !tas->gain[idx];
++
++	if (!tas->powered)
++		return 0;
++
++	return tas2557_write(tas, BIT(idx), TAS2557_SOFT_MUTE_REG, mute);
++}
++
+ static int tas2557_set_gain(struct tas2557 *tas, int idx, u8 gain)
+ {
++	int changed, ret;
++
+ 	tas->gain[idx] = gain;
+ 
+-	return tas2557_update_bits(tas, BIT(idx), TAS2557_SPK_CTRL_REG,
+-				   TAS2557_DAC_GAIN_MASK,
+-				   FIELD_PREP(TAS2557_DAC_GAIN_MASK, gain));
++	changed = tas2557_update_bits(tas, BIT(idx), TAS2557_SPK_CTRL_REG,
++				      TAS2557_DAC_GAIN_MASK,
++				      FIELD_PREP(TAS2557_DAC_GAIN_MASK, gain));
++	if (changed < 0)
++		return changed;
++
++	ret = tas2557_apply_mute(tas, idx);
++
++	return ret < 0 ? ret : changed;
++}
++
++/*
++ * Mute, which is not gain 0.
++ *
++ * The DAC gain bottoms out at its smallest step, not at silence, so a sound
++ * server that has been given a volume control and no switch can only take the
++ * speaker very quiet -- and the UI shows a muted icon over an output that is
++ * still audible. The part has a real mute, and the power sequences already use
++ * it; this is the same bit, held for as long as userspace asks.
++ *
++ * The soft-mute register lives in the coefficient book, which is only there
++ * once the DSP is up, so a mute set while the part is down is kept and applied
++ * by power_up() -- as the gain is, and for the same reason.
++ */
++static int tas2557_set_mute(struct tas2557 *tas, bool mute)
++{
++	int idx, ret;
++
++	tas->muted = mute;
++
++	for (idx = 0; idx < 2; idx++) {
++		ret = tas2557_apply_mute(tas, idx);
++		if (ret < 0)
++			return ret;
++	}
++
++	return 0;
++}
++
++static int tas2557_mute_get(struct snd_kcontrol *kcontrol,
++			    struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_soc_kcontrol_component(kcontrol);
++	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
++
++	/* A "Playback Switch" is on when it is NOT muted. */
++	ucontrol->value.integer.value[0] = !tas->muted;
++
++	return 0;
++}
++
++static int tas2557_mute_put(struct snd_kcontrol *kcontrol,
++			    struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_soc_kcontrol_component(kcontrol);
++	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
++	bool mute = !ucontrol->value.integer.value[0];
++	int ret;
++
++	if (tas->muted == mute)
++		return 0;
++
++	ret = tas2557_set_mute(tas, mute);
++
++	return ret < 0 ? ret : 1;
+ }
+ 
+ static int tas2557_gain_put(struct snd_kcontrol *kcontrol,
+@@ -1214,6 +1295,8 @@ static const struct snd_kcontrol_new tas2557_controls[] = {
+ 	 */
+ 	TAS2557_AMP_GAIN("Speaker1 Playback Volume", 0),
+ 	TAS2557_AMP_GAIN("Speaker2 Playback Volume", 1),
++	SOC_SINGLE_BOOL_EXT("Speaker Playback Switch", 0,
++			    tas2557_mute_get, tas2557_mute_put),
+ };
+ 
+ /*
+@@ -1364,6 +1447,11 @@ static int tas2557_power_up(struct tas2557 *tas)
+ 
+ 	tas->powered = true;
+ 
++	/* ...which has just unmuted whatever userspace asked to stay muted. */
++	ret = tas2557_set_mute(tas, tas->muted);
++	if (ret < 0)
++		return ret;
++
+ 	return 0;
+ }
+ 

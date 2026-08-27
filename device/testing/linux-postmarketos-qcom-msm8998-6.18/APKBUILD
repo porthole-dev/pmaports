@@ -25,7 +25,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=95
+pkgrel=98
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -243,6 +243,7 @@ source="
 	0184-ASoC-tas2557-make-the-bottom-of-the-volume-control-s.patch
 	0185-ASoC-qdsp6-q6voice-a-control-for-the-vocproc-s-downl.patch
 	0186-drm-msm-a5xx-reset-the-GPU-before-hw_init-reprograms.patch
+	0187-cpufreq-qcom-hw-msm8998-busy-poll-the-ACD-transfers.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -461,4 +462,5 @@ d00ff2f85d02c26da17f0a05a30674983d66f1aed668cdb0e41105393d5b6afd747a29987bcc67e5
 4337986d3092300f59906c201741075d37389488a7a52c21d3eb4c9a0d1df6bd4187cca63be191bf4ad1cf8df0524e0cfcd6a6e9680a21227ab7fdbe6dfa4887  0184-ASoC-tas2557-make-the-bottom-of-the-volume-control-s.patch
 df6e0424f6f6a83b9b5908a7539a0cea435efcdae228b91bcb2e8755b13f3e9a9cf342ccb0c11ddc6729e1a889d9f6903af294e188deb275898a1c1f4240a5cf  0185-ASoC-qdsp6-q6voice-a-control-for-the-vocproc-s-downl.patch
 ef6060c77f2662558448aa21961997ebfed74ff6d68502eea9ff6a4a6bef7880e1e64d6f8ac6d6839db5fbdd16daa153d60ad6c4a3c3f317f3c7e89598ceb984  0186-drm-msm-a5xx-reset-the-GPU-before-hw_init-reprograms.patch
+919306b98dd036890cddf255d4b116588f2b90227de929e8a1667ebaa2e1a65a7491686d78f9c93017989f0a50bf39d292902969ba1c60cf87d3fbc7bcb3ffc7  0187-cpufreq-qcom-hw-msm8998-busy-poll-the-ACD-transfers.patch
 "

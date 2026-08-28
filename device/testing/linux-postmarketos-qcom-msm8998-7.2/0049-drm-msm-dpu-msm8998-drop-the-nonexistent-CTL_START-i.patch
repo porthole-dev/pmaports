@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 13:02:28 +0200
+Subject: [PATCH] drm/msm/dpu: msm8998: drop the nonexistent CTL_START
+ interrupts
+
+MSM8998 has no CTL_START interrupt: downstream (mdss_mdp_hwio.h) defines
+only the two PP CWB overflow bits in INTR2 -- the CTL start bits at 9..13
+exist from SDM845 on. Measured on a Pixel 2 XL: frames complete
+(PP_LINE_COUNT reaches vdisplay, the DSI raises CMD_MDP_DONE) while INTR2
+bits 9..13 never assert, so every cmd-mode commit spent its whole timeout
+in the ctl-start wait and the display never recovered from the first
+frame. Drop the bogus indices so the cmd encoder uses the pp-done path.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_3_0_msm8998.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_3_0_msm8998.h b/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_3_0_msm8998.h
+index 67c1463d3bd6..425944eb13d2 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_3_0_msm8998.h
++++ b/drivers/gpu/drm/msm/disp/dpu1/catalog/dpu_3_0_msm8998.h
+@@ -37,6 +37,13 @@ static const struct dpu_mdp_cfg msm8998_mdp = {
+ 	},
+ };
+ 
++/*
++ * No .intr_start: MSM8998 has no CTL_START interrupt. Downstream
++ * (mdss_mdp_hwio.h) defines only the two PP CWB overflow bits in INTR2;
++ * the 9..13 CTL start bits exist from SDM845 on. Measured on a Pixel 2 XL:
++ * frames complete (PP_LINE_COUNT reaches vdisplay, DSI raises CMD_MDP_DONE)
++ * while INTR2 bits 9..13 never assert, so every ctl-start wait times out.
++ */
+ static const struct dpu_ctl_cfg msm8998_ctl[] = {
+ 	{
+ 		.name = "ctl_0", .id = CTL_0,

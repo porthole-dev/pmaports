@@ -1,0 +1,1056 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jami Kettunen <jami.kettunen@protonmail.com>
+Date: Sat, 8 Aug 2026 15:39:06 +0200
+Subject: [PATCH] ASoC: qcom: add msm8998 machine driver
+
+Adds the ASoC machine driver for Qualcomm MSM8998 / APQ8098, used for
+audio on the Google Pixel 2 XL (taimen).
+
+6.18 mainline dropped the entire msm8998 ASoC machine-driver family
+(SND_SOC_MSM8998 and its SND_SOC_LPASS_MSM8998 platform driver) that
+existed at this port's 6.0 base. lpass-msm8998.c is brought back
+unmodified alongside the machine driver, since msm8998.c hard-selects
+SND_SOC_LPASS_MSM8998 and there is nothing to reconcile in the
+platform driver itself -- it is the same LPASS CPU DAI/platform glue
+every other Qualcomm SoC in this directory has.
+
+Signed-off-by: Jami Kettunen <jami.kettunen@protonmail.com>
+Co-developed-by: Giuseppe Maggio <jertlok@proton.me>
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ include/dt-bindings/sound/msm8998-lpass.h |   9 +
+ sound/soc/qcom/Kconfig                    |  18 +
+ sound/soc/qcom/Makefile                   |   4 +
+ sound/soc/qcom/lpass-msm8998.c            | 326 ++++++++++++
+ sound/soc/qcom/msm8998.c                  | 601 ++++++++++++++++++++++
+ 5 files changed, 958 insertions(+)
+ create mode 100644 include/dt-bindings/sound/msm8998-lpass.h
+ create mode 100644 sound/soc/qcom/lpass-msm8998.c
+ create mode 100644 sound/soc/qcom/msm8998.c
+
+diff --git a/include/dt-bindings/sound/msm8998-lpass.h b/include/dt-bindings/sound/msm8998-lpass.h
+new file mode 100644
+index 000000000000..79fc5cb4882b
+--- /dev/null
++++ b/include/dt-bindings/sound/msm8998-lpass.h
+@@ -0,0 +1,9 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __DT_MSM8998_LPASS_H
++#define __DT_MSM8998_LPASS_H
++
++#include <dt-bindings/sound/qcom,lpass.h>
++
++/* NOTE: Use qcom,lpass.h to define any AIF ID's for LPASS */
++
++#endif /* __DT_MSM8998_LPASS_H */
+diff --git a/sound/soc/qcom/Kconfig b/sound/soc/qcom/Kconfig
+index e6e24f3b9922..705750ebb8a6 100644
+--- a/sound/soc/qcom/Kconfig
++++ b/sound/soc/qcom/Kconfig
+@@ -34,6 +34,12 @@ config SND_SOC_LPASS_APQ8016
+ 	select SND_SOC_LPASS_CPU
+ 	select SND_SOC_LPASS_PLATFORM
+ 
++config SND_SOC_LPASS_MSM8998
++	tristate
++	select SND_SOC_LPASS_CPU
++	select SND_SOC_LPASS_PLATFORM
++	select SND_SOC_LPASS_HDMI
++
+ config SND_SOC_LPASS_SC7180
+ 	tristate
+ 	select SND_SOC_LPASS_CPU
+@@ -167,6 +173,18 @@ config SND_SOC_MSM8996
+ 	  APQ8096 SoC-based systems.
+ 	  Say Y if you want to use audio device on this SoCs
+ 
++config SND_SOC_MSM8998
++	tristate "SoC Machine driver for MSM8998 and APQ8098 boards"
++	depends on QCOM_APR && I2C && SOUNDWIRE
++	depends on COMMON_CLK
++	select SND_SOC_QDSP6
++	select SND_SOC_QCOM_COMMON
++	select SND_SOC_LPASS_MSM8998
++	help
++	  To add support for audio on Qualcomm Technologies Inc.
++	  MSM8998 SoC-based systems.
++	  Say Y if you want to use audio device on this SoCs.
++
+ config SND_SOC_SDM845
+ 	tristate "SoC Machine driver for SDM845 boards"
+ 	depends on QCOM_APR && I2C && SOUNDWIRE
+diff --git a/sound/soc/qcom/Makefile b/sound/soc/qcom/Makefile
+index 985ce2ae286b..f515d7d67ad4 100644
+--- a/sound/soc/qcom/Makefile
++++ b/sound/soc/qcom/Makefile
+@@ -6,6 +6,7 @@ snd-soc-lpass-hdmi-y := lpass-hdmi.o
+ snd-soc-lpass-platform-y := lpass-platform.o
+ snd-soc-lpass-ipq806x-y := lpass-ipq806x.o
+ snd-soc-lpass-apq8016-y := lpass-apq8016.o
++snd-soc-lpass-msm8998-y := lpass-msm8998.o
+ snd-soc-lpass-sc7180-y := lpass-sc7180.o
+ snd-soc-lpass-sc7280-y := lpass-sc7280.o
+ 
+@@ -15,6 +16,7 @@ obj-$(CONFIG_SND_SOC_LPASS_HDMI) += snd-soc-lpass-hdmi.o
+ obj-$(CONFIG_SND_SOC_LPASS_PLATFORM) += snd-soc-lpass-platform.o
+ obj-$(CONFIG_SND_SOC_LPASS_IPQ806X) += snd-soc-lpass-ipq806x.o
+ obj-$(CONFIG_SND_SOC_LPASS_APQ8016) += snd-soc-lpass-apq8016.o
++obj-$(CONFIG_SND_SOC_LPASS_MSM8998) += snd-soc-lpass-msm8998.o
+ obj-$(CONFIG_SND_SOC_LPASS_SC7180) += snd-soc-lpass-sc7180.o
+ obj-$(CONFIG_SND_SOC_LPASS_SC7280) += snd-soc-lpass-sc7280.o
+ 
+@@ -22,6 +24,7 @@ obj-$(CONFIG_SND_SOC_LPASS_SC7280) += snd-soc-lpass-sc7280.o
+ snd-soc-storm-y := storm.o
+ snd-soc-apq8016-sbc-y := apq8016_sbc.o
+ snd-soc-apq8096-y := apq8096.o
++snd-soc-msm8998-y := msm8998.o
+ snd-soc-sc7180-y := sc7180.o
+ snd-soc-sc7280-y := sc7280.o
+ snd-soc-sdm845-y := sdm845.o
+@@ -35,6 +38,7 @@ snd-soc-qcom-offload-utils-objs := usb_offload_utils.o
+ obj-$(CONFIG_SND_SOC_STORM) += snd-soc-storm.o
+ obj-$(CONFIG_SND_SOC_APQ8016_SBC) += snd-soc-apq8016-sbc.o
+ obj-$(CONFIG_SND_SOC_MSM8996) += snd-soc-apq8096.o
++obj-$(CONFIG_SND_SOC_MSM8998) += snd-soc-msm8998.o
+ obj-$(CONFIG_SND_SOC_SC7180) += snd-soc-sc7180.o
+ obj-$(CONFIG_SND_SOC_SC7280) += snd-soc-sc7280.o
+ obj-$(CONFIG_SND_SOC_SC8280XP) += snd-soc-sc8280xp.o
+diff --git a/sound/soc/qcom/lpass-msm8998.c b/sound/soc/qcom/lpass-msm8998.c
+new file mode 100644
+index 000000000000..b8f063406925
+--- /dev/null
++++ b/sound/soc/qcom/lpass-msm8998.c
+@@ -0,0 +1,326 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (c) 2021 AngeloGioacchino Del Regno
++ *                    <angelogioacchino.delregno@somainline.org>
++ *
++ * lpass-msm8998.c -- ALSA SoC platform-machine driver for QTi LPASS
++ */
++
++#include <linux/clk.h>
++#include <linux/device.h>
++#include <linux/err.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <dt-bindings/sound/msm8998-lpass.h>
++#include <sound/pcm.h>
++#include <sound/soc.h>
++
++#include "lpass-lpaif-reg.h"
++#include "lpass.h"
++
++static struct snd_soc_dai_driver msm8998_lpass_cpu_dai_driver[] = {
++	{
++		.id = MI2S_PRIMARY,
++		.name = "Primary MI2S",
++		.playback = {
++			.stream_name	= "Primary Playback",
++			.formats	= SNDRV_PCM_FMTBIT_S16,
++			.rates		= SNDRV_PCM_RATE_48000,
++			.rate_min	= 48000,
++			.rate_max	= 48000,
++			.channels_min	= 2,
++			.channels_max	= 2,
++		},
++		.capture = {
++			.stream_name	= "Primary Capture",
++			.formats	= SNDRV_PCM_FMTBIT_S16 |
++					  SNDRV_PCM_FMTBIT_S32,
++			.rates		= SNDRV_PCM_RATE_48000,
++			.rate_min	= 48000,
++			.rate_max	= 48000,
++			.channels_min	= 2,
++			.channels_max	= 2,
++		},
++		.ops    = &asoc_qcom_lpass_cpu_dai_ops,
++	}, {
++		.id = MI2S_SECONDARY,
++		.name = "Secondary MI2S",
++		.playback = {
++			.stream_name	= "Secondary Playback",
++			.formats	= SNDRV_PCM_FMTBIT_S16,
++			.rates		= SNDRV_PCM_RATE_48000,
++			.rate_min	= 48000,
++			.rate_max	= 48000,
++			.channels_min	= 2,
++			.channels_max	= 2,
++		},
++		.ops    = &asoc_qcom_lpass_cpu_dai_ops,
++	}, {
++		.id = MI2S_TERTIARY,
++		.name = "Tertiary MI2S",
++		.playback = {
++			.stream_name	= "Tertiary Playback",
++			.formats	= SNDRV_PCM_FMTBIT_S16,
++			.rates		= SNDRV_PCM_RATE_48000,
++			.rate_min	= 48000,
++			.rate_max	= 48000,
++			.channels_min	= 2,
++			.channels_max	= 2,
++		},
++		.ops    = &asoc_qcom_lpass_cpu_dai_ops,
++	}, {
++		.id = MI2S_QUATERNARY,
++		.name = "Quaternary MI2S",
++		.playback = {
++			.stream_name	= "Quaternary Playback",
++			.formats	= SNDRV_PCM_FMTBIT_S16,
++			.rates		= SNDRV_PCM_RATE_48000,
++			.rate_min	= 48000,
++			.rate_max	= 48000,
++			.channels_min	= 2,
++			.channels_max	= 2,
++		},
++		.ops    = &asoc_qcom_lpass_cpu_dai_ops,
++	}, {
++		.id = LPASS_DP_RX,
++		.name = "Hdmi",
++		.playback = {
++			.stream_name	= "Hdmi Playback",
++			.formats	= SNDRV_PCM_FMTBIT_S24,
++			.rates		= SNDRV_PCM_RATE_48000,
++			.rate_min	= 48000,
++			.rate_max	= 48000,
++			.channels_min	= 2,
++			.channels_max	= 2,
++		},
++		.ops    = &asoc_qcom_lpass_hdmi_dai_ops,
++	},
++};
++
++static int msm8998_lpass_alloc_dma_channel(struct lpass_data *drvdata,
++					   int direction, unsigned int dai_id)
++{
++	struct lpass_variant *v = drvdata->variant;
++	int chan = 0;
++
++	if (dai_id == LPASS_DP_RX) {
++		if (direction == SNDRV_PCM_STREAM_PLAYBACK) {
++			chan = find_first_zero_bit(&drvdata->hdmi_dma_ch_bit_map,
++						v->hdmi_rdma_channels);
++
++			if (chan >= v->hdmi_rdma_channels)
++				return -EBUSY;
++		}
++		set_bit(chan, &drvdata->hdmi_dma_ch_bit_map);
++	} else {
++		if (direction == SNDRV_PCM_STREAM_PLAYBACK) {
++			chan = find_first_zero_bit(&drvdata->dma_ch_bit_map,
++						v->rdma_channels);
++
++			if (chan >= v->rdma_channels)
++				return -EBUSY;
++		} else {
++			chan = find_next_zero_bit(&drvdata->dma_ch_bit_map,
++					v->wrdma_channel_start +
++					v->wrdma_channels,
++					v->wrdma_channel_start);
++
++			if (chan >=  v->wrdma_channel_start + v->wrdma_channels)
++				return -EBUSY;
++		}
++
++		set_bit(chan, &drvdata->dma_ch_bit_map);
++	}
++	return chan;
++}
++
++static int msm8998_lpass_free_dma_channel(struct lpass_data *drvdata, int chan, unsigned int dai_id)
++{
++	if (dai_id == LPASS_DP_RX)
++		clear_bit(chan, &drvdata->hdmi_dma_ch_bit_map);
++	else
++		clear_bit(chan, &drvdata->dma_ch_bit_map);
++
++	return 0;
++}
++
++static int msm8998_lpass_init(struct platform_device *pdev)
++{
++	struct lpass_data *drvdata = platform_get_drvdata(pdev);
++	struct lpass_variant *variant = drvdata->variant;
++	struct device *dev = &pdev->dev;
++	int ret, i;
++
++	drvdata->clks = devm_kcalloc(dev, variant->num_clks,
++				     sizeof(*drvdata->clks), GFP_KERNEL);
++	drvdata->num_clks = variant->num_clks;
++
++	for (i = 0; i < drvdata->num_clks; i++)
++		drvdata->clks[i].id = variant->clk_name[i];
++
++	ret = devm_clk_bulk_get(dev, drvdata->num_clks, drvdata->clks);
++	if (ret) {
++		dev_err(dev, "Failed to get clocks %d\n", ret);
++		return ret;
++	}
++
++	ret = clk_bulk_prepare_enable(drvdata->num_clks, drvdata->clks);
++	if (ret) {
++		dev_err(dev, "msm8998 clk_enable failed\n");
++		return ret;
++	}
++
++	return 0;
++}
++
++static int msm8998_lpass_exit(struct platform_device *pdev)
++{
++	struct lpass_data *drvdata = platform_get_drvdata(pdev);
++
++	clk_bulk_disable_unprepare(drvdata->num_clks, drvdata->clks);
++
++	return 0;
++}
++
++static struct lpass_variant msm8998_data = {
++	.i2sctrl_reg_base	= 0x1000,
++	.i2sctrl_reg_stride	= 0x1000,
++	.i2s_ports		= 3,
++	.irq_reg_base		= 0xa000,
++	.irq_reg_stride		= 0x1000,
++	.irq_ports		= 3,
++	.rdma_reg_base		= 0xD000,
++	.rdma_reg_stride	= 0x1000,
++	.rdma_channels		= 5,
++	.hdmi_rdma_reg_base	= 0x3000,
++	.hdmi_rdma_reg_stride	= 0x1000,
++	.hdmi_rdma_channels	= 4,
++	.dmactl_audif_start	= 1, /* what's that?? */
++	.wrdma_reg_base		= 0x13000,
++	.wrdma_reg_stride	= 0x1000,
++	.wrdma_channel_start	= 5, /* ?? what's that ?? */
++	.wrdma_channels		= 4,
++
++	.loopback		= REG_FIELD_ID(0x1000, 15, 15, 4, 0x1000),
++	.spken			= REG_FIELD_ID(0x1000, 14, 14, 4, 0x1000),
++	.spkmode		= REG_FIELD_ID(0x1000, 10, 13, 4, 0x1000),
++	.spkmono		= REG_FIELD_ID(0x1000, 9, 9, 4, 0x1000),
++	.micen			= REG_FIELD_ID(0x1000, 8, 8, 4, 0x1000),
++	.micmode		= REG_FIELD_ID(0x1000, 4, 7, 4, 0x1000),
++	.micmono		= REG_FIELD_ID(0x1000, 3, 3, 4, 0x1000),
++	.wssrc			= REG_FIELD_ID(0x1000, 2, 2, 4, 0x1000),
++	.bitwidth		= REG_FIELD_ID(0x1000, 0, 1, 4, 0x1000),
++
++	.rdma_dyncclk		= REG_FIELD_ID(0xD000, 14, 14, 4, 0x1000),
++	.rdma_bursten		= REG_FIELD_ID(0xD000, 13, 13, 4, 0x1000),
++	.rdma_wpscnt		= REG_FIELD_ID(0xD000, 10, 12, 4, 0x1000),
++	.rdma_intf		= REG_FIELD_ID(0xD000, 6, 9, 4, 0x1000),
++	.rdma_fifowm		= REG_FIELD_ID(0xD000, 1, 5, 4, 0x1000),
++	.rdma_enable		= REG_FIELD_ID(0xD000, 0, 0, 4, 0x1000),
++
++	.wrdma_dyncclk		= REG_FIELD_ID(0x13000, 12, 12, 3, 0x1000),
++	.wrdma_bursten		= REG_FIELD_ID(0x13000, 11, 11, 3, 0x1000),
++	.wrdma_wpscnt		= REG_FIELD_ID(0x13000, 8, 10, 3, 0x1000),
++	.wrdma_intf		= REG_FIELD_ID(0x13000, 4, 7, 3, 0x1000),
++	.wrdma_fifowm		= REG_FIELD_ID(0x13000, 1, 3, 3, 0x1000),
++	.wrdma_enable		= REG_FIELD_ID(0x13000, 0, 0, 3, 0x1000),
++
++	.hdmi_tx_ctl_addr	= 0x1000,
++	.hdmi_legacy_addr	= 0x1008,
++	.hdmi_vbit_addr		= 0xc0,
++	.hdmi_ch_lsb_addr	= 0x48,
++	.hdmi_ch_msb_addr	= 0x4c,
++	.ch_stride		= 0x8,
++	.hdmi_parity_addr	= 0x34,
++	.hdmi_dmactl_addr	= 0x38,
++	.hdmi_dma_stride	= 0x4,
++	.hdmi_DP_addr		= 0xc8,
++	.hdmi_sstream_addr	= 0x1c,
++	.hdmi_irq_reg_base	= 0x63000,
++	.hdmi_irq_ports		= 1,
++
++	.hdmi_rdma_dyncclk	= REG_FIELD_ID(0x3000, 14, 14, 3, 0x1000),
++	.hdmi_rdma_bursten	= REG_FIELD_ID(0x3000, 13, 13, 3, 0x1000),
++	.hdmi_rdma_burst8	= REG_FIELD_ID(0x3000, 15, 15, 3, 0x1000),
++	.hdmi_rdma_burst16	= REG_FIELD_ID(0x3000, 16, 16, 3, 0x1000),
++	.hdmi_rdma_dynburst	= REG_FIELD_ID(0x3000, 18, 18, 3, 0x1000),
++	.hdmi_rdma_wpscnt	= REG_FIELD_ID(0x3000, 10, 12, 3, 0x1000),
++	.hdmi_rdma_fifowm	= REG_FIELD_ID(0x3000, 1, 5, 3, 0x1000),
++	.hdmi_rdma_enable	= REG_FIELD_ID(0x3000, 0, 0, 3, 0x1000),
++
++	.sstream_en		= REG_FIELD(0x1c, 0, 0),
++	.dma_sel		= REG_FIELD(0x1c, 1, 2),
++	.auto_bbit_en		= REG_FIELD(0x1c, 3, 3),
++	.layout			= REG_FIELD(0x1c, 4, 4),
++	.layout_sp		= REG_FIELD(0x1c, 5, 8),
++	.set_sp_on_en		= REG_FIELD(0x1c, 10, 10),
++	.dp_audio		= REG_FIELD(0x1c, 11, 11),
++	.dp_staffing_en		= REG_FIELD(0x1c, 12, 12),
++	.dp_sp_b_hw_en		= REG_FIELD(0x1c, 13, 13),
++
++	.mute			= REG_FIELD(0xc8, 0, 0),
++	.as_sdp_cc		= REG_FIELD(0xc8, 1, 3),
++	.as_sdp_ct		= REG_FIELD(0xc8, 4, 7),
++	.aif_db4		= REG_FIELD(0xc8, 8, 15),
++
++	.soft_reset		= REG_FIELD(0x1000, 31, 31),
++	.force_reset		= REG_FIELD(0x1000, 30, 30),
++
++	.use_hw_chs		= REG_FIELD(0x38, 0, 0),
++	.use_hw_usr		= REG_FIELD(0x38, 1, 1),
++	.hw_chs_sel		= REG_FIELD(0x38, 2, 4),
++	.hw_usr_sel		= REG_FIELD(0x38, 5, 6),
++
++	.replace_vbit		= REG_FIELD(0xc0, 0, 0),
++	.vbit_stream		= REG_FIELD(0xc0, 1, 1),
++
++	.legacy_en		=  REG_FIELD(0x1008, 0, 0),
++	.calc_en		=  REG_FIELD(0x34, 0, 0),
++	.lsb_bits		=  REG_FIELD(0x48, 0, 31),
++	.msb_bits		=  REG_FIELD(0x4c, 0, 16),
++
++
++	.clk_name		= (const char*[]) {
++				   "pcnoc-sway-clk",
++				   "audio-core",
++				   "pcnoc-mport-clk",
++				},
++	.num_clks		= 3,
++	.dai_driver		= msm8998_lpass_cpu_dai_driver,
++	.num_dai		= ARRAY_SIZE(msm8998_lpass_cpu_dai_driver),
++	.dai_osr_clk_names      = (const char *[]) {
++				   "mclk0",
++				   "null",
++				},
++	.dai_bit_clk_names      = (const char *[]) {
++				   "mi2s-bit-clk0",
++				   "mi2s-bit-clk1",
++				},
++	.init			= msm8998_lpass_init,
++	.exit			= msm8998_lpass_exit,
++	.alloc_dma_channel	= msm8998_lpass_alloc_dma_channel,
++	.free_dma_channel	= msm8998_lpass_free_dma_channel,
++};
++
++static const struct of_device_id msm8998_lpass_cpu_device_id[] __maybe_unused = {
++	{.compatible = "qcom,msm8998-lpass-cpu", .data = &msm8998_data},
++	{}
++};
++MODULE_DEVICE_TABLE(of, msm8998_lpass_cpu_device_id);
++
++static struct platform_driver msm8998_lpass_cpu_platform_driver = {
++	.driver = {
++		.name = "msm8998-lpass-cpu",
++		.of_match_table = of_match_ptr(msm8998_lpass_cpu_device_id),
++	},
++	.probe = asoc_qcom_lpass_cpu_platform_probe,
++	.remove = asoc_qcom_lpass_cpu_platform_remove,
++	.shutdown = asoc_qcom_lpass_cpu_platform_shutdown,
++};
++
++module_platform_driver(msm8998_lpass_cpu_platform_driver);
++
++MODULE_DESCRIPTION("msm8998 LPASS CPU DRIVER");
++MODULE_LICENSE("GPL v2");
+diff --git a/sound/soc/qcom/msm8998.c b/sound/soc/qcom/msm8998.c
+new file mode 100644
+index 000000000000..0ece9978ab44
+--- /dev/null
++++ b/sound/soc/qcom/msm8998.c
+@@ -0,0 +1,601 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Based on sdm845.c
++ * Copyright (c) 2018, The Linux Foundation. All rights reserved.
++ *
++ * MSM8998 ASoC driver
++ * Copyright (c) 2021, AngeloGioacchino Del Regno
++ *                     <angelogioacchino.delregno@somainline.org>
++ */
++
++#include <dt-bindings/sound/qcom,q6afe.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/of_device.h>
++#include <sound/core.h>
++#include <sound/pcm.h>
++#include <sound/pcm_params.h>
++#include <sound/jack.h>
++#include <sound/soc.h>
++#include <linux/soundwire/sdw.h>
++#include <uapi/linux/input-event-codes.h>
++#include "common.h"
++#include "qdsp6/q6afe.h"
++
++#define DRIVER_NAME		"msm8998"
++#define DEFAULT_SAMPLE_RATE_48K	48000
++#define DEFAULT_MCLK_RATE	24576000
++#define TDM_BCLK_RATE		6144000
++#define MI2S_BCLK_RATE		1536000
++#define LEFT_SPK_TDM_TX_MASK	0x30
++#define RIGHT_SPK_TDM_TX_MASK	0xC0
++#define SPK_TDM_RX_MASK		0x03
++#define NUM_TDM_SLOTS		8
++#define SLIM_MAX_TX_PORTS	17
++#define SLIM_MAX_RX_PORTS	14
++#define WCD934X_DEFAULT_MCLK_RATE 9600000
++
++struct msm8998_snd_data {
++	struct snd_soc_jack jack;
++	bool jack_setup;
++	bool stream_prepared[SLIM_MAX_RX_PORTS];
++	struct snd_soc_card *card;
++	uint32_t quat_tdm_clk_count;
++	struct sdw_stream_runtime *sruntime[SLIM_MAX_RX_PORTS];
++};
++
++static unsigned int tdm_slot_offset[8] = {0, 4, 8, 12, 16, 20, 24, 28};
++
++/* Runtime knob so the mic channel count can be swept without a rebuild. */
++static unsigned int slim_tx_channels = 1;
++module_param(slim_tx_channels, uint, 0644);
++MODULE_PARM_DESC(slim_tx_channels, "channel count for the SLIMBUS_0_TX backend");
++
++/*
++ * Backend rate, swept the same way. Every backend was hard-pinned to 48 kHz,
++ * which is also the only rate that can reach the codec from userspace -- so
++ * there was no way to ask whether the codec's 2:1 sample loss follows the
++ * programmed rate or the hardware's own clock. Default is the previous
++ * hard-coded value, so leaving it alone changes nothing.
++ */
++static unsigned int be_rate = DEFAULT_SAMPLE_RATE_48K;
++module_param(be_rate, uint, 0644);
++MODULE_PARM_DESC(be_rate, "sample rate forced on every backend");
++
++static int msm8998_slim_snd_hw_params(struct snd_pcm_substream *substream,
++				     struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct snd_soc_dai *codec_dai;
++	struct msm8998_snd_data *pdata = snd_soc_card_get_drvdata(rtd->card);
++	u32 rx_ch[SLIM_MAX_RX_PORTS], tx_ch[SLIM_MAX_TX_PORTS];
++	struct sdw_stream_runtime *sruntime;
++	u32 rx_ch_cnt = 0, tx_ch_cnt = 0;
++	int ret = 0, i;
++
++	for_each_rtd_codec_dais(rtd, i, codec_dai) {
++		sruntime = snd_soc_dai_get_stream(codec_dai,
++						      substream->stream);
++		if (sruntime != ERR_PTR(-ENOTSUPP))
++			pdata->sruntime[cpu_dai->id] = sruntime;
++
++		ret = snd_soc_dai_get_channel_map(codec_dai,
++				&tx_ch_cnt, tx_ch, &rx_ch_cnt, rx_ch);
++
++		if (ret != 0 && ret != -ENOTSUPP) {
++			pr_err("failed to get codec chan map, err:%d\n", ret);
++			return ret;
++		} else if (ret == -ENOTSUPP) {
++			/* Ignore unsupported */
++			continue;
++		}
++
++		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++			ret = snd_soc_dai_set_channel_map(cpu_dai, 0, NULL,
++							  rx_ch_cnt, rx_ch);
++		} else {
++			ret = snd_soc_dai_set_channel_map(cpu_dai, tx_ch_cnt,
++							  tx_ch, 0, NULL);
++		}
++	}
++
++	return 0;
++}
++
++static int msm8998_tdm_snd_hw_params(struct snd_pcm_substream *substream,
++					struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct snd_soc_dai *codec_dai;
++	int ret = 0, j;
++	int channels, slot_width;
++
++	switch (params_format(params)) {
++	case SNDRV_PCM_FORMAT_S16_LE:
++		slot_width = 16;
++		break;
++	default:
++		dev_err(rtd->dev, "%s: invalid param format 0x%x\n",
++				__func__, params_format(params));
++		return -EINVAL;
++	}
++
++	channels = params_channels(params);
++	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0x3,
++				8, slot_width);
++		if (ret < 0) {
++			dev_err(rtd->dev, "%s: failed to set tdm slot, err:%d\n",
++					__func__, ret);
++			goto end;
++		}
++
++		ret = snd_soc_dai_set_channel_map(cpu_dai, 0, NULL,
++				channels, tdm_slot_offset);
++		if (ret < 0) {
++			dev_err(rtd->dev, "%s: failed to set channel map, err:%d\n",
++					__func__, ret);
++			goto end;
++		}
++	} else {
++		ret = snd_soc_dai_set_tdm_slot(cpu_dai, 0xf, 0,
++				8, slot_width);
++		if (ret < 0) {
++			dev_err(rtd->dev, "%s: failed to set tdm slot, err:%d\n",
++					__func__, ret);
++			goto end;
++		}
++
++		ret = snd_soc_dai_set_channel_map(cpu_dai, channels,
++				tdm_slot_offset, 0, NULL);
++		if (ret < 0) {
++			dev_err(rtd->dev, "%s: failed to set channel map, err:%d\n",
++					__func__, ret);
++			goto end;
++		}
++	}
++
++	for_each_rtd_codec_dais(rtd, j, codec_dai) {
++
++		if (!strcmp(codec_dai->component->name_prefix, "Left")) {
++			ret = snd_soc_dai_set_tdm_slot(
++					codec_dai, LEFT_SPK_TDM_TX_MASK,
++					SPK_TDM_RX_MASK, NUM_TDM_SLOTS,
++					slot_width);
++			if (ret < 0) {
++				dev_err(rtd->dev,
++					"DEV0 TDM slot err:%d\n", ret);
++				return ret;
++			}
++		}
++
++		if (!strcmp(codec_dai->component->name_prefix, "Right")) {
++			ret = snd_soc_dai_set_tdm_slot(
++					codec_dai, RIGHT_SPK_TDM_TX_MASK,
++					SPK_TDM_RX_MASK, NUM_TDM_SLOTS,
++					slot_width);
++			if (ret < 0) {
++				dev_err(rtd->dev,
++					"DEV1 TDM slot err:%d\n", ret);
++				return ret;
++			}
++		}
++	}
++
++end:
++	return ret;
++}
++
++static int msm8998_snd_hw_params(struct snd_pcm_substream *substream,
++					struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	int ret = 0;
++
++	switch (cpu_dai->id) {
++	case QUATERNARY_TDM_RX_0:
++	case QUATERNARY_TDM_TX_0:
++		ret = msm8998_tdm_snd_hw_params(substream, params);
++		break;
++	case SLIMBUS_0_RX...SLIMBUS_6_TX:
++		ret = msm8998_slim_snd_hw_params(substream, params);
++		break;
++	case QUATERNARY_MI2S_RX:
++		break;
++	default:
++		pr_err("%s: invalid dai id 0x%x\n", __func__, cpu_dai->id);
++		break;
++	}
++	return ret;
++}
++
++static int msm8998_dai_init(struct snd_soc_pcm_runtime *rtd)
++{
++	struct snd_soc_card *card = rtd->card;
++	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct msm8998_snd_data *pdata = snd_soc_card_get_drvdata(card);
++	struct snd_jack *jack;
++	/*
++	 * Codec SLIMBUS configuration
++	 * RX1, RX2, RX3, RX4, RX5, RX6, RX7, RX8, RX9, RX10, RX11, RX12, RX13
++	 * TX1, TX2, TX3, TX4, TX5, TX6, TX7, TX8, TX9, TX10, TX11, TX12, TX13,
++	 * TX14, TX15, TX16
++	 *
++	 * These must be sized by what the codec actually has, not by
++	 * SLIM_MAX_*_PORTS: those also size arrays indexed by DAI id, and using
++	 * them here overran both codecs. tx_ch was declared [17] with only 16
++	 * initialisers, so ARRAY_SIZE() handed set_channel_map a 17th, zeroed
++	 * channel; rx_ch listed 14. Both wcd9335 and wcd934x top out at 16 TX
++	 * and 13 RX. wcd9335_set_channel_map() only null-checks its arguments
++	 * so it tolerated the overflow, but wcd934x validates the counts and
++	 * rejected it with "Invalid tx 17 or rx 14 channel count", failing the
++	 * SLIM link init and taking the whole sound card down.
++	 */
++	unsigned int rx_ch[13] = {144, 145, 146, 147, 148, 149, 150,
++				  151, 152, 153, 154, 155, 156};
++	unsigned int tx_ch[16] = {128, 129, 130, 131, 132, 133, 134, 135,
++				  136, 137, 138, 139, 140, 141, 142, 143};
++	int ret, i;
++
++	if (!pdata->jack_setup) {
++		ret = snd_soc_card_jack_new(card, "Headset Jack",
++					    SND_JACK_HEADSET |
++					    SND_JACK_HEADPHONE |
++					    SND_JACK_BTN_0 | SND_JACK_BTN_1 |
++					    SND_JACK_BTN_2 | SND_JACK_BTN_3,
++					    &pdata->jack);
++
++		if (ret < 0) {
++			dev_err(card->dev, "Unable to add Headphone Jack\n");
++			return ret;
++		}
++
++		jack = pdata->jack.jack;
++
++		snd_jack_set_key(jack, SND_JACK_BTN_0, KEY_PLAYPAUSE);
++		snd_jack_set_key(jack, SND_JACK_BTN_1, KEY_VOICECOMMAND);
++		snd_jack_set_key(jack, SND_JACK_BTN_2, KEY_VOLUMEUP);
++		snd_jack_set_key(jack, SND_JACK_BTN_3, KEY_VOLUMEDOWN);
++		pdata->jack_setup = true;
++	}
++
++	switch (cpu_dai->id) {
++	case SLIMBUS_0_RX...SLIMBUS_6_TX:
++		for_each_rtd_codec_dais(rtd, i, codec_dai) {
++			ret = snd_soc_dai_set_channel_map(codec_dai,
++							  ARRAY_SIZE(tx_ch), tx_ch,
++							  ARRAY_SIZE(rx_ch), rx_ch);
++			if (ret != 0 && ret != -ENOTSUPP)
++				return ret;
++
++			snd_soc_dai_set_sysclk(codec_dai, 0,
++					       WCD934X_DEFAULT_MCLK_RATE,
++					       SNDRV_PCM_STREAM_PLAYBACK);
++
++			ret = snd_soc_component_set_jack(codec_dai->component,
++							  &pdata->jack, NULL);
++			if (ret != 0 && ret != -ENOTSUPP) {
++				dev_warn(card->dev, "Failed to set jack: %d\n", ret);
++				return ret;
++			}
++		}
++		break;
++	default:
++		break;
++	}
++
++	return 0;
++}
++
++static int msm8998_snd_startup(struct snd_pcm_substream *substream)
++{
++	unsigned int codec_dai_fmt = SND_SOC_DAIFMT_CBC_CFC;
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct snd_soc_card *card = rtd->card;
++	struct msm8998_snd_data *data = snd_soc_card_get_drvdata(card);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
++	int j;
++	int ret;
++
++	switch (cpu_dai->id) {
++	case QUATERNARY_TDM_RX_0:
++	case QUATERNARY_TDM_TX_0:
++		if (++(data->quat_tdm_clk_count) == 1) {
++			snd_soc_dai_set_sysclk(cpu_dai,
++				Q6AFE_LPASS_CLK_ID_QUAD_TDM_IBIT,
++				TDM_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
++		}
++
++		codec_dai_fmt |= SND_SOC_DAIFMT_IB_NF | SND_SOC_DAIFMT_DSP_B;
++
++		for_each_rtd_codec_dais(rtd, j, codec_dai) {
++
++			if (!strcmp(codec_dai->component->name_prefix,
++				    "Left")) {
++				ret = snd_soc_dai_set_fmt(
++						codec_dai, codec_dai_fmt);
++				if (ret < 0) {
++					dev_err(rtd->dev,
++						"Left TDM fmt err:%d\n", ret);
++					return ret;
++				}
++			}
++
++			if (!strcmp(codec_dai->component->name_prefix,
++				    "Right")) {
++				ret = snd_soc_dai_set_fmt(
++						codec_dai, codec_dai_fmt);
++				if (ret < 0) {
++					dev_err(rtd->dev,
++						"Right TDM slot err:%d\n", ret);
++					return ret;
++				}
++			}
++		}
++		break;
++	case QUATERNARY_MI2S_RX:
++		/*
++		 * The SoC is the bit and frame clock master here (the TAS2557
++		 * amps on taimen are I2S slaves), so the backend has to program
++		 * the LPASS quaternary bit clock itself. Without this the port
++		 * fell straight through to the error print below and no clock
++		 * was ever generated.
++		 */
++		ret = snd_soc_dai_set_sysclk(cpu_dai,
++					     Q6AFE_LPASS_CLK_ID_QUAD_MI2S_IBIT,
++					     MI2S_BCLK_RATE,
++					     SNDRV_PCM_STREAM_PLAYBACK);
++		if (ret) {
++			dev_err(rtd->dev, "QUAT MI2S bclk err:%d\n", ret);
++			return ret;
++		}
++		ret = snd_soc_dai_set_fmt(cpu_dai,
++					  SND_SOC_DAIFMT_CBC_CFC |
++					  SND_SOC_DAIFMT_NB_NF |
++					  SND_SOC_DAIFMT_I2S);
++		if (ret) {
++			dev_err(rtd->dev, "QUAT MI2S fmt err:%d\n", ret);
++			return ret;
++		}
++		break;
++	case SLIMBUS_0_RX...SLIMBUS_6_TX:
++		break;
++
++	default:
++		pr_err("%s: invalid dai id 0x%x\n", __func__, cpu_dai->id);
++		break;
++	}
++	return 0;
++}
++
++static void  msm8998_snd_shutdown(struct snd_pcm_substream *substream)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct snd_soc_card *card = rtd->card;
++	struct msm8998_snd_data *data = snd_soc_card_get_drvdata(card);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++
++	switch (cpu_dai->id) {
++	case QUATERNARY_TDM_RX_0:
++	case QUATERNARY_TDM_TX_0:
++		if (--(data->quat_tdm_clk_count) == 0) {
++			snd_soc_dai_set_sysclk(cpu_dai,
++				Q6AFE_LPASS_CLK_ID_QUAD_TDM_IBIT,
++				0, SNDRV_PCM_STREAM_PLAYBACK);
++		}
++		break;
++	case QUATERNARY_MI2S_RX:
++		/* release the bit clock the startup path took */
++		snd_soc_dai_set_sysclk(cpu_dai,
++				       Q6AFE_LPASS_CLK_ID_QUAD_MI2S_IBIT,
++				       0, SNDRV_PCM_STREAM_PLAYBACK);
++		break;
++	case SLIMBUS_0_RX...SLIMBUS_6_TX:
++		break;
++
++	default:
++		pr_err("%s: invalid dai id 0x%x\n", __func__, cpu_dai->id);
++		break;
++	}
++}
++
++static int msm8998_snd_prepare(struct snd_pcm_substream *substream)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct msm8998_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct sdw_stream_runtime *sruntime = data->sruntime[cpu_dai->id];
++	int ret;
++
++	if (!sruntime)
++		return 0;
++
++	if (data->stream_prepared[cpu_dai->id]) {
++		sdw_disable_stream(sruntime);
++		sdw_deprepare_stream(sruntime);
++		data->stream_prepared[cpu_dai->id] = false;
++	}
++
++	ret = sdw_prepare_stream(sruntime);
++	if (ret)
++		return ret;
++
++	/**
++	 * NOTE: there is a strict hw requirement about the ordering of port
++	 * enables and actual WSA881x PA enable. PA enable should only happen
++	 * after soundwire ports are enabled if not DC on the line is
++	 * accumulated resulting in Click/Pop Noise
++	 * PA enable/mute are handled as part of codec DAPM and digital mute.
++	 */
++
++	ret = sdw_enable_stream(sruntime);
++	if (ret) {
++		sdw_deprepare_stream(sruntime);
++		return ret;
++	}
++	data->stream_prepared[cpu_dai->id] = true;
++
++	return ret;
++}
++
++static int msm8998_snd_hw_free(struct snd_pcm_substream *substream)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct msm8998_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	struct sdw_stream_runtime *sruntime = data->sruntime[cpu_dai->id];
++
++	if (sruntime && data->stream_prepared[cpu_dai->id]) {
++		sdw_disable_stream(sruntime);
++		sdw_deprepare_stream(sruntime);
++		data->stream_prepared[cpu_dai->id] = false;
++	}
++
++	return 0;
++}
++
++static const struct snd_soc_ops msm8998_be_ops = {
++	.hw_params = msm8998_snd_hw_params,
++	.hw_free = msm8998_snd_hw_free,
++	.prepare = msm8998_snd_prepare,
++	.startup = msm8998_snd_startup,
++	.shutdown = msm8998_snd_shutdown,
++};
++
++static int msm8998_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
++				struct snd_pcm_hw_params *params)
++{
++	struct snd_interval *rate = hw_param_interval(params,
++					SNDRV_PCM_HW_PARAM_RATE);
++	struct snd_interval *channels = hw_param_interval(params,
++					SNDRV_PCM_HW_PARAM_CHANNELS);
++	struct snd_mask *fmt = hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
++
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++
++	rate->min = rate->max = be_rate;
++	snd_mask_set_format(fmt, SNDRV_PCM_FORMAT_S16_LE);
++
++	/*
++	 * Forcing every backend to stereo is wrong for the mic.
++	 *
++	 * The handset mic is a single DMIC on ONE SLIM TX channel: the codec's
++	 * slim_ch_list holds exactly one entry, so wcd934x_get_channel_map()
++	 * returns tx_num=1 and q6slim_set_channel_map() configures the AFE port
++	 * with num_channels=1 (q6slim_hw_params() never touches the count).
++	 * But this fixup then told the BE it was stereo, and q6routing feeds
++	 * that straight into the ADM -- measured as an ADM open with ch=2 against a
++	 * one-channel AFE port and a mono frontend. The DSP ran and delivered a
++	 * constant value rather than audio.
++	 *
++	 * Downstream agrees: slim_tx_cfg[SLIM_TX_0] in msm8998_wahoo.c is 1
++	 * channel, and mixer_paths_tavil_taimen.xml sets "SLIM_0_TX Channels" to
++	 * "One" -- a control mainline does not implement, which is why nothing
++	 * here ever corrected it.
++	 */
++	switch (cpu_dai->id) {
++	case SLIMBUS_0_TX:
++		channels->min = channels->max = slim_tx_channels;
++		break;
++	default:
++		channels->min = channels->max = 2;
++		break;
++	}
++
++	return 0;
++}
++
++static const struct snd_soc_dapm_widget msm8998_snd_widgets[] = {
++	SND_SOC_DAPM_HP("Headphone Jack", NULL),
++	SND_SOC_DAPM_MIC("Headset Mic", NULL),
++	SND_SOC_DAPM_SPK("Left Spk", NULL),
++	SND_SOC_DAPM_SPK("Right Spk", NULL),
++	SND_SOC_DAPM_MIC("Int Mic", NULL),
++	/*
++	 * The board routes each MIC BIAS to one of these, so without them the
++	 * bias widgets have no input and DAPM leaves the path incomplete --
++	 * measured as "MIC BIAS1: On in 0 out 0" while capture returned a
++	 * constant. Names and the bias pairing are taken verbatim from the
++	 * factory devicetree overlay (qcom,audio-routing on sound-tavil):
++	 * DMIC0/1 -> BIAS1, DMIC2/3 -> BIAS3, DMIC4/5 -> BIAS4.
++	 */
++	SND_SOC_DAPM_MIC("Handset Mic", NULL),
++	SND_SOC_DAPM_MIC("Handset 2nd Mic", NULL),
++	SND_SOC_DAPM_MIC("Handset 3rd Mic", NULL),
++	SND_SOC_DAPM_MIC("Digital Mic0", NULL),
++	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
++	SND_SOC_DAPM_MIC("Digital Mic2", NULL),
++	SND_SOC_DAPM_MIC("Digital Mic3", NULL),
++	SND_SOC_DAPM_MIC("Digital Mic4", NULL),
++	SND_SOC_DAPM_MIC("Digital Mic5", NULL),
++};
++
++static void msm8998_add_ops(struct snd_soc_card *card)
++{
++	struct snd_soc_dai_link *link;
++	int i;
++
++	for_each_card_prelinks(card, i, link) {
++		if (link->no_pcm == 1) {
++			link->ops = &msm8998_be_ops;
++			link->be_hw_params_fixup = msm8998_be_hw_params_fixup;
++		}
++		link->init = msm8998_dai_init;
++	}
++}
++
++static int msm8998_snd_platform_probe(struct platform_device *pdev)
++{
++	struct snd_soc_card *card;
++	struct msm8998_snd_data *data;
++	struct device *dev = &pdev->dev;
++	int ret;
++
++	card = devm_kzalloc(dev, sizeof(*card), GFP_KERNEL);
++	if (!card)
++		return -ENOMEM;
++
++	/* Allocate the private data */
++	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
++	if (!data)
++		return -ENOMEM;
++
++	card->driver_name = DRIVER_NAME;
++	card->dapm_widgets = msm8998_snd_widgets;
++	card->num_dapm_widgets = ARRAY_SIZE(msm8998_snd_widgets);
++	card->dev = dev;
++	card->owner = THIS_MODULE;
++	dev_set_drvdata(dev, card);
++	ret = qcom_snd_parse_of(card);
++	if (ret)
++		return ret;
++
++	data->card = card;
++	snd_soc_card_set_drvdata(card, data);
++
++	msm8998_add_ops(card);
++	return devm_snd_soc_register_card(dev, card);
++}
++
++static const struct of_device_id msm8998_snd_device_id[]  = {
++	{ .compatible = "qcom,msm8998-sndcard" },
++	{},
++};
++MODULE_DEVICE_TABLE(of, msm8998_snd_device_id);
++
++static struct platform_driver msm8998_snd_driver = {
++	.probe = msm8998_snd_platform_probe,
++	.driver = {
++		.name = "msm-snd-msm8998",
++		.of_match_table = msm8998_snd_device_id,
++	},
++};
++module_platform_driver(msm8998_snd_driver);
++
++MODULE_DESCRIPTION("msm8998 ASoC Machine Driver");
++MODULE_LICENSE("GPL v2");

@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 27 Aug 2026 21:06:33 +0200
+Subject: [PATCH] drm/msm/a5xx: reset the GPU before hw_init() reprograms the
+ CP
+
+A runtime suspend and resume pair can land as little as 80us apart, which
+is not long enough for the GX rail to discharge.  The GPU then keeps its
+state across what the driver believes was a power collapse: CP_RB_CNTL
+still describes the previous ring and the ME is not halted.
+
+a5xx_hw_init() assumes it is bringing up a block that came back reset, so
+it writes the new CP_RB_BASE into a CP that is still live and has no valid
+ring configuration to go with it.  The CP starts fetching, and the VBIF
+traffic that follows ends in an external abort that takes the SoC down.
+On a Pixel 2 XL (msm8998, Adreno 540) this presents as roughly one display
+wake in twenty resetting the phone, usually with nothing on any console;
+when a panic does escape it is an asynchronous SError naming whichever
+code happened to be touching GPU registers at the time.
+
+RBBM_STATUS makes it visible.  Sampled at each stage of a5xx_hw_init() it
+reads 0x00000001 - HI_BUSY alone, an idle a5xx - on 443 of 445 samples.
+The two that read 0xc00003c1 (GPU_BUSY_IGN_AHB, CP_BUSY, VBIF_BUSY) are
+the two resets, and in both the value changes between the CP_RB_BASE and
+the CP_RB_CNTL write.  Both were preceded by an unusually short collapse,
+80us and 1.37ms, against a median of 275ms.
+
+Put the GPU through the software reset it should already have had, using
+the same pulse a5xx_recover() uses to get a wedged a5xx back into a known
+state.  Everything hw_init() programs comes after it.
+
+Measured by injecting KEY_POWER on a loop and counting only the panel
+transitions that really happened, with the GPU's runtime status sampled
+before each press as the control: 200 consecutive wake cycles with no
+reset, 197 of them with the GPU confirmed collapsed beforehand, against a
+series of 2, 9, 10, 12, 18, 18 and 20 cycles to death on the same kernel
+without this change.  No GPU faults, no hangchecks and no swallowed
+presses over the run.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/adreno/a5xx_gpu.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a5xx_gpu.c b/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
+index 27256baf3323..c7206606a18d 100644
+--- a/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/a5xx_gpu.c
+@@ -748,6 +748,25 @@ static int a5xx_hw_init(struct msm_gpu *gpu)
+ 	u32 hbb;
+ 	int ret;
+ 
++	/*
++	 * A runtime suspend and resume pair can be as little as tens of
++	 * microseconds apart, which is not long enough for the GX rail to
++	 * discharge. The GPU then keeps its state across what the driver
++	 * believes was a power collapse: CP_RB_CNTL still describes the old
++	 * ring and the ME is not halted. Writing the new CP_RB_BASE below
++	 * therefore points a live CP at a ring it has no valid configuration
++	 * for; it starts fetching, and the VBIF traffic that follows ends in an
++	 * external abort that takes the SoC down. Nothing upstream of here
++	 * notices, because runtime PM reports the device as active throughout.
++	 *
++	 * Do not assume the hardware came back reset. Put it through the same
++	 * software reset a5xx_recover() uses to get the GPU into a known state;
++	 * everything hw_init() programs comes after it.
++	 */
++	gpu_write(gpu, REG_A5XX_RBBM_SW_RESET_CMD, 1);
++	gpu_read(gpu, REG_A5XX_RBBM_SW_RESET_CMD);
++	gpu_write(gpu, REG_A5XX_RBBM_SW_RESET_CMD, 0);
++
+ 	gpu_write(gpu, REG_A5XX_VBIF_ROUND_ROBIN_QOS_ARB, 0x00000003);
+ 
+ 	if (adreno_is_a509(adreno_gpu) || adreno_is_a512(adreno_gpu) ||

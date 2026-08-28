@@ -1,0 +1,155 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 21 Aug 2026 22:50:00 +0200
+Subject: [PATCH] power: reset: msm-poweroff: outrank PSCI when the firmware
+ owns PS_HOLD
+
+With the secure-world deassert wired up, msm-poweroff can actually take the
+platform down on msm8998, so it should be the handler that does -- PSCI's
+SYSTEM_RESET is a cold reset there and destroys the ramoops region.
+
+Gate the priority on the same cached availability the deassert uses, so the
+configuration that was measured broken becomes unreachable by construction:
+where the firmware does not answer for PS_HOLD, the handler stays at 128 and
+PSCI keeps the job exactly as before. On msm8998 without the SCM call, winning
+the arbitration meant the SoC never reset and the hardware watchdog rescued it
+-- a 49 s reboot ending in androidboot.bootreason=watchdog.
+
+Also drop the ten-second delay to one. It predates sys_off handler chaining:
+returning NOTIFY_DONE lets the next handler try, and a platform that is going
+to reset has done so long before a second is up. Ten seconds only guarantees
+the watchdog gets there first, which is precisely the failure above.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/firmware/qcom/qcom_scm.c       | 16 +++++++--
+ drivers/power/reset/msm-poweroff.c     | 50 +++++++++++++++++++++++---
+ include/linux/firmware/qcom/qcom_scm.h |  2 +-
+ 3 files changed, 60 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index bc20bb28ce0f..ff73c51be6bf 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -514,7 +514,15 @@ static int qcom_scm_disable_sdi(void)
+ 	ret = qcom_scm_clk_enable();
+ 	if (ret)
+ 		return ret;
+-	ret = qcom_scm_call(__scm->dev, &desc, &res);
++
++	/*
++	 * Atomic, not yielding. The vendor issues this one with
++	 * scm_call2_atomic() and mainline's yielding call is refused by at
++	 * least one firmware: on msm8998 it returns status 2 and SDI stays
++	 * enabled, which leaves the board hanging in debug mode on a reboot or
++	 * a watchdog bite rather than resetting.
++	 */
++	ret = qcom_scm_call_atomic(__scm->dev, &desc, &res);
+ 
+ 	qcom_scm_clk_disable();
+ 
+@@ -1192,8 +1200,10 @@ EXPORT_SYMBOL_GPL(qcom_scm_deassert_ps_hold_available);
+  *
+  * Takes the platform down. Does not return when the firmware honours it, so
+  * the caller must have a fallback for the case where it does.
++ *
++ * Return: never, on success. The firmware's status if it declined.
+  */
+-void qcom_scm_deassert_ps_hold(void)
++int qcom_scm_deassert_ps_hold(void)
+ {
+ 	struct qcom_scm_desc desc = {
+ 		.svc = QCOM_SCM_SVC_PWR,
+@@ -1203,7 +1213,7 @@ void qcom_scm_deassert_ps_hold(void)
+ 		.owner = ARM_SMCCC_OWNER_SIP,
+ 	};
+ 
+-	qcom_scm_call_atomic(__scm->dev, &desc, NULL);
++	return qcom_scm_call_atomic(__scm->dev, &desc, NULL);
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_deassert_ps_hold);
+ 
+diff --git a/drivers/power/reset/msm-poweroff.c b/drivers/power/reset/msm-poweroff.c
+index 73f05d3604a8..95951c18a4bd 100644
+--- a/drivers/power/reset/msm-poweroff.c
++++ b/drivers/power/reset/msm-poweroff.c
+@@ -30,11 +30,40 @@ static bool scm_owns_ps_hold;
+ 
+ static int do_msm_poweroff(struct sys_off_data *data)
+ {
+-	if (scm_owns_ps_hold)
+-		qcom_scm_deassert_ps_hold();
++	if (scm_owns_ps_hold) {
++		int ret;
++
++		/*
++		 * Stop SPMI traffic before PS_HOLD goes. Lowering it in the
++		 * middle of a transaction locks the PMIC up, and the vendor
++		 * halts the arbiter immediately before every deassert for
++		 * exactly that reason. Measured on msm8998: without this the
++		 * deassert wedges the CPU instead of resetting, and the
++		 * hardware watchdog rescues it ~30 s later.
++		 */
++		qcom_scm_halt_spmi_pmic_arbiter();
++
++		ret = qcom_scm_deassert_ps_hold();
++
++		/*
++		 * Only reached when the firmware declined: a honoured deassert
++		 * does not return. Say so, because the fallback below then
++		 * decides whether the platform goes down at all.
++		 */
++		pr_emerg("msm-restart: scm deassert returned %d\n", ret);
++	}
+ 
+ 	writel(0, msm_ps_hold);
+-	mdelay(10000);
++
++	/*
++	 * Both routes above are asynchronous, so give the platform a moment to
++	 * go down -- but only a moment. The historical ten seconds predate
++	 * sys_off handler chaining: returning NOTIFY_DONE lets the next handler
++	 * (PSCI, at a lower priority) try instead, and a device that is going
++	 * to reset has done so long before a second is up. Waiting the full ten
++	 * only guarantees the hardware watchdog gets there first.
++	 */
++	mdelay(1000);
+ 
+ 	return NOTIFY_DONE;
+ }
+@@ -49,8 +78,21 @@ static int msm_restart_probe(struct platform_device *pdev)
+ 	dev_info(&pdev->dev, "PS_HOLD deassert: %s\n",
+ 		 scm_owns_ps_hold ? "secure world" : "register write only");
+ 
++	/*
++	 * PSCI registers its restart handler at 129. Outranking it is only
++	 * correct where PS_HOLD actually takes the platform down: where the
++	 * bare register write is ignored and the firmware does not implement
++	 * the deassert either, winning the arbitration means the SoC never
++	 * resets and the hardware watchdog rescues it seconds later. Measured
++	 * on msm8998 before the SCM call existed: a 49 s reboot ending in
++	 * bootreason=watchdog.
++	 *
++	 * So take priority only on the firmwares that answer for PS_HOLD, and
++	 * leave everyone else exactly where they were.
++	 */
+ 	devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_RESTART,
+-				      128, do_msm_poweroff, NULL);
++				      scm_owns_ps_hold ? SYS_OFF_PRIO_HIGH : 128,
++				      do_msm_poweroff, NULL);
+ 
+ 	devm_register_sys_off_handler(&pdev->dev, SYS_OFF_MODE_POWER_OFF,
+ 				      SYS_OFF_PRIO_DEFAULT, do_msm_poweroff,
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index 91461d1b78d6..10f802c7cb8f 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -98,7 +98,7 @@ int qcom_scm_io_readl(phys_addr_t addr, unsigned int *val);
+ int qcom_scm_io_writel(phys_addr_t addr, unsigned int val);
+ 
+ bool qcom_scm_deassert_ps_hold_available(void);
+-void qcom_scm_deassert_ps_hold(void);
++int qcom_scm_deassert_ps_hold(void);
+ void qcom_scm_halt_spmi_pmic_arbiter(void);
+ 
+ bool qcom_scm_restore_sec_cfg_available(void);

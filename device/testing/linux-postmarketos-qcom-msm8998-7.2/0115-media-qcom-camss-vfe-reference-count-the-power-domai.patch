@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 19 Aug 2026 02:45:06 +0200
+Subject: [PATCH] media: qcom: camss: vfe: reference count the power domain
+ link
+
+vfe_pm_domain_on() and vfe_pm_domain_off() have two independent callers.
+vfe_get()/vfe_put() drive them for the VFE the pipeline is streaming on,
+and ispif_reset() drives them through camss_pm_domain_on/off() because
+the ISPIF reset needs the vfe0, csi_vfe0, vfe1 and csi_vfe1 clocks, all
+of which live inside the VFE power domains.
+
+Both users share a single struct device_link pointer with no reference
+count. The first off() deletes the link and clears the pointer while the
+other user still holds a reference, and the second off() then calls
+device_link_del(NULL):
+
+  Unable to handle kernel NULL pointer dereference at virtual
+  address 0000000000000324
+  pc : device_link_put_kref+0xc/0xa4
+  lr : device_link_del+0x2c/0x44
+  Call trace:
+   device_link_put_kref+0xc/0xa4 (P)
+   device_link_del+0x2c/0x44
+   vfe_pm_domain_off+0x28/0x3c [qcom_camss]
+   vfe_put+0x98/0xbc [qcom_camss]
+   vfe_set_power+0x38/0x48 [qcom_camss]
+   pipeline_pm_power_one+0xdc/0x104 [videodev]
+   v4l2_pipeline_pm_put+0x40/0x80 [videodev]
+   video_unprepare_streaming+0x18/0x24 [qcom_camss]
+   __vb2_queue_cancel+0x54/0x2b8 [videobuf2_common]
+   vb2_ioctl_streamoff+0x5c/0x90 [videobuf2_v4l2]
+
+This fires on every VIDIOC_STREAMOFF, so closing a camera oopses and the
+machine reboots. It is reached on any SoC that pairs the ISPIF with a
+VFE that has a power domain, which is msm8998, sdm660, msm8996 and
+msm8953.
+
+The driver core already handles nesting: device_link_add() on an
+existing consumer/supplier pair with DL_FLAG_STATELESS takes another
+kref and hands back the same link, and device_link_del() drops one. So
+only the driver's own bookkeeping is wrong. Count the users and clear
+the cached pointer when the last one goes away, leaving one
+device_link_del() per device_link_add() as before.
+
+Fixes: eb73facec2c2 ("media: qcom: camss: Use common VFE pm_domain_on/pm_domain_off where applicable")
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/camss/camss-vfe.c | 8 ++++++--
+ drivers/media/platform/qcom/camss/camss-vfe.h | 1 +
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/camss/camss-vfe.c b/drivers/media/platform/qcom/camss/camss-vfe.c
+index 8f3fc8ea98e3..d62178a7f6fc 100644
+--- a/drivers/media/platform/qcom/camss/camss-vfe.c
++++ b/drivers/media/platform/qcom/camss/camss-vfe.c
+@@ -879,11 +879,13 @@ void vfe_isr_reset_ack(struct vfe_device *vfe)
+  */
+ void vfe_pm_domain_off(struct vfe_device *vfe)
+ {
+-	if (!vfe->genpd)
++	if (!vfe->genpd || !vfe->genpd_count)
+ 		return;
+ 
+ 	device_link_del(vfe->genpd_link);
+-	vfe->genpd_link = NULL;
++
++	if (!--vfe->genpd_count)
++		vfe->genpd_link = NULL;
+ }
+ 
+ /*
+@@ -904,6 +906,8 @@ int vfe_pm_domain_on(struct vfe_device *vfe)
+ 	if (!vfe->genpd_link)
+ 		return -EINVAL;
+ 
++	vfe->genpd_count++;
++
+ 	return 0;
+ }
+ 
+diff --git a/drivers/media/platform/qcom/camss/camss-vfe.h b/drivers/media/platform/qcom/camss/camss-vfe.h
+index 39ec27f4a58e..309a69350354 100644
+--- a/drivers/media/platform/qcom/camss/camss-vfe.h
++++ b/drivers/media/platform/qcom/camss/camss-vfe.h
+@@ -178,6 +178,7 @@ struct vfe_device {
+ 	struct camss_video_ops video_ops;
+ 	struct device *genpd;
+ 	struct device_link *genpd_link;
++	unsigned int genpd_count;
+ };
+ 
+ struct camss_subdev_resources;

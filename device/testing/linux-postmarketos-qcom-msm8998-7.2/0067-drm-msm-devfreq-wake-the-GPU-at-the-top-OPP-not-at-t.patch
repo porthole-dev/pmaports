@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 17:12:37 +0200
+Subject: [PATCH] drm/msm/devfreq: wake the GPU at the top OPP, not at twice
+ the last one
+
+msm_devfreq_active() boosts whenever the GPU has been idle for longer
+than a polling interval, which on an interactive session is every single
+gesture. It boosted to twice the *current* frequency, and the current
+frequency after an idle gap is the bottom OPP -- 257 MHz of 710 on an
+a540 -- so the boost landed at 514 MHz for one 50 ms interval and
+simple_ondemand still had to climb from there.
+
+a5xx has no GMU, so each of those steps reprograms the core PLL and
+moves the core rail while frames are already in flight, and the first
+frames of every scroll and every animation pay for it. Request the top
+OPP instead and let the governor settle back down, which is what the
+vendor driver does. It costs nothing while the GPU is genuinely idle:
+runtime PM has already collapsed it, and the boost expires after one
+polling interval either way.
+
+Measured on a Pixel 2 XL (60 Hz command-mode panel), counting the DPU's
+own vsync counter per frame: with this in place the 710 MHz min_freq
+floor userspace was pinning becomes unnecessary. An interleaved A/B over
+three rounds of continuous shell animation gives 1.2-1.9% dropped frames
+with the floor and 1.4-2.0% without, i.e. no difference, so the GPU can
+be left free to scale. devfreq trans_stat confirms the new path: 186
+direct 257 -> 710 MHz transitions over a benchmark run, where before
+there were none.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/msm_gpu.h         |  2 +-
+ drivers/gpu/drm/msm/msm_gpu_devfreq.c | 39 ++++++++++++++++++---------
+ 2 files changed, 27 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/msm_gpu.h b/drivers/gpu/drm/msm/msm_gpu.h
+index 6c83b8cbbb90..47e033b1d41a 100644
+--- a/drivers/gpu/drm/msm/msm_gpu.h
++++ b/drivers/gpu/drm/msm/msm_gpu.h
+@@ -736,7 +736,7 @@ void msm_devfreq_init(struct msm_gpu *gpu);
+ void msm_devfreq_cleanup(struct msm_gpu *gpu);
+ void msm_devfreq_resume(struct msm_gpu *gpu);
+ void msm_devfreq_suspend(struct msm_gpu *gpu);
+-void msm_devfreq_boost(struct msm_gpu *gpu, unsigned factor);
++void msm_devfreq_boost(struct msm_gpu *gpu, unsigned int factor);
+ void msm_devfreq_active(struct msm_gpu *gpu);
+ void msm_devfreq_idle(struct msm_gpu *gpu);
+ 
+diff --git a/drivers/gpu/drm/msm/msm_gpu_devfreq.c b/drivers/gpu/drm/msm/msm_gpu_devfreq.c
+index 2e1d5c343272..dcfa4b04c320 100644
+--- a/drivers/gpu/drm/msm/msm_gpu_devfreq.c
++++ b/drivers/gpu/drm/msm/msm_gpu_devfreq.c
+@@ -267,16 +267,9 @@ static void msm_devfreq_boost_work(struct kthread_work *work)
+ 	dev_pm_qos_update_request(&df->boost_freq, 0);
+ }
+ 
+-void msm_devfreq_boost(struct msm_gpu *gpu, unsigned factor)
++static void devfreq_boost_to(struct msm_gpu *gpu, uint64_t freq)
+ {
+ 	struct msm_gpu_devfreq *df = &gpu->devfreq;
+-	uint64_t freq;
+-
+-	if (!has_devfreq(gpu))
+-		return;
+-
+-	freq = get_freq(gpu);
+-	freq *= factor;
+ 
+ 	/*
+ 	 * A nice little trap is that PM QoS operates in terms of KHz,
+@@ -291,6 +284,14 @@ void msm_devfreq_boost(struct msm_gpu *gpu, unsigned factor)
+ 			       HRTIMER_MODE_REL);
+ }
+ 
++void msm_devfreq_boost(struct msm_gpu *gpu, unsigned int factor)
++{
++	if (!has_devfreq(gpu))
++		return;
++
++	devfreq_boost_to(gpu, (uint64_t)get_freq(gpu) * factor);
++}
++
+ void msm_devfreq_active(struct msm_gpu *gpu)
+ {
+ 	struct msm_gpu_devfreq *df = &gpu->devfreq;
+@@ -329,12 +330,24 @@ void msm_devfreq_active(struct msm_gpu *gpu)
+ 
+ 	/*
+ 	 * If we've been idle for a significant fraction of a polling
+-	 * interval, then we won't meet the threshold of busyness for
+-	 * the governor to ramp up the freq.. so give some boost
++	 * interval, then we won't meet the threshold of busyness for the
++	 * governor to ramp up the freq.. so wake straight to the top OPP for
++	 * one interval and let the governor settle down from there.
++	 *
++	 * Doubling the *current* frequency, which is what this used to do, is
++	 * not enough: interactive work always arrives after an idle gap, so
++	 * the GPU is parked at the bottom OPP by then and doubling only
++	 * reaches the second step, from where the governor still has to
++	 * climb. On a GPU without a GMU each of those steps reprograms the
++	 * core PLL and moves the core rail while frames are already in
++	 * flight, and the first frames of every scroll and every animation
++	 * pay for it. Waking at the top and falling back is what the vendor
++	 * driver does, and it costs nothing while the GPU is genuinely idle:
++	 * runtime PM has already collapsed it, and the boost expires after
++	 * one polling interval.
+ 	 */
+-	if (idle_time > msm_devfreq_profile.polling_ms) {
+-		msm_devfreq_boost(gpu, 2);
+-	}
++	if (idle_time > msm_devfreq_profile.polling_ms)
++		devfreq_boost_to(gpu, gpu->fast_rate);
+ }
+ 
+ 

@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 18:17:02 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: drop the unused CAMSS VBIF reset
+
+The camss node declares a reset for the camera VBIF that no driver ever
+requests, and which the binding does not describe. Drop it, and trim the
+node's comments down to the two things a reader has to know: why the CSI
+clock mux is mapped over 0x10 rather than 4 bytes, and why the power
+domain order is load bearing.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 96 ++-------------------------
+ 1 file changed, 7 insertions(+), 89 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 5740e7a3f94b..3805d374d0e6 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -3440,43 +3440,13 @@ video-encoder {
+ 		};
+ 
+ 		/*
+-		 * CAMSS. Kept `disabled`; enabled per-board.
++		 * The CSI clock mux is mapped over 0x10 rather than the four
++		 * bytes the vendor declares: the ISPIF programs both
++		 * CSI_PIX_CLK_MUX_SEL at 0x0 and CSI_RDI_CLK_MUX_SEL at 0x8.
+ 		 *
+-		 * NOTE "qcom,msm8998-camss" has NO driver match yet -- camss.c
+-		 * knows only msm8996/sdm660/sdm845. This node is deliberately
+-		 * inert until the driver half lands; it binds to nothing.
+-		 *
+-		 * msm8998 and sdm660 CAMSS are the same IP at the same
+-		 * addresses. The ONLY register-base delta is the CSIPHY:
+-		 * msm8998 v5.0 @ca34000/5000/6000 vs sdm660 v3.5 @c824000/...
+-		 *
+-		 * THREE TRAPS, all deliberate, do not "fix" them back:
+-		 *  1. csi_clk_mux size is 0x10, NOT the vendor's 0x4.
+-		 *     camss-ispif.c writes CSI_PIX_CLK_MUX_SEL 0x000 AND
+-		 *     CSI_RDI_CLK_MUX_SEL 0x008; a 4-byte map puts 0x008
+-		 *     outside the ioremap. sdm630.dtsi:1901 also uses 0x10.
+-		 *  2. NO csiphyN_clk_mux reg entries. msm8998 has no such
+-		 *     register, and camss-csiphy.c:584-592 only ioremaps
+-		 *     res->reg[1] for 8x16/8x96, leaving base_clk_mux NULL
+-		 *     otherwise; csiphy_stream_on skips the mux write when it
+-		 *     is NULL. No code change needed.
+-		 *  3. power-domains must be exactly VFE0_GDSC then VFE1_GDSC in
+-		 *     THAT ORDER and nothing else -- camss-vfe-4-8.c indexes
+-		 *     camss->genpd[id] by VFE number. camss_top is already
+-		 *     their parent, so do NOT add a third entry.
+-		 *
+-		 * Full per-value witnesses (every reg size, IRQ and clock, with
+-		 * the vendor line it came from) are in the corpus:
+-		 * deep-camera-dt.json step 3.
+-		 *
+-		 * EXPECTED dtc WARNING, do not "fix" it:
+-		 *   simple-bus unit address format error, expected "ca00020"
+-		 * dtc wants the unit address to match reg[0], which is the
+-		 * csi_clk_mux at 0xca00020. sdm630.dtsi:1899 does exactly the
+-		 * same thing (camss@ca00000 with reg[0] = 0x0ca00020), so this
+-		 * warning is inherent to the upstream CAMSS naming convention.
+-		 * Renaming to camss@ca00020 would diverge from every other
+-		 * mainline CAMSS node for no benefit.
++		 * The power domains have to stay in VFE0, VFE1 order, as the
++		 * VFE indexes them by its own instance number. CAMSS_TOP is
++		 * their parent and needs no separate vote.
+ 		 */
+ 		camss: camss@ca00000 {
+ 			compatible = "qcom,msm8998-camss";
+@@ -3577,59 +3547,7 @@ camss: camss@ca00000 {
+ 				      "vfe1_ahb", "vfe1", "vfe1_stream",
+ 				      "vfe_ahb", "vfe_axi";
+ 
+-			/*
+-			 * No interconnects/interconnect-names here: unlike our
+-			 * 6.0 base, 6.18's msm8998.dtsi carries no interconnect
+-			 * provider nodes (no bimc/mnoc/snoc) at all yet, so
+-			 * "&mnoc"/"&bimc" don't resolve. Bandwidth voting is
+-			 * optional for CAMSS; add it back if/when an
+-			 * interconnect provider lands in this dtsi.
+-			 */
+-
+-			/*
+-			 * The camera VFE has its own VBIF on msm8998 -- that is
+-			 * what camss_vfe_vbif_{ahb,axi}_clk exist for, and
+-			 * msm8996 has no such block. Nothing in mainline ever
+-			 * takes it out of reset: camss declares no resets at
+-			 * all, and the bootloader has no reason to have
+-			 * released a block it never uses. A VBIF held in reset
+-			 * answers on AHB, so every register programs and reads
+-			 * back correctly, while the AXI datapath is dead -- the
+-			 * write master takes data, overflows, and its first
+-			 * transaction comes back as a bus error. That is the
+-			 * symptom exactly.
+-			 */
+-			resets = <&mmcc CAMSS_VFE_VBIF_BCR>;
+-			reset-names = "vfe_vbif";
+-
+-			/*
+-			 * Stream IDs from downstream's msm_cam_smmu_cb1 ("vfe").
+-			 *
+-			 * WITHDRAWN 2026-08-03: an earlier version of this
+-			 * comment claimed the SMMU blocks capture, because
+-			 * deleting this property made every capture buffer come
+-			 * back full. It does not. Removing it drops camss to a
+-			 * 32-bit DMA mask, which sends the buffers through
+-			 * SWIOTLB -- and swiotlb only seeds a bounce buffer for
+-			 * DMA_TO_DEVICE, so sync_for_cpu copies an untouched
+-			 * (zeroed) bounce buffer over the poison. All four
+-			 * buffers "change", including the two never programmed
+-			 * into the write master. Measured from inside the
+-			 * driver, with the IOMMU attached, the VFE writes zero
+-			 * bytes and the poison survives intact.
+-			 *
+-			 * Stream matching was never the question either: a full
+-			 * 0x7fff wildcard SMR changes nothing.
+-			 *
+-			 * Kept for the record: downstream never programs stream
+-			 * matching -- its SMMU node carries qcom,skip-init and
+-			 * qcom,no-smr-check and inherits the bootloader's
+-			 * configuration -- whereas mainline's arm-smmu resets
+-			 * the SMMU and programs SMRs
+-			 * from this property. And #global-interrupts = <0> means
+-			 * there is no handler to report a fault, which is why
+-			 * this fails silently.
+-			 */
++			/* Stream IDs of the four CAMSS masters behind mmss_smmu */
+ 			iommus = <&mmss_smmu 0xc00>,
+ 				 <&mmss_smmu 0xc01>,
+ 				 <&mmss_smmu 0xc02>,

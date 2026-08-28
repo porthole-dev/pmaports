@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 17:12:31 +0200
+Subject: [PATCH] usb: dwc3: qcom: restore the VBUS override on resume too
+
+The pipe-clk fix got the core initialising cleanly again -- the "failed
+to enable ep0out" error is gone -- but the gadget still never appeared
+on the bus. dwc3's own registers said why: DCTL = 0x80f00000, so
+RUN_STOP was set and the controller was not halted, yet DSTS reported
+link state Disconnected and the dwc3 interrupt advanced by exactly 1
+across a whole suspend cycle. The controller was running and simply did
+not believe a host was there.
+
+Diffing QSCRATCH either side of one s2idle cycle names the two missing
+bits:
+
+    HS_PHY_CTRL 0x10100000 -> 0x10000000   UTMI_OTG_VBUS_VALID
+    SS_PHY_CTRL 0x01000000 -> 0x00000000   LANE0_PWR_PRESENT
+
+Both are the VBUS override that probe applies via
+dwc3_qcom_vbus_override_enable() for peripheral mode. A board with no
+VBUS sensing of its own relies on that override to tell the controller
+it is plugged in. Losing it leaves the PHY with no reason to assert the
+pullup, which is why the host saw nothing at all -- not a failed
+enumeration, no bus activity whatsoever.
+
+Re-apply it in resume alongside the pipe-clk selection, under the same
+condition probe uses so no other mode's behaviour changes.
+
+Verified on msm8998: after this, one s2idle cycle leaves GENERAL_CFG at
+0x0d, HS_PHY_CTRL at 0x10100000, SS_PHY_CTRL at 0x01000000, link_state
+"On", the dwc3 interrupt +112 instead of +1, and the USB gadget answers
+on the other side of the suspend, over three consecutive cycles.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/usb/dwc3/dwc3-qcom.c | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/dwc3/dwc3-qcom.c b/drivers/usb/dwc3/dwc3-qcom.c
+index e957d5f016fc..7db6059cfd06 100644
+--- a/drivers/usb/dwc3/dwc3-qcom.c
++++ b/drivers/usb/dwc3/dwc3-qcom.c
+@@ -392,14 +392,17 @@ static int dwc3_qcom_resume(struct dwc3_qcom *qcom, bool wakeup)
+ 		dev_warn(qcom->dev, "failed to enable interconnect: %d\n", ret);
+ 
+ 	/*
+-	 * QSCRATCH sits in the USB GDSC, which collapses while we are
+-	 * suspended, so the probe-time pipe-clk selection does not survive.
+-	 * Re-apply it here: this glue resumes before the core re-initialises,
+-	 * so the core has a valid pipe clock by then.
++	 * Neither of the two things probe programs into QSCRATCH survives the
++	 * USB GDSC collapsing over suspend, so re-apply both. This glue
++	 * resumes before the core re-initialises, so they are back in place
++	 * by then.
+ 	 */
+ 	if (qcom->ignore_pipe_clk)
+ 		dwc3_qcom_select_utmi_clk(qcom);
+ 
++	if (qcom->mode == USB_DR_MODE_PERIPHERAL)
++		dwc3_qcom_vbus_override_enable(qcom, true);
++
+ 	/* Clear existing events from PHY related to L2 in/out */
+ 	for (i = 0; i < qcom->num_ports; i++) {
+ 		dwc3_qcom_setbits(qcom->qscratch_base,

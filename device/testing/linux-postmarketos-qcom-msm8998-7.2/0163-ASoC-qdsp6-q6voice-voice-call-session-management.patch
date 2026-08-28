@@ -1,0 +1,506 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 26 Aug 2026 00:15:28 +0200
+Subject: [PATCH] ASoC: qdsp6: q6voice: voice call session management
+
+A voice call on this family never passes through the application
+processor: the modem exchanges speech with the ADSP internally and the
+ADSP drives the codec over the AFE ports. The AP's only job is to set the
+session up, over three APR services -- MVM, CVS and CVP.
+
+The part that is easy to get wrong, and which reports success while
+wrong: the modem creates its own MVM and CVS during init, and a PASSIVE
+control session attaches to those rather than making new ones. Everything
+the modem has already done then answers ADSP_EALREADY, which is a
+statement of fact, not a failure. Creating a session while the modem has
+none instead returns a freshly allocated handle and status 0 from every
+command in the sequence, and carries no call audio at all -- so status
+cannot be taken as evidence that the path is live.
+
+Teardown destroys only the vocproc for the same reason. Destroying a
+joined MVM or CVS does not merely end the call: the modem builds them
+once, so every later call then finds nothing to attach to and is silent
+until the modem restarts.
+
+TOPOLOGY_ID_NONE is deliberately not offered. It is for local call hold,
+not a neutral passthrough -- selecting it for TX killed the downlink and
+the SoC was reset by the watchdog seconds later. Neither of the two
+topologies used here needs calibration data.
+
+The ports are the caller's to choose and must already be running: the
+ADSP renders into them but does not start them.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/qcom/Kconfig         |   4 +
+ sound/soc/qcom/qdsp6/Makefile  |   1 +
+ sound/soc/qcom/qdsp6/q6voice.c | 412 +++++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/q6voice.h |   8 +
+ 4 files changed, 425 insertions(+)
+ create mode 100644 sound/soc/qcom/qdsp6/q6voice.c
+ create mode 100644 sound/soc/qcom/qdsp6/q6voice.h
+
+diff --git a/sound/soc/qcom/Kconfig b/sound/soc/qcom/Kconfig
+index 77b4366c1915..24d49940c749 100644
+--- a/sound/soc/qcom/Kconfig
++++ b/sound/soc/qcom/Kconfig
+@@ -140,6 +140,9 @@ config SND_SOC_QDSP6_USB
+       with the SoC USB framework to initialize a session
+       with active USB SND devices.
+ 
++config SND_SOC_QDSP6_VOICE
++	tristate
++
+ config SND_SOC_QDSP6_VOICE_DBG
+ 	tristate "Raw APR access to the QDSP6 voice services (bring-up)"
+ 	depends on QCOM_APR
+@@ -163,6 +166,7 @@ config SND_SOC_QDSP6
+ 	select SND_SOC_QDSP6_ROUTING
+ 	select SND_SOC_QDSP6_ASM
+ 	select SND_SOC_QDSP6_ASM_DAI
++	select SND_SOC_QDSP6_VOICE
+ 	select SND_SOC_TOPOLOGY
+ 	select SND_SOC_QDSP6_APM
+ 	select SND_SOC_QDSP6_PRM
+diff --git a/sound/soc/qcom/qdsp6/Makefile b/sound/soc/qcom/qdsp6/Makefile
+index 85ba8527bd36..343729c7ee32 100644
+--- a/sound/soc/qcom/qdsp6/Makefile
++++ b/sound/soc/qcom/qdsp6/Makefile
+@@ -18,4 +18,5 @@ obj-$(CONFIG_SND_SOC_QDSP6_APM_LPASS_DAI) += q6apm-lpass-dais.o
+ obj-$(CONFIG_SND_SOC_QDSP6_PRM) += q6prm.o
+ obj-$(CONFIG_SND_SOC_QDSP6_PRM_LPASS_CLOCKS) += q6prm-clocks.o
+ obj-$(CONFIG_SND_SOC_QDSP6_USB) += q6usb.o
++obj-$(CONFIG_SND_SOC_QDSP6_VOICE) += q6voice.o
+ obj-$(CONFIG_SND_SOC_QDSP6_VOICE_DBG) += q6voice-dbg.o
+diff --git a/sound/soc/qcom/qdsp6/q6voice.c b/sound/soc/qcom/qdsp6/q6voice.c
+new file mode 100644
+index 000000000000..0b2910f5bf0a
+--- /dev/null
++++ b/sound/soc/qcom/qdsp6/q6voice.c
+@@ -0,0 +1,412 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Voice call session management for the QDSP6 ADSP.
++ *
++ * A voice call on this family never passes through the application processor:
++ * the modem exchanges speech with the ADSP internally, and the ADSP drives the
++ * codec over the AFE ports. All the AP has to do is set the session up, which
++ * is three APR services -- the multimode voice manager (MVM), the core voice
++ * stream (CVS) and the voice processor (CVP).
++ *
++ * The one thing that is easy to get wrong, and reports success while wrong:
++ * the modem creates its own MVM and CVS during its init, and a PASSIVE control
++ * session ATTACHES to those rather than making new ones. Everything the modem
++ * has already done then answers ADSP_EALREADY, which is a statement of fact.
++ * Creating a session while the modem has none instead returns a freshly
++ * allocated handle and status 0 from every command in the sequence -- and
++ * carries no call audio whatsoever. Status is not evidence here; joining is.
++ *
++ * Copyright (c) 2026 Giuseppe Maggio
++ */
++
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/slab.h>
++#include <linux/soc/qcom/apr.h>
++#include <linux/wait.h>
++
++#include "q6voice.h"
++
++#define VSS_IMVM_CMD_CREATE_PASSIVE_CONTROL_SESSION	0x000110FF
++#define VSS_IMVM_CMD_ATTACH_STREAM			0x0001123C
++#define VSS_IMVM_CMD_ATTACH_VOCPROC			0x0001123E
++#define VSS_IMVM_CMD_DETACH_VOCPROC			0x0001123F
++#define VSS_IMVM_CMD_START_VOICE			0x00011190
++#define VSS_IMVM_CMD_SET_POLICY_DUAL_CONTROL		0x00011327
++#define VSS_ISTREAM_CMD_CREATE_PASSIVE_CONTROL_SESSION	0x00011140
++#define VSS_IVOCPROC_CMD_CREATE_FULL_CONTROL_SESSION_V2	0x000112BF
++#define VSS_IVOCPROC_CMD_ENABLE				0x000100C6
++#define VSS_IVOCPROC_CMD_DISABLE			0x000110E1
++#define APRV2_IBASIC_CMD_DESTROY_SESSION		0x0001003C
++
++/*
++ * TOPOLOGY_ID_NONE exists but is for local call hold. It is not a neutral
++ * passthrough: selecting it for TX killed the downlink and the SoC was reset by
++ * the watchdog seconds later. Only the two real topologies are offered, and
++ * neither needs calibration data.
++ */
++#define VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS		0x00010F71
++#define VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT		0x00010F77
++#define VSS_ICOMMON_CAL_NETWORK_ID_NONE			0x0001135E
++#define VSS_IVOCPROC_VOCPROC_MODE_EC_INT_MIXING		0x00010F7C
++#define VSS_IVOCPROC_PORT_ID_NONE			0xFFFF
++
++#define ADSP_EALREADY					0x9
++
++/* The session the modem names for a circuit-switched call. */
++#define VOICEMMODE1_VSID				"11C05000"
++#define VSS_SESSION_NAME_LEN				20
++
++#define Q6VOICE_TIMEOUT					msecs_to_jiffies(1000)
++#define Q6VOICE_SRC_PORT				1
++
++struct vss_ivocproc_cmd_create_full_control_session_v2 {
++	u16 direction;			/* 2: both tx and rx */
++	u16 tx_port_id;
++	u32 tx_topology_id;
++	u16 rx_port_id;
++	u32 rx_topology_id;
++	u32 profile_id;
++	u32 vocproc_mode;
++	u16 ec_ref_port_id;
++	char name[VSS_SESSION_NAME_LEN];
++} __packed;
++
++struct q6voice_svc {
++	struct apr_device *adev;
++	u16 handle;
++	bool joined;			/* the modem got here first */
++};
++
++struct q6voice {
++	struct mutex lock;		/* serialises whole command sequences */
++	wait_queue_head_t wait;
++
++	struct q6voice_svc mvm;
++	struct q6voice_svc cvs;
++	struct q6voice_svc cvp;
++
++	/* guarded by lock: only one command is outstanding at a time */
++	u32 wait_opcode;
++	u32 status;
++	u16 rsp_port;
++	bool got_rsp;
++
++	bool running;
++};
++
++static struct q6voice *g_voice;
++
++static struct q6voice_svc *q6voice_svc_for(struct q6voice *v, u32 svc_id)
++{
++	switch (svc_id) {
++	case APR_SVC_ADSP_MVM:
++		return &v->mvm;
++	case APR_SVC_ADSP_CVS:
++		return &v->cvs;
++	case APR_SVC_ADSP_CVP:
++		return &v->cvp;
++	default:
++		return NULL;
++	}
++}
++
++static int q6voice_callback(struct apr_device *adev,
++			    const struct apr_resp_pkt *data)
++{
++	struct aprv2_ibasic_rsp_result_t *result = data->payload;
++	struct q6voice *v = dev_get_drvdata(&adev->dev);
++
++	if (data->hdr.opcode != APR_BASIC_RSP_RESULT ||
++	    data->payload_size < sizeof(*result))
++		return 0;
++
++	if (result->opcode != v->wait_opcode)
++		return 0;
++
++	v->status = result->status;
++	v->rsp_port = data->hdr.src_port;
++	v->got_rsp = true;
++	wake_up(&v->wait);
++
++	return 0;
++}
++
++/*
++ * Send one command and wait for its basic response.
++ *
++ * Returns the session handle the ADSP reports in src_port, which is how a
++ * create hands one back. @joined is set when the ADSP answered EALREADY, i.e.
++ * the modem had already done this; the caller must not then destroy what it
++ * did not make. Only a CREATE may be asked that question: every other command
++ * in the sequence can answer EALREADY on its own account -- START_VOICE does
++ * it for a session this driver made a moment ago -- and taking that as a join
++ * marks a session we own as the modem's, so teardown leaves it behind. Enough
++ * of those and the ADSP answers the next CREATE with ADSP_ENORESOURCE and no
++ * call can be set up until the DSP restarts.
++ */
++static int q6voice_cmd(struct q6voice *v, struct q6voice_svc *svc, u32 opcode,
++		       u16 dest_port, const void *payload, size_t payload_size,
++		       bool *joined)
++{
++	struct apr_pkt *pkt;
++	int ret;
++
++	if (!svc->adev)
++		return -ENODEV;
++
++	pkt = kzalloc(sizeof(*pkt) + payload_size, GFP_KERNEL);
++	if (!pkt)
++		return -ENOMEM;
++
++	pkt->hdr.hdr_field = APR_SEQ_CMD_HDR_FIELD;
++	pkt->hdr.pkt_size = sizeof(pkt->hdr) + payload_size;
++	pkt->hdr.src_port = Q6VOICE_SRC_PORT;
++	pkt->hdr.dest_port = dest_port;
++	pkt->hdr.token = 0;
++	pkt->hdr.opcode = opcode;
++	if (payload_size)
++		memcpy(pkt->payload, payload, payload_size);
++
++	v->wait_opcode = opcode;
++	v->got_rsp = false;
++
++	ret = apr_send_pkt(svc->adev, pkt);
++	kfree(pkt);
++	if (ret < 0)
++		return ret;
++
++	if (!wait_event_timeout(v->wait, v->got_rsp, Q6VOICE_TIMEOUT)) {
++		dev_err(&svc->adev->dev, "no response to 0x%08x\n", opcode);
++		return -ETIMEDOUT;
++	}
++
++	if (joined)
++		*joined = v->status == ADSP_EALREADY;
++
++	if (v->status && v->status != ADSP_EALREADY) {
++		dev_err(&svc->adev->dev, "0x%08x rejected: 0x%x\n",
++			opcode, v->status);
++		return -EIO;
++	}
++
++	return v->rsp_port;
++}
++
++static void q6voice_name(char *dst)
++{
++	memset(dst, 0, VSS_SESSION_NAME_LEN);
++	strscpy(dst, VOICEMMODE1_VSID, VSS_SESSION_NAME_LEN);
++}
++
++/**
++ * q6voice_start() - bring up the voice path for a call already in progress
++ * @rx_port: AFE port the ADSP should render the downlink to
++ * @tx_port: AFE port the ADSP should take the uplink from
++ *
++ * Both ports must already be running: the ADSP renders into them but does not
++ * start them, and in this stack only a PCM can.
++ */
++int q6voice_start(u16 rx_port, u16 tx_port)
++{
++	struct vss_ivocproc_cmd_create_full_control_session_v2 cvp_cfg = {};
++	struct q6voice *v = g_voice;
++	char name[VSS_SESSION_NAME_LEN];
++	int ret;
++
++	if (!v)
++		return -ENODEV;
++
++	mutex_lock(&v->lock);
++
++	if (v->running) {
++		ret = 0;
++		goto out;
++	}
++
++	/*
++	 * A session that was JOINED is kept for the life of the boot: a second
++	 * CREATE does not re-join what the modem built, it allocates a fresh
++	 * one and answers status 0 for it, and a session that is not the
++	 * modem's carries no call audio while reporting success at every step.
++	 * So a joined control session is set up once and every later call
++	 * reuses it, rebuilding the vocproc alone -- which is also how a call
++	 * is moved between devices downstream. One this driver created instead
++	 * is destroyed and forgotten by q6voice_stop(), so the next call gets
++	 * another chance to join.
++	 */
++	if (!v->mvm.handle) {
++		q6voice_name(name);
++
++		ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_CREATE_PASSIVE_CONTROL_SESSION,
++				  0, name, sizeof(name), &v->mvm.joined);
++		if (ret < 0)
++			goto out;
++		v->mvm.handle = ret;
++
++		ret = q6voice_cmd(v, &v->cvs, VSS_ISTREAM_CMD_CREATE_PASSIVE_CONTROL_SESSION,
++				  0, name, sizeof(name), &v->cvs.joined);
++		if (ret < 0)
++			goto out;
++		v->cvs.handle = ret;
++
++		ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_ATTACH_STREAM, v->mvm.handle,
++				  &v->cvs.handle, sizeof(v->cvs.handle), NULL);
++		if (ret < 0)
++			goto out;
++
++		ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_SET_POLICY_DUAL_CONTROL,
++				  v->mvm.handle, "\x01", 1, NULL);
++		if (ret < 0)
++			goto out;
++	}
++
++	cvp_cfg.direction = 2;
++	cvp_cfg.tx_port_id = tx_port;
++	cvp_cfg.tx_topology_id = VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS;
++	cvp_cfg.rx_port_id = rx_port;
++	cvp_cfg.rx_topology_id = VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT;
++	cvp_cfg.profile_id = VSS_ICOMMON_CAL_NETWORK_ID_NONE;
++	cvp_cfg.vocproc_mode = VSS_IVOCPROC_VOCPROC_MODE_EC_INT_MIXING;
++	cvp_cfg.ec_ref_port_id = VSS_IVOCPROC_PORT_ID_NONE;
++
++	ret = q6voice_cmd(v, &v->cvp, VSS_IVOCPROC_CMD_CREATE_FULL_CONTROL_SESSION_V2,
++			  0, &cvp_cfg, sizeof(cvp_cfg), NULL);
++	if (ret < 0)
++		goto out;
++	v->cvp.handle = ret;
++
++	ret = q6voice_cmd(v, &v->cvp, VSS_IVOCPROC_CMD_ENABLE, v->cvp.handle,
++			  NULL, 0, NULL);
++	if (ret < 0)
++		goto out;
++
++	ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_ATTACH_VOCPROC, v->mvm.handle,
++			  &v->cvp.handle, sizeof(v->cvp.handle), NULL);
++	if (ret < 0)
++		goto out;
++
++	ret = q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_START_VOICE, v->mvm.handle,
++			  NULL, 0, NULL);
++	if (ret < 0)
++		goto out;
++
++	v->running = true;
++	ret = 0;
++out:
++	mutex_unlock(&v->lock);
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(q6voice_start);
++
++/**
++ * q6voice_stop() - take the voice path back down
++ *
++ * Only the vocproc is destroyed, and that is not conditional on anything. The
++ * MVM and CVS are the modem's whatever the create reported -- the CVS answers
++ * with the same handle for every session on this SoC -- and destroying them
++ * does not merely end this call: the modem builds them once during its own
++ * init, so every later call finds nothing to attach to and is silent until the
++ * modem restarts. Measured: making the joined flag report honestly turned this
++ * teardown on for the first time and cost two calls before the pattern showed.
++ */
++int q6voice_stop(void)
++{
++	struct q6voice *v = g_voice;
++
++	if (!v)
++		return -ENODEV;
++
++	mutex_lock(&v->lock);
++
++	if (!v->running)
++		goto out;
++
++	q6voice_cmd(v, &v->mvm, VSS_IMVM_CMD_DETACH_VOCPROC, v->mvm.handle,
++		    &v->cvp.handle, sizeof(v->cvp.handle), NULL);
++	q6voice_cmd(v, &v->cvp, VSS_IVOCPROC_CMD_DISABLE, v->cvp.handle,
++		    NULL, 0, NULL);
++	q6voice_cmd(v, &v->cvp, APRV2_IBASIC_CMD_DESTROY_SESSION, v->cvp.handle,
++		    NULL, 0, NULL);
++
++	v->cvp.handle = 0;
++	v->running = false;
++out:
++	mutex_unlock(&v->lock);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(q6voice_stop);
++
++static int q6voice_probe(struct apr_device *adev)
++{
++	struct device *dev = &adev->dev;
++	struct q6voice_svc *svc;
++	struct q6voice *v;
++
++	/*
++	 * The three services are three APR devices but one logical driver, so
++	 * the first to probe allocates and the others attach to it.
++	 */
++	if (!g_voice) {
++		v = devm_kzalloc(dev, sizeof(*v), GFP_KERNEL);
++		if (!v)
++			return -ENOMEM;
++
++		mutex_init(&v->lock);
++		init_waitqueue_head(&v->wait);
++		g_voice = v;
++	}
++	v = g_voice;
++
++	svc = q6voice_svc_for(v, adev->svc_id);
++	if (!svc)
++		return -ENODEV;
++
++	svc->adev = adev;
++	dev_set_drvdata(dev, v);
++
++	return 0;
++}
++
++static void q6voice_remove(struct apr_device *adev)
++{
++	struct q6voice *v = dev_get_drvdata(&adev->dev);
++	struct q6voice_svc *svc = q6voice_svc_for(v, adev->svc_id);
++
++	if (svc)
++		svc->adev = NULL;
++
++	if (!v->mvm.adev && !v->cvs.adev && !v->cvp.adev)
++		g_voice = NULL;
++}
++
++static const struct apr_device_id q6voice_id[] = {
++	{ "MVM", APR_DOMAIN_ADSP, APR_SVC_ADSP_MVM, 0 },
++	{ "CVS", APR_DOMAIN_ADSP, APR_SVC_ADSP_CVS, 0 },
++	{ "CVP", APR_DOMAIN_ADSP, APR_SVC_ADSP_CVP, 0 },
++	{ }
++};
++
++static const struct of_device_id q6voice_device_id[] = {
++	{ .compatible = "qcom,q6voice" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, q6voice_device_id);
++
++static struct apr_driver qcom_q6voice_driver = {
++	.probe = q6voice_probe,
++	.remove = q6voice_remove,
++	.callback = q6voice_callback,
++	.id_table = q6voice_id,
++	.driver = {
++		.name = "qcom-q6voice",
++		.of_match_table = of_match_ptr(q6voice_device_id),
++	},
++};
++module_apr_driver(qcom_q6voice_driver);
++
++MODULE_DESCRIPTION("Q6 Voice call session driver");
++MODULE_LICENSE("GPL");
+diff --git a/sound/soc/qcom/qdsp6/q6voice.h b/sound/soc/qcom/qdsp6/q6voice.h
+new file mode 100644
+index 000000000000..0a51d08cae8c
+--- /dev/null
++++ b/sound/soc/qcom/qdsp6/q6voice.h
+@@ -0,0 +1,8 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __Q6VOICE_H__
++#define __Q6VOICE_H__
++
++int q6voice_start(u16 rx_port, u16 tx_port);
++int q6voice_stop(void);
++
++#endif /* __Q6VOICE_H__ */

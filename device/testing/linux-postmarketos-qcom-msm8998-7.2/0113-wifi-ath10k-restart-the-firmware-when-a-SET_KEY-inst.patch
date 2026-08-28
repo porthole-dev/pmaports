@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 22 Aug 2026 22:00:00 +0200
+Subject: [PATCH] wifi: ath10k: restart the firmware when a SET_KEY install
+ times out
+
+ath10k_install_key() sends WMI_VDEV_INSTALL_KEY_CMDID and waits 3 s for
+the firmware to acknowledge it.  If the firmware does not answer, the
+function returns -ETIMEDOUT, every caller logs it, and the driver carries
+on talking to a firmware whose crypto state is now unknown.
+
+On WCN3990 (msm8998, Pixel 2 XL) this is not recoverable when it happens
+on the SET_KEY leg: after one unacknowledged key command the firmware
+kept doing 802.11 management on its own - eight further associations all
+completed with status=0 - but returned a DROP completion for every data
+frame, so no EAPOL frame ever left the chip and the interface stayed
+unusable until reboot.  The firmware never crashed, so no existing
+recovery trigger fired.  Ask for a firmware restart instead, the same
+way ath10k_wmi_cmd_send() treats a WMI command it cannot hand to the
+firmware within 3 s.
+
+Deliberately do not escalate on the DISABLE_KEY leg.  That leg runs
+during disconnect, roam and the pre-suspend teardown cfg80211 performs
+for drivers suspending without WoWLAN, which is the firmware's busiest
+control-path moment and the one where WCN3990 routinely misses the 3 s
+deadline (the same -110 was reported upstream against Cisco APs during
+FT roams and never resolved).  The peer is about to be deleted and the
+vdev stopped regardless, so an unacknowledged key removal costs nothing
+extra - while a firmware restart here turns a bounded 3 s stall into a
+measured 90 s outage: the restart work contends with the in-flight
+teardown on conf_mutex, sets ATH10K_FLAG_CRASH_FLUSH which fails the
+remaining teardown with -ESHUTDOWN, and mac80211's reconfig then holds
+rtnl_lock across a full firmware reboot.  Measured on a Pixel 2 XL,
+that restart fired on nearly every wake from system suspend, when
+wpa_supplicant roams from the 2.4 GHz to the 5 GHz BSS of the same AP
+about 35 s after reconnecting.  Neither ath11k nor ath12k restarts the
+firmware on any key install timeout.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/net/wireless/ath/ath10k/mac.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
+index 093f560fc658..1ebf0635d60f 100644
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -325,8 +325,23 @@ static int ath10k_install_key(struct ath10k_vif *arvif,
+ 		return ret;
+ 
+ 	time_left = wait_for_completion_timeout(&ar->install_key_done, 3 * HZ);
+-	if (time_left == 0)
++	if (time_left == 0) {
++		/* An unacknowledged SET_KEY leaves a link that is meant to
++		 * stay up with unusable crypto state; restarting the firmware
++		 * costs one reconnect instead of a dead interface.  An
++		 * unacknowledged DISABLE_KEY is the teardown path: the peer
++		 * is about to be deleted and the vdev stopped regardless, and
++		 * a restart here converts a bounded 3 s stall into a
++		 * multi-second outage while mac80211 reconfigures under
++		 * rtnl_lock.
++		 */
++		if (cmd == SET_KEY) {
++			ath10k_warn(ar, "vdev %i install key timed out, restarting hardware\n",
++				    arvif->vdev_id);
++			ath10k_core_start_recovery(ar);
++		}
+ 		return -ETIMEDOUT;
++	}
+ 
+ 	return 0;
+ }

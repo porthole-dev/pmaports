@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 10 Aug 2026 11:09:24 +0200
+Subject: [PATCH] slimbus: stream: free the port array when the presence rate
+ is rejected
+
+slim_stream_prepare() allocates rt->ports before it looks up the
+presence rate code, and the error path for an unsupported rate returns
+without freeing it. rt->ports stays set, so the leak is not merely a
+leak: the "Stream already Prepared" guard at the top of the function
+then rejects every subsequent attempt to prepare the same stream, and a
+caller that retries at a rate the bus does support is refused for the
+lifetime of the runtime.
+
+Free the array and clear the pointer, so the runtime is left in the
+state it was in on entry.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/slimbus/stream.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/slimbus/stream.c b/drivers/slimbus/stream.c
+index b4e70a7edd1c..e2316be83c04 100644
+--- a/drivers/slimbus/stream.c
++++ b/drivers/slimbus/stream.c
+@@ -227,6 +227,8 @@ int slim_stream_prepare(struct slim_stream_runtime *rt,
+ 	if (prrate < 0) {
+ 		dev_err(&rt->dev->dev, "Cannot get presence rate for rate %d Hz\n",
+ 			cfg->rate);
++		kfree(rt->ports);
++		rt->ports = NULL;
+ 		return prrate;
+ 	}
+ 

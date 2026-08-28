@@ -1,0 +1,164 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 17:09:56 +0200
+Subject: [PATCH] iio: qcom_smgr: give prox/light PRIMARY and SECONDARY their
+ own completion
+
+qcom-smgr-prox-light subscribes to two reports on one sensor id: PRIMARY
+(proximity) and SECONDARY (true ambient light, which arrived alongside
+the second subscription). Both reports called complete() on the same
+single `struct completion report`, and qcom_smgr_read_one() waited on
+that one completion regardless of which report the caller actually
+wanted.
+
+That is a race, and SECONDARY wins it almost every time: ALS is a fast
+ADC read, while PRIMARY's proximity value depends on an IR emitter
+pulse and its own ADC conversion, so it consistently arrives later. A
+read of in_proximity_raw would enable buffering, wait on the shared
+completion, get satisfied by the ALS report that happened to land
+first, tear down BOTH subscriptions via qcom_smgr_buffering_put(), and
+only then read last_values[0] -- which a SECONDARY report never
+writes (only the `!is_secondary` branch in the report handler does).
+last_values[0] stayed at its zeroed init value forever. Illuminance
+showed the mirror symptom: whichever report the shared completion
+happened to catch determined which cached value callers saw.
+
+Fix: one completion per qcom_smgr_data_type (PRIMARY/SECONDARY) instead
+of one shared completion. The report handler completes only the
+completion matching its own is_secondary. qcom_smgr_read_one() uses the
+existing qcom_smgr_secondary_scan_index() helper to map the requested
+channel's scan_index to PRIMARY or SECONDARY and waits on that one
+specifically -- guarding the event-only-sensor case (scan_index == -1)
+so it doesn't collide with "no secondary" (also -1) and misroute to
+SECONDARY. reinit_completion() now targets only the completion about to
+be waited on, same as before but per-type, so a stale completion from a
+previous read of the other data type can't cause a spurious immediate
+return. The combined subscribe/unsubscribe refcounting is unchanged --
+both data types are still subscribed and torn down together; only which
+completion a given read blocks on changes.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/iio/common/qcom_smgr/qcom_smgr.c | 33 +++++++++++++++++++-----
+ include/linux/iio/common/qcom_smgr.h     | 14 +++++++++-
+ 2 files changed, 39 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/iio/common/qcom_smgr/qcom_smgr.c b/drivers/iio/common/qcom_smgr/qcom_smgr.c
+index 988ca4be03d9..49509637bf13 100644
+--- a/drivers/iio/common/qcom_smgr/qcom_smgr.c
++++ b/drivers/iio/common/qcom_smgr/qcom_smgr.c
+@@ -45,7 +45,7 @@ static int qcom_smgr_request_all_sensor_info(struct qcom_smgr *smgr,
+ {
+ 	struct sns_smgr_all_sensor_info_resp resp = {};
+ 	struct qmi_txn txn;
+-	u8 i;
++	u8 i, d;
+ 	int ret;
+ 
+ 	dev_dbg(smgr->dev, "Getting available sensors\n");
+@@ -98,7 +98,8 @@ static int qcom_smgr_request_all_sensor_info(struct qcom_smgr *smgr,
+ 			 (*sensors)[i].type);
+ 
+ 		mutex_init(&(*sensors)[i].lock);
+-		init_completion(&(*sensors)[i].report);
++		for (d = 0; d < SNS_SMGR_DATA_TYPE_COUNT; d++)
++			init_completion(&(*sensors)[i].report[d]);
+ 	}
+ 
+ 	return resp.item_len;
+@@ -691,7 +692,7 @@ static void qcom_smgr_buffering_report_handler(struct qmi_handle *hdl,
+ 		if (sensor->last_event_ns &&
+ 		    now - sensor->last_event_ns < 100 * NSEC_PER_MSEC) {
+ 			sensor->have_report = true;
+-			complete(&sensor->report);
++			complete(&sensor->report[is_secondary]);
+ 			return;
+ 		}
+ 		sensor->last_event_ns = now;
+@@ -699,7 +700,7 @@ static void qcom_smgr_buffering_report_handler(struct qmi_handle *hdl,
+ 		iio_push_event(sensor->iio_dev, code, now);
+ 
+ 		sensor->have_report = true;
+-		complete(&sensor->report);
++		complete(&sensor->report[is_secondary]);
+ 		return;
+ 	}
+ 
+@@ -731,7 +732,7 @@ static void qcom_smgr_buffering_report_handler(struct qmi_handle *hdl,
+ 	memcpy(sensor->last_values, iio_data.values,
+ 	       sizeof(sensor->last_values));
+ 	sensor->have_report = true;
+-	complete(&sensor->report);
++	complete(&sensor->report[is_secondary]);
+ 
+ 	iio_push_to_buffers_with_timestamp(sensor->iio_dev, &iio_data,
+ 					   iio_get_time_ns(sensor->iio_dev));
+@@ -879,9 +880,27 @@ static int qcom_smgr_read_one(struct iio_dev *iio_dev,
+ 	struct qcom_smgr_iio_priv *priv = iio_priv(iio_dev);
+ 	struct qcom_smgr_sensor *sensor = priv->sensor;
+ 	int ret = 0;
++	int sec, data_type;
+ 
+ 	mutex_lock(&sensor->lock);
+ 
++	/*
++	 * PRIMARY and SECONDARY are separate subscriptions with separate
++	 * completions (see qcom_smgr.h); wait on the one that actually owns
++	 * this channel. Waiting on "either" here is what caused
++	 * in_proximity_raw to never see a real report: SECONDARY (ambient
++	 * light) always finishes first, so a shared wait returned on ALS
++	 * and the subscription was torn down before proximity's PRIMARY
++	 * report ever arrived.
++	 *
++	 * sec is -1 for sensors with no secondary at all, which for an
++	 * event-only sensor (chan->scan_index also -1) must not be treated
++	 * as a match -- both PRIMARY, always.
++	 */
++	sec = qcom_smgr_secondary_scan_index(sensor->type);
++	data_type = (sec >= 0 && sec == chan->scan_index)
++		    ? SNS_SMGR_DATA_TYPE_SECONDARY : SNS_SMGR_DATA_TYPE_PRIMARY;
++
+ 	/*
+ 	 * Refcounted, so this no longer has to special-case "already
+ 	 * streaming": it either starts the stream or joins one, and only the
+@@ -890,13 +909,13 @@ static int qcom_smgr_read_one(struct iio_dev *iio_dev,
+ 	 * raw read taken while the compass held the accelerometer would have
+ 	 * torn that stream down on the way out.
+ 	 */
+-	reinit_completion(&sensor->report);
++	reinit_completion(&sensor->report[data_type]);
+ 
+ 	ret = qcom_smgr_buffering_get(smgr, sensor);
+ 	if (ret)
+ 		goto out;
+ 
+-	if (!wait_for_completion_timeout(&sensor->report, HZ))
++	if (!wait_for_completion_timeout(&sensor->report[data_type], HZ))
+ 		ret = -ETIMEDOUT;
+ 
+ 	qcom_smgr_buffering_put(smgr, sensor);
+diff --git a/include/linux/iio/common/qcom_smgr.h b/include/linux/iio/common/qcom_smgr.h
+index c39787f5954e..0a408d6e6829 100644
+--- a/include/linux/iio/common/qcom_smgr.h
++++ b/include/linux/iio/common/qcom_smgr.h
+@@ -75,7 +75,19 @@ struct qcom_smgr_sensor {
+ 	 * 3, past the end of a three-element array.
+ 	 */
+ 	struct mutex lock;
+-	struct completion report;
++	/*
++	 * One completion per data type (SNS_SMGR_DATA_TYPE_PRIMARY/SECONDARY),
++	 * not one shared between them. PRIMARY (e.g. proximity) and SECONDARY
++	 * (e.g. ambient light) are two independent subscriptions that report
++	 * asynchronously; a single completion cannot say which of the two
++	 * arrived; wait_for_completion() would return the instant EITHER
++	 * report showed up. On qcom-smgr-prox-light, the SECONDARY (ALS)
++	 * conversion is consistently faster than PRIMARY's proximity IR
++	 * pulse+ADC, so it satisfied the shared completion almost every time,
++	 * the caller tore the subscription down before PRIMARY ever arrived,
++	 * and in_proximity_raw stuck at its zeroed init value forever.
++	 */
++	struct completion report[SNS_SMGR_DATA_TYPE_COUNT];
+ 	u32 last_values[4];
+ 	bool have_report;
+ 

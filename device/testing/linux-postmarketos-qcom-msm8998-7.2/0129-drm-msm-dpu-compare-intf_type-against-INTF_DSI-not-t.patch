@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 21 Aug 2026 21:45:00 +0200
+Subject: [PATCH] drm/msm/dpu: compare intf_type against INTF_DSI, not the DRM
+ encoder type
+
+The cmd-mode DCS/frame interlock added in "drm/msm/dsi: serialize cmd-mode
+DCS transfers against frame kickoff" hooks dpu_encoder_kickoff() behind
+
+	if (dpu_enc->disp_info.intf_type == DRM_MODE_ENCODER_DSI)
+
+but disp_info.intf_type is an enum dpu_intf_type, where INTF_DSI is 0x1.
+DRM_MODE_ENCODER_DSI is 6, from a completely unrelated uapi enum.  The
+condition is therefore never true, msm_dsi_cmd_kickoff_begin() has never once
+been called, frame_pending was never set, and the entire interlock -- plus the
+dsi-collide detector that reads the same state -- has been dead code since it
+was written.  Everything around it already uses the right enum
+(dpu_encoder.c:287, :649).
+
+Measured with kprobes on a Pixel 2 XL during a backlight sweep, 6 s:
+
+	dpu_encoder_kickoff                 = 69
+	dpu_encoder_trigger_kickoff_pending = 69
+	msm_dsi_cmd_kickoff_begin           =  0
+	frames (vsync delta)                = 94
+
+and over 448 DCS transfers in a separate run the interlock blocked exactly
+zero times, while the panel corrupted into full-screen noise banded at DSC
+slice boundaries -- the signature panel-lg-sw43402.c predicts for a DCS write
+landing inside a frame.
+
+Also require is_cmd_mode.  In video mode the DPU streams continuously, there
+is no CMD_MDP_DONE to retire a frame, and arming the interlock there would
+make every DCS write wait out its 100 ms timeout.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+index 41448560c81c..730b498081b6 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c
+@@ -2171,7 +2171,8 @@ void dpu_encoder_kickoff(struct drm_encoder *drm_enc)
+ 	 * which triggers CTL_START under enc_spinlock (atomic). No-op unless
+ 	 * the dsi host has cmd_frame_serialize set.
+ 	 */
+-	if (dpu_enc->disp_info.intf_type == DRM_MODE_ENCODER_DSI)
++	if (dpu_enc->disp_info.is_cmd_mode &&
++	    dpu_enc->disp_info.intf_type == INTF_DSI)
+ 		msm_dsi_cmd_kickoff_begin();
+ 
+ 	/* All phys encs are ready to go, trigger the kickoff */

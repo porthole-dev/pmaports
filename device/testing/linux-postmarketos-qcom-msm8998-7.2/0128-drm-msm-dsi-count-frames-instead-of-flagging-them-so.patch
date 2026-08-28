@@ -1,0 +1,234 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 21 Aug 2026 21:10:00 +0200
+Subject: [PATCH] drm/msm/dsi: count frames instead of flagging them, so the
+ cmd interlock can actually hold
+
+The cmd-mode DCS-vs-frame interlock tracks one boolean, frame_pending: set
+by msm_dsi_cmd_kickoff_begin() before CTL_START, cleared by the CMD_MDP_DONE
+interrupt.  A bool cannot represent "a second frame was armed while the first
+was still outstanding".  When the DPU kicks off frame N+1 and frame N's
+CMD_MDP_DONE lands just after, that interrupt clears the flag N+1's kickoff
+had just set; dsi_host_transfer() then finds nothing pending, skips its wait
+and puts a DCS packet on the wire in the middle of N+1.
+
+Measured on a Pixel 2 XL (LG SW43402, 1440x2880 DSC command mode), sweeping
+the backlight while the user watched the panel.  Five arms, each starting
+from a re-inited panel:
+
+  44/s, 352 DCS,  96 frames  -> horizontal stripes, image content preserved
+  16/s, 384 DCS, 294 frames  -> same, slower to appear and gentler
+  44/s, 352 DCS,  29 frames  -> no stripes; panel went to a flat colour with
+                                no content at all
+  44/s, 351 DCS,  91 frames, cmd_frame_serialize=N -> corrupts likewise
+
+Both signatures are the ones panel-lg-sw43402.c already predicts for a DCS
+write landing inside a frame: "noise banded at slice boundaries; a bad HS
+misframe can even make the DDIC execute a phantom command and go dark".
+Corruption tracks accumulated writes rather than rate -- the 16/s arm is
+clean at 96 writes and corrupts at 384 -- which is why a slow drag gives
+"occasional glitches" and a fast one breaks the panel at once.
+
+Turning the interlock off changed nothing measurable, which is what an
+interlock that never engages looks like.
+
+Count arms and dones instead.  frame_armed - done stays positive until every
+armed frame has completed, so a late CMD_MDP_DONE can no longer retire a
+frame that has not started.  The subtraction is signed: a stale interrupt
+without a matching arm must not wrap the difference and hang every later DCS
+write on its 100 ms timeout.
+
+Add three counters as read-only module parameters, because the existing
+dsi-collide detector reads the same state the interlock does and therefore
+cannot report a fault in it -- it stayed at 0 through every arm above,
+including the one with serialization disabled.  dsi_cmd_during_frame counts
+transfers that reached the wire with a frame still armed; it is the bug
+expressed as a number, and it is what makes this change falsifiable.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/dsi/dsi_host.c | 88 +++++++++++++++++++++++++-----
+ 1 file changed, 73 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+index bdd7f34fcdc5..c899a76766b3 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -114,6 +114,29 @@ module_param(cmd_burst, bool, 0644);
+ static bool cmd_frame_serialize = true;
+ module_param(cmd_frame_serialize, bool, 0644);
+ 
++/*
++ * An instrument for the interlock itself, because the existing dsi-collide
++ * detector reads the same state the interlock does and so cannot report a
++ * fault in it. Measured 2026-08-21: collide stayed at 0 across five brightness
++ * sweeps that visibly corrupted the panel, including one with
++ * cmd_frame_serialize=N. A detector that reads zero while the display breaks
++ * is not evidence of anything.
++ *
++ * These count what the interlock actually did:
++ *   xfers        cmd-mode DCS transfers attempted
++ *   waited       transfers that found a frame outstanding and blocked
++ *   during_frame transfers that went to the wire with a frame still armed
++ *
++ * during_frame > 0 is the bug, as a number. waited == 0 across a sweep means
++ * the interlock never engaged at all.
++ */
++static u32 dsi_cmd_xfers;
++module_param(dsi_cmd_xfers, uint, 0444);
++static u32 dsi_cmd_waited;
++module_param(dsi_cmd_waited, uint, 0444);
++static u32 dsi_cmd_during_frame;
++module_param(dsi_cmd_during_frame, uint, 0444);
++
+ struct msm_dsi_host {
+ 	struct mipi_dsi_host base;
+ 
+@@ -162,9 +185,9 @@ struct msm_dsi_host {
+ 	spinlock_t intr_lock; /* Protect interrupt ctrl register */
+ 
+ 	/*
+-	 * Command-mode frame/DCS interleaving. frame_pending is set by the DPU
++	 * Command-mode frame/DCS interleaving. frame_armed is bumped by the DPU
+ 	 * (msm_dsi_cmd_kickoff_begin(), under cmd_mutex) before it writes
+-	 * CTL_START, and cleared by the CMD_MDP_DONE interrupt when the frame
++	 * CTL_START, and frame_done by the CMD_MDP_DONE interrupt when a frame
+ 	 * has fully left the controller. dsi_host_transfer() waits on it before
+ 	 * touching the wire, so a DCS packet can only go out in a true
+ 	 * inter-frame gap -- and because the DPU takes cmd_mutex to set it, a
+@@ -175,7 +198,17 @@ struct msm_dsi_host {
+ 	 * the panel, dsi-mdpwait 2026-07-27).
+ 	 */
+ 	wait_queue_head_t frame_wait;
+-	bool frame_pending;
++	/*
++	 * Generation counters, deliberately not a flag. A bool cannot express
++	 * "a second frame was armed while the first was still outstanding": the
++	 * CMD_MDP_DONE of frame N clears the flag frame N+1's kickoff just set,
++	 * the transfer path then sees nothing pending and puts a DCS packet on
++	 * the wire in the middle of N+1. Counting arms and dones makes that
++	 * state representable -- armed - done stays > 0 until every armed frame
++	 * has completed.
++	 */
++	u32 frame_armed;
++	u32 frame_done;
+ 	/* diagnostic: 0 = wait skipped, 1 = waited and frame cleared, 2 = timed out */
+ 	u8 collide_waited;
+ 	u32 mdp_done_cnt;
+@@ -1237,10 +1270,10 @@ static void dsi_op_mode_config(struct msm_dsi_host *msm_host,
+ 			WRITE_ONCE(cmd_sync_host, NULL);
+ 		/*
+ 		 * A CMD_MDP_DONE that raced the disable would leave
+-		 * frame_pending stuck and cost every init command a full
++		 * frame accounting stuck and cost every init command a full
+ 		 * timeout on the next enable.
+ 		 */
+-		WRITE_ONCE(msm_host->frame_pending, false);
++		WRITE_ONCE(msm_host->frame_done, READ_ONCE(msm_host->frame_armed));
+ 		wake_up(&msm_host->frame_wait);
+ 	} else {
+ 		if (video_mode) {
+@@ -1248,7 +1281,7 @@ static void dsi_op_mode_config(struct msm_dsi_host *msm_host,
+ 		} else {		/* command mode */
+ 			dsi_ctrl |= DSI_CTRL_CMD_MODE_EN;
+ 			dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_CMD_MDP_DONE, 1);
+-			WRITE_ONCE(msm_host->frame_pending, false);
++			WRITE_ONCE(msm_host->frame_done, READ_ONCE(msm_host->frame_armed));
+ 			WRITE_ONCE(cmd_sync_host, msm_host);
+ 		}
+ 		dsi_ctrl |= DSI_CTRL_ENABLE;
+@@ -1261,12 +1294,23 @@ static void dsi_op_mode_config(struct msm_dsi_host *msm_host,
+  * Called by dpu_encoder_kickoff() before it triggers CTL_START for a
+  * cmd-mode DSI encoder. Taking cmd_mutex blocks until any in-flight DCS
+  * transfer (including a multi-DMA read) has fully finished, so a frame can
+- * never start on top of one; setting frame_pending then holds the next DCS
+- * transfer off until this frame's CMD_MDP_DONE.
++ * never start on top of one; arming this frame then holds the next DCS
++ * transfer off until its CMD_MDP_DONE.
+  *
+  * Process context only -- dpu_encoder_kickoff() runs in the commit worker,
+  * before enc_spinlock is taken.
+  */
++/*
++ * Signed subtraction so a CMD_MDP_DONE without a matching arm (a stale
++ * interrupt across a disable, say) cannot wrap this into a permanently-pending
++ * state and hang every later DCS write on its 100 ms timeout.
++ */
++static bool dsi_frame_pending(struct msm_dsi_host *msm_host)
++{
++	return (s32)(READ_ONCE(msm_host->frame_armed) -
++		     READ_ONCE(msm_host->frame_done)) > 0;
++}
++
+ void msm_dsi_cmd_kickoff_begin(void)
+ {
+ 	struct msm_dsi_host *msm_host = READ_ONCE(cmd_sync_host);
+@@ -1275,7 +1319,7 @@ void msm_dsi_cmd_kickoff_begin(void)
+ 		return;
+ 
+ 	mutex_lock(&msm_host->cmd_mutex);
+-	WRITE_ONCE(msm_host->frame_pending, true);
++	WRITE_ONCE(msm_host->frame_armed, msm_host->frame_armed + 1);
+ 	mutex_unlock(&msm_host->cmd_mutex);
+ }
+ 
+@@ -1653,7 +1697,7 @@ static int dsi_cmd_dma_tx(struct msm_dsi_host *msm_host, int len)
+ 		 * why. Measured 2026-08-21: it fired twice on a brightness
+ 		 * ramp with cmd_frame_serialize=Y, which the protocol says is
+ 		 * impossible -- kickoff takes cmd_mutex (held here) and the
+-		 * transfer waits on frame_pending. Exactly one of these must
++		 * transfer waits on it. Exactly one of these must
+ 		 * be false: sync=0 means cmd_sync_host was not this host, so
+ 		 * BOTH sides silently no-op; pend=1 means the wait was skipped
+ 		 * or timed out; waited=1 with pend=1 means it timed out and we
+@@ -1664,7 +1708,7 @@ static int dsi_cmd_dma_tx(struct msm_dsi_host *msm_host, int len)
+ 				status, ret,
+ 				READ_ONCE(cmd_sync_host) == msm_host,
+ 				cmd_frame_serialize,
+-				READ_ONCE(msm_host->frame_pending),
++				dsi_frame_pending(msm_host),
+ 				msm_host->collide_waited,
+ 				msm_host->mdp_done_cnt);
+ 	}
+@@ -1907,7 +1951,7 @@ static irqreturn_t dsi_host_irq(int irq, void *ptr)
+ 
+ 	if (isr & DSI_IRQ_CMD_MDP_DONE) {
+ 		msm_host->mdp_done_cnt++;
+-		WRITE_ONCE(msm_host->frame_pending, false);
++		WRITE_ONCE(msm_host->frame_done, msm_host->frame_done + 1);
+ 		wake_up(&msm_host->frame_wait);
+ 	}
+ 
+@@ -1989,15 +2033,29 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host,
+ 	 * msm_dsi_cmd_kickoff_begin() taking cmd_mutex, which we now hold.
+ 	 */
+ 	msm_host->collide_waited = 0;
++	if (READ_ONCE(cmd_sync_host) == msm_host)
++		dsi_cmd_xfers++;
+ 	if (cmd_frame_serialize && READ_ONCE(cmd_sync_host) == msm_host) {
+-		long rc = wait_event_timeout(msm_host->frame_wait,
+-					!READ_ONCE(msm_host->frame_pending),
++		long rc;
++
++		if (dsi_frame_pending(msm_host))
++			dsi_cmd_waited++;
++		rc = wait_event_timeout(msm_host->frame_wait,
++					!dsi_frame_pending(msm_host),
+ 					msecs_to_jiffies(100));
+ 		msm_host->collide_waited = rc ? 1 : 2;	/* 2 = timed out */
+ 		if (!rc)
+-			pr_warn("dsi-framewait: frame_pending stuck (mdp_done irqs=%u)\n",
++			pr_warn("dsi-framewait: frame stuck armed=%u done=%u (mdp_done irqs=%u)\n",
++				READ_ONCE(msm_host->frame_armed),
++				READ_ONCE(msm_host->frame_done),
+ 				msm_host->mdp_done_cnt);
+ 	}
++	/*
++	 * Sampled after the wait and before the wire: non-zero here means the
++	 * interlock did not hold, whatever the collide detector says.
++	 */
++	if (READ_ONCE(cmd_sync_host) == msm_host && dsi_frame_pending(msm_host))
++		dsi_cmd_during_frame++;
+ 
+ 	ret = msm_dsi_manager_cmd_xfer(msm_host->id, msg);
+ 	mutex_unlock(&msm_host->cmd_mutex);

@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 8 Aug 2026 18:16:34 +0200
+Subject: [PATCH] media: qcom: camss: allocate the ISPIF whenever the SoC
+ declares one
+
+The ISPIF is allocated from a hardcoded list of CAMSS versions, which has
+fallen out of step with the resource tables: sdm660 ships a full
+ispif_res_660, its DT binding requires the ispif register range and
+interrupt, and every ISPIF code path already handles CAMSS_660 - but the
+version is missing from the list, so camss->ispif stays NULL and
+msm_ispif_subdev_init() returns early. The block is described, clocked by
+DT and never programmed.
+
+Gate the allocation on the resource table instead. A SoC that describes an
+ISPIF gets one, and the list cannot drift again.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/camss/camss.c | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/camss/camss.c b/drivers/media/platform/qcom/camss/camss.c
+index 2123f6388e3d..53058fe6565e 100644
+--- a/drivers/media/platform/qcom/camss/camss.c
++++ b/drivers/media/platform/qcom/camss/camss.c
+@@ -5385,10 +5385,7 @@ static int camss_probe(struct platform_device *pdev)
+ 	if (!camss->csid)
+ 		return -ENOMEM;
+ 
+-	if (camss->res->version == CAMSS_8x16 ||
+-	    camss->res->version == CAMSS_8x39 ||
+-	    camss->res->version == CAMSS_8x53 ||
+-	    camss->res->version == CAMSS_8x96) {
++	if (camss->res->ispif_res) {
+ 		camss->ispif = devm_kcalloc(dev, 1, sizeof(*camss->ispif), GFP_KERNEL);
+ 		if (!camss->ispif)
+ 			return -ENOMEM;

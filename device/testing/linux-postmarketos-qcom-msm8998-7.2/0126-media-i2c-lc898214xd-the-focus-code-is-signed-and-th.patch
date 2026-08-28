@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 21 Aug 2026 01:34:52 +0200
+Subject: [PATCH] media: i2c: lc898214xd: the focus code is signed, and the
+ range is ~580 not 4095
+
+Commanding a position and reading the hall sensor back shows the servo tracks
+exactly inside a narrow band around zero and slams into the stop outside it:
+
+  commanded   324   240   160    80     0   -80  -160  -257 | 1800  2600  3300
+  hall        327   252   163    81    -9   -84  -171  -257 | 1458  3569  3610
+
+2600 unsigned is -1496 signed, past the mechanical limit, so the servo parks at
+the stop and reports hall -527. The code is signed 12-bit and the mechanism
+spans only a few hundred counts either side of zero.
+
+The vendor's af_tuning region params say the same once read as signed: infinity
+0x144 = +324, macro 0x0eff = -257.
+
+Treating it as unsigned 0..4095 made most of the advertised range meaningless.
+An autofocus scan across it spent the bulk of its sweep writing wrapped negative
+codes, which is why a full-resolution focus sweep stayed flat (158/152/151/122/
+120/132 at codes 300..3900 on a lit, detailed scene) and AF always ended near
+the far stop with the image out of focus.
+
+V4L2_CID_FOCUS_ABSOLUTE is unsigned and increases towards near focus, so expose
+0..581 with 0 = infinity (+324) and 581 = macro (-257), converting on the way to
+the hardware.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/lc898214xd.c | 41 +++++++++++++++++++++++++++++-----
+ 1 file changed, 35 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/i2c/lc898214xd.c b/drivers/media/i2c/lc898214xd.c
+index 82a8e7b225d6..f2f03f067b1a 100644
+--- a/drivers/media/i2c/lc898214xd.c
++++ b/drivers/media/i2c/lc898214xd.c
+@@ -62,14 +62,39 @@
+ 
+ /* The 12-bit code occupies bits [15:4] of the 16-bit target/position word. */
+ #define LC898214XD_CODE_SHIFT		4
+-#define LC898214XD_POS_MIN		0
+-#define LC898214XD_POS_MAX		0x0fff
+ 
+ /*
+- * Vendor af_tuning initial_code, i.e. where the HAL parks the lens when AF
+- * is initialised (libactuator_lc898214xd.so, .data+0x1808).
++ * The code is SIGNED 12-bit, and the mechanism only spans a few hundred counts
++ * either side of zero -- not the full 0..4095 an unsigned reading suggests.
++ *
++ * Measured on a Pixel 2 XL 2026-08-21 by commanding a position and reading the
++ * hall sensor back (0x3C/0x3D, exposed as debugfs "position"). Inside the range
++ * the servo tracks exactly; outside it, it slams into the stop:
++ *
++ *   commanded   324   240   160    80     0   -80  -160  -257 | 1800  2600  3300
++ *   hall        327   252   163    81    -9   -84  -171  -257 | 1458  3569  3610
++ *
++ * 2600 unsigned is -1496 signed, which is past the mechanical limit, so the
++ * servo parks at the stop (hall -527). Treating the code as unsigned therefore
++ * made most of the advertised range meaningless, and an autofocus scan across
++ * 0..4095 spent the bulk of its sweep writing wrapped negative codes -- which
++ * is why the focus metric stayed flat and AF always ended near the far stop.
++ *
++ * The vendor's own af_tuning region params say the same thing once read as
++ * signed: infinity 0x144 = +324, macro 0x0eff = -257 (libactuator_lc898214xd.so
++ * .data, and .data+0x1808 for initial_code).
++ *
++ * V4L2_CID_FOCUS_ABSOLUTE is unsigned and, by convention, increases towards
++ * near focus. So expose 0..581, mapping 0 -> +324 (infinity) and 581 -> -257
++ * (macro), and convert on the way to the hardware.
+  */
+-#define LC898214XD_POS_DEFAULT		0x0eff
++#define LC898214XD_CODE_INFINITY	324
++#define LC898214XD_CODE_MACRO		(-257)
++#define LC898214XD_POS_MIN		0
++#define LC898214XD_POS_MAX		(LC898214XD_CODE_INFINITY - LC898214XD_CODE_MACRO)
++
++/* Vendor af_tuning initial_code is the macro end. */
++#define LC898214XD_POS_DEFAULT		LC898214XD_POS_MAX
+ 
+ struct lc898214xd {
+ 	struct v4l2_subdev sd;
+@@ -124,14 +149,18 @@ static int lc898214xd_wake(struct lc898214xd *lens)
+ 
+ static int lc898214xd_set_pos(struct lc898214xd *lens, u16 pos)
+ {
++	s16 code;
+ 	int ret;
+ 
+ 	ret = lc898214xd_wake(lens);
+ 	if (ret)
+ 		return ret;
+ 
++	/* 0 = infinity, POS_MAX = macro; the hardware code runs the other way. */
++	code = LC898214XD_CODE_INFINITY - pos;
++
+ 	return i2c_smbus_write_word_swapped(lens->client, LC898214XD_REG_TARGET,
+-					    pos << LC898214XD_CODE_SHIFT);
++					    (u16)(code << LC898214XD_CODE_SHIFT));
+ }
+ 
+ static int lc898214xd_s_ctrl(struct v4l2_ctrl *ctrl)

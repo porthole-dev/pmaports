@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
+Date: Mon, 9 Aug 2021 19:47:04 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: Add disabled slimbus support
+
+Add generic slimbus configuration to MSM8998 and keep it disabled.
+It is expected that this will be enabled in board-specific device
+trees when supported, along with the right audio codec.
+
+The NGD instance itself is left to the boards as well, following
+sdm845: the controller has no use for it until a slave is described.
+
+Signed-off-by: AngeloGioacchino Del Regno <angelogioacchino.delregno@somainline.org>
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 257aa4811934..3ffb6f2a92c4 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -4274,6 +4274,31 @@ pil-reloc@94c {
+ 			};
+ 		};
+ 
++		slimbam: dma-controller@17184000 {
++			compatible = "qcom,bam-v1.7.0";
++			reg = <0x17184000 0x32000>;
++			interrupts = <GIC_SPI 164 IRQ_TYPE_LEVEL_HIGH>;
++			#dma-cells = <1>;
++			qcom,controlled-remotely;
++			qcom,ee = <1>;
++			qcom,num-ees = <2>;
++			num-channels = <31>;
++			status = "disabled";
++		};
++
++		slim: slim-ngd@171c0000 {
++			compatible = "qcom,slim-ngd-v2.1.0";
++			reg = <0x171c0000 0x2c000>;
++			interrupts = <GIC_SPI 163 IRQ_TYPE_LEVEL_HIGH>;
++
++			dmas = <&slimbam 3>, <&slimbam 4>;
++			dma-names = "rx", "tx";
++
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++		};
++
+ 		remoteproc_adsp: remoteproc@17300000 {
+ 			compatible = "qcom,msm8998-adsp-pas";
+ 			reg = <0x17300000 0x4040>;

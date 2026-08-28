@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 20 Aug 2026 20:08:03 +0200
+Subject: [PATCH] drm/msm: do not tear down shared-VM mappings on GEM handle
+ close
+
+msm_gpu_create_private_vm() hands a context the global VM whenever the
+target cannot give it a private one -- a5xx and older have no per-process
+pagetables at all, and even on a6xx it is the fallback when creating one
+fails. Since the drm_gpuvm conversion in 111fdd2198e6 ("drm/msm:
+drm_gpuvm conversion"), msm_gem_close() unmaps and closes the object's
+VMA in ctx->vm on every handle close. Where ctx->vm is the global VM,
+that VMA is not the closing context's to free.
+
+msm_gem_prime_import() returns the *same* drm_gem_object for a dmabuf
+this device exported, so a buffer shared between a compositor and its
+client is one GEM object with one drm_gpuva in that one VM. Whichever
+process calls GEM_CLOSE first unmaps the buffer -- and frees its iova --
+out from under the other, whose userspace still has that iova baked into
+cmdstream. The GPU then reads an unmapped address; on a540 the CP
+consumes the terminated transaction and the result is
+
+  *** gpu fault: iova=00000000122d9280 flags=0 (0,0,0,0)
+  msm_dpu c901000.display-controller: CP | opcode error | possible opcode=0x00000000
+  [drm:recover_worker] *ERROR* 5.4.0.1: offending task: phoc
+
+Before 111fdd2198e6 msm_gem_close() did no teardown at all, which is why
+this only appears from v6.17 onwards.
+
+Skip the teardown for contexts on the global VM and let the existing
+@vma_ref drop handle it instead: it already counts open handles and live
+exports for exactly this purpose, so reaching zero is the first moment at
+which nobody can hold the iova any more. That restores the pre-v6.17
+lifetime for these mappings without leaking them -- the vm_bo holds a
+reference to the object, so simply never closing the VMA would keep the
+object alive forever. Targets with private pagetables are unaffected:
+userspace buffers never live in gpu->vm there, so the added
+put_iova_spaces() finds nothing.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/msm_gem.c | 28 +++++++++++++++++++++++++---
+ 1 file changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/msm_gem.c b/drivers/gpu/drm/msm/msm_gem.c
+index efd3d3c9a449..f74b6f0acf8b 100644
+--- a/drivers/gpu/drm/msm/msm_gem.c
++++ b/drivers/gpu/drm/msm/msm_gem.c
+@@ -51,6 +51,7 @@ static void put_iova_spaces(struct drm_gem_object *obj, struct drm_gpuvm *vm,
+ 
+ static void msm_gem_close(struct drm_gem_object *obj, struct drm_file *file)
+ {
++	struct msm_drm_private *priv = obj->dev->dev_private;
+ 	struct msm_context *ctx = file->driver_priv;
+ 	struct drm_exec exec;
+ 
+@@ -61,8 +62,15 @@ static void msm_gem_close(struct drm_gem_object *obj, struct drm_file *file)
+ 	 * If VM isn't created yet, nothing to cleanup.  And in fact calling
+ 	 * put_iova_spaces() with vm=NULL would be bad, in that it will tear-
+ 	 * down the mappings of shared buffers in other contexts.
++	 *
++	 * The same is true when the context shares the global VM, which is
++	 * what msm_gpu_create_private_vm() hands out on targets without
++	 * per-process pagetables: the VMA torn down here belongs just as much
++	 * to every other context, and a self-imported dmabuf is the *same*
++	 * GEM object in all of them.  Leave those to msm_gem_vma_put(), once
++	 * the last handle and the last export are gone.
+ 	 */
+-	if (!ctx->vm)
++	if (!ctx->vm || (priv->gpu && ctx->vm == priv->gpu->vm))
+ 		return;
+ 
+ 	/*
+@@ -97,16 +105,30 @@ void msm_gem_vma_get(struct drm_gem_object *obj)
+ void msm_gem_vma_put(struct drm_gem_object *obj)
+ {
+ 	struct msm_drm_private *priv = obj->dev->dev_private;
++	struct drm_exec exec;
+ 
+ 	if (atomic_dec_return(&to_msm_bo(obj)->vma_ref))
+ 		return;
+ 
++	/*
++	 * Zero handles and no export left, so this is the first point at which
++	 * a mapping in the GPU's global VM can be freed without pulling it out
++	 * from under another context.  See msm_gem_close().  A no-op where
++	 * contexts get a private VM, as userspace buffers never land in
++	 * gpu->vm there.
++	 */
++	if (priv->gpu && priv->gpu->vm) {
++		dma_resv_wait_timeout(obj->resv, DMA_RESV_USAGE_BOOKKEEP, false,
++				      MAX_SCHEDULE_TIMEOUT);
++		msm_gem_lock_vm_and_obj(&exec, obj, priv->gpu->vm);
++		put_iova_spaces(obj, priv->gpu->vm, true, "vma_put");
++		drm_exec_fini(&exec);     /* drop locks */
++	}
++
+ 	if (!priv->kms)
+ 		return;
+ 
+ #ifdef CONFIG_DRM_MSM_KMS
+-	struct drm_exec exec;
+-
+ 	msm_gem_lock_vm_and_obj(&exec, obj, priv->kms->vm);
+ 	put_iova_spaces(obj, priv->kms->vm, true, "vma_put");
+ 	drm_exec_fini(&exec);     /* drop locks */

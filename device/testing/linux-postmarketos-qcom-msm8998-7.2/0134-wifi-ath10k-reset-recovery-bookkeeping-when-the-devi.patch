@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 22 Aug 2026 14:15:00 +0200
+Subject: [PATCH] wifi: ath10k: reset recovery bookkeeping when the device
+ stops
+
+A recovery requested while mac80211 is suspending can never complete:
+ieee80211_restart_hw() is not serviced across a system suspend, so
+ath10k_stop() tears the device down with pending_recovery still set.
+Every recovery request on a later cycle then times out against the
+stale pending flag and increments fail_cont_count, and after
+ATH10K_RECOVERY_MAX_FAIL_COUNT such cycles the driver declares itself
+WEDGED mid-suspend, rerouting the teardown through paths slow enough
+to trip the DPM watchdog. Measured on a WCN3990 phone that suspends
+with the interface associated: the sixth WiFi suspend after boot
+wedged the SoC, deterministically, five clean cycles then death.
+
+The device is down and the next start boots fresh firmware; start the
+recovery bookkeeping fresh too.
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/net/wireless/ath/ath10k/mac.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
+index 1ebf0635d60f..94fddd8094eb 100644
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -5436,6 +5436,17 @@ static void ath10k_stop(struct ieee80211_hw *hw, bool suspend)
+ 			}
+ 		}
+ 		ar->state = ATH10K_STATE_OFF;
++
++		/* A recovery abandoned by this stop can never complete:
++		 * mac80211 does not service ieee80211_restart_hw() across a
++		 * suspend, so a stale pending_recovery would make every
++		 * later recovery request count as a consecutive failure
++		 * until ATH10K_RECOVERY_MAX_FAIL_COUNT wedges the driver.
++		 * The device is down and the next start boots fresh
++		 * firmware; start its recovery bookkeeping fresh too.
++		 */
++		atomic_set(&ar->pending_recovery, 0);
++		atomic_set(&ar->fail_cont_count, 0);
+ 	}
+ 	mutex_unlock(&ar->conf_mutex);
+ 

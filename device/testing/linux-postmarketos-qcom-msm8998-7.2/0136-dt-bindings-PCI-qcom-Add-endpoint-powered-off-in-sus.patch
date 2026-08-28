@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 22 Aug 2026 16:20:30 +0200
+Subject: [PATCH] dt-bindings: PCI: qcom: Add endpoint-powered-off-in-suspend
+
+Some boards carry an endpoint whose power sequencing is owned by an
+agent the operating system does not control, and that agent removes the
+endpoint's power while the system sleeps. On the Google Pixel 2 XL
+(msm8998), the Easel coprocessor (Intel 8086:3140, the "Pixel Visual
+Core") behind the single root port of pcie@1c00000 powers itself down
+during the first system suspend and never returns on its own: the link
+is dead on resume and stays dead until the device is fully power-cycled
+by its own controller, outside the kernel's reach.
+
+The host controller driver needs to know this: its link-down suspend
+path powers the controller off and reinitializes the host on resume,
+and on such boards that reinitialization runs against an absent link
+partner (see the driver change for the measured consequences).
+
+Describe the hardware fact with a boolean on the Root Port node: the
+device downstream of this port is powered off in system suspend. The
+property deliberately describes the endpoint's behaviour, not a driver
+policy; what the OS does about it is the driver's decision.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../devicetree/bindings/pci/qcom,pcie-common.yaml        | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/pci/qcom,pcie-common.yaml b/Documentation/devicetree/bindings/pci/qcom,pcie-common.yaml
+index 77f8faf54737..d2c4ea7be19b 100644
+--- a/Documentation/devicetree/bindings/pci/qcom,pcie-common.yaml
++++ b/Documentation/devicetree/bindings/pci/qcom,pcie-common.yaml
+@@ -111,6 +111,15 @@ patternProperties:
+       phys:
+         maxItems: 1
+ 
++      endpoint-powered-off-in-suspend:
++        type: boolean
++        description:
++          The device downstream of this Root Port is powered off while the
++          system is suspended, by an agent outside the operating system's
++          control (the device's own firmware or an external power
++          controller). The link will be down on resume and the device
++          cannot be brought back by link retraining alone.
++
+     unevaluatedProperties: false
+ 
+ required:

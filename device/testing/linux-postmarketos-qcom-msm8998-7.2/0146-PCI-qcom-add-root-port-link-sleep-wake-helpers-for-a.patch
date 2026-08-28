@@ -1,0 +1,194 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 22 Aug 2026 19:09:31 +0200
+Subject: [PATCH] PCI: qcom: add root-port link sleep/wake helpers for an
+ endpoint lifecycle owner
+
+A partner with autonomous power management (the Easel coprocessor on
+the Pixel 2) cannot survive system sleep, so its driver powers it down
+deliberately before the sleep and revives it after.  Two pieces of that
+sequence live in this driver and nowhere else: the PERST# GPIO, and the
+L2-entry handshake (PME_Turn_Off via ELBI, PM_Enter_L23 ack in PARF).
+Expose both, root-port addressed:
+
+  qcom_pcie_rp_sleep(rp, l23) -- optional PME_Turn_Off + bounded L23
+  poll (vendor numbers: 10 ms interval, 100 ms ceiling; a timeout is
+  logged, not fatal), then PERST# asserted.  Called BEFORE the sleep,
+  against a link both ends still agree about, with the endpoint
+  already removed.
+
+  qcom_pcie_rp_wake(rp) -- PERST# released (the deassert helper holds
+  T_PVPERL first), LTSSM enable rewritten (idempotent), then
+  dw_pcie_wait_for_link().
+
+This is the vendor's msm_pcie_pm_control(SUSPEND/RESUME) shape minus
+clocks and supplies: on the boards that need this, the controller must
+stay fully powered across sleep -- the same measured facts behind the
+endpoint-powered-off-in-suspend noirq skip: every partial power-down
+of this RC wedges the msm8998 interconnect.  The helpers coexist with
+that skip: the link is taken down by the endpoint's driver before the
+sleep, the noirq callbacks still touch nothing, and the revival runs
+from the PM_POST_SUSPEND notifier with the controller alive.
+
+An earlier attempt pulsed PERST# after the sleep, from
+PM_POST_SUSPEND, against a link that had died underneath a controller
+still believing it up, and regressed the previously-stable first
+cycle; here PERST# only ever moves pre-sleep, against an agreed-down
+link, and is held across the partner's power-down (vendor order:
+msm_pcie_pm_suspend() -> msm_pcie_disable()).
+
+Task context only; bounded sleeps inside.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/pci/controller/dwc/pcie-qcom.c | 84 ++++++++++++++++++++++++++
+ include/linux/pcie-qcom.h              | 24 ++++++++
+ 2 files changed, 108 insertions(+)
+ create mode 100644 include/linux/pcie-qcom.h
+
+diff --git a/drivers/pci/controller/dwc/pcie-qcom.c b/drivers/pci/controller/dwc/pcie-qcom.c
+index 2a3c547d8858..38d3c32fa982 100644
+--- a/drivers/pci/controller/dwc/pcie-qcom.c
++++ b/drivers/pci/controller/dwc/pcie-qcom.c
+@@ -25,6 +25,7 @@
+ #include <linux/pci.h>
+ #include <linux/pci-ecam.h>
+ #include <linux/pci-pwrctrl.h>
++#include <linux/pcie-qcom.h>
+ #include <linux/pm_opp.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/platform_device.h>
+@@ -44,6 +45,7 @@
+ /* PARF registers */
+ #define PARF_SYS_CTRL				0x00
+ #define PARF_PM_CTRL				0x20
++#define PARF_PM_STTS				0x24
+ #define PARF_PCS_DEEMPH				0x34
+ #define PARF_PCS_SWING				0x38
+ #define PARF_PHY_CTRL				0x40
+@@ -98,6 +100,9 @@
+ /* PARF_PM_CTRL register fields */
+ #define REQ_NOT_ENTR_L1				BIT(5)
+ 
++/* PARF_PM_STTS register fields */
++#define PM_ENTER_L23				BIT(5)
++
+ /* PARF_PCS_DEEMPH register fields */
+ #define PCS_DEEMPH_TX_DEEMPH_GEN1(x)		FIELD_PREP(GENMASK(21, 16), x)
+ #define PCS_DEEMPH_TX_DEEMPH_GEN2_3_5DB(x)	FIELD_PREP(GENMASK(13, 8), x)
+@@ -339,6 +344,85 @@ static int qcom_pcie_start_link(struct dw_pcie *pci)
+ 	return 0;
+ }
+ 
++/*
++ * Root-port-addressed link sleep/wake, for the one driver that owns its
++ * endpoint's power across system sleep (easel-mipi: the Easel coprocessor
++ * on the Pixel 2 loses power across s2idle no matter what the AP does, so
++ * its driver powers it down deliberately before the sleep and revives it
++ * after).  The PERST# GPIO and the L2-entry handshake both live in this
++ * driver, so they are exposed from here.  Task context only (bounded
++ * sleeps inside); the caller must have quiesced and removed the endpoint.
++ *
++ * This is the vendor's msm_pcie_pm_control() shape, minus clocks and
++ * supplies -- on such boards the controller must stay fully powered
++ * across sleep (see the endpoint-powered-off-in-suspend handling in
++ * qcom_pcie_suspend_noirq(): every partial power-down of this RC wedges
++ * the msm8998 interconnect; measured, not argued).
++ *
++ * The link is taken down *before* the sleep, while both ends still agree
++ * about its state: PME_Turn_Off broadcast, bounded poll for the
++ * PM_Enter_L23 ack, then PERST# held asserted through the sleep and the
++ * partner's power-down (vendor order: msm_pcie_pm_suspend() ->
++ * msm_pcie_disable()).  Asserting PERST# *after* the sleep, against a
++ * link that died underneath a controller still believing it up, is the
++ * measured-regressing alternative.
++ */
++int qcom_pcie_rp_sleep(struct pci_dev *rp, bool l23)
++{
++	struct pci_host_bridge *bridge = pci_find_host_bridge(rp->bus);
++	struct qcom_pcie *pcie = dev_get_drvdata(bridge->dev.parent);
++	struct dw_pcie *pci = pcie->pci;
++	u32 val;
++	int ret;
++
++	/*
++	 * @l23 = false skips the handshake: an unacked PME_Turn_Off was
++	 * once implicated in a fabric wedge on this SoC (measured against
++	 * a *dead* partner; with a live one the ack is expected -- but
++	 * Easel runs no firmware here, so whether its Synopsys endpoint
++	 * controller acks autonomously is unverified.  Hence the knob.)
++	 */
++	if (l23 && pci->elbi_base) {
++		writel(readl(pci->elbi_base + ELBI_SYS_CTRL) |
++		       ELBI_SYS_CTRL_PME_TURNOFF_MSG,
++		       pci->elbi_base + ELBI_SYS_CTRL);
++
++		/* vendor poll: 10 ms interval, 100 ms ceiling */
++		ret = readl_poll_timeout(pcie->parf + PARF_PM_STTS, val,
++					 val & PM_ENTER_L23, 10000, 100000);
++		dev_info(pci->dev, "PME_Turn_Off: L23 %s (PM_STTS %#x)\n",
++			 ret ? "NOT entered" : "entered",
++			 readl(pcie->parf + PARF_PM_STTS));
++	}
++
++	qcom_pcie_perst_assert(pcie);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_pcie_rp_sleep);
++
++/*
++ * Power side is the caller's: the partner's rails must be up and its PLLs
++ * given their settling time before this is called.  The deassert helper
++ * holds PERST# low a full T_PVPERL (100 ms) first; the LTSSM enable is a
++ * rewrite of the same bit boot-time start_link set (idempotent), present
++ * in case a link-down cleared it.
++ */
++int qcom_pcie_rp_wake(struct pci_dev *rp)
++{
++	struct pci_host_bridge *bridge = pci_find_host_bridge(rp->bus);
++	struct qcom_pcie *pcie = dev_get_drvdata(bridge->dev.parent);
++	struct dw_pcie *pci = pcie->pci;
++
++	qcom_pcie_perst_deassert(pcie);
++
++	if (pcie->cfg->ops->ltssm_enable)
++		pcie->cfg->ops->ltssm_enable(pcie);
++
++	return dw_pcie_wait_for_link(pci);
++}
++EXPORT_SYMBOL_GPL(qcom_pcie_rp_wake);
++
+ static void qcom_pcie_clear_aspm_l0s(struct dw_pcie *pci)
+ {
+ 	struct qcom_pcie *pcie = to_qcom_pcie(pci);
+diff --git a/include/linux/pcie-qcom.h b/include/linux/pcie-qcom.h
+new file mode 100644
+index 000000000000..5bc537a9c7c7
+--- /dev/null
++++ b/include/linux/pcie-qcom.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __LINUX_PCIE_QCOM_H
++#define __LINUX_PCIE_QCOM_H
++
++#include <linux/errno.h>
++#include <linux/types.h>
++
++struct pci_dev;
++
++#if IS_ENABLED(CONFIG_PCIE_QCOM)
++int qcom_pcie_rp_sleep(struct pci_dev *rp, bool l23);
++int qcom_pcie_rp_wake(struct pci_dev *rp);
++#else
++static inline int qcom_pcie_rp_sleep(struct pci_dev *rp, bool l23)
++{
++	return -ENODEV;
++}
++static inline int qcom_pcie_rp_wake(struct pci_dev *rp)
++{
++	return -ENODEV;
++}
++#endif
++
++#endif

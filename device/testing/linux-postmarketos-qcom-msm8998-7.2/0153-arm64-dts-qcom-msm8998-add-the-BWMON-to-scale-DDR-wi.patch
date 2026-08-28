@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 22 Aug 2026 23:30:00 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: add the BWMON to scale DDR with
+ CPU traffic
+
+The CPU casts no interconnect votes, so once the interconnect provider
+replaces the boot-time bus state with the aggregate of the registered
+consumers, apps-processor DRAM traffic is left behind the 19.2 MHz
+keep-alive floor: a pinned memcpy measures ~250 MB/s where LPDDR4X
+should deliver gigabytes per second.
+
+Describe the BIMC BWMON v4 instance that watches the apps-proc master
+port so icc-bwmon can vote on the CPU's behalf. The register blocks,
+interrupt and the bandwidth ladder are the downstream tree's
+(msm8998.dtsi qcom,cpu-bwmon and the qcom,cpubw qcom,bw-tbl;
+qcom,bimc-bwmon4 per the msm8998-v2.dtsi override). Each OPP carries
+the bandwidth as opp-avg-kBps as well as opp-peak-kBps: on this RPM
+the DDR plan follows the aggregated average-bandwidth arb votes (the
+peak-derived bus-clock request alone was measured to leave DDR
+parked), and the monitor's measured throughput is by construction an
+average.
+
+The vote is tagged active-only: the CPU cannot demand DRAM bandwidth
+while the application processor is asleep, and the RPM sleep set must
+stay clean for XO shutdown.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 76 +++++++++++++++++++++++++++
+ 1 file changed, 76 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 6e08831efd11..dd0e5c625d99 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -1650,6 +1650,82 @@ bimc: interconnect@1000000 {
+ 			#interconnect-cells = <2>;
+ 		};
+ 
++		pmu@1008000 {
++			compatible = "qcom,msm8998-bwmon";
++			reg = <0x01008000 0x300>,
++			      <0x01001000 0x200>;
++			reg-names = "monitor", "global";
++			interrupts = <GIC_SPI 183 IRQ_TYPE_LEVEL_HIGH>;
++			interconnects = <&gnoc MASTER_APPS_PROC RPM_ACTIVE_TAG
++					 &bimc SLAVE_EBI RPM_ACTIVE_TAG>;
++			operating-points-v2 = <&cpu_bwmon_opp_table>;
++
++			cpu_bwmon_opp_table: opp-table {
++				compatible = "operating-points-v2";
++
++				opp-762000 {
++					/* DDR: 100 MHz */
++					opp-avg-kBps = <762000>;
++					opp-peak-kBps = <762000>;
++				};
++				opp-1144000 {
++					/* DDR: 150 MHz */
++					opp-avg-kBps = <1144000>;
++					opp-peak-kBps = <1144000>;
++				};
++				opp-1525000 {
++					/* DDR: 200 MHz */
++					opp-avg-kBps = <1525000>;
++					opp-peak-kBps = <1525000>;
++				};
++				opp-2288000 {
++					/* DDR: 300 MHz */
++					opp-avg-kBps = <2288000>;
++					opp-peak-kBps = <2288000>;
++				};
++				opp-3143000 {
++					/* DDR: 412 MHz */
++					opp-avg-kBps = <3143000>;
++					opp-peak-kBps = <3143000>;
++				};
++				opp-4173000 {
++					/* DDR: 547 MHz */
++					opp-avg-kBps = <4173000>;
++					opp-peak-kBps = <4173000>;
++				};
++				opp-5195000 {
++					/* DDR: 681 MHz */
++					opp-avg-kBps = <5195000>;
++					opp-peak-kBps = <5195000>;
++				};
++				opp-5859000 {
++					/* DDR: 768 MHz */
++					opp-avg-kBps = <5859000>;
++					opp-peak-kBps = <5859000>;
++				};
++				opp-7759000 {
++					/* DDR: 1017 MHz */
++					opp-avg-kBps = <7759000>;
++					opp-peak-kBps = <7759000>;
++				};
++				opp-9887000 {
++					/* DDR: 1296 MHz */
++					opp-avg-kBps = <9887000>;
++					opp-peak-kBps = <9887000>;
++				};
++				opp-11863000 {
++					/* DDR: 1555 MHz */
++					opp-avg-kBps = <11863000>;
++					opp-peak-kBps = <11863000>;
++				};
++				opp-13763000 {
++					/* DDR: 1804 MHz */
++					opp-avg-kBps = <13763000>;
++					opp-peak-kBps = <13763000>;
++				};
++			};
++		};
++
+ 		tsens0: thermal@10ab000 {
+ 			compatible = "qcom,msm8998-tsens", "qcom,tsens-v2";
+ 			reg = <0x010ab000 0x1000>, /* TM */

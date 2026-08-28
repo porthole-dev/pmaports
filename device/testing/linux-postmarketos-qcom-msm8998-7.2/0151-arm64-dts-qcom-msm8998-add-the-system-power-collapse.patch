@@ -1,0 +1,144 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 25 Aug 2026 20:58:08 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: add the system power-collapse idle
+ state, disabled by default
+
+Add the system-level composite state 0x42000343 -- system PC (E3) + L2
+PC (D4) + CPU PC (C3), affinity level 2 -- the one level the downstream
+tree marks qcom,notify-rpm.  When the last CPU enters it, the TZ-owned
+SPM sequencer runs the "sleep with RPM handshake" command, and RPM
+swaps to the sleep sets, counts an APSS shutdown, and may reach XO
+shutdown and VDD_MIN.
+
+Every CPU lists the state: in Platform Coordinated mode the firmware
+arbitrates, and a system-level collapse needs a system-level vote from
+whichever CPU happens to go down last -- a state present on only one
+cluster could never satisfy the vote count for the other.
+
+XO shutdown stops the QTIMER, so a timer can never wake this state;
+wakeup is hardware MPM pins only (PMIC PON and RTC alarm through SPMI
+pin 87).  It is therefore shipped idle-state-disabled-by-default and is
+meant to be enabled only around s2idle by a system-sleep hook, where a
+missing timer wake is the design and rtcwake still works via the PMIC
+RTC.  Latencies are the vendor's system-pc figures; min-residency is
+deliberately generous (vendor time-overhead is 16744 us) because a
+too-low residency on this SoC is documented to cause error-less random
+reboots (see commit 3f1dcaff642e ("arm64: dts: qcom: msm8998: Fix
+CPU/L2 idle state latency and residency")).
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 43 ++++++++++++++++++++++-----
+ 1 file changed, 35 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index f7d48ec56079..6e08831efd11 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -156,7 +156,8 @@ cpu0: cpu@0 {
+ 			reg = <0x0 0x0>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1024>;
+-			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
++			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
+@@ -176,7 +177,8 @@ cpu1: cpu@1 {
+ 			reg = <0x0 0x1>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1024>;
+-			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
++			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
+@@ -191,7 +193,8 @@ cpu2: cpu@2 {
+ 			reg = <0x0 0x2>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1024>;
+-			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
++			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
+@@ -206,7 +209,8 @@ cpu3: cpu@3 {
+ 			reg = <0x0 0x3>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1024>;
+-			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1>;
++			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_silver_opp_table>;
+@@ -221,7 +225,8 @@ cpu4: cpu@100 {
+ 			reg = <0x0 0x100>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1536>;
+-			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
++			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
+@@ -241,7 +246,8 @@ cpu5: cpu@101 {
+ 			reg = <0x0 0x101>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1536>;
+-			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
++			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
+@@ -256,7 +262,8 @@ cpu6: cpu@102 {
+ 			reg = <0x0 0x102>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1536>;
+-			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
++			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
+@@ -271,7 +278,8 @@ cpu7: cpu@103 {
+ 			reg = <0x0 0x103>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <1536>;
+-			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1>;
++			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
++					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+ 			#cooling-cells = <2>;
+ 			operating-points-v2 = <&cpu_gold_opp_table>;
+@@ -362,6 +370,25 @@ big_cpu_sleep_1: cpu-sleep-1-1 {
+ 				min-residency-us = <9419>;
+ 				local-timer-stop;
+ 			};
++
++			system_sleep: system-pc {
++				compatible = "arm,idle-state";
++				idle-state-name = "system-pc";
++				/* System PC (E3) + L2 PC (D4) + CPU PC (C3), affinity 2.
++				 * The level downstream marks qcom,notify-rpm: the SPM
++				 * handshake makes RPM swap to the sleep sets and stop
++				 * the XO, which stops the QTIMER -- so this state must
++				 * only ever run inside system suspend, where wakeup is
++				 * a hardware MPM pin, never a timer.  Disabled by
++				 * default; the suspend hook enables it around s2idle.
++				 */
++				arm,psci-suspend-param = <0x42000343>;
++				entry-latency-us = <5534>;
++				exit-latency-us = <5534>;
++				min-residency-us = <25000>;
++				local-timer-stop;
++				idle-state-disabled-by-default;
++			};
+ 		};
+ 	};
+ 

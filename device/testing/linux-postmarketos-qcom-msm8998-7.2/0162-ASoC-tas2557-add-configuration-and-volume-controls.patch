@@ -1,0 +1,298 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 25 Aug 2026 23:59:09 +0200
+Subject: [PATCH] ASoC: tas2557: add configuration and volume controls
+
+The part has no mixer controls at all, which costs two visible things on
+a dual-mono board.
+
+Output selection. A firmware configuration carries a tuning AND the set
+of amps it drives, so on taimen -- earpiece on the left amp, loudspeaker
+on the right -- it is also the output switch. The vendor moves a call
+between them by selecting configuration 1 or 2; taimen's image has one
+configuration per rate for BOTH amps and one each for LEFT and RIGHT.
+tas2557_pick_config() always took the first match, so playback was
+permanently on the BOTH configuration and there was no way to reach
+either speaker alone. Expose the choice as an enum named by the
+firmware's own configuration names, because only the board knows which
+amp is which; calibration entries are excluded as factory-only.
+
+That also retires the force_config module parameter, which was the
+bring-up way of reaching the same thing.
+
+Volume. TAS2557_SPK_CTRL_REG bits 6:3 are the DAC gain, one register per
+amp, and nothing exposed them -- the card had zero playback volume
+controls while the sound server had been told the sink's volume was the
+hardware's job, so the volume UI moved a number that nothing read.
+
+Selecting a configuration cannot reload in put(): the download is ~3000
+i2c commands. It invalidates instead and the next hw_params reloads,
+which is the right order anyway -- userspace picks the output before it
+starts the stream.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ sound/soc/codecs/tas2557.c | 202 +++++++++++++++++++++++++++++++++++--
+ 1 file changed, 191 insertions(+), 11 deletions(-)
+
+diff --git a/sound/soc/codecs/tas2557.c b/sound/soc/codecs/tas2557.c
+index 00e923126643..a7499fd00c0f 100644
+--- a/sound/soc/codecs/tas2557.c
++++ b/sound/soc/codecs/tas2557.c
+@@ -44,6 +44,9 @@
+ #define TAS2557_REV_PGID_REG		TAS2557_REG(0, 0, 3)
+ #define TAS2557_POWER_CTRL1_REG		TAS2557_REG(0, 0, 4)
+ #define TAS2557_POWER_CTRL2_REG		TAS2557_REG(0, 0, 5)
++#define TAS2557_SPK_CTRL_REG		TAS2557_REG(0, 0, 6)
++#define TAS2557_DAC_GAIN_MASK		GENMASK(6, 3)
++#define TAS2557_DAC_GAIN_MAX		0x0f
+ #define TAS2557_MUTE_REG		TAS2557_REG(0, 0, 7)
+ #define TAS2557_CRC_CHECKSUM_REG	TAS2557_REG(0, 0, 32)
+ #define TAS2557_CRC_RESET_REG		TAS2557_REG(0, 0, 33)
+@@ -145,6 +148,10 @@ struct tas2557 {
+ 
+ 	int cur_program;
+ 	int cur_config;
++	int want_config;		/* -1 until userspace picks one */
++	const char **config_texts;
++	unsigned int *config_index;	/* enum item -> index into fw.configs */
++	unsigned int nconfig_texts;
+ 	int loaded_config;
+ 	unsigned int width;
+ 	bool powered;
+@@ -963,23 +970,38 @@ static int tas2557_reset_and_init(struct tas2557 *tas)
+ }
+ 
+ /*
+- * Which firmware configuration to load. -1 picks by rate and name as below;
+- * an explicit index is how the DSP tuning program gets taken out of the
+- * picture -- index 10 in taimen's image is FactoryCalibration ROMMode2, which
+- * bypasses it, so it separates "the DSP is not producing output" from "nothing
+- * reaches the part".
++ * Which firmware configuration to load.
++ *
++ * A configuration carries both a tuning and the set of amps it drives, so on a
++ * dual-mono board it is also the output selection: taimen's image has one
++ * configuration per rate for BOTH amps and one each for LEFT and RIGHT alone,
++ * and the vendor picks between them to move a call between the earpiece and
++ * the loudspeaker. Which is why this is a control and not a policy -- the
++ * driver cannot know what the board wired each amp to.
++ *
++ * "Speaker Configuration" holds the user's choice; -1 means no choice has been
++ * made and the first playback configuration for the rate is used.
+  */
+-static int force_config = -1;
+-module_param(force_config, int, 0644);
+-MODULE_PARM_DESC(force_config, "firmware configuration index, -1 = pick by rate");
+-
+ static int tas2557_pick_config(struct tas2557 *tas, unsigned int rate)
+ {
+ 	struct tas2557_fw *f = &tas->fw;
+ 	int i;
+ 
+-	if (force_config >= 0 && force_config < f->nconfig)
+-		return force_config;
++	/*
++	 * want_config is an enum item, and the enum is a FILTERED view of
++	 * fw.configs -- the calibration entries are skipped when the texts are
++	 * built, so item N is not configs[N]. Using it as a firmware index
++	 * picked the wrong entry, and when that entry's rate did not match the
++	 * stream the selection was dropped on the floor and the first-match
++	 * scan below ran instead: choosing the loudspeaker silently kept
++	 * playing out of the earpiece.
++	 */
++	if (tas->want_config >= 0 && tas->want_config < tas->nconfig_texts) {
++		unsigned int idx = tas->config_index[tas->want_config];
++
++		if (f->configs[idx].rate == rate)
++			return idx;
++	}
+ 
+ 	/*
+ 	 * Configuration names carry their purpose: the calibration ones are for
+@@ -997,6 +1019,155 @@ static int tas2557_pick_config(struct tas2557 *tas, unsigned int rate)
+ 	return -EINVAL;
+ }
+ 
++static int tas2557_config_info(struct snd_kcontrol *kcontrol,
++			       struct snd_ctl_elem_info *uinfo)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
++
++	return snd_ctl_enum_info(uinfo, 1, tas->nconfig_texts,
++				 tas->config_texts);
++}
++
++static int tas2557_config_get(struct snd_kcontrol *kcontrol,
++			      struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
++
++	ucontrol->value.enumerated.item[0] = tas->want_config < 0 ?
++					     0 : tas->want_config;
++
++	return 0;
++}
++
++static int tas2557_config_put(struct snd_kcontrol *kcontrol,
++			      struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
++	unsigned int item = ucontrol->value.enumerated.item[0];
++
++	if (item >= tas->nconfig_texts)
++		return -EINVAL;
++
++	if (tas->want_config == (int)item)
++		return 0;
++
++	tas->want_config = item;
++
++	/*
++	 * Taking effect needs a fresh download, which cannot happen here: it is
++	 * ~3000 i2c commands. Invalidate instead, and let the next hw_params
++	 * reload -- userspace selects the output before starting the stream.
++	 */
++	tas->loaded_config = -1;
++
++	return 1;
++}
++
++/*
++ * DAC gain, TAS2557_SPK_CTRL_REG bits 6:3, one register per amp. Without this
++ * the card has no playback volume control at all, and a sound server that has
++ * been told the sink has hardware volume then moves a number nothing reads.
++ */
++static int tas2557_gain_get(struct snd_kcontrol *kcontrol,
++			    struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
++	int idx, ret;
++	u8 v;
++
++	for (idx = 0; idx < 2; idx++) {
++		ret = tas2557_read(tas, idx, TAS2557_SPK_CTRL_REG, &v);
++		if (ret < 0)
++			return ret;
++
++		ucontrol->value.integer.value[idx] =
++			FIELD_GET(TAS2557_DAC_GAIN_MASK, v);
++	}
++
++	return 0;
++}
++
++static int tas2557_gain_put(struct snd_kcontrol *kcontrol,
++			    struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *c = snd_kcontrol_chip(kcontrol);
++	struct tas2557 *tas = snd_soc_component_get_drvdata(c);
++	int idx, ret, changed = 0;
++
++	for (idx = 0; idx < 2; idx++) {
++		long want = ucontrol->value.integer.value[idx];
++
++		if (want < 0 || want > TAS2557_DAC_GAIN_MAX)
++			return -EINVAL;
++
++		ret = tas2557_update_bits(tas, BIT(idx), TAS2557_SPK_CTRL_REG,
++					  TAS2557_DAC_GAIN_MASK,
++					  FIELD_PREP(TAS2557_DAC_GAIN_MASK, want));
++		if (ret < 0)
++			return ret;
++		if (ret > 0)
++			changed = 1;
++	}
++
++	return changed;
++}
++
++static const struct snd_kcontrol_new tas2557_controls[] = {
++	{
++		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name = "Speaker Configuration",
++		.info = tas2557_config_info,
++		.get = tas2557_config_get,
++		.put = tas2557_config_put,
++	},
++	SOC_DOUBLE_EXT("Speaker Playback Volume", SND_SOC_NOPM, 0, 1,
++		       TAS2557_DAC_GAIN_MAX, 0,
++		       tas2557_gain_get, tas2557_gain_put),
++};
++
++/*
++ * The enum lists the playback configurations by the name the firmware gives
++ * them, because only the board knows which amp is which. Calibration entries
++ * are deliberately absent -- they are factory-only and would be a footgun in a
++ * mixer.
++ */
++static int tas2557_build_config_texts(struct tas2557 *tas)
++{
++	struct tas2557_fw *f = &tas->fw;
++	const char **texts;
++	unsigned int *index;
++	int i, n = 0;
++
++	texts = devm_kcalloc(tas->dev, f->nconfig, sizeof(*texts), GFP_KERNEL);
++	if (!texts)
++		return -ENOMEM;
++
++	index = devm_kcalloc(tas->dev, f->nconfig, sizeof(*index), GFP_KERNEL);
++	if (!index)
++		return -ENOMEM;
++
++	for (i = 0; i < f->nconfig; i++) {
++		if (strncmp(f->configs[i].name, "configuration_", 14))
++			continue;
++
++		index[n] = i;
++		texts[n++] = f->configs[i].name;
++	}
++
++	if (!n)
++		return -EINVAL;
++
++	tas->config_texts = texts;
++	tas->config_index = index;
++	tas->nconfig_texts = n;
++
++	return 0;
++}
++
+ /*
+  * Downloading the DSP program is ~3000 i2c commands and takes far too long to
+  * sit in trigger(), which runs under the PCM stream lock -- doing it there made
+@@ -1223,6 +1394,8 @@ static const struct snd_soc_dapm_route tas2557_dapm_routes[] = {
+ };
+ 
+ static const struct snd_soc_component_driver tas2557_component = {
++	.controls = tas2557_controls,
++	.num_controls = ARRAY_SIZE(tas2557_controls),
+ 	.dapm_widgets = tas2557_dapm_widgets,
+ 	.num_dapm_widgets = ARRAY_SIZE(tas2557_dapm_widgets),
+ 	.dapm_routes = tas2557_dapm_routes,
+@@ -1247,6 +1420,7 @@ static int tas2557_i2c_probe(struct i2c_client *client)
+ 	tas->dev = &client->dev;
+ 	tas->cur_program = -1;
+ 	tas->cur_config = -1;
++	tas->want_config = -1;
+ 	tas->loaded_config = -1;
+ 	i2c_set_clientdata(client, tas);
+ 
+@@ -1308,6 +1482,12 @@ static int tas2557_i2c_probe(struct i2c_client *client)
+ 		return ret;
+ 	}
+ 
++	ret = tas2557_build_config_texts(tas);
++	if (ret < 0) {
++		dev_err(&client->dev, "no playback configuration in %s\n", fw_name);
++		return ret;
++	}
++
+ 	return devm_snd_soc_register_component(&client->dev, &tas2557_component,
+ 					       &tas2557_dai, 1);
+ }

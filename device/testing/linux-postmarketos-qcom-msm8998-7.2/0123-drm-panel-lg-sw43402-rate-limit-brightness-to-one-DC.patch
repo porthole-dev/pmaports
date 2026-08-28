@@ -1,0 +1,136 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 20 Aug 2026 22:42:48 +0200
+Subject: [PATCH] drm/panel: lg-sw43402: rate-limit brightness to one DCS write
+ per frame
+
+This panel is DSI command mode with DSC. A brightness ramp -- an
+auto-brightness step when the room lights change, or a finger on the slider --
+delivers updates far faster than the 60 Hz frame period, and each one is a DCS
+write onto the same link that is carrying the compressed pixel stream. Bursts
+of them corrupt the image into horizontal bands of colour that persist until
+the panel is re-initialised; a power keypress off and on is the only recovery.
+
+Reproduced on a Pixel 2 XL 2026-08-20: opening the camera and raising the room
+light was enough, because that drives auto-brightness. Dragging the slider fast
+does it every time; dragging it slowly gives occasional glitches; leaving
+brightness alone never does.
+
+This is the policy the vendor stack already used. Downstream MDSS applies the
+backlight from the display commit thread, immediately after frame kickoff --
+mdss_fb.c: "skip_commit: if (!ret) mdss_fb_update_backlight(mfd);" -- so at
+most one DCS write happens per commit, and mfd->unset_bl_level is a single
+pending slot, meaning intermediate levels of a ramp collapse and only the
+latest is sent. Rate-limiting to one write per frame with the last value
+winning reproduces that. The trigger differs: the vendor hangs it off the
+commit itself, while a panel driver has no commit hook and uses the frame
+period instead.
+
+schedule_delayed_work() is a no-op while the work is already queued, so a burst
+collapses into one write per period regardless of how fast userspace writes,
+and the work re-reads backlight_get_brightness() when it fires -- brightness is
+idempotent, so no pending value has to be stored.
+
+Note the existing dsi-collide instrumentation cannot see this: it samples
+MDP_BUSY after the DMA, so it detects write-vs-frame, not write-vs-write. It
+reported 0 across the reproduction above, as did the DPU underrun counter.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/panel/panel-lg-sw43402.c | 50 +++++++++++++++++++++---
+ 1 file changed, 45 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-lg-sw43402.c b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+index 13f707ec8a8e..f1e3c7e5db78 100644
+--- a/drivers/gpu/drm/panel/panel-lg-sw43402.c
++++ b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+@@ -77,6 +77,7 @@ struct lg_sw43402 {
+ 	struct gpio_desc *reset_gpio;
+ 	struct regulator_bulk_data supplies[ARRAY_SIZE(lg_sw43402_supplies)];
+ 	struct delayed_work display_on_work;
++	struct delayed_work bl_work;
+ 	bool prepared;
+ 	bool enabled;
+ };
+@@ -103,12 +104,34 @@ static inline struct lg_sw43402 *to_lg_sw43402(struct drm_panel *panel)
+  * Safe while composing only because of msm.cmd_frame_serialize -- see the
+  * comment on LG_SW43402_BRIGHTNESS above.
+  */
++static void lg_sw43402_bl_work(struct work_struct *work)
++{
++	struct lg_sw43402 *ctx = container_of(work, struct lg_sw43402,
++					      bl_work.work);
++	u8 brightness;
++	ssize_t ret;
++
++	/* The panel may have been disabled before the delay expired. */
++	if (!ctx->enabled)
++		return;
++
++	/*
++	 * Re-read rather than carrying a pending value: brightness is
++	 * idempotent, so every update that arrived while this work was queued
++	 * collapses into this one write of the latest level.
++	 */
++	brightness = backlight_get_brightness(ctx->panel.backlight);
++
++	ret = mipi_dsi_dcs_write(ctx->dsi, MIPI_DCS_SET_DISPLAY_BRIGHTNESS,
++				 &brightness, sizeof(brightness));
++	if (ret < 0)
++		dev_err(&ctx->dsi->dev, "brightness write failed: %zd\n", ret);
++}
++
+ static int lg_sw43402_bl_update_status(struct backlight_device *bl)
+ {
+ 	struct mipi_dsi_device *dsi = bl_get_data(bl);
+ 	struct lg_sw43402 *ctx = mipi_dsi_get_drvdata(dsi);
+-	u8 brightness = backlight_get_brightness(bl);
+-	ssize_t ret;
+ 
+ 	/*
+ 	 * Reachable with the DDIC asleep: drm_panel_disable() calls
+@@ -118,10 +141,25 @@ static int lg_sw43402_bl_update_status(struct backlight_device *bl)
+ 	if (!ctx->enabled)
+ 		return 0;
+ 
+-	ret = mipi_dsi_dcs_write(dsi, MIPI_DCS_SET_DISPLAY_BRIGHTNESS,
+-				 &brightness, sizeof(brightness));
++	/*
++	 * Rate-limit to one DCS write per frame.
++	 *
++	 * This panel is command mode with DSC. A brightness ramp -- an
++	 * auto-brightness step, or a finger on the slider -- delivers updates
++	 * far faster than the 60 Hz frame period, and each one is a DCS write
++	 * onto the same link that is carrying the compressed pixel stream.
++	 * Bursts of them corrupt the image into horizontal bands of colour
++	 * until the panel is re-initialised.
++	 *
++	 * schedule_delayed_work() is a no-op when the work is already queued,
++	 * so a burst becomes a single write per period no matter how fast
++	 * userspace writes. The existing dsi-collide instrumentation cannot see
++	 * this case: it samples MDP_BUSY after the DMA, which detects
++	 * write-vs-frame, not write-vs-write.
++	 */
++	schedule_delayed_work(&ctx->bl_work, msecs_to_jiffies(17));
+ 
+-	return ret < 0 ? ret : 0;
++	return 0;
+ }
+ 
+ static const struct backlight_ops lg_sw43402_bl_ops = {
+@@ -243,6 +281,7 @@ static int lg_panel_disable(struct drm_panel *panel)
+ 	 */
+ 	ctx->enabled = false;
+ 	cancel_delayed_work_sync(&ctx->display_on_work);
++	cancel_delayed_work_sync(&ctx->bl_work);
+ 
+ 	return 0;
+ }
+@@ -446,6 +485,7 @@ static int lg_sw43402_probe(struct mipi_dsi_device *dsi)
+ 	ctx->dsi = dsi;
+ 	mipi_dsi_set_drvdata(dsi, ctx);
+ 	INIT_DELAYED_WORK(&ctx->display_on_work, lg_sw43402_display_on_work);
++	INIT_DELAYED_WORK(&ctx->bl_work, lg_sw43402_bl_work);
+ 
+ 	dsi->lanes = 4;
+ 	dsi->format = MIPI_DSI_FMT_RGB888;

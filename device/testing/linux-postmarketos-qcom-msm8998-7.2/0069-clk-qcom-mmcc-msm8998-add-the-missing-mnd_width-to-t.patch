@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 3 Aug 2026 00:07:06 +0200
+Subject: [PATCH] clk: qcom: mmcc-msm8998: add the missing mnd_width to the
+ MCLK RCGs
+
+mclk0..3_clk_src are declared without .mnd_width, so it defaults to 0. But
+ftbl_mclk_clk_src reaches most of its rates through M/N, including the only
+one a camera sensor wants:
+
+	F(24000000, P_GPLL0_DIV, 1, 2, 25)
+
+With mnd_width == 0, clk_rcg2_configure() skips the M/N/D writes entirely
+and never sets CFG_MODE_DUAL_EDGE, so the RCG is left as parent/pre_div.
+clk_rcg2_recalc_rate() ignores M/N for the same reason, so it reports that
+wrong rate back self-consistently: clk_round_rate(24000000) returns
+24000000, clk_set_rate() returns 0, and the pin runs at the undivided
+parent.
+
+Confirmed on a Pixel 2 XL by reading the RCG directly. Before:
+
+	CFG(0xc8c3394) = 0x00000601   src=6 (GPLL0_DIV), pre_div=1, MODE=0
+	M/N/D          = 0/0/0
+
+i.e. the 2/25 the frequency table asks for was never written, while
+clk_get_rate() reported the parent rate. A camera sensor on that MCLK does
+not answer on I2C at all, which presents as a missing device rather than as
+a clock fault.
+
+The MCLKs are the only consumers of this frequency table, which is why it
+survived this long.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/clk/qcom/mmcc-msm8998.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/clk/qcom/mmcc-msm8998.c b/drivers/clk/qcom/mmcc-msm8998.c
+index 95ee663a01d2..541f5b15ae64 100644
+--- a/drivers/clk/qcom/mmcc-msm8998.c
++++ b/drivers/clk/qcom/mmcc-msm8998.c
+@@ -887,6 +887,7 @@ static const struct freq_tbl ftbl_mclk_clk_src[] = {
+ 
+ static struct clk_rcg2 mclk0_clk_src = {
+ 	.cmd_rcgr = 0x3360,
++	.mnd_width = 8,
+ 	.hid_width = 5,
+ 	.parent_map = mmss_xo_mmpll4_mmpll7_mmpll10_gpll0_gpll0_div_map,
+ 	.freq_tbl = ftbl_mclk_clk_src,
+@@ -900,6 +901,7 @@ static struct clk_rcg2 mclk0_clk_src = {
+ 
+ static struct clk_rcg2 mclk1_clk_src = {
+ 	.cmd_rcgr = 0x3390,
++	.mnd_width = 8,
+ 	.hid_width = 5,
+ 	.parent_map = mmss_xo_mmpll4_mmpll7_mmpll10_gpll0_gpll0_div_map,
+ 	.freq_tbl = ftbl_mclk_clk_src,
+@@ -913,6 +915,7 @@ static struct clk_rcg2 mclk1_clk_src = {
+ 
+ static struct clk_rcg2 mclk2_clk_src = {
+ 	.cmd_rcgr = 0x33c0,
++	.mnd_width = 8,
+ 	.hid_width = 5,
+ 	.parent_map = mmss_xo_mmpll4_mmpll7_mmpll10_gpll0_gpll0_div_map,
+ 	.freq_tbl = ftbl_mclk_clk_src,
+@@ -926,6 +929,7 @@ static struct clk_rcg2 mclk2_clk_src = {
+ 
+ static struct clk_rcg2 mclk3_clk_src = {
+ 	.cmd_rcgr = 0x33f0,
++	.mnd_width = 8,
+ 	.hid_width = 5,
+ 	.parent_map = mmss_xo_mmpll4_mmpll7_mmpll10_gpll0_gpll0_div_map,
+ 	.freq_tbl = ftbl_mclk_clk_src,

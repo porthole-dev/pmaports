@@ -1,0 +1,1811 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 25 Aug 2026 20:58:07 +0200
+Subject: [PATCH] interconnect: qcom: Add MSM8998 interconnect provider driver
+
+Add an icc-rpm based interconnect provider driver for MSM8998,
+modelled on the MSM8996 driver (the neighbouring SoC generation) with
+the topology transcribed from the downstream msm8998-bus.dtsi:
+A1NOC, A2NOC, BIMC, CNOC, GNOC (virtual; hosts the apps-proc master),
+MNOC and SNOC, 107 nodes in total.  The downstream MMSS-AHB config
+fabric is folded into the MNOC provider, following what the MSM8996
+driver does with the mmagic config slaves; its bus clock is HLOS-owned
+and not part of the RPM vote path.
+
+The immediate motivation is RPM sleep-set hygiene: clk-smd-rpm posts
+INT_MAX handoff votes for the six RPM bus clocks of this SoC
+(bimc/snoc/cnoc/aggre1/aggre2/mmssnoc-axi) in both the active AND the
+sleep set at probe, expecting an interconnect driver to take over and
+scale them.  MSM8998 never had one, so those votes stay pinned at
+INT_MAX forever, which (among other things) forbids the RPM from ever
+reaching its low-power states.  With this driver the framework's
+sync_state takes the votes down to the aggregated consumer requests.
+
+QoS register programming is intentionally left out of this first
+version: no regmap is attached and no qos_mode is set, so probing only
+masters the RPM bandwidth and bus-clock votes.  The boot-time QoS
+configuration inherited from the bootloader is left untouched, exactly
+as before this patch.  keep_alive is set on all clocked providers so
+that config-space access keeps a 19.2 MHz floor even before any
+consumer votes, matching qcm2290/sm6115.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/interconnect/qcom/Kconfig   |    8 +
+ drivers/interconnect/qcom/Makefile  |    2 +
+ drivers/interconnect/qcom/msm8998.c | 1602 +++++++++++++++++++++++++++
+ drivers/interconnect/qcom/msm8998.h |  117 ++
+ 4 files changed, 1729 insertions(+)
+ create mode 100644 drivers/interconnect/qcom/msm8998.c
+ create mode 100644 drivers/interconnect/qcom/msm8998.h
+
+diff --git a/drivers/interconnect/qcom/Kconfig b/drivers/interconnect/qcom/Kconfig
+index 5b8a094ca4ed..90ea2a931085 100644
+--- a/drivers/interconnect/qcom/Kconfig
++++ b/drivers/interconnect/qcom/Kconfig
+@@ -124,6 +124,14 @@ config INTERCONNECT_QCOM_MSM8996
+ 	  This is a driver for the Qualcomm Network-on-Chip on msm8996-based
+ 	  platforms.
+ 
++config INTERCONNECT_QCOM_MSM8998
++	tristate "Qualcomm MSM8998 interconnect driver"
++	depends on INTERCONNECT_QCOM
++	depends on QCOM_SMD_RPM
++	select INTERCONNECT_QCOM_SMD_RPM
++	help
++	  This is a driver for the Qualcomm Network-on-Chip on msm8998-based
++	  platforms.
+ config INTERCONNECT_QCOM_NORD
+ 	tristate "Qualcomm Nord interconnect driver"
+ 	depends on INTERCONNECT_QCOM_RPMH_POSSIBLE
+diff --git a/drivers/interconnect/qcom/Makefile b/drivers/interconnect/qcom/Makefile
+index 1c7d410b40cc..3ab3e69ad7d2 100644
+--- a/drivers/interconnect/qcom/Makefile
++++ b/drivers/interconnect/qcom/Makefile
+@@ -17,6 +17,7 @@ qnoc-msm8953-objs			:= msm8953.o
+ qnoc-msm8974-objs			:= msm8974.o
+ qnoc-msm8976-objs			:= msm8976.o
+ qnoc-msm8996-objs			:= msm8996.o
++qnoc-msm8998-objs			:= msm8998.o
+ qnoc-nord-objs				:= nord.o
+ icc-osm-l3-objs				:= osm-l3.o
+ qnoc-qcm2290-objs			:= qcm2290.o
+@@ -65,6 +66,7 @@ obj-$(CONFIG_INTERCONNECT_QCOM_MSM8953) += qnoc-msm8953.o
+ obj-$(CONFIG_INTERCONNECT_QCOM_MSM8974) += qnoc-msm8974.o
+ obj-$(CONFIG_INTERCONNECT_QCOM_MSM8976) += qnoc-msm8976.o
+ obj-$(CONFIG_INTERCONNECT_QCOM_MSM8996) += qnoc-msm8996.o
++obj-$(CONFIG_INTERCONNECT_QCOM_MSM8998) += qnoc-msm8998.o
+ obj-$(CONFIG_INTERCONNECT_QCOM_NORD) += qnoc-nord.o
+ obj-$(CONFIG_INTERCONNECT_QCOM_OSM_L3) += icc-osm-l3.o
+ obj-$(CONFIG_INTERCONNECT_QCOM_QCM2290) += qnoc-qcm2290.o
+diff --git a/drivers/interconnect/qcom/msm8998.c b/drivers/interconnect/qcom/msm8998.c
+new file mode 100644
+index 000000000000..c5f4a02ec87a
+--- /dev/null
++++ b/drivers/interconnect/qcom/msm8998.c
+@@ -0,0 +1,1602 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Qualcomm MSM8998 Network-on-Chip (NoC) driver
++ *
++ * Bus topology transcribed from the downstream msm8998-bus.dtsi
++ * (msm-4.4 vendor tree).  QoS register programming is intentionally
++ * left out for now: only the RPM-owned bus clock and bandwidth votes
++ * are mastered, which is what allows the clk-smd-rpm handoff votes to
++ * be scaled down after boot.
++ */
++
++#include <linux/device.h>
++#include <linux/interconnect-provider.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++
++#include <dt-bindings/interconnect/qcom,msm8998.h>
++
++#include "icc-rpm.h"
++#include "msm8998.h"
++
++static const u16 mas_pcie_0_links[] = {
++	MSM8998_SLAVE_A1NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_pcie_0 = {
++	.name = "mas_pcie_0",
++	.id = MSM8998_MASTER_PCIE_0,
++	.buswidth = 16,
++	.mas_rpm_id = 65,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_pcie_0_links),
++	.links = mas_pcie_0_links,
++};
++
++static const u16 mas_usb3_links[] = {
++	MSM8998_SLAVE_A1NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_usb3 = {
++	.name = "mas_usb3",
++	.id = MSM8998_MASTER_USB3,
++	.buswidth = 16,
++	.mas_rpm_id = 32,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_usb3_links),
++	.links = mas_usb3_links,
++};
++
++static const u16 mas_ufs_links[] = {
++	MSM8998_SLAVE_A1NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_ufs = {
++	.name = "mas_ufs",
++	.id = MSM8998_MASTER_UFS,
++	.buswidth = 16,
++	.mas_rpm_id = 68,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_ufs_links),
++	.links = mas_ufs_links,
++};
++
++static const u16 mas_blsp_2_links[] = {
++	MSM8998_SLAVE_A1NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_blsp_2 = {
++	.name = "mas_blsp_2",
++	.id = MSM8998_MASTER_BLSP_2,
++	.buswidth = 16,
++	.mas_rpm_id = 39,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_blsp_2_links),
++	.links = mas_blsp_2_links,
++};
++
++static const u16 slv_a1noc_snoc_links[] = {
++	MSM8998_MASTER_A1NOC_SNOC,
++};
++
++static struct qcom_icc_node slv_a1noc_snoc = {
++	.name = "slv_a1noc_snoc",
++	.id = MSM8998_SLAVE_A1NOC_SNOC,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 142,
++	.num_links = ARRAY_SIZE(slv_a1noc_snoc_links),
++	.links = slv_a1noc_snoc_links,
++};
++
++static const u16 mas_cnoc_a2noc_links[] = {
++	MSM8998_SLAVE_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_cnoc_a2noc = {
++	.name = "mas_cnoc_a2noc",
++	.id = MSM8998_MASTER_CNOC_A2NOC,
++	.buswidth = 8,
++	.mas_rpm_id = 146,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_cnoc_a2noc_links),
++	.links = mas_cnoc_a2noc_links,
++};
++
++static const u16 mas_ipa_links[] = {
++	MSM8998_SLAVE_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_ipa = {
++	.name = "mas_ipa",
++	.id = MSM8998_MASTER_IPA,
++	.buswidth = 8,
++	.mas_rpm_id = 59,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_ipa_links),
++	.links = mas_ipa_links,
++};
++
++static const u16 mas_sdcc_2_links[] = {
++	MSM8998_SLAVE_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_sdcc_2 = {
++	.name = "mas_sdcc_2",
++	.id = MSM8998_MASTER_SDCC_2,
++	.buswidth = 8,
++	.mas_rpm_id = 35,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_sdcc_2_links),
++	.links = mas_sdcc_2_links,
++};
++
++static const u16 mas_sdcc_4_links[] = {
++	MSM8998_SLAVE_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_sdcc_4 = {
++	.name = "mas_sdcc_4",
++	.id = MSM8998_MASTER_SDCC_4,
++	.buswidth = 8,
++	.mas_rpm_id = 36,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_sdcc_4_links),
++	.links = mas_sdcc_4_links,
++};
++
++static const u16 mas_tsif_links[] = {
++	MSM8998_SLAVE_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_tsif = {
++	.name = "mas_tsif",
++	.id = MSM8998_MASTER_TSIF,
++	.buswidth = 4,
++	.mas_rpm_id = 37,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_tsif_links),
++	.links = mas_tsif_links,
++};
++
++static const u16 mas_blsp_1_links[] = {
++	MSM8998_SLAVE_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_blsp_1 = {
++	.name = "mas_blsp_1",
++	.id = MSM8998_MASTER_BLSP_1,
++	.buswidth = 16,
++	.mas_rpm_id = 41,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_blsp_1_links),
++	.links = mas_blsp_1_links,
++};
++
++static const u16 mas_crypto_c0_links[] = {
++	MSM8998_SLAVE_CR_VIRT_A2NOC,
++};
++
++static struct qcom_icc_node mas_crypto_c0 = {
++	.name = "mas_crypto_c0",
++	.id = MSM8998_MASTER_CRYPTO_CORE0,
++	.buswidth = 8,
++	.mas_rpm_id = 23,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_crypto_c0_links),
++	.links = mas_crypto_c0_links,
++};
++
++static const u16 mas_cr_virt_a2noc_links[] = {
++	MSM8998_SLAVE_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node mas_cr_virt_a2noc = {
++	.name = "mas_cr_virt_a2noc",
++	.id = MSM8998_MASTER_CR_VIRT_A2NOC,
++	.buswidth = 8,
++	.mas_rpm_id = 145,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_cr_virt_a2noc_links),
++	.links = mas_cr_virt_a2noc_links,
++};
++
++static const u16 slv_a2noc_snoc_links[] = {
++	MSM8998_MASTER_A2NOC_SNOC,
++};
++
++static struct qcom_icc_node slv_a2noc_snoc = {
++	.name = "slv_a2noc_snoc",
++	.id = MSM8998_SLAVE_A2NOC_SNOC,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 143,
++	.num_links = ARRAY_SIZE(slv_a2noc_snoc_links),
++	.links = slv_a2noc_snoc_links,
++};
++
++static const u16 slv_cr_virt_a2noc_links[] = {
++	MSM8998_MASTER_CR_VIRT_A2NOC,
++};
++
++static struct qcom_icc_node slv_cr_virt_a2noc = {
++	.name = "slv_cr_virt_a2noc",
++	.id = MSM8998_SLAVE_CR_VIRT_A2NOC,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 207,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(slv_cr_virt_a2noc_links),
++	.links = slv_cr_virt_a2noc_links,
++};
++
++static const u16 mas_gnoc_bimc_links[] = {
++	MSM8998_SLAVE_EBI,
++	MSM8998_SLAVE_BIMC_SNOC_0,
++};
++
++static struct qcom_icc_node mas_gnoc_bimc = {
++	.name = "mas_gnoc_bimc",
++	.id = MSM8998_MASTER_GNOC_BIMC,
++	.buswidth = 8,
++	.channels = 2,
++	.mas_rpm_id = 144,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_gnoc_bimc_links),
++	.links = mas_gnoc_bimc_links,
++};
++
++static const u16 mas_oxili_links[] = {
++	MSM8998_SLAVE_BIMC_SNOC_1,
++	MSM8998_SLAVE_HMSS_L3,
++	MSM8998_SLAVE_EBI,
++	MSM8998_SLAVE_BIMC_SNOC_0,
++};
++
++static struct qcom_icc_node mas_oxili = {
++	.name = "mas_oxili",
++	.id = MSM8998_MASTER_GRAPHICS_3D,
++	.buswidth = 8,
++	.channels = 2,
++	.mas_rpm_id = 6,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_oxili_links),
++	.links = mas_oxili_links,
++};
++
++static const u16 mas_mnoc_bimc_links[] = {
++	MSM8998_SLAVE_BIMC_SNOC_1,
++	MSM8998_SLAVE_HMSS_L3,
++	MSM8998_SLAVE_EBI,
++	MSM8998_SLAVE_BIMC_SNOC_0,
++};
++
++static struct qcom_icc_node mas_mnoc_bimc = {
++	.name = "mas_mnoc_bimc",
++	.id = MSM8998_MASTER_MNOC_BIMC,
++	.buswidth = 8,
++	.channels = 2,
++	.mas_rpm_id = 2,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_mnoc_bimc_links),
++	.links = mas_mnoc_bimc_links,
++};
++
++static const u16 mas_snoc_bimc_links[] = {
++	MSM8998_SLAVE_HMSS_L3,
++	MSM8998_SLAVE_EBI,
++};
++
++static struct qcom_icc_node mas_snoc_bimc = {
++	.name = "mas_snoc_bimc",
++	.id = MSM8998_MASTER_SNOC_BIMC,
++	.buswidth = 8,
++	.channels = 2,
++	.mas_rpm_id = 3,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_snoc_bimc_links),
++	.links = mas_snoc_bimc_links,
++};
++
++static struct qcom_icc_node slv_ebi = {
++	.name = "slv_ebi",
++	.id = MSM8998_SLAVE_EBI,
++	.buswidth = 8,
++	.channels = 2,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 0,
++};
++
++static struct qcom_icc_node slv_hmss_l3 = {
++	.name = "slv_hmss_l3",
++	.id = MSM8998_SLAVE_HMSS_L3,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 160,
++};
++
++static const u16 slv_bimc_snoc_0_links[] = {
++	MSM8998_MASTER_BIMC_SNOC_0,
++};
++
++static struct qcom_icc_node slv_bimc_snoc_0 = {
++	.name = "slv_bimc_snoc_0",
++	.id = MSM8998_SLAVE_BIMC_SNOC_0,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 2,
++	.num_links = ARRAY_SIZE(slv_bimc_snoc_0_links),
++	.links = slv_bimc_snoc_0_links,
++};
++
++static const u16 slv_bimc_snoc_1_links[] = {
++	MSM8998_MASTER_BIMC_SNOC_1,
++};
++
++static struct qcom_icc_node slv_bimc_snoc_1 = {
++	.name = "slv_bimc_snoc_1",
++	.id = MSM8998_SLAVE_BIMC_SNOC_1,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 138,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(slv_bimc_snoc_1_links),
++	.links = slv_bimc_snoc_1_links,
++};
++
++static const u16 mas_snoc_cnoc_links[] = {
++	MSM8998_SLAVE_SKL,
++	MSM8998_SLAVE_BLSP_2,
++	MSM8998_SLAVE_MESSAGE_RAM,
++	MSM8998_SLAVE_TLMM_WEST,
++	MSM8998_SLAVE_TSIF,
++	MSM8998_SLAVE_MPM,
++	MSM8998_SLAVE_BIMC_CFG,
++	MSM8998_SLAVE_TLMM_EAST,
++	MSM8998_SLAVE_SPDM_WRAPPER,
++	MSM8998_SLAVE_PIMEM_CFG,
++	MSM8998_SLAVE_A1NOC_SMMU_CFG,
++	MSM8998_SLAVE_BLSP_1,
++	MSM8998_SLAVE_CLK_CTL,
++	MSM8998_SLAVE_PRNG,
++	MSM8998_SLAVE_USB3_0,
++	MSM8998_SLAVE_QDSS_CFG,
++	MSM8998_SLAVE_QM_CFG,
++	MSM8998_SLAVE_A2NOC_CFG,
++	MSM8998_SLAVE_PMIC_ARB,
++	MSM8998_SLAVE_UFS_CFG,
++	MSM8998_SLAVE_SRVC_CNOC,
++	MSM8998_SLAVE_PCIE20_AHB2PHY,
++	MSM8998_SLAVE_IPA_CFG,
++	MSM8998_SLAVE_GLM,
++	MSM8998_SLAVE_SNOC_CFG,
++	MSM8998_SLAVE_SSC_CFG,
++	MSM8998_SLAVE_SDCC_2,
++	MSM8998_SLAVE_SDCC_4,
++	MSM8998_SLAVE_PDM,
++	MSM8998_SLAVE_CNOC_MNOC_MMSS_CFG,
++	MSM8998_SLAVE_CNOC_MNOC_CFG,
++	MSM8998_SLAVE_MSS_CFG,
++	MSM8998_SLAVE_IMEM_CFG,
++	MSM8998_SLAVE_A1NOC_CFG,
++	MSM8998_SLAVE_GRAPHICS_3D_CFG,
++	MSM8998_SLAVE_TCSR,
++	MSM8998_SLAVE_TLMM_NORTH,
++};
++
++static struct qcom_icc_node mas_snoc_cnoc = {
++	.name = "mas_snoc_cnoc",
++	.id = MSM8998_MASTER_SNOC_CNOC,
++	.buswidth = 8,
++	.mas_rpm_id = 52,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_snoc_cnoc_links),
++	.links = mas_snoc_cnoc_links,
++};
++
++static const u16 mas_qdss_dap_links[] = {
++	MSM8998_SLAVE_SKL,
++	MSM8998_SLAVE_BLSP_2,
++	MSM8998_SLAVE_MESSAGE_RAM,
++	MSM8998_SLAVE_TLMM_WEST,
++	MSM8998_SLAVE_TSIF,
++	MSM8998_SLAVE_MPM,
++	MSM8998_SLAVE_BIMC_CFG,
++	MSM8998_SLAVE_TLMM_EAST,
++	MSM8998_SLAVE_SPDM_WRAPPER,
++	MSM8998_SLAVE_PIMEM_CFG,
++	MSM8998_SLAVE_A1NOC_SMMU_CFG,
++	MSM8998_SLAVE_BLSP_1,
++	MSM8998_SLAVE_CLK_CTL,
++	MSM8998_SLAVE_PRNG,
++	MSM8998_SLAVE_USB3_0,
++	MSM8998_SLAVE_QDSS_CFG,
++	MSM8998_SLAVE_QM_CFG,
++	MSM8998_SLAVE_A2NOC_CFG,
++	MSM8998_SLAVE_PMIC_ARB,
++	MSM8998_SLAVE_UFS_CFG,
++	MSM8998_SLAVE_SRVC_CNOC,
++	MSM8998_SLAVE_PCIE20_AHB2PHY,
++	MSM8998_SLAVE_IPA_CFG,
++	MSM8998_SLAVE_GLM,
++	MSM8998_SLAVE_SNOC_CFG,
++	MSM8998_SLAVE_SDCC_2,
++	MSM8998_SLAVE_SDCC_4,
++	MSM8998_SLAVE_PDM,
++	MSM8998_SLAVE_CNOC_MNOC_MMSS_CFG,
++	MSM8998_SLAVE_CNOC_MNOC_CFG,
++	MSM8998_SLAVE_MSS_CFG,
++	MSM8998_SLAVE_IMEM_CFG,
++	MSM8998_SLAVE_A1NOC_CFG,
++	MSM8998_SLAVE_GRAPHICS_3D_CFG,
++	MSM8998_SLAVE_SSC_CFG,
++	MSM8998_SLAVE_TCSR,
++	MSM8998_SLAVE_TLMM_NORTH,
++	MSM8998_SLAVE_CNOC_A2NOC,
++};
++
++static struct qcom_icc_node mas_qdss_dap = {
++	.name = "mas_qdss_dap",
++	.id = MSM8998_MASTER_QDSS_DAP,
++	.buswidth = 8,
++	.mas_rpm_id = 49,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_qdss_dap_links),
++	.links = mas_qdss_dap_links,
++};
++
++static const u16 slv_cnoc_a2noc_links[] = {
++	MSM8998_MASTER_CNOC_A2NOC,
++};
++
++static struct qcom_icc_node slv_cnoc_a2noc = {
++	.name = "slv_cnoc_a2noc",
++	.id = MSM8998_SLAVE_CNOC_A2NOC,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 208,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(slv_cnoc_a2noc_links),
++	.links = slv_cnoc_a2noc_links,
++};
++
++static struct qcom_icc_node slv_ssc_cfg = {
++	.name = "slv_ssc_cfg",
++	.id = MSM8998_SLAVE_SSC_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 177,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_mpm = {
++	.name = "slv_mpm",
++	.id = MSM8998_SLAVE_MPM,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 62,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_pmic_arb = {
++	.name = "slv_pmic_arb",
++	.id = MSM8998_SLAVE_PMIC_ARB,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 59,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_tlmm_north = {
++	.name = "slv_tlmm_north",
++	.id = MSM8998_SLAVE_TLMM_NORTH,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 214,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_pimem_cfg = {
++	.name = "slv_pimem_cfg",
++	.id = MSM8998_SLAVE_PIMEM_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 167,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_imem_cfg = {
++	.name = "slv_imem_cfg",
++	.id = MSM8998_SLAVE_IMEM_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 54,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_message_ram = {
++	.name = "slv_message_ram",
++	.id = MSM8998_SLAVE_MESSAGE_RAM,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 55,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_skl = {
++	.name = "slv_skl",
++	.id = MSM8998_SLAVE_SKL,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 196,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_bimc_cfg = {
++	.name = "slv_bimc_cfg",
++	.id = MSM8998_SLAVE_BIMC_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 56,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_prng = {
++	.name = "slv_prng",
++	.id = MSM8998_SLAVE_PRNG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 44,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_a2noc_cfg = {
++	.name = "slv_a2noc_cfg",
++	.id = MSM8998_SLAVE_A2NOC_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 150,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_ipa = {
++	.name = "slv_ipa",
++	.id = MSM8998_SLAVE_IPA_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 183,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_tcsr = {
++	.name = "slv_tcsr",
++	.id = MSM8998_SLAVE_TCSR,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 50,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_snoc_cfg = {
++	.name = "slv_snoc_cfg",
++	.id = MSM8998_SLAVE_SNOC_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 70,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_clk_ctl = {
++	.name = "slv_clk_ctl",
++	.id = MSM8998_SLAVE_CLK_CTL,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 47,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_glm = {
++	.name = "slv_glm",
++	.id = MSM8998_SLAVE_GLM,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 209,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_spdm = {
++	.name = "slv_spdm",
++	.id = MSM8998_SLAVE_SPDM_WRAPPER,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 60,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_gpuss_cfg = {
++	.name = "slv_gpuss_cfg",
++	.id = MSM8998_SLAVE_GRAPHICS_3D_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 11,
++	.qos.ap_owned = true,
++};
++
++static const u16 slv_cnoc_mnoc_cfg_links[] = {
++	MSM8998_MASTER_CNOC_MNOC_CFG,
++};
++
++static struct qcom_icc_node slv_cnoc_mnoc_cfg = {
++	.name = "slv_cnoc_mnoc_cfg",
++	.id = MSM8998_SLAVE_CNOC_MNOC_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 66,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(slv_cnoc_mnoc_cfg_links),
++	.links = slv_cnoc_mnoc_cfg_links,
++};
++
++static struct qcom_icc_node slv_qm_cfg = {
++	.name = "slv_qm_cfg",
++	.id = MSM8998_SLAVE_QM_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 212,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_mss_cfg = {
++	.name = "slv_mss_cfg",
++	.id = MSM8998_SLAVE_MSS_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 48,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_ufs_cfg = {
++	.name = "slv_ufs_cfg",
++	.id = MSM8998_SLAVE_UFS_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 92,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_tlmm_west = {
++	.name = "slv_tlmm_west",
++	.id = MSM8998_SLAVE_TLMM_WEST,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 215,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_a1noc_cfg = {
++	.name = "slv_a1noc_cfg",
++	.id = MSM8998_SLAVE_A1NOC_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 147,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_ahb2phy = {
++	.name = "slv_ahb2phy",
++	.id = MSM8998_SLAVE_PCIE20_AHB2PHY,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 163,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_blsp_2 = {
++	.name = "slv_blsp_2",
++	.id = MSM8998_SLAVE_BLSP_2,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 37,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_pdm = {
++	.name = "slv_pdm",
++	.id = MSM8998_SLAVE_PDM,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 41,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_usb3_0 = {
++	.name = "slv_usb3_0",
++	.id = MSM8998_SLAVE_USB3_0,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 22,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_a1noc_smmu_cfg = {
++	.name = "slv_a1noc_smmu_cfg",
++	.id = MSM8998_SLAVE_A1NOC_SMMU_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 149,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_blsp_1 = {
++	.name = "slv_blsp_1",
++	.id = MSM8998_SLAVE_BLSP_1,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 39,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_sdcc_2 = {
++	.name = "slv_sdcc_2",
++	.id = MSM8998_SLAVE_SDCC_2,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 33,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_sdcc_4 = {
++	.name = "slv_sdcc_4",
++	.id = MSM8998_SLAVE_SDCC_4,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 34,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_tsif = {
++	.name = "slv_tsif",
++	.id = MSM8998_SLAVE_TSIF,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 35,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_qdss_cfg = {
++	.name = "slv_qdss_cfg",
++	.id = MSM8998_SLAVE_QDSS_CFG,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 63,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_tlmm_east = {
++	.name = "slv_tlmm_east",
++	.id = MSM8998_SLAVE_TLMM_EAST,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 213,
++	.qos.ap_owned = true,
++};
++
++static const u16 slv_cnoc_mnoc_mmss_cfg_links[] = {
++	MSM8998_MASTER_CNOC_MNOC_MMSS_CFG,
++};
++
++static struct qcom_icc_node slv_cnoc_mnoc_mmss_cfg = {
++	.name = "slv_cnoc_mnoc_mmss_cfg",
++	.id = MSM8998_SLAVE_CNOC_MNOC_MMSS_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 58,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(slv_cnoc_mnoc_mmss_cfg_links),
++	.links = slv_cnoc_mnoc_mmss_cfg_links,
++};
++
++static struct qcom_icc_node slv_srvc_cnoc = {
++	.name = "slv_srvc_cnoc",
++	.id = MSM8998_SLAVE_SRVC_CNOC,
++	.buswidth = 4,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 76,
++	.qos.ap_owned = true,
++};
++
++static const u16 mas_apps_proc_links[] = {
++	MSM8998_SLAVE_GNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_apps_proc = {
++	.name = "mas_apps_proc",
++	.id = MSM8998_MASTER_APPS_PROC,
++	.buswidth = 32,
++	.mas_rpm_id = 0,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_apps_proc_links),
++	.links = mas_apps_proc_links,
++};
++
++static const u16 slv_gnoc_bimc_links[] = {
++	MSM8998_MASTER_GNOC_BIMC,
++};
++
++static struct qcom_icc_node slv_gnoc_bimc = {
++	.name = "slv_gnoc_bimc",
++	.id = MSM8998_SLAVE_GNOC_BIMC,
++	.buswidth = 32,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 210,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(slv_gnoc_bimc_links),
++	.links = slv_gnoc_bimc_links,
++};
++
++static const u16 mas_cnoc_mnoc_mmss_cfg_links[] = {
++	MSM8998_SLAVE_CAMERA_THROTTLE_CFG,
++	MSM8998_SLAVE_VENUS_CFG,
++	MSM8998_SLAVE_MISC_CFG,
++	MSM8998_SLAVE_CAMERA_CFG,
++	MSM8998_SLAVE_DISPLAY_THROTTLE_CFG,
++	MSM8998_SLAVE_VENUS_THROTTLE_CFG,
++	MSM8998_SLAVE_DISPLAY_CFG,
++	MSM8998_SLAVE_MMSS_CLK_CFG,
++	MSM8998_SLAVE_VMEM_CFG,
++	MSM8998_SLAVE_MMSS_CLK_XPU_CFG,
++	MSM8998_SLAVE_MMSS_SMMU_CFG,
++};
++
++static struct qcom_icc_node mas_cnoc_mnoc_mmss_cfg = {
++	.name = "mas_cnoc_mnoc_mmss_cfg",
++	.id = MSM8998_MASTER_CNOC_MNOC_MMSS_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = 4,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_cnoc_mnoc_mmss_cfg_links),
++	.links = mas_cnoc_mnoc_mmss_cfg_links,
++};
++
++static const u16 mas_cnoc_mnoc_cfg_links[] = {
++	MSM8998_SLAVE_SRVC_MNOC,
++};
++
++static struct qcom_icc_node mas_cnoc_mnoc_cfg = {
++	.name = "mas_cnoc_mnoc_cfg",
++	.id = MSM8998_MASTER_CNOC_MNOC_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = 5,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_cnoc_mnoc_cfg_links),
++	.links = mas_cnoc_mnoc_cfg_links,
++};
++
++static const u16 mas_cpp_links[] = {
++	MSM8998_SLAVE_MNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_cpp = {
++	.name = "mas_cpp",
++	.id = MSM8998_MASTER_CPP,
++	.buswidth = 32,
++	.mas_rpm_id = 115,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_cpp_links),
++	.links = mas_cpp_links,
++};
++
++static const u16 mas_jpeg_links[] = {
++	MSM8998_SLAVE_MNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_jpeg = {
++	.name = "mas_jpeg",
++	.id = MSM8998_MASTER_JPEG,
++	.buswidth = 32,
++	.mas_rpm_id = 7,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_jpeg_links),
++	.links = mas_jpeg_links,
++};
++
++static const u16 mas_mdp_p0_links[] = {
++	MSM8998_SLAVE_MNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_mdp_p0 = {
++	.name = "mas_mdp_p0",
++	.id = MSM8998_MASTER_MDP_P0,
++	.buswidth = 32,
++	.mas_rpm_id = 8,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_mdp_p0_links),
++	.links = mas_mdp_p0_links,
++};
++
++static const u16 mas_mdp_p1_links[] = {
++	MSM8998_SLAVE_MNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_mdp_p1 = {
++	.name = "mas_mdp_p1",
++	.id = MSM8998_MASTER_MDP_P1,
++	.buswidth = 32,
++	.mas_rpm_id = 61,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_mdp_p1_links),
++	.links = mas_mdp_p1_links,
++};
++
++static const u16 mas_rotator_links[] = {
++	MSM8998_SLAVE_MNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_rotator = {
++	.name = "mas_rotator",
++	.id = MSM8998_MASTER_ROTATOR,
++	.buswidth = 32,
++	.mas_rpm_id = 120,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_rotator_links),
++	.links = mas_rotator_links,
++};
++
++static const u16 mas_venus_links[] = {
++	MSM8998_SLAVE_MNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_venus = {
++	.name = "mas_venus",
++	.id = MSM8998_MASTER_VIDEO_P0,
++	.buswidth = 32,
++	.channels = 2,
++	.mas_rpm_id = 9,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_venus_links),
++	.links = mas_venus_links,
++};
++
++static const u16 mas_vfe_links[] = {
++	MSM8998_SLAVE_MNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_vfe = {
++	.name = "mas_vfe",
++	.id = MSM8998_MASTER_VFE,
++	.buswidth = 32,
++	.mas_rpm_id = 11,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_vfe_links),
++	.links = mas_vfe_links,
++};
++
++static const u16 mas_venus_vmem_links[] = {
++	MSM8998_SLAVE_VMEM,
++};
++
++static struct qcom_icc_node mas_venus_vmem = {
++	.name = "mas_venus_vmem",
++	.id = MSM8998_MASTER_VIDEO_P0_OCMEM,
++	.buswidth = 32,
++	.mas_rpm_id = 121,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_venus_vmem_links),
++	.links = mas_venus_vmem_links,
++};
++
++static const u16 slv_mnoc_bimc_links[] = {
++	MSM8998_MASTER_MNOC_BIMC,
++};
++
++static struct qcom_icc_node slv_mnoc_bimc = {
++	.name = "slv_mnoc_bimc",
++	.id = MSM8998_SLAVE_MNOC_BIMC,
++	.buswidth = 32,
++	.channels = 2,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 16,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(slv_mnoc_bimc_links),
++	.links = slv_mnoc_bimc_links,
++};
++
++static struct qcom_icc_node slv_vmem = {
++	.name = "slv_vmem",
++	.id = MSM8998_SLAVE_VMEM,
++	.buswidth = 32,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 179,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_srvc_mnoc = {
++	.name = "slv_srvc_mnoc",
++	.id = MSM8998_SLAVE_SRVC_MNOC,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 17,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_camera_cfg = {
++	.name = "slv_camera_cfg",
++	.id = MSM8998_SLAVE_CAMERA_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 3,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_camera_throttle_cfg = {
++	.name = "slv_camera_throttle_cfg",
++	.id = MSM8998_SLAVE_CAMERA_THROTTLE_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 154,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_misc_cfg = {
++	.name = "slv_misc_cfg",
++	.id = MSM8998_SLAVE_MISC_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 8,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_venus_throttle_cfg = {
++	.name = "slv_venus_throttle_cfg",
++	.id = MSM8998_SLAVE_VENUS_THROTTLE_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 178,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_venus_cfg = {
++	.name = "slv_venus_cfg",
++	.id = MSM8998_SLAVE_VENUS_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 10,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_vmem_cfg = {
++	.name = "slv_vmem_cfg",
++	.id = MSM8998_SLAVE_VMEM_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 180,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_mmss_clk_xpu_cfg = {
++	.name = "slv_mmss_clk_xpu_cfg",
++	.id = MSM8998_SLAVE_MMSS_CLK_XPU_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 13,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_mmss_clk_cfg = {
++	.name = "slv_mmss_clk_cfg",
++	.id = MSM8998_SLAVE_MMSS_CLK_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 12,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_display_cfg = {
++	.name = "slv_display_cfg",
++	.id = MSM8998_SLAVE_DISPLAY_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 4,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_display_throttle_cfg = {
++	.name = "slv_display_throttle_cfg",
++	.id = MSM8998_SLAVE_DISPLAY_THROTTLE_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 156,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_smmu_cfg = {
++	.name = "slv_smmu_cfg",
++	.id = MSM8998_SLAVE_MMSS_SMMU_CFG,
++	.buswidth = 8,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 205,
++	.qos.ap_owned = true,
++};
++
++static const u16 mas_hmss_links[] = {
++	MSM8998_SLAVE_PIMEM,
++	MSM8998_SLAVE_OCIMEM,
++	MSM8998_SLAVE_SNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_hmss = {
++	.name = "mas_hmss",
++	.id = MSM8998_MASTER_HMSS,
++	.buswidth = 16,
++	.mas_rpm_id = 118,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_hmss_links),
++	.links = mas_hmss_links,
++};
++
++static const u16 mas_qdss_bam_links[] = {
++	MSM8998_SLAVE_OCIMEM,
++	MSM8998_SLAVE_PIMEM,
++	MSM8998_SLAVE_SNOC_CNOC,
++	MSM8998_SLAVE_SNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_qdss_bam = {
++	.name = "mas_qdss_bam",
++	.id = MSM8998_MASTER_QDSS_BAM,
++	.buswidth = 16,
++	.mas_rpm_id = 19,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_qdss_bam_links),
++	.links = mas_qdss_bam_links,
++};
++
++static const u16 mas_snoc_cfg_links[] = {
++	MSM8998_SLAVE_SRVC_SNOC,
++};
++
++static struct qcom_icc_node mas_snoc_cfg = {
++	.name = "mas_snoc_cfg",
++	.id = MSM8998_MASTER_SNOC_CFG,
++	.buswidth = 16,
++	.mas_rpm_id = 20,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_snoc_cfg_links),
++	.links = mas_snoc_cfg_links,
++};
++
++static const u16 mas_bimc_snoc_0_links[] = {
++	MSM8998_SLAVE_PIMEM,
++	MSM8998_SLAVE_LPASS,
++	MSM8998_SLAVE_APPSS,
++	MSM8998_SLAVE_WLAN,
++	MSM8998_SLAVE_SNOC_CNOC,
++	MSM8998_SLAVE_OCIMEM,
++	MSM8998_SLAVE_QDSS_STM,
++};
++
++static struct qcom_icc_node mas_bimc_snoc_0 = {
++	.name = "mas_bimc_snoc_0",
++	.id = MSM8998_MASTER_BIMC_SNOC_0,
++	.buswidth = 16,
++	.mas_rpm_id = 21,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_bimc_snoc_0_links),
++	.links = mas_bimc_snoc_0_links,
++};
++
++static const u16 mas_bimc_snoc_1_links[] = {
++	MSM8998_SLAVE_PCIE_0,
++};
++
++static struct qcom_icc_node mas_bimc_snoc_1 = {
++	.name = "mas_bimc_snoc_1",
++	.id = MSM8998_MASTER_BIMC_SNOC_1,
++	.buswidth = 16,
++	.mas_rpm_id = 109,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_bimc_snoc_1_links),
++	.links = mas_bimc_snoc_1_links,
++};
++
++static const u16 mas_a1noc_snoc_links[] = {
++	MSM8998_SLAVE_PIMEM,
++	MSM8998_SLAVE_PCIE_0,
++	MSM8998_SLAVE_LPASS,
++	MSM8998_SLAVE_APPSS,
++	MSM8998_SLAVE_SNOC_BIMC,
++	MSM8998_SLAVE_SNOC_CNOC,
++	MSM8998_SLAVE_OCIMEM,
++	MSM8998_SLAVE_QDSS_STM,
++};
++
++static struct qcom_icc_node mas_a1noc_snoc = {
++	.name = "mas_a1noc_snoc",
++	.id = MSM8998_MASTER_A1NOC_SNOC,
++	.buswidth = 16,
++	.mas_rpm_id = 111,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_a1noc_snoc_links),
++	.links = mas_a1noc_snoc_links,
++};
++
++static const u16 mas_a2noc_snoc_links[] = {
++	MSM8998_SLAVE_PIMEM,
++	MSM8998_SLAVE_PCIE_0,
++	MSM8998_SLAVE_LPASS,
++	MSM8998_SLAVE_APPSS,
++	MSM8998_SLAVE_SNOC_BIMC,
++	MSM8998_SLAVE_WLAN,
++	MSM8998_SLAVE_SNOC_CNOC,
++	MSM8998_SLAVE_OCIMEM,
++	MSM8998_SLAVE_QDSS_STM,
++};
++
++static struct qcom_icc_node mas_a2noc_snoc = {
++	.name = "mas_a2noc_snoc",
++	.id = MSM8998_MASTER_A2NOC_SNOC,
++	.buswidth = 16,
++	.mas_rpm_id = 112,
++	.slv_rpm_id = -1,
++	.num_links = ARRAY_SIZE(mas_a2noc_snoc_links),
++	.links = mas_a2noc_snoc_links,
++};
++
++static const u16 mas_qdss_etr_links[] = {
++	MSM8998_SLAVE_OCIMEM,
++	MSM8998_SLAVE_PIMEM,
++	MSM8998_SLAVE_SNOC_CNOC,
++	MSM8998_SLAVE_SNOC_BIMC,
++};
++
++static struct qcom_icc_node mas_qdss_etr = {
++	.name = "mas_qdss_etr",
++	.id = MSM8998_MASTER_QDSS_ETR,
++	.buswidth = 16,
++	.mas_rpm_id = 31,
++	.slv_rpm_id = -1,
++	.qos.ap_owned = true,
++	.num_links = ARRAY_SIZE(mas_qdss_etr_links),
++	.links = mas_qdss_etr_links,
++};
++
++static struct qcom_icc_node slv_hmss = {
++	.name = "slv_hmss",
++	.id = MSM8998_SLAVE_APPSS,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 20,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_lpass = {
++	.name = "slv_lpass",
++	.id = MSM8998_SLAVE_LPASS,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 21,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_wlan = {
++	.name = "slv_wlan",
++	.id = MSM8998_SLAVE_WLAN,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 206,
++};
++
++static const u16 slv_snoc_bimc_links[] = {
++	MSM8998_MASTER_SNOC_BIMC,
++};
++
++static struct qcom_icc_node slv_snoc_bimc = {
++	.name = "slv_snoc_bimc",
++	.id = MSM8998_SLAVE_SNOC_BIMC,
++	.buswidth = 32,
++	.channels = 2,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 24,
++	.num_links = ARRAY_SIZE(slv_snoc_bimc_links),
++	.links = slv_snoc_bimc_links,
++};
++
++static const u16 slv_snoc_cnoc_links[] = {
++	MSM8998_MASTER_SNOC_CNOC,
++};
++
++static struct qcom_icc_node slv_snoc_cnoc = {
++	.name = "slv_snoc_cnoc",
++	.id = MSM8998_SLAVE_SNOC_CNOC,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 25,
++	.num_links = ARRAY_SIZE(slv_snoc_cnoc_links),
++	.links = slv_snoc_cnoc_links,
++};
++
++static struct qcom_icc_node slv_imem = {
++	.name = "slv_imem",
++	.id = MSM8998_SLAVE_OCIMEM,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 26,
++};
++
++static struct qcom_icc_node slv_pimem = {
++	.name = "slv_pimem",
++	.id = MSM8998_SLAVE_PIMEM,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 166,
++};
++
++static struct qcom_icc_node slv_qdss_stm = {
++	.name = "slv_qdss_stm",
++	.id = MSM8998_SLAVE_QDSS_STM,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 30,
++};
++
++static struct qcom_icc_node slv_pcie_0 = {
++	.name = "slv_pcie_0",
++	.id = MSM8998_SLAVE_PCIE_0,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 84,
++	.qos.ap_owned = true,
++};
++
++static struct qcom_icc_node slv_srvc_snoc = {
++	.name = "slv_srvc_snoc",
++	.id = MSM8998_SLAVE_SRVC_SNOC,
++	.buswidth = 16,
++	.mas_rpm_id = -1,
++	.slv_rpm_id = 29,
++};
++
++static struct qcom_icc_node * const msm8998_a1noc_nodes[] = {
++	[MASTER_PCIE_0] = &mas_pcie_0,
++	[MASTER_USB3] = &mas_usb3,
++	[MASTER_UFS] = &mas_ufs,
++	[MASTER_BLSP_2] = &mas_blsp_2,
++	[SLAVE_A1NOC_SNOC] = &slv_a1noc_snoc,
++};
++
++static const struct qcom_icc_desc msm8998_a1noc = {
++	.type = QCOM_ICC_NOC,
++	.nodes = msm8998_a1noc_nodes,
++	.num_nodes = ARRAY_SIZE(msm8998_a1noc_nodes),
++	.bus_clk_desc = &aggre1_clk,
++	.keep_alive = true,
++};
++
++static struct qcom_icc_node * const msm8998_a2noc_nodes[] = {
++	[MASTER_CNOC_A2NOC] = &mas_cnoc_a2noc,
++	[MASTER_IPA] = &mas_ipa,
++	[MASTER_SDCC_2] = &mas_sdcc_2,
++	[MASTER_SDCC_4] = &mas_sdcc_4,
++	[MASTER_TSIF] = &mas_tsif,
++	[MASTER_BLSP_1] = &mas_blsp_1,
++	[MASTER_CRYPTO_CORE0] = &mas_crypto_c0,
++	[MASTER_CR_VIRT_A2NOC] = &mas_cr_virt_a2noc,
++	[SLAVE_A2NOC_SNOC] = &slv_a2noc_snoc,
++	[SLAVE_CR_VIRT_A2NOC] = &slv_cr_virt_a2noc,
++};
++
++static const struct qcom_icc_desc msm8998_a2noc = {
++	.type = QCOM_ICC_NOC,
++	.nodes = msm8998_a2noc_nodes,
++	.num_nodes = ARRAY_SIZE(msm8998_a2noc_nodes),
++	.bus_clk_desc = &aggre2_clk,
++	.keep_alive = true,
++};
++
++static struct qcom_icc_node * const msm8998_bimc_nodes[] = {
++	[MASTER_GNOC_BIMC] = &mas_gnoc_bimc,
++	[MASTER_GRAPHICS_3D] = &mas_oxili,
++	[MASTER_MNOC_BIMC] = &mas_mnoc_bimc,
++	[MASTER_SNOC_BIMC] = &mas_snoc_bimc,
++	[SLAVE_EBI] = &slv_ebi,
++	[SLAVE_HMSS_L3] = &slv_hmss_l3,
++	[SLAVE_BIMC_SNOC_0] = &slv_bimc_snoc_0,
++	[SLAVE_BIMC_SNOC_1] = &slv_bimc_snoc_1,
++};
++
++static const struct qcom_icc_desc msm8998_bimc = {
++	.type = QCOM_ICC_BIMC,
++	.nodes = msm8998_bimc_nodes,
++	.num_nodes = ARRAY_SIZE(msm8998_bimc_nodes),
++	.bus_clk_desc = &bimc_clk,
++	.keep_alive = true,
++};
++
++static struct qcom_icc_node * const msm8998_cnoc_nodes[] = {
++	[MASTER_SNOC_CNOC] = &mas_snoc_cnoc,
++	[MASTER_QDSS_DAP] = &mas_qdss_dap,
++	[SLAVE_CNOC_A2NOC] = &slv_cnoc_a2noc,
++	[SLAVE_SSC_CFG] = &slv_ssc_cfg,
++	[SLAVE_MPM] = &slv_mpm,
++	[SLAVE_PMIC_ARB] = &slv_pmic_arb,
++	[SLAVE_TLMM_NORTH] = &slv_tlmm_north,
++	[SLAVE_PIMEM_CFG] = &slv_pimem_cfg,
++	[SLAVE_IMEM_CFG] = &slv_imem_cfg,
++	[SLAVE_MESSAGE_RAM] = &slv_message_ram,
++	[SLAVE_SKL] = &slv_skl,
++	[SLAVE_BIMC_CFG] = &slv_bimc_cfg,
++	[SLAVE_PRNG] = &slv_prng,
++	[SLAVE_A2NOC_CFG] = &slv_a2noc_cfg,
++	[SLAVE_IPA_CFG] = &slv_ipa,
++	[SLAVE_TCSR] = &slv_tcsr,
++	[SLAVE_SNOC_CFG] = &slv_snoc_cfg,
++	[SLAVE_CLK_CTL] = &slv_clk_ctl,
++	[SLAVE_GLM] = &slv_glm,
++	[SLAVE_SPDM_WRAPPER] = &slv_spdm,
++	[SLAVE_GRAPHICS_3D_CFG] = &slv_gpuss_cfg,
++	[SLAVE_CNOC_MNOC_CFG] = &slv_cnoc_mnoc_cfg,
++	[SLAVE_QM_CFG] = &slv_qm_cfg,
++	[SLAVE_MSS_CFG] = &slv_mss_cfg,
++	[SLAVE_UFS_CFG] = &slv_ufs_cfg,
++	[SLAVE_TLMM_WEST] = &slv_tlmm_west,
++	[SLAVE_A1NOC_CFG] = &slv_a1noc_cfg,
++	[SLAVE_PCIE20_AHB2PHY] = &slv_ahb2phy,
++	[SLAVE_BLSP_2] = &slv_blsp_2,
++	[SLAVE_PDM] = &slv_pdm,
++	[SLAVE_USB3_0] = &slv_usb3_0,
++	[SLAVE_A1NOC_SMMU_CFG] = &slv_a1noc_smmu_cfg,
++	[SLAVE_BLSP_1] = &slv_blsp_1,
++	[SLAVE_SDCC_2] = &slv_sdcc_2,
++	[SLAVE_SDCC_4] = &slv_sdcc_4,
++	[SLAVE_TSIF] = &slv_tsif,
++	[SLAVE_QDSS_CFG] = &slv_qdss_cfg,
++	[SLAVE_TLMM_EAST] = &slv_tlmm_east,
++	[SLAVE_CNOC_MNOC_MMSS_CFG] = &slv_cnoc_mnoc_mmss_cfg,
++	[SLAVE_SRVC_CNOC] = &slv_srvc_cnoc,
++};
++
++static const struct qcom_icc_desc msm8998_cnoc = {
++	.type = QCOM_ICC_NOC,
++	.nodes = msm8998_cnoc_nodes,
++	.num_nodes = ARRAY_SIZE(msm8998_cnoc_nodes),
++	.bus_clk_desc = &bus_2_clk,
++	.keep_alive = true,
++};
++
++static struct qcom_icc_node * const msm8998_gnoc_nodes[] = {
++	[MASTER_APPS_PROC] = &mas_apps_proc,
++	[SLAVE_GNOC_BIMC] = &slv_gnoc_bimc,
++};
++
++static const struct qcom_icc_desc msm8998_gnoc = {
++	.type = QCOM_ICC_NOC,
++	.nodes = msm8998_gnoc_nodes,
++	.num_nodes = ARRAY_SIZE(msm8998_gnoc_nodes),
++};
++
++static struct qcom_icc_node * const msm8998_mnoc_nodes[] = {
++	[MASTER_CNOC_MNOC_MMSS_CFG] = &mas_cnoc_mnoc_mmss_cfg,
++	[MASTER_CNOC_MNOC_CFG] = &mas_cnoc_mnoc_cfg,
++	[MASTER_CPP] = &mas_cpp,
++	[MASTER_JPEG] = &mas_jpeg,
++	[MASTER_MDP_P0] = &mas_mdp_p0,
++	[MASTER_MDP_P1] = &mas_mdp_p1,
++	[MASTER_ROTATOR] = &mas_rotator,
++	[MASTER_VIDEO_P0] = &mas_venus,
++	[MASTER_VFE] = &mas_vfe,
++	[MASTER_VIDEO_P0_OCMEM] = &mas_venus_vmem,
++	[SLAVE_MNOC_BIMC] = &slv_mnoc_bimc,
++	[SLAVE_VMEM] = &slv_vmem,
++	[SLAVE_SRVC_MNOC] = &slv_srvc_mnoc,
++	[SLAVE_CAMERA_CFG] = &slv_camera_cfg,
++	[SLAVE_CAMERA_THROTTLE_CFG] = &slv_camera_throttle_cfg,
++	[SLAVE_MISC_CFG] = &slv_misc_cfg,
++	[SLAVE_VENUS_THROTTLE_CFG] = &slv_venus_throttle_cfg,
++	[SLAVE_VENUS_CFG] = &slv_venus_cfg,
++	[SLAVE_VMEM_CFG] = &slv_vmem_cfg,
++	[SLAVE_MMSS_CLK_XPU_CFG] = &slv_mmss_clk_xpu_cfg,
++	[SLAVE_MMSS_CLK_CFG] = &slv_mmss_clk_cfg,
++	[SLAVE_DISPLAY_CFG] = &slv_display_cfg,
++	[SLAVE_DISPLAY_THROTTLE_CFG] = &slv_display_throttle_cfg,
++	[SLAVE_MMSS_SMMU_CFG] = &slv_smmu_cfg,
++};
++
++static const struct qcom_icc_desc msm8998_mnoc = {
++	.type = QCOM_ICC_NOC,
++	.nodes = msm8998_mnoc_nodes,
++	.num_nodes = ARRAY_SIZE(msm8998_mnoc_nodes),
++	.bus_clk_desc = &mmaxi_0_clk,
++	.keep_alive = true,
++};
++
++static struct qcom_icc_node * const msm8998_snoc_nodes[] = {
++	[MASTER_HMSS] = &mas_hmss,
++	[MASTER_QDSS_BAM] = &mas_qdss_bam,
++	[MASTER_SNOC_CFG] = &mas_snoc_cfg,
++	[MASTER_BIMC_SNOC_0] = &mas_bimc_snoc_0,
++	[MASTER_BIMC_SNOC_1] = &mas_bimc_snoc_1,
++	[MASTER_A1NOC_SNOC] = &mas_a1noc_snoc,
++	[MASTER_A2NOC_SNOC] = &mas_a2noc_snoc,
++	[MASTER_QDSS_ETR] = &mas_qdss_etr,
++	[SLAVE_APPSS] = &slv_hmss,
++	[SLAVE_LPASS] = &slv_lpass,
++	[SLAVE_WLAN] = &slv_wlan,
++	[SLAVE_SNOC_BIMC] = &slv_snoc_bimc,
++	[SLAVE_SNOC_CNOC] = &slv_snoc_cnoc,
++	[SLAVE_OCIMEM] = &slv_imem,
++	[SLAVE_PIMEM] = &slv_pimem,
++	[SLAVE_QDSS_STM] = &slv_qdss_stm,
++	[SLAVE_PCIE_0] = &slv_pcie_0,
++	[SLAVE_SRVC_SNOC] = &slv_srvc_snoc,
++};
++
++static const struct qcom_icc_desc msm8998_snoc = {
++	.type = QCOM_ICC_NOC,
++	.nodes = msm8998_snoc_nodes,
++	.num_nodes = ARRAY_SIZE(msm8998_snoc_nodes),
++	.bus_clk_desc = &bus_1_clk,
++	.keep_alive = true,
++};
++
++static const struct of_device_id qnoc_of_match[] = {
++	{ .compatible = "qcom,msm8998-a1noc", .data = &msm8998_a1noc },
++	{ .compatible = "qcom,msm8998-a2noc", .data = &msm8998_a2noc },
++	{ .compatible = "qcom,msm8998-bimc", .data = &msm8998_bimc },
++	{ .compatible = "qcom,msm8998-cnoc", .data = &msm8998_cnoc },
++	{ .compatible = "qcom,msm8998-gnoc", .data = &msm8998_gnoc },
++	{ .compatible = "qcom,msm8998-mnoc", .data = &msm8998_mnoc },
++	{ .compatible = "qcom,msm8998-snoc", .data = &msm8998_snoc },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, qnoc_of_match);
++
++static struct platform_driver qnoc_driver = {
++	.probe = qnoc_probe,
++	.remove = qnoc_remove,
++	.driver = {
++		.name = "qnoc-msm8998",
++		.of_match_table = qnoc_of_match,
++		.sync_state = icc_sync_state,
++	},
++};
++
++static int __init qnoc_driver_init(void)
++{
++	return platform_driver_register(&qnoc_driver);
++}
++core_initcall(qnoc_driver_init);
++
++static void __exit qnoc_driver_exit(void)
++{
++	platform_driver_unregister(&qnoc_driver);
++}
++module_exit(qnoc_driver_exit);
++
++MODULE_DESCRIPTION("Qualcomm MSM8998 NoC driver");
++MODULE_LICENSE("GPL");
+diff --git a/drivers/interconnect/qcom/msm8998.h b/drivers/interconnect/qcom/msm8998.h
+new file mode 100644
+index 000000000000..93709b313ce6
+--- /dev/null
++++ b/drivers/interconnect/qcom/msm8998.h
+@@ -0,0 +1,117 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Qualcomm MSM8998 interconnect IDs
++ */
++
++#ifndef __DRIVERS_INTERCONNECT_QCOM_MSM8998_H__
++#define __DRIVERS_INTERCONNECT_QCOM_MSM8998_H__
++
++#define MSM8998_MASTER_PCIE_0                           1
++#define MSM8998_MASTER_USB3                             2
++#define MSM8998_MASTER_UFS                              3
++#define MSM8998_MASTER_BLSP_2                           4
++#define MSM8998_SLAVE_A1NOC_SNOC                        5
++#define MSM8998_MASTER_CNOC_A2NOC                       6
++#define MSM8998_MASTER_IPA                              7
++#define MSM8998_MASTER_SDCC_2                           8
++#define MSM8998_MASTER_SDCC_4                           9
++#define MSM8998_MASTER_TSIF                             10
++#define MSM8998_MASTER_BLSP_1                           11
++#define MSM8998_MASTER_CRYPTO_CORE0                     12
++#define MSM8998_MASTER_CR_VIRT_A2NOC                    13
++#define MSM8998_SLAVE_A2NOC_SNOC                        14
++#define MSM8998_SLAVE_CR_VIRT_A2NOC                     15
++#define MSM8998_MASTER_GNOC_BIMC                        16
++#define MSM8998_MASTER_GRAPHICS_3D                      17
++#define MSM8998_MASTER_MNOC_BIMC                        18
++#define MSM8998_MASTER_SNOC_BIMC                        19
++#define MSM8998_SLAVE_EBI                               20
++#define MSM8998_SLAVE_HMSS_L3                           21
++#define MSM8998_SLAVE_BIMC_SNOC_0                       22
++#define MSM8998_SLAVE_BIMC_SNOC_1                       23
++#define MSM8998_MASTER_SNOC_CNOC                        24
++#define MSM8998_MASTER_QDSS_DAP                         25
++#define MSM8998_SLAVE_CNOC_A2NOC                        26
++#define MSM8998_SLAVE_SSC_CFG                           27
++#define MSM8998_SLAVE_MPM                               28
++#define MSM8998_SLAVE_PMIC_ARB                          29
++#define MSM8998_SLAVE_TLMM_NORTH                        30
++#define MSM8998_SLAVE_PIMEM_CFG                         31
++#define MSM8998_SLAVE_IMEM_CFG                          32
++#define MSM8998_SLAVE_MESSAGE_RAM                       33
++#define MSM8998_SLAVE_SKL                               34
++#define MSM8998_SLAVE_BIMC_CFG                          35
++#define MSM8998_SLAVE_PRNG                              36
++#define MSM8998_SLAVE_A2NOC_CFG                         37
++#define MSM8998_SLAVE_IPA_CFG                           38
++#define MSM8998_SLAVE_TCSR                              39
++#define MSM8998_SLAVE_SNOC_CFG                          40
++#define MSM8998_SLAVE_CLK_CTL                           41
++#define MSM8998_SLAVE_GLM                               42
++#define MSM8998_SLAVE_SPDM_WRAPPER                      43
++#define MSM8998_SLAVE_GRAPHICS_3D_CFG                   44
++#define MSM8998_SLAVE_CNOC_MNOC_CFG                     45
++#define MSM8998_SLAVE_QM_CFG                            46
++#define MSM8998_SLAVE_MSS_CFG                           47
++#define MSM8998_SLAVE_UFS_CFG                           48
++#define MSM8998_SLAVE_TLMM_WEST                         49
++#define MSM8998_SLAVE_A1NOC_CFG                         50
++#define MSM8998_SLAVE_PCIE20_AHB2PHY                    51
++#define MSM8998_SLAVE_BLSP_2                            52
++#define MSM8998_SLAVE_PDM                               53
++#define MSM8998_SLAVE_USB3_0                            54
++#define MSM8998_SLAVE_A1NOC_SMMU_CFG                    55
++#define MSM8998_SLAVE_BLSP_1                            56
++#define MSM8998_SLAVE_SDCC_2                            57
++#define MSM8998_SLAVE_SDCC_4                            58
++#define MSM8998_SLAVE_TSIF                              59
++#define MSM8998_SLAVE_QDSS_CFG                          60
++#define MSM8998_SLAVE_TLMM_EAST                         61
++#define MSM8998_SLAVE_CNOC_MNOC_MMSS_CFG                62
++#define MSM8998_SLAVE_SRVC_CNOC                         63
++#define MSM8998_MASTER_APPS_PROC                        64
++#define MSM8998_SLAVE_GNOC_BIMC                         65
++#define MSM8998_MASTER_CNOC_MNOC_MMSS_CFG               66
++#define MSM8998_MASTER_CNOC_MNOC_CFG                    67
++#define MSM8998_MASTER_CPP                              68
++#define MSM8998_MASTER_JPEG                             69
++#define MSM8998_MASTER_MDP_P0                           70
++#define MSM8998_MASTER_MDP_P1                           71
++#define MSM8998_MASTER_ROTATOR                          72
++#define MSM8998_MASTER_VIDEO_P0                         73
++#define MSM8998_MASTER_VFE                              74
++#define MSM8998_MASTER_VIDEO_P0_OCMEM                   75
++#define MSM8998_SLAVE_MNOC_BIMC                         76
++#define MSM8998_SLAVE_VMEM                              77
++#define MSM8998_SLAVE_SRVC_MNOC                         78
++#define MSM8998_SLAVE_CAMERA_CFG                        79
++#define MSM8998_SLAVE_CAMERA_THROTTLE_CFG               80
++#define MSM8998_SLAVE_MISC_CFG                          81
++#define MSM8998_SLAVE_VENUS_THROTTLE_CFG                82
++#define MSM8998_SLAVE_VENUS_CFG                         83
++#define MSM8998_SLAVE_VMEM_CFG                          84
++#define MSM8998_SLAVE_MMSS_CLK_XPU_CFG                  85
++#define MSM8998_SLAVE_MMSS_CLK_CFG                      86
++#define MSM8998_SLAVE_DISPLAY_CFG                       87
++#define MSM8998_SLAVE_DISPLAY_THROTTLE_CFG              88
++#define MSM8998_SLAVE_MMSS_SMMU_CFG                     89
++#define MSM8998_MASTER_HMSS                             90
++#define MSM8998_MASTER_QDSS_BAM                         91
++#define MSM8998_MASTER_SNOC_CFG                         92
++#define MSM8998_MASTER_BIMC_SNOC_0                      93
++#define MSM8998_MASTER_BIMC_SNOC_1                      94
++#define MSM8998_MASTER_A1NOC_SNOC                       95
++#define MSM8998_MASTER_A2NOC_SNOC                       96
++#define MSM8998_MASTER_QDSS_ETR                         97
++#define MSM8998_SLAVE_APPSS                             98
++#define MSM8998_SLAVE_LPASS                             99
++#define MSM8998_SLAVE_WLAN                              100
++#define MSM8998_SLAVE_SNOC_BIMC                         101
++#define MSM8998_SLAVE_SNOC_CNOC                         102
++#define MSM8998_SLAVE_OCIMEM                            103
++#define MSM8998_SLAVE_PIMEM                             104
++#define MSM8998_SLAVE_QDSS_STM                          105
++#define MSM8998_SLAVE_PCIE_0                            106
++#define MSM8998_SLAVE_SRVC_SNOC                         107
++
++#endif /* __DRIVERS_INTERCONNECT_QCOM_MSM8998_H__ */

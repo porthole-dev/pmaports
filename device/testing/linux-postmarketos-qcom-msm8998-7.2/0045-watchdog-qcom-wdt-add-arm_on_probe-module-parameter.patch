@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 9 Aug 2026 11:57:40 +0200
+Subject: [PATCH] watchdog: qcom-wdt: add arm_on_probe module parameter
+
+Some bootloaders (Google Pixel 2 XL) hand over with the watchdog
+stopped, so a boot that dies before userspace waits for a human
+forever. When arm_on_probe is set the driver arms the watchdog at
+probe and reports WDOG_HW_RUNNING: the core then pings it only until
+watchdog.open_timeout expires, after which an unclaimed watchdog
+bites and "boot never finished" self-recovers into the bootloader's
+retry path instead of hanging silently.
+
+Default off, keeping stock behaviour unless both parameters are set
+on the command line.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/watchdog/qcom-wdt.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/watchdog/qcom-wdt.c b/drivers/watchdog/qcom-wdt.c
+index 49bd04841f0c..883923ff5946 100644
+--- a/drivers/watchdog/qcom-wdt.c
++++ b/drivers/watchdog/qcom-wdt.c
+@@ -23,6 +23,17 @@ enum wdt_reg {
+ 
+ #define QCOM_WDT_ENABLE		BIT(0)
+ 
++/*
++ * Some bootloaders (Pixel 2 XL) hand over with the watchdog stopped, so a
++ * boot that dies before userspace waits for a human forever. With this set
++ * the core pings the armed watchdog only until watchdog.open_timeout, then
++ * lets it bite: "boot never finished" becomes a reset instead of a brick.
++ */
++static bool arm_on_probe;
++module_param(arm_on_probe, bool, 0444);
++MODULE_PARM_DESC(arm_on_probe,
++	"Arm the watchdog at probe even if the bootloader left it stopped (pair with watchdog.open_timeout)");
++
+ static const u32 reg_offset_data_apcs_tmr[] = {
+ 	[WDT_RST] = 0x38,
+ 	[WDT_EN] = 0x40,
+@@ -328,7 +339,7 @@ static int qcom_wdt_probe(struct platform_device *pdev)
+ 	 * might use different ones and set running bit
+ 	 * to inform the WDT subsystem to ping the WDT
+ 	 */
+-	if (qcom_wdt_is_running(&wdt->wdd)) {
++	if (qcom_wdt_is_running(&wdt->wdd) || arm_on_probe) {
+ 		qcom_wdt_start(&wdt->wdd);
+ 		set_bit(WDOG_HW_RUNNING, &wdt->wdd.status);
+ 	}

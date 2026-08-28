@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 18 Aug 2026 12:43:50 +0200
+Subject: [PATCH] media: qcom: camss: vfe-gen1: write every frame the caller
+ did not gate off
+
+The write master's framedrop pattern is a 32-bit rolling mask indexed
+by the frame counter modulo (period + 1), not a mask over the ping/pong
+pair. With the period the driver programs -- 30 or 31 -- the callers'
+patterns of 1, 2 and 3 therefore ask the hardware to write one or two
+frames out of every 31.
+
+Two things follow. The obvious one is the frame rate: measured on
+msm8998, pattern 1 with period 1 delivered exactly 15 fps against the
+sensor's 30. The less obvious one is corruption, because the RDI write
+master does not reset its fill pointer on SOF: each gated frame resumes
+writing part way into the buffer, so the following frame is torn and
+its Bayer row phase is inverted, which is what turned the rear camera's
+viewfinder grey.
+
+Program downstream's NO_SKIP -- all ones across the full period -- for
+every non-zero pattern. Pattern 0 still means stop, and keeps passing
+through.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../media/platform/qcom/camss/camss-vfe-gen1.c    | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/drivers/media/platform/qcom/camss/camss-vfe-gen1.c b/drivers/media/platform/qcom/camss/camss-vfe-gen1.c
+index 540ead9b94eb..561df532731c 100644
+--- a/drivers/media/platform/qcom/camss/camss-vfe-gen1.c
++++ b/drivers/media/platform/qcom/camss/camss-vfe-gen1.c
+@@ -158,6 +158,21 @@ static void vfe_output_frame_drop(struct vfe_device *vfe,
+ 	output->drop_update_idx %= VFE_FRAME_DROP_UPDATES;
+ 	drop_period = VFE_FRAME_DROP_VAL + output->drop_update_idx;
+ 
++	/*
++	 * The framedrop pattern is a 32-bit rolling mask indexed by the frame
++	 * counter modulo (period + 1), not a ping/pong slot mask: the callers'
++	 * 1, 2 and 3 leave all but one or two frames of a 31-frame cycle
++	 * ungated. The RDI write master does not reset its fill pointer on SOF,
++	 * so every gated frame resumes writing mid-buffer, tearing the frame and
++	 * flipping the Bayer row phase. Downstream's NO_SKIP is all-ones over
++	 * the full period; measured on msm8998 as a steady 30 fps where
++	 * pattern 1 / period 1 gave exactly 15. Pattern 0 still stops writes.
++	 */
++	if (drop_pattern) {
++		drop_pattern = 0xffffffff;
++		drop_period = 31;
++	}
++
+ 	for (i = 0; i < output->wm_num; i++) {
+ 		vfe->ops_gen1->wm_set_framedrop_period(vfe, output->wm_idx[i], drop_period);
+ 		vfe->ops_gen1->wm_set_framedrop_pattern(vfe, output->wm_idx[i], drop_pattern);

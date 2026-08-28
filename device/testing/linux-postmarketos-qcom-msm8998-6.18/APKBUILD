@@ -25,7 +25,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-6.18"
 pkgname=linux-$_flavor
 pkgver=6.18
-pkgrel=98
+pkgrel=101
 pkgdesc="6.18 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -244,6 +244,7 @@ source="
 	0185-ASoC-qdsp6-q6voice-a-control-for-the-vocproc-s-downl.patch
 	0186-drm-msm-a5xx-reset-the-GPU-before-hw_init-reprograms.patch
 	0187-cpufreq-qcom-hw-msm8998-busy-poll-the-ACD-transfers.patch
+	0189-arm64-dts-qcom-msm8998-vote-the-bus-for-the-video-co.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -275,7 +276,7 @@ package() {
 }
 sha512sums="
 88599ffdec96d150c1feb9b261ba93bb0301a9d0e1ad6bef7aeab1f5372cbfc57d8b43c7e902bd8f76921d1dbd8189663c142ea869e51d0e2b483b150ee00fe0  linux-6.18.tar.xz
-e3348e728e73e17cd78e3a4f823075e0a7305b232b7b17b505b6a863d1c69f9f523a164981c8ab2fbf6a88cc481e23fdacb97ffab1b62d3c9b454909328ebe7a  config-postmarketos-qcom-msm8998-6.18.aarch64
+0acf41d73cbe7824ec24a55e46003778decf423090b8d4037019d870873b1b1fd195bf86add0b721f5d58b63cb7ce966c5b565b4338362ef1969f80a4c81be6f  config-postmarketos-qcom-msm8998-6.18.aarch64
 6934c11a36ac059b9d68f44aa1b982b9c9d666d50fc03f7b02e2fb9f2714cc94f96ece454ccba30a50db79ac2c92fb000f13244b93802d92772171bbbdc85c5d  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 b8fd04cff5ea6ba871ea1b346fd2390417c67475e4de3f69e15b2ca5da8e7f4456779c97b8ed1b7369249a7890d4e5d86a4a85d568904bbe78c7a4e87ba5c5b3  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 e2a09befe95931719e98f100e8966fd2dda73e15811511656013ea2c1d4bbd81d36514c8d8489c92cdbec8da9169218148b8c1faa9e2e7ad9ec4625a8e9868d7  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -463,4 +464,5 @@ d00ff2f85d02c26da17f0a05a30674983d66f1aed668cdb0e41105393d5b6afd747a29987bcc67e5
 df6e0424f6f6a83b9b5908a7539a0cea435efcdae228b91bcb2e8755b13f3e9a9cf342ccb0c11ddc6729e1a889d9f6903af294e188deb275898a1c1f4240a5cf  0185-ASoC-qdsp6-q6voice-a-control-for-the-vocproc-s-downl.patch
 ef6060c77f2662558448aa21961997ebfed74ff6d68502eea9ff6a4a6bef7880e1e64d6f8ac6d6839db5fbdd16daa153d60ad6c4a3c3f317f3c7e89598ceb984  0186-drm-msm-a5xx-reset-the-GPU-before-hw_init-reprograms.patch
 919306b98dd036890cddf255d4b116588f2b90227de929e8a1667ebaa2e1a65a7491686d78f9c93017989f0a50bf39d292902969ba1c60cf87d3fbc7bcb3ffc7  0187-cpufreq-qcom-hw-msm8998-busy-poll-the-ACD-transfers.patch
+3126b31dc101b07b2a15139c475395a352b2a9c4d5a25d69ab6f0a9c7c35edae7f836c5e4ae6da54b73101cdb9887eb9699cf12e475a5df7185f83096389ce83  0189-arm64-dts-qcom-msm8998-vote-the-bus-for-the-video-co.patch
 "

@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 28 Aug 2026 08:05:00 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: vote the bus for the video codec
+
+venus_runtime_resume() votes the bus before it powers the core, and the order
+is deliberate -- the core cannot be reached otherwise:
+
+	icc_set_bw(core->video_path, kbps_to_icc(20000), 0);
+	icc_set_bw(core->cpucfg_path, kbps_to_icc(1000), 0);
+	if (pm_ops->core_power)
+		pm_ops->core_power(core, POWER_ON);
+
+msm8998's video-codec node has never carried interconnects, and
+devm_of_icc_get() returns NULL rather than an error when the property is
+absent, so both votes are silent no-ops and core_power() then touches
+registers on a path with no bandwidth. Wire the two paths the driver asks for
+by name, mirroring the display subsystem in the same file.
+
+This is a completeness fix, NOT a fix for bringing venus up, and the
+distinction is measured rather than assumed. With the node enabled and this
+patch applied, loading venus_core still kills the SoC instantly: netconsole --
+verified end to end on two transports immediately beforehand -- carries the
+marker printed one line earlier and then nothing at all, and the phone returns
+on the hardware watchdog. Identical to the behaviour without it. So the
+missing bus vote is real and worth fixing, but something else in the msm8998
+venus bring-up is fatal, and the node stays disabled until that is found.
+
+Do not enable the node on the strength of this patch. It bootloops the device,
+and the only way out is a physical Power+VolDown into fastboot.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -4258,6 +4258,11 @@
+ 				 <&mmss_smmu 0x42d>,
+ 				 <&mmss_smmu 0x411>,
+ 				 <&mmss_smmu 0x431>;
++			interconnects = <&mnoc MASTER_VIDEO_P0 RPM_ALWAYS_TAG
++					 &bimc SLAVE_EBI RPM_ALWAYS_TAG>,
++					<&gnoc MASTER_APPS_PROC RPM_ALWAYS_TAG
++					 &mnoc SLAVE_VENUS_CFG RPM_ALWAYS_TAG>;
++			interconnect-names = "video-mem", "cpu-cfg";
+ 			memory-region = <&venus_mem>;
+ 			status = "disabled";
+ 
+-- 
+2.51.0
+

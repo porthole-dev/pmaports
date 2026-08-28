@@ -71,7 +71,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 
 pkgname=firmware-google-taimen
 pkgver=20250505
-pkgrel=3
+pkgrel=4
 pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -113,6 +113,13 @@ build() {
 	pil-squasher adsp.mbn adsp.mdt
 	pil-squasher slpi_v2.mbn slpi_v2.mdt
 	pil-squasher ipa_fws.mbn ipa_fws.mdt
+
+	# venus, the video accelerator. The vendor tree ships a pre-made
+	# venus.mbn alongside the .mdt/.bNN set, but squash our own from the
+	# .mdt like every other blob here: that is exactly the layout
+	# qcom_mdt_load() expects, and it does not depend on how whoever
+	# assembled the vendor tree produced theirs.
+	pil-squasher venus-fw.mbn venus.mdt
 
 	# radio.img is a "BOOTLDR!" container: 8-byte magic, u32 image count,
 	# u32 payload offset, u32 total size, then one 68-byte descriptor per
@@ -156,6 +163,12 @@ package() {
 	# renderer, phoc exits, and greetd gives up -- i.e. no display at all,
 	# with nothing in the log that mentions the GPU unless you go looking.
 	install -Dm644 a540_gpmu.fw2 -t "$_fw"/qcom/
+
+	# The venus decoder firmware. The driver asks for this exact path --
+	# core.c msm8998_res.fwname = "qcom/venus-4.4/venus.mbn" -- and without
+	# it the node probes and then fails to boot the core, so every video
+	# frame falls back to the CPU.
+	install -Dm644 venus-fw.mbn "$_fw"/qcom/venus-4.4/venus.mbn
 
 	# mba.mbn / modem.mbn: from Google's factory image -- see header.
 	# modemr.jsn comes from there too: it is the modem ROOT protection-domain

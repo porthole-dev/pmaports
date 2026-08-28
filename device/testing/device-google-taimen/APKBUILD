@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=31
+pkgrel=32
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -462,16 +462,22 @@ openrc() {
 
 kernel_mainline() {
 	pkgdesc="Close to mainline kernel"
-	# The -6.18 aport, not the 6.0 one. Both exist in pmaports and both build
-	# from this project's tree, so naming the 6.0 package here installed it
-	# into the rootfs, gave it ownership of /boot/vmlinuz, and left every
-	# 6.18 package build unable to place its kernel -- the device booted
-	# whatever the 6.0-named package last contained.
+	# The -7.2 aport. Three linux-postmarketos-qcom-msm8998* packages now
+	# exist in pmaports (6.0, 6.18, 7.2) and all build from this project's
+	# tree, so naming the wrong one here installs it into the rootfs, gives
+	# it ownership of /boot/vmlinuz, and leaves every other package build
+	# unable to place its kernel -- the device then boots whatever that
+	# package last contained.
+	#
+	# Changing this line changes kernel.release, so /usr/lib/modules/<rel>
+	# moves with it: a boot.img-only flash lands a kernel with no modules on
+	# disk. Reinstall the rootfs (`porthole build kernel`) when this changes,
+	# never `porthole build fast`.
 	#
 	# soc-qcom-msm8998 moved to the top-level depends= (it is a device
 	# runtime dependency, not a kernel-specific one) -- see that depends=
 	# block's comment.
-	depends="linux-postmarketos-qcom-msm8998-6.18"
+	depends="linux-postmarketos-qcom-msm8998-7.2"
 	devicepkg_subpackage_kernel $startdir $pkgname $subpkgname
 }
 

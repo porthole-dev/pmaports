@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 12:50:00 +0200
+Subject: [PATCH] media: venus: msm8998: power the vcodec subcores before
+ touching VBIF
+
+The msm8998 wedge is one write -- 0x00000003 to base+0x80124, the first VBIF
+register, from venus_set_registers(). Reading the power state at exactly that
+point, with venus stopped just after core_power(POWER_ON):
+
+	video_subcore1   off-0
+	video_subcore0   off-0
+	video_top        on
+	  cc00000.video-codec   active
+
+Both subcores are unpowered and the driver writes into VBIF regardless. That is
+a NoC timeout by construction, and it explains why no reordering helped: with
+presets_early=1, writing them before venus_boot() wedges just the same.
+
+mainline attaches the subcore GDSCs to the video-decoder/video-encoder child
+nodes, which nothing powers at probe -- venus_dec and venus_enc are not even
+loaded. The vendor does not do this. Its pil-tz venus node carries three
+regulators, gdsc_venus, gdsc_venus_core0 and gdsc_venus_core1, and
+__enable_regulators() brings all three up inside __venus_power_on(), before
+__set_registers() touches anything.
+
+Put the subcore domains and their clocks on the parent, as sdm845 and sc7180
+already do, so core_power_v1() calls vcodec_domains_enable() before any
+register access. The children keep their own references; a genpd may have more
+than one consumer.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi    | 14 ++++++++++----
+ drivers/media/platform/qcom/venus/core.c | 24 ++++++++++++++++++++++++
+ 2 files changed, 34 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -3175,7 +3175,10 @@
+ 			compatible = "qcom,msm8998-venus";
+ 			reg = <0x0cc00000 0xff000>;
+ 			interrupts = <GIC_SPI 287 IRQ_TYPE_LEVEL_HIGH>;
+-			power-domains = <&mmcc VIDEO_TOP_GDSC>;
++			power-domains = <&mmcc VIDEO_TOP_GDSC>,
++					<&mmcc VIDEO_SUBCORE0_GDSC>,
++					<&mmcc VIDEO_SUBCORE1_GDSC>;
++			power-domain-names = "venus", "vcodec0", "vcodec1";
+ 			clocks = <&mmcc VIDEO_CORE_CLK>,
+ 				 <&mmcc VIDEO_AHB_CLK>,
+ 				 <&mmcc VIDEO_AXI_CLK>,
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -881,7 +881,30 @@
+ 	.clks_num = 6,
+ 	.vcodec0_clks = { "core" },
+ 	.vcodec1_clks = { "core" },
+-	.vcodec_clks_num = 1,
++	/*
++	 * Measured at the point of the wedge, with venus stopped just after
++	 * core_power(POWER_ON):
++	 *
++	 *   video_subcore1   off-0
++	 *   video_subcore0   off-0
++	 *   video_top        on
++	 *
++	 * Both subcores are unpowered, and venus_set_registers() writes into
++	 * VBIF anyway. Declaring the vcodec pmdomains is what makes
++	 * core_power_v1() call vcodec_domains_enable() first -- which is what
++	 * the vendor does: its pil-tz venus node carries gdsc_venus,
++	 * gdsc_venus_core0 and gdsc_venus_core1, and __enable_regulators()
++	 * brings all three up before __set_registers().
++	 *
++	 * Only the DOMAINS are claimed here, not their clocks. The subcore
++	 * GDSCs are HW_CTRL, so software cannot force video_subcore0_clk on --
++	 * it reports "status stuck at 'off'" and core_power_v1() fails -EBUSY.
++	 * Leaving vcodec_clks unset makes vcodec_clks_enable() walk NULLs and
++	 * no-op, while vcodec_domains_enable() still powers the subcores. The
++	 * per-session clocks stay where they belong, on the child nodes.
++	 */
++	.vcodec_pmdomains = (const char *[]) { "venus", "vcodec0", "vcodec1" },
++	.vcodec_pmdomains_num = 3,
+ 	.max_load = 2563200,
+ 	.hfi_version = HFI_VERSION_3XX,
+ 	.vmem_id = VIDC_RESOURCE_NONE,

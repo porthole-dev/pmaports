@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=8
+pkgrel=13
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -276,6 +276,10 @@ source="
 	0185-media-venus-add-preset_limit-to-name-the-preset-writ.patch
 	0186-media-venus-do-not-swallow-a-TZ-refusal-of-set_remot.patch
 	0187-media-venus-set-the-content-protection-regions-for-m.patch
+	0188-media-venus-msm8998-needs-the-two-MMSS-NoC-clocks.patch
+	0189-media-venus-write-the-VBIF-presets-before-the-firmwa.patch
+	0190-media-venus-msm8998-power-the-vcodec-subcores-before.patch
+	0191-media-venus-rate-the-core-clocks-on-3XX-before-touch.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -495,4 +499,8 @@ c270df400657d17cebb9d2809f41cf220dc120ff491a7ed092a08888e5fe238d5ed8f5f9bd46261e
 4965ff3e9c8f50ae73a416b96844f92436c900ef1e93be275dea3e54777c4732f0fb4ce36dd4c14e770f97f58258efd39fb27a947a11af282f048562071d94b4  0185-media-venus-add-preset_limit-to-name-the-preset-writ.patch
 adfed4a49ccb4343affe238a655ff97bdd3f77b0b1072e0c7b9578aa94173766c428ce07a6ccf8fe9aaf8306fabf03c46bb49ca92e750269da925542c15485f0  0186-media-venus-do-not-swallow-a-TZ-refusal-of-set_remot.patch
 8f492a5804b0c869bb6421a5dddedfded3656f6a50030f146d6823a0f36d53e0d954fe57b4d2f1bd94bb3fcccaf0d497c849032b927df026a19f2a99f2cfc83a  0187-media-venus-set-the-content-protection-regions-for-m.patch
+b3f0ae423bd45c32ad185b59fe02d2939b7c19da2b33c1c6f6abcc335a0d056b74b0f0d7f91ed5982950a40fe4179313a1d45cdae3243d3ec9546ec5ebadac55  0188-media-venus-msm8998-needs-the-two-MMSS-NoC-clocks.patch
+bfa3ebed1e45e4bbfe21462a3d7d26aa01df40f1a18ab5f1f92ec2c42e553d943b2fcabe9a3b3c5fbd6bf1b0207e8eb367d3ef08b77670f794195a067a709a2a  0189-media-venus-write-the-VBIF-presets-before-the-firmwa.patch
+3c0eac50764e9d12e04a4f9bdb2bb6d9cedfb521a86f10dffcabe643b8997e40d20aa0a7804e6af9f0c216ff7067b031ea2fef858645a9b2444d9101197fea18  0190-media-venus-msm8998-power-the-vcodec-subcores-before.patch
+7f617b699d11910e71e1b521450690b79b5cf0021064a42743bbb24d12e0a1cc2a40cf7618e79700f498f0a4ee2d2f278f6b77256b1fa0085da49671a61ab743  0191-media-venus-rate-the-core-clocks-on-3XX-before-touch.patch
 "

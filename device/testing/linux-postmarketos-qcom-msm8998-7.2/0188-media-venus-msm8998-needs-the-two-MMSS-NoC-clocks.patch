@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 10:05:00 +0200
+Subject: [PATCH] media: venus: msm8998 needs the two MMSS NoC clocks
+
+The msm8998 venus support was added as an RFC "based on similar msm8996
+code" and, by the author's own framing, never proven on hardware. On a
+Pixel 2 XL it takes the SoC down below printk, and the bisect lands on a
+single write: 0x00000003 to base+0x80124, the first VBIF register, from
+venus_set_registers(). Skipping the preset table avoids the wedge entirely.
+
+VBIF is the venus-to-MMSS-NoC bridge, so that write is the first thing to
+need a clocked path out of the block -- and one of the clocks it needs is
+not running. On a booted device with the display active:
+
+  gcc_mmss_sys_noc_axi_clk    enable_count 0   rate 0
+  mnoc_ahb_clk                enable_count 2   rate 40000000
+
+Nothing else in the system votes the MMSS system NoC AXI clock, while
+mnoc_ahb_clk happens to be on because the display uses it. That is exactly
+the asymmetry observed: the AHB config path works -- every CPU write to the
+venus wrapper lands -- and the AXI data path through VBIF does not.
+
+The vendor devicetree agrees. Its pil-tz venus node lists six clocks and
+holds all six as proxy clocks across firmware authentication:
+
+  clock-names = "core_clk", "mnoc_ahb_clk", "iface_clk",
+                "noc_axi_clk", "bus_clk", "maxi_clk"
+
+Mainline carries four of them. Add the missing two, and raise
+VIDC_CLKS_NUM_MAX to fit, which no other platform's count exceeds.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi        |  7 +++++--
+ drivers/media/platform/qcom/venus/core.c     | 17 ++++++++++++++++-
+ drivers/media/platform/qcom/venus/core.h     |  2 +-
+ 3 files changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -3179,8 +3179,11 @@
+ 			clocks = <&mmcc VIDEO_CORE_CLK>,
+ 				 <&mmcc VIDEO_AHB_CLK>,
+ 				 <&mmcc VIDEO_AXI_CLK>,
+-				 <&mmcc VIDEO_MAXI_CLK>;
+-			clock-names = "core", "iface", "bus", "mbus";
++				 <&mmcc VIDEO_MAXI_CLK>,
++				 <&mmcc MNOC_AHB_CLK>,
++				 <&gcc GCC_MMSS_SYS_NOC_AXI_CLK>;
++			clock-names = "core", "iface", "bus", "mbus",
++				      "mnoc_ahb", "noc_axi";
+ 			iommus = <&mmss_smmu 0x400>,
+ 				 <&mmss_smmu 0x401>,
+ 				 <&mmss_smmu 0x40a>,
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -858,8 +858,23 @@
+ 	.freq_tbl_size = ARRAY_SIZE(msm8998_freq_table),
+ 	.reg_tbl = msm8998_reg_preset,
+ 	.reg_tbl_size = ARRAY_SIZE(msm8998_reg_preset),
+-	.clks = { "core", "iface", "bus", "mbus" },
+-	.clks_num = 4,
++	/*
++	 * The two NoC clocks are not optional here, whatever msm8996 got away
++	 * with. VBIF is the venus-to-MMSS-NoC bridge, and the first write into
++	 * it -- 0x80124, from venus_set_registers() -- hangs the fabric hard
++	 * enough that only the watchdog recovers. gcc_mmss_sys_noc_axi_clk is
++	 * measurably OFF (enable_count 0, rate 0) on a booted msm8998 with the
++	 * display up, because nothing else votes it; mnoc_ahb_clk happens to be
++	 * on from the display, which is why the AHB config path works while the
++	 * AXI data path does not.
++	 *
++	 * The vendor agrees: its pil-tz venus node lists six clocks, and holds
++	 * all six as proxy clocks across firmware authentication --
++	 *   "core_clk", "mnoc_ahb_clk", "iface_clk",
++	 *   "noc_axi_clk", "bus_clk", "maxi_clk"
++	 */
++	.clks = { "core", "iface", "bus", "mbus", "mnoc_ahb", "noc_axi" },
++	.clks_num = 6,
+ 	.vcodec0_clks = { "core" },
+ 	.vcodec1_clks = { "core" },
+ 	.vcodec_clks_num = 1,
+diff --git a/drivers/media/platform/qcom/venus/core.h b/drivers/media/platform/qcom/venus/core.h
+--- a/drivers/media/platform/qcom/venus/core.h
++++ b/drivers/media/platform/qcom/venus/core.h
+@@ -23,7 +23,7 @@
+ #define VDBGH	"VenusHigh: "
+ #define VDBGFW	"VenusFW  : "
+ 
+-#define VIDC_CLKS_NUM_MAX		4
++#define VIDC_CLKS_NUM_MAX		6
+ #define VIDC_VCODEC_CLKS_NUM_MAX	2
+ #define VIDC_RESETS_NUM_MAX		2
+ #define VIDC_MAX_HIER_CODING_LAYER 6

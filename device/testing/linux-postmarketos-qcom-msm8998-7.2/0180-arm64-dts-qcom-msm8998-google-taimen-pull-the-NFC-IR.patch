@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 02:40:00 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: pull the NFC IRQ line
+ down
+
+gpio92 carries the PN553's interrupt and is described IRQ_TYPE_LEVEL_HIGH.
+Biasing it with a pull-up asserts that interrupt permanently whenever the
+controller is not driving the line, which on mainline is most of the time:
+nxp-nci holds VEN low until userspace calls dev_up(), while the irq is
+requested at probe.
+
+The result is a spurious interrupt that never goes away.  The handler's
+first I2C read NACKs (-EREMOTEIO, "NFC: Read failed with error -121" at
+t=10s every boot), the driver latches hard_fault and from then on returns
+IRQ_HANDLED without touching the chip, so nothing ever deasserts the line.
+Measured on a Pixel 2 XL: 26,176,487 interrupts in 27 minutes -- 6.5k/s
+idle, 20.5k/s under load -- with the threaded handler burning 22% of a
+core continuously from boot.
+
+The vendor's pull-up is not wrong downstream, where the nq-nci driver
+drives VEN high from its own probe and the controller owns the line; there
+the bias only picks an idle level.  It is wrong here.  Pull it down: the
+controller drives push-pull once powered, so an active interrupt still
+reaches the CPU, and an unpowered controller now reads as idle.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -539,12 +539,22 @@
+ 	 * nfc_enable_active). The vendor groups gpio116 -- the eSE enable --
+ 	 * into nfc_enable_active; it is left out here because the eSE is not
+ 	 * described and driving its enable line would be a side effect.
++	 *
++	 * The INT bias is deliberately NOT the vendor's. Downstream drives VEN
++	 * high from its own probe, so the controller owns gpio92 and the
++	 * vendor's pull-up only picks the idle level. Mainline's nxp-nci keeps
++	 * VEN low until userspace calls dev_up(), so a pull-up holds the line
++	 * high against a tri-stated controller and the LEVEL_HIGH irq is
++	 * asserted from request_threaded_irq() onwards -- 6k/s idle, 20k/s
++	 * under load, forever, because the handler's I2C read NACKs
++	 * (-EREMOTEIO), latches hard_fault and then acks nothing. The
++	 * controller drives push-pull once powered, so pull it down.
+ 	 */
+ 	nfc_int_active: nfc-int-active {
+ 		pins = "gpio92";
+ 		function = "gpio";
+ 		drive-strength = <6>;
+-		bias-pull-up;
++		bias-pull-down;
+ 	};
+ 
+ 	nfc_enable_active: nfc-enable-active {

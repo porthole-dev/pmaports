@@ -1,0 +1,30 @@
+# taimen fork: gst-plugins-good with the stateful V4L2 element
+
+## Why this exists
+Alpine builds gst-plugins-good WITHOUT the `video4linux2` plugin, so no
+GStreamer consumer -- WebKit/Epiphany, GNOME's video apps, anything on
+`playbin` -- can reach the hardware video decoder that now works on
+taimen (venus, /dev/video6). This fork forces `-Dv4l2=enabled`, which
+builds `libgstvideo4linux2.so` and registers `v4l2h264dec`,
+`v4l2vp9dec`, `v4l2h264enc`. Verified: bit-exact H.264/VP9 decode through
+the venus V4L2 M2M nodes.
+
+## THE TRAP that will silently break hardware decode
+This fork is pkgver 1.28.5, pkgrel 1. apk resolves by (pkgver, pkgrel),
+so it only wins while Alpine's gst-plugins-good is ALSO 1.28.5. The
+moment Alpine bumps to 1.28.6, the stock (v4l2-LESS) build outranks this
+fork, apk installs it on the next `apk upgrade`, and hardware decode
+disappears from the browser WITH NO ERROR -- it just falls back to
+software.
+
+When that happens, or before shipping a new image on a newer Alpine:
+  1. Diff this APKBUILD against Alpine's current community/gst-plugins-good.
+  2. Re-apply only the `-Dv4l2=enabled` line (and the qt/gudev trims).
+  3. Match the new pkgver, keep a pkgrel that wins, rebuild.
+
+## The real fix (do this, then delete this fork)
+Enable v4l2 in Alpine's gst-plugins-good upstream. The one-line change is
+prepared in this port at:
+    vendor-patches/outgoing/alpine-gst-plugins-good-enable-v4l2.md
+Once merged, the stock package carries the element and this fork is dead
+weight -- remove temp/gst-plugins-good and this README with it.

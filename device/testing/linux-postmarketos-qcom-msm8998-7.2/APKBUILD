@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=1
+pkgrel=2
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -268,6 +268,7 @@ source="
 	0177-cpufreq-qcom-hw-msm8998-busy-poll-the-ACD-transfers.patch
 	0178-arm64-dts-qcom-msm8998-vote-the-bus-for-the-video-co.patch
 	0179-iio-qcom_smgr-QMI_DATA_LEN-fields-are-u32-on-the-hos.patch
+	0180-arm64-dts-qcom-msm8998-google-taimen-pull-the-NFC-IR.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -479,4 +480,5 @@ b5adc0c5fc76ab21661ecc218726664ca288084e70448b8ef78992b0dd8bd637ad0306033878aadc
 70ab60f8cd3ba8e9313907f839613fae23a7dca8935675692d76e0434c2b23799d7ff92b9884e3d8d667ced50f7479c586020ccd18d48034626b8acdd987d8c8  0177-cpufreq-qcom-hw-msm8998-busy-poll-the-ACD-transfers.patch
 5c4704eac40c13069a32c605f993d83cb7a539c8354bc367bfa1ab667d09543e85b4acffe86f774b1e9ca9f3cd759f5c4f72b4ab82ffcceca3426279c0ff21a6  0178-arm64-dts-qcom-msm8998-vote-the-bus-for-the-video-co.patch
 36c4148e0426dcb3678c2a0926b26245e27ef136c99b17100f4ebf588b4d0bad7133d3ad3353f5a5290ef98cd40b8fa8ef122176cb48043733b2d8f8047a7173  0179-iio-qcom_smgr-QMI_DATA_LEN-fields-are-u32-on-the-hos.patch
+fac8b3c4a535753e56a1f5a5b99219f2b64ef7bd546d48008a8d5c5f46b4ba57764110ae9afb550d956dcc3d365231508e525fa93e1a63319813a664080f8f3b  0180-arm64-dts-qcom-msm8998-google-taimen-pull-the-NFC-IR.patch
 "

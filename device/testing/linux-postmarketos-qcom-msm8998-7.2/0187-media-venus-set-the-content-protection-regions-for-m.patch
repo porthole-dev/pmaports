@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 06:20:00 +0200
+Subject: [PATCH] media: venus: set the content protection regions for msm8998
+
+Measured on a Pixel 2 XL: TZ refuses the resume outright.
+
+  qcom-venus cc00000.video-codec: venus: scm_set_remote_state(resume=1) = -22
+  qcom-venus cc00000.video-codec: venus: scm_set_remote_state(resume=0) = 0
+
+venus_set_hw_state() maps that -EINVAL to success, so nothing reports it and
+the venus CPU is never released. Everything downstream of that follows: the
+first VBIF write in venus_set_registers(), 0x00000003 to base+0x80124, never
+returns and takes the NoC with it, and with the preset table skipped the
+firmware never answers so venus_boot_core() times out with -110. Releasing the
+CPU by hand instead (venus_reset_cpu()) does not help -- the wrapper registers
+it writes are equally unreachable.
+
+The missing step is earlier. venus_boot() only calls
+qcom_scm_mem_protect_video_var() when res->cp_size is set, and msm8998_res sets
+none of the cp_* fields, so the content protection regions are never programmed
+into TZ.
+
+The values come from the downstream context banks exactly as the porting note
+in venus_boot() describes: cp_size is venus_ns/virtual-addr-pool[0] and the
+nonpixel pair is venus_sec_non_pixel/virtual-addr-pool, which msm8998-vidc.dtsi
+gives as <0x70800000 0x6f800000> and <0x1000000 0x24800000>. As a cross-check,
+sdm845 independently carries the same four values, and the venus_ns IOMMU
+stream list downstream matches mainline's msm8998 venus node exactly.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/core.c | 21 +++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -868,6 +868,25 @@
+ 	.vmem_id = VIDC_RESOURCE_NONE,
+ 	.vmem_size = 0,
+ 	.vmem_addr = 0,
++	/*
++	 * Without these venus_boot() skips qcom_scm_mem_protect_video_var(), TZ
++	 * then refuses qcom_scm_set_remote_state(resume) with -EINVAL -- which
++	 * venus_set_hw_state() maps to success -- and the venus CPU is never
++	 * released. The whole subsystem stays dark: the first VBIF write in
++	 * venus_set_registers() (0x80124) takes the NoC down, and with the
++	 * presets skipped the firmware never answers and boot_core times out.
++	 *
++	 * Taken from the downstream context banks, per the porting note in
++	 * venus_boot(): cp_size is venus_ns/virtual-addr-pool[0] and the
++	 * nonpixel pair is venus_sec_non_pixel/virtual-addr-pool, which in
++	 * msm8998-vidc.dtsi are <0x70800000 0x6f800000> and
++	 * <0x1000000 0x24800000>. sdm845 independently carries the same four
++	 * values.
++	 */
++	.cp_start = 0,
++	.cp_size = 0x70800000,
++	.cp_nonpixel_start = 0x1000000,
++	.cp_nonpixel_size = 0x24800000,
+ 	.dma_mask = 0xddc00000 - 1,
+ 	.fwname = "qcom/venus-4.4/venus.mbn",
+ };

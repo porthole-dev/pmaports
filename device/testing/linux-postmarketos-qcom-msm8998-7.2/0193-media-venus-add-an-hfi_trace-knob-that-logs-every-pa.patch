@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 15:10:00 +0200
+Subject: [PATCH] media: venus: add an hfi_trace knob that logs every packet
+
+The wedge is fixed and the firmware boots, but a decode session dies in
+silence: sixteen bitstream buffers go in, thirteen interrupts come back,
+and the sequence-changed event that would let userspace configure the
+capture queue never arrives (vdec_check_src_change() then answers
+G_FMT(CAPTURE) with -EINVAL forever, which is exactly what ffmpeg shows).
+The driver has no visibility into that conversation.
+
+hfi_trace=1 prints every packet written to the command queue and every
+packet read from the message queue, by type and size, plus the
+seq-changed event's data words when one arrives (data1 distinguishes
+sufficient from insufficient buffer resources). Default off.
+
+ponytail: diagnostic scaffolding, never upstream this. Delete once the
+session bring-up is done.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+
+--- a/drivers/media/platform/qcom/venus/hfi_venus.c
++++ b/drivers/media/platform/qcom/venus/hfi_venus.c	2026-08-29 14:39:36.387935060 +0200
+@@ -388,6 +388,11 @@
+ 	writel(clear_bit, cpu_ic_base + CPU_IC_SOFTINT);
+ }
+ 
++/* ponytail: HFI bring-up trace, shared with hfi_msgs.c. Delete when done. */
++int venus_hfi_trace;
++module_param_named(hfi_trace, venus_hfi_trace, int, 0644);
++MODULE_PARM_DESC(hfi_trace, "log every HFI packet in both directions");
++
+ static int venus_iface_cmdq_write_nolock(struct venus_hfi_device *hdev,
+ 					 void *pkt, bool sync)
+ {
+@@ -403,6 +408,10 @@
+ 	cmd_packet = (struct hfi_pkt_hdr *)pkt;
+ 	hdev->last_packet_type = cmd_packet->pkt_type;
+ 
++	if (venus_hfi_trace)
++		dev_info(dev, "hfi tx: %#x size %u\n",
++			 cmd_packet->pkt_type, cmd_packet->size);
++
+ 	queue = &hdev->queues[IFACEQ_CMD_IDX];
+ 
+ 	ret = venus_write_queue(hdev, queue, pkt, &rx_req);
+--- a/drivers/media/platform/qcom/venus/hfi_msgs.c
++++ b/drivers/media/platform/qcom/venus/hfi_msgs.c	2026-08-29 14:39:36.388276414 +0200
+@@ -19,6 +19,8 @@
+ #define VER_STR_SZ		128
+ #define SMEM_IMG_OFFSET_VENUS	(14 * 128)
+ 
++extern int venus_hfi_trace;
++
+ static void event_seq_changed(struct venus_core *core, struct venus_inst *inst,
+ 			      struct hfi_msg_event_notify_pkt *pkt)
+ {
+@@ -39,6 +41,10 @@
+ 
+ 	inst->error = HFI_ERR_NONE;
+ 
++	if (venus_hfi_trace)
++		dev_info(core->dev, "hfi rx: seq-changed data1 %#x data2 %#x\n",
++			 pkt->event_data1, pkt->event_data2);
++
+ 	switch (pkt->event_data1) {
+ 	case HFI_EVENT_DATA_SEQUENCE_CHANGED_SUFFICIENT_BUF_RESOURCES:
+ 	case HFI_EVENT_DATA_SEQUENCE_CHANGED_INSUFFICIENT_BUF_RESOURCES:
+@@ -812,6 +819,10 @@
+ 	bool found = false;
+ 	unsigned int i;
+ 
++	if (venus_hfi_trace)
++		dev_info(core->dev, "hfi rx: %#x size %u\n",
++			 hdr->pkt_type, hdr->size);
++
+ 	for (i = 0; i < ARRAY_SIZE(handlers); i++) {
+ 		handler = &handlers[i];
+ 		if (handler->pkt != hdr->pkt_type)

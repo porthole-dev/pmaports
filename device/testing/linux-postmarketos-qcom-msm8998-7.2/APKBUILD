@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=14
+pkgrel=18
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -281,6 +281,10 @@ source="
 	0190-media-venus-msm8998-power-the-vcodec-subcores-before.patch
 	0191-media-venus-rate-the-core-clocks-on-3XX-before-touch.patch
 	0192-media-venus-disable-wrapper-clock-auto-gating-on-msm.patch
+	0193-media-venus-add-an-hfi_trace-knob-that-logs-every-pa.patch
+	0194-media-venus-msm8998-clock-the-vcodec-subcores.patch
+	0195-clk-qcom-mmcc-msm8998-video-subcore-gdscs-are-HW_CTR.patch
+	0196-media-venus-msm8998-restore-the-TZ-threshold-registe.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -505,4 +509,8 @@ bfa3ebed1e45e4bbfe21462a3d7d26aa01df40f1a18ab5f1f92ec2c42e553d943b2fcabe9a3b3c5f
 3c0eac50764e9d12e04a4f9bdb2bb6d9cedfb521a86f10dffcabe643b8997e40d20aa0a7804e6af9f0c216ff7067b031ea2fef858645a9b2444d9101197fea18  0190-media-venus-msm8998-power-the-vcodec-subcores-before.patch
 7f617b699d11910e71e1b521450690b79b5cf0021064a42743bbb24d12e0a1cc2a40cf7618e79700f498f0a4ee2d2f278f6b77256b1fa0085da49671a61ab743  0191-media-venus-rate-the-core-clocks-on-3XX-before-touch.patch
 241ee74d16f687673df43a8af89b80a04ddc18b3e774284b26376ff7c5e57a35b11e755d18fc074ee3b85eccbe83aa0759e77dd531dcb37bd8dcab35f0c463a5  0192-media-venus-disable-wrapper-clock-auto-gating-on-msm.patch
+d54b74673da7c5fedee5a6bac7e5d57ad03ce02594b3178b757c423427b379774486578413ecd4cd7664f3848db7a4952788b656815a18056c29a75e30e13478  0193-media-venus-add-an-hfi_trace-knob-that-logs-every-pa.patch
+94e0e8bf82dd5688e0aa79fb4e60d35120566dfbbf9066edd70f20b6a34b557f60f84281e16b76761c6b89bcd5e1537a5934a5407d2b05999926255042598360  0194-media-venus-msm8998-clock-the-vcodec-subcores.patch
+d5da173ccd4ff895a4ede8557341ef7f6a0c0d4b8a7600f2d606ce81854635ab2077d663326763f452d1e26e8a39e8f26041ccc274b64af9e5dc186cc376d9b3  0195-clk-qcom-mmcc-msm8998-video-subcore-gdscs-are-HW_CTR.patch
+f8bdf46f7952223c0b933738559893af732eaf76716fa38560cd11c8051b7bd504e6f422699013b2bc43ed6f720c8b807d297d942432d8cd9ec3e158ee0b8626  0196-media-venus-msm8998-restore-the-TZ-threshold-registe.patch
 "

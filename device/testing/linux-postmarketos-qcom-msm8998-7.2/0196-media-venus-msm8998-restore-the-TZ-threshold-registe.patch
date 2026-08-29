@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 16:50:00 +0200
+Subject: [PATCH] media: venus: msm8998: restore the TZ threshold registers after
+ firmware boot
+
+After a power-collapse resume the firmware never answers another HFI
+message: TZ accepts the resume (scm_set_remote_state(1) = 0), the ARM9
+comes back and sets INIT_DONE, and then SYS_SESSION_INIT gets silence,
+traced with hfi_trace on both sides.
+
+The vendor names the cause in __set_threshold_registers(): on Venus
+3.43 -- the msm8998 part, WRAPPER_HW_VERSION 0x3043xxxx -- registers
+normally programmed by TZ come out of a firmware reboot incorrectly
+reset, and TZBSP video state 2 (RESTORE_THRESHOLD) is the agreed
+handshake that reprograms them. Downstream issues it after every
+__boot_firmware() in __resume(), and again on secure
+LOAD_RESOURCES_DONE. Mainline never sends state 2 at all.
+
+Issue it after every successful venus_boot_core() on matching hardware,
+exactly as the vendor does, ignoring the return value the same way
+(a cold-boot TZ may refuse it; that is harmless and the vendor treats
+it as best-effort too).
+
+With this, a decode session opened after a runtime suspend/resume cycle
+works, where before it timed out at SESSION_INIT.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/hfi_venus.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+--- a/drivers/media/platform/qcom/venus/hfi_venus.c
++++ b/drivers/media/platform/qcom/venus/hfi_venus.c
+@@ -9,6 +9,7 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/interrupt.h>
+ #include <linux/iopoll.h>
++#include <linux/firmware/qcom/qcom_scm.h>
+ #include <linux/kernel.h>
+ #include <linux/slab.h>
+ 
+@@ -567,6 +568,18 @@
+ 
+ 	venus_hwversion(hdev);
+ 
++	/*
++	 * Venus 3.43 (msm8998): registers normally programmed by TZ come out
++	 * of a firmware reboot incorrectly reset, and TZBSP video state 2
++	 * (RESTORE_THRESHOLD) is the agreed handshake that reprograms them.
++	 * The vendor issues it after every __boot_firmware() -- without it the
++	 * firmware never answers another HFI message after a power-collapse
++	 * resume. Cold boots tolerate it; any TZ refusal is not fatal.
++	 */
++	if ((readl(hdev->core->wrapper_base + WRAPPER_HW_VERSION) &
++	     ~GENMASK(15, 0)) == 0x30430000)
++		qcom_scm_set_remote_state(2, 0);
++
+ 	return 0;
+ }
+ 

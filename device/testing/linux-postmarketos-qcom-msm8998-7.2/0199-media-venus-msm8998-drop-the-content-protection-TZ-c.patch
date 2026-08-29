@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 19:05:00 +0200
+Subject: [PATCH] media: venus: msm8998: drop the content-protection TZ call
+
+The cp_* fields were added while hunting the fabric wedge and kept as a
+"correct completeness fix, wrong culprit". Measurement says they are
+neither needed nor useful here: the patch that added them recorded that
+they change TZ's answer not at all, and every bit-exact decode result
+(H.264 and VP9, ffmpeg and GStreamer) was produced with them present but
+demonstrably inert. Drop them so venus makes one fewer TrustZone call at
+probe -- with the driver autoloading at ~6s, before the modem and wifi
+firmware come up, the early-boot TZ surface should be as small as
+possible. (An earlier revision of this patch blamed this call for the
+dead radios; that was wrong -- a package-management accident had removed
+the rmtfs daemon, and the radios die identically with venus blacklisted.
+The call is still correctly dropped, for the reasons above.)
+
+Secure playback, if it ever matters, can revisit with the radios'
+memory map in hand.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/core.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -940,7 +940,9 @@
+-	.cp_start = 0,
+-	.cp_size = 0x70800000,
+-	.cp_nonpixel_start = 0x1000000,
+-	.cp_nonpixel_size = 0x24800000,
++	/*
++	 * No cp regions: the call was measured to change nothing for TZ or
++	 * for decode (bit-exact without it), and venus autoloads before the
++	 * radios -- keep the early-boot TZ surface minimal.
++	 */
+ 	.dma_mask = 0xddc00000 - 1,
+ 	.fwname = "qcom/venus-4.4/venus.mbn",
+ };

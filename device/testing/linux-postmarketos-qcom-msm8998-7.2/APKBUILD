@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=13
+pkgrel=14
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -280,6 +280,7 @@ source="
 	0189-media-venus-write-the-VBIF-presets-before-the-firmwa.patch
 	0190-media-venus-msm8998-power-the-vcodec-subcores-before.patch
 	0191-media-venus-rate-the-core-clocks-on-3XX-before-touch.patch
+	0192-media-venus-disable-wrapper-clock-auto-gating-on-msm.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -503,4 +504,5 @@ b3f0ae423bd45c32ad185b59fe02d2939b7c19da2b33c1c6f6abcc335a0d056b74b0f0d7f91ed598
 bfa3ebed1e45e4bbfe21462a3d7d26aa01df40f1a18ab5f1f92ec2c42e553d943b2fcabe9a3b3c5fbd6bf1b0207e8eb367d3ef08b77670f794195a067a709a2a  0189-media-venus-write-the-VBIF-presets-before-the-firmwa.patch
 3c0eac50764e9d12e04a4f9bdb2bb6d9cedfb521a86f10dffcabe643b8997e40d20aa0a7804e6af9f0c216ff7067b031ea2fef858645a9b2444d9101197fea18  0190-media-venus-msm8998-power-the-vcodec-subcores-before.patch
 7f617b699d11910e71e1b521450690b79b5cf0021064a42743bbb24d12e0a1cc2a40cf7618e79700f498f0a4ee2d2f278f6b77256b1fa0085da49671a61ab743  0191-media-venus-rate-the-core-clocks-on-3XX-before-touch.patch
+241ee74d16f687673df43a8af89b80a04ddc18b3e774284b26376ff7c5e57a35b11e755d18fc074ee3b85eccbe83aa0759e77dd531dcb37bd8dcab35f0c463a5  0192-media-venus-disable-wrapper-clock-auto-gating-on-msm.patch
 "

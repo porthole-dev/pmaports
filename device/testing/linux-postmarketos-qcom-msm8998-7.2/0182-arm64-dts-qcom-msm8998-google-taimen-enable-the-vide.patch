@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 03:36:00 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: enable the video
+ codec
+
+Everything venus needs is now in place: msm8998.dtsi describes the block with
+its clocks, GDSC, interrupt, IOMMU streams and bus votes, and
+firmware-google-taimen ships qcom/venus-4.4/venus.mbn -- the exact name
+msm8998_res asks for. Enabling it is the last line.
+
+Enabled on the board rather than in the SoC dtsi: the node is only usable where
+that firmware is installed, and no other msm8998 board in tree packages it.
+
+This does NOT mean venus works. Loading venus_core still wedges the fabric
+below printk. The node is enabled so the bring-up can be bisected with
+venus_core's stop_at parameter on real hardware, and it is safe to carry ONLY
+because the module is blacklisted from autoload -- see the comment in the DTS.
+Booting this without that blacklist is a bootloop that needs a physical
+Power+VolDown to escape.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 28 ++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -1179,3 +1179,31 @@
+ 		};
+ 	};
+ };
++
++/*
++ * Hardware video codec. The firmware is packaged -- firmware-google-taimen
++ * ships qcom/venus-4.4/venus.mbn, which is the name msm8998_res asks for --
++ * and msm8998.dtsi describes the block fully, so this is the last line needed
++ * to reach it.
++ *
++ * Enabled here, on the board, rather than in the SoC dtsi: the node is only
++ * usable where that firmware is actually installed, and no other msm8998 board
++ * in tree packages it.
++ *
++ * READ THIS BEFORE BOOTING WITHOUT A BLACKLIST. Loading venus_core kills the
++ * SoC below the level printk can reach -- a NoC timeout, no oops, no SMMU
++ * fault, recovered only by the hardware watchdog. Left to autoload that is a
++ * bootloop, and the bootloader does not fall back on its own: five reboots
++ * from the initramfs did not exhaust the A/B retry counter, and the way out is
++ * a physical Power+VolDown into fastboot. Keep venus_core, venus_dec and
++ * venus_enc blacklisted (/etc/modprobe.d/00-venus-bringup.conf, and
++ * modprobe.blacklist= on the cmdline) so the module is loaded by hand and a
++ * wedge costs one watchdog reset instead of the phone.
++ *
++ * venus_core's stop_at parameter bisects that wedge by declining to execute
++ * rather than by printing, which is the only kind of instrument that survives
++ * an unresponsive fabric.
++ */
++&venus {
++	status = "okay";
++};

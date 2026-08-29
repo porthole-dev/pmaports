@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 16:20:00 +0200
+Subject: [PATCH] clk: qcom: mmcc-msm8998: video subcore gdscs are HW_CTRL_TRIGGER
+
+With the vcodec subcore clocks finally named on the venus node,
+core_power_v1() enables them right after powering the subcore domains --
+and trips over the HW_CTRL flag: gdsc_enable() hands the domain to
+hardware the moment it powers it, nothing is requesting it yet, the
+domain collapses, and video_subcore0_clk's CBCR polls "status stuck at
+'off'" (-EBUSY), failing the whole probe.
+
+The vendor never runs this window in hardware control: its
+gdsc-regulator powers venus_core0/1 in software mode and only hands
+gating to the video hardware after the session is up
+(qcom,support-hw-trigger + regulator_set_mode at runtime).
+
+HW_CTRL_TRIGGER is mainline's version of exactly that handshake: the
+domain powers on in software mode, and venus's vcodec_domains_set_hw()
+flips it to hardware control via dev_pm_genpd_set_hwmode() only after
+the subcore clocks are enabled -- the same model sdm845+ videocc uses
+for its vcodec gdscs.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/clk/qcom/mmcc-msm8998.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/qcom/mmcc-msm8998.c b/drivers/clk/qcom/mmcc-msm8998.c
+--- a/drivers/clk/qcom/mmcc-msm8998.c
++++ b/drivers/clk/qcom/mmcc-msm8998.c
+@@ -2564,7 +2564,7 @@
+ 	},
+ 	.parent = &video_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+-	.flags = HW_CTRL,
++	.flags = HW_CTRL_TRIGGER,
+ };
+ 
+ static struct gdsc video_subcore1_gdsc = {
+@@ -2576,7 +2576,7 @@
+ 	},
+ 	.parent = &video_top_gdsc.pd,
+ 	.pwrsts = PWRSTS_OFF_ON,
+-	.flags = HW_CTRL,
++	.flags = HW_CTRL_TRIGGER,
+ };
+ 
+ static struct gdsc mdss_gdsc = {

@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 15:55:00 +0200
+Subject: [PATCH] media: venus: msm8998: clock the vcodec subcores
+
+The decode session dies with a precise signature: the firmware answers
+every control-plane packet (SYS_INIT, session create, LOAD_RESOURCES,
+START) and then never completes a single EMPTY_BUFFER. Measured mid
+-session via /dev/mem: SUBCORE0_GDSCR reads 0xa0282002 (powered) while
+its CBCR reads 0x80006220 -- CLK_OFF set, enable bit CLEAR. The decoder
+engine is powered and unclocked, so work queued to it never finishes.
+
+Nothing ever enabled that clock. The vcodec-subcore patch that moved the
+subcore power domains onto the parent also dropped .vcodec_clks_num to
+zero, which turns every vcodec_clks_get()/enable() loop -- parent AND
+per-session child -- into a no-op.
+
+Complete the msm8939 pattern instead, which is the same V1/V3 power
+model this SoC uses and is proven upstream: name the two subcore core
+clocks on the parent node and restore vcodec_clks_num. core_power_v1()
+then brings both subcore clocks up at every core power-on -- before the
+firmware boots and probes its engines, which is when the vendor has
+them up -- and the per-session vdec/venc child enables work again.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi    |  8 ++++++--
+ drivers/media/platform/qcom/venus/core.c |  2 ++
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -3183,9 +3183,12 @@
+ 				 <&mmcc VIDEO_AXI_CLK>,
+ 				 <&mmcc VIDEO_MAXI_CLK>,
+ 				 <&mmcc MNOC_AHB_CLK>,
+-				 <&gcc GCC_MMSS_SYS_NOC_AXI_CLK>;
++				 <&gcc GCC_MMSS_SYS_NOC_AXI_CLK>,
++				 <&mmcc VIDEO_SUBCORE0_CLK>,
++				 <&mmcc VIDEO_SUBCORE1_CLK>;
+ 			clock-names = "core", "iface", "bus", "mbus",
+-				      "mnoc_ahb", "noc_axi";
++				      "mnoc_ahb", "noc_axi",
++				      "vcodec0_core", "vcodec1_core";
+ 			iommus = <&mmss_smmu 0x400>,
+ 				 <&mmss_smmu 0x401>,
+ 				 <&mmss_smmu 0x40a>,
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -893,6 +893,8 @@
+ 	.clks_num = 6,
+ 	.vcodec0_clks = { "core" },
+ 	.vcodec1_clks = { "core" },
++	.vcodec_clks = { "vcodec0_core", "vcodec1_core" },
++	.vcodec_clks_num = 2,
+ 	/*
+ 	 * Measured at the point of the wedge, with venus stopped just after
+ 	 * core_power(POWER_ON):

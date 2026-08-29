@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=18
+pkgrel=20
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -285,6 +285,8 @@ source="
 	0194-media-venus-msm8998-clock-the-vcodec-subcores.patch
 	0195-clk-qcom-mmcc-msm8998-video-subcore-gdscs-are-HW_CTR.patch
 	0196-media-venus-msm8998-restore-the-TZ-threshold-registe.patch
+	0197-media-venus-msm8998-reboot-the-firmware-on-runtime-r.patch
+	0198-media-venus-msm8998-do-not-power-collapse-the-firmwa.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -513,4 +515,6 @@ d54b74673da7c5fedee5a6bac7e5d57ad03ce02594b3178b757c423427b379774486578413ecd4cd
 94e0e8bf82dd5688e0aa79fb4e60d35120566dfbbf9066edd70f20b6a34b557f60f84281e16b76761c6b89bcd5e1537a5934a5407d2b05999926255042598360  0194-media-venus-msm8998-clock-the-vcodec-subcores.patch
 d5da173ccd4ff895a4ede8557341ef7f6a0c0d4b8a7600f2d606ce81854635ab2077d663326763f452d1e26e8a39e8f26041ccc274b64af9e5dc186cc376d9b3  0195-clk-qcom-mmcc-msm8998-video-subcore-gdscs-are-HW_CTR.patch
 f8bdf46f7952223c0b933738559893af732eaf76716fa38560cd11c8051b7bd504e6f422699013b2bc43ed6f720c8b807d297d942432d8cd9ec3e158ee0b8626  0196-media-venus-msm8998-restore-the-TZ-threshold-registe.patch
+79d754b76b4c63aec61616163921b94822541525e2cbb702de73be8be05b28875c77ebf2effc25828e7fddd2b8a5ddb00d784bbfb583592011017926022e7428  0197-media-venus-msm8998-reboot-the-firmware-on-runtime-r.patch
+66247579e5b3593bfa348ce5fffe27ebd13cb5445ad3f7afed1e9779e0697d6c48546f1d5530dde865e1d1c47ec7ae056a0fed99f105f212462a9424decaca69  0198-media-venus-msm8998-do-not-power-collapse-the-firmwa.patch
 "

@@ -1,0 +1,96 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 18:20:00 +0200
+Subject: [PATCH] media: venus: msm8998: do not power-collapse the firmware
+
+Every path back from a firmware power collapse on msm8998 is broken:
+
+ - TZ's own restore (scm_set_remote_state resume) returns success and
+   hands back an ARM9 that is out of WFI but services nothing -- not
+   even a manually fired CPU_IC_SOFTINT, measured via /dev/mem.
+ - A full reboot at resume (shutdown, fresh queues, PAS re-auth, boot,
+   SYS_INIT) boots to CTRL_INIT-done and then SYS_INIT gets silence.
+ - Even a complete driver unbind/rebind -- the virgin cold-probe path --
+   fails with -EINVAL once the firmware has been shut down that boot.
+
+Only the very first bring-up per boot works, and it works perfectly:
+bit-exact decode, sequential sessions, stable for as long as the core
+is not collapsed. Whatever handshake the vendor's power-collapse
+contract contains beyond rates, IMEM, thresholds, retention and call
+order, five instrumented bisect arms did not find it.
+
+So stop collapsing: forbid runtime PM on the venus core. The device
+powers up at first use and stays up while the driver is bound.
+
+ponytail: this trades idle power (VIDEO_TOP GDSC + core clocks stay on
+once venus is used) for a firmware that always works. The ceiling is a
+daily-driver battery cost; the upgrade path is the vendor's PC contract,
+taken to linux-media with the bisect evidence.
+
+This replaces the reboot-on-resume attempt, which is reverted here.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/core.c | 44 ++++++------------------
+ 1 file changed, 12 insertions(+), 32 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -520,7 +520,14 @@
+ 	ret = venus_enumerate_codecs(core, VIDC_SESSION_TYPE_ENC);
+ 	if (ret)
+ 		goto err_of_depopulate;
+ 
++	/*
++	 * msm8998: the firmware does not survive any power collapse (see
++	 * venus_runtime_resume); keep the core powered while bound.
++	 */
++	if (IS_V3(core))
++		pm_runtime_forbid(dev);
++
+ 	ret = pm_runtime_put_sync(dev);
+ 	if (ret) {
+ 		pm_runtime_get_noresume(dev);
+@@ -736,41 +736,6 @@
+ 	if (venus_stop_before(6))
+ 		return 0;
+ 
+-	/*
+-	 * msm8998's TZ restore hands back a wedged firmware: resume is
+-	 * accepted, the CTRL_INIT poll passes, and the ARM9 then ignores
+-	 * even a manually fired CPU_IC_SOFTINT. When the firmware was up
+-	 * before this collapse, reboot it the way sys_error recovery does
+-	 * instead of trusting the restore. The fw is dead, so there is no
+-	 * HFI goodbye to say -- drop the state and start over.
+-	 */
+-	if (IS_V3(core) && core->state == CORE_INIT) {
+-		mutex_lock(&core->lock);
+-		core->state = CORE_UNINIT;
+-		venus_shutdown(core);
+-		mutex_unlock(&core->lock);
+-
+-		hfi_reinit(core);
+-
+-		ret = venus_boot(core);
+-		if (ret)
+-			return ret;
+-
+-		ret = hfi_core_resume(core, true);
+-		if (ret)
+-			goto err_shutdown;
+-
+-		ret = hfi_core_init(core);
+-		if (ret)
+-			goto err_shutdown;
+-
+-		return 0;
+-
+-err_shutdown:
+-		venus_shutdown(core);
+-		return ret;
+-	}
+-
+ 	return hfi_core_resume(core, false);
+ }
+ 

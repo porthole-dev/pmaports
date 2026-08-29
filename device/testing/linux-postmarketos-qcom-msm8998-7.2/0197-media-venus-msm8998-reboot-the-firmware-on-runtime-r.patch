@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 17:40:00 +0200
+Subject: [PATCH] media: venus: msm8998: reboot the firmware on runtime resume
+
+On msm8998 the firmware comes back from a TZ-restored power collapse
+wedged: TZ accepts the resume, the CTRL_INIT poll passes, and then the
+ARM9 services nothing -- WRAPPER_CPU_STATUS shows it out of WFI, a
+manually fired host-to-ARM9 soft interrupt (CPU_IC_SOFTINT) is ignored,
+and replies to pre-collapse commands occasionally surface only after
+yet another collapse cycle. Clock rates, the wrapper unlock, the
+threshold handshake and every CCF-visible resource were each verified
+in place mid-hang. The restore itself is what is broken.
+
+So stop trusting it: when the firmware was up before the collapse, take
+the same path the sys_error recovery takes and reboot it -- shutdown,
+fresh queues, PAS re-auth, boot, SYS_INIT. Runtime suspend only happens
+with no active codec work (the vdec/venc children pin the core through
+their parent), so in the common case there is no firmware state worth
+restoring anyway.
+
+ponytail: this trades power-collapse resume latency (~100ms of PAS
+auth) for correctness. The proper fix is whatever downstream's TZ
+restore contract has that mainline's does not; take it to linux-media.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/core.c | 36 ++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -736,6 +736,41 @@
+ 	if (venus_stop_before(6))
+ 		return 0;
+ 
++	/*
++	 * msm8998's TZ restore hands back a wedged firmware: resume is
++	 * accepted, the CTRL_INIT poll passes, and the ARM9 then ignores
++	 * even a manually fired CPU_IC_SOFTINT. When the firmware was up
++	 * before this collapse, reboot it the way sys_error recovery does
++	 * instead of trusting the restore. The fw is dead, so there is no
++	 * HFI goodbye to say -- drop the state and start over.
++	 */
++	if (IS_V3(core) && core->state == CORE_INIT) {
++		mutex_lock(&core->lock);
++		core->state = CORE_UNINIT;
++		venus_shutdown(core);
++		mutex_unlock(&core->lock);
++
++		hfi_reinit(core);
++
++		ret = venus_boot(core);
++		if (ret)
++			return ret;
++
++		ret = hfi_core_resume(core, true);
++		if (ret)
++			goto err_shutdown;
++
++		ret = hfi_core_init(core);
++		if (ret)
++			goto err_shutdown;
++
++		return 0;
++
++err_shutdown:
++		venus_shutdown(core);
++		return ret;
++	}
++
+ 	return hfi_core_resume(core, false);
+ }
+ 

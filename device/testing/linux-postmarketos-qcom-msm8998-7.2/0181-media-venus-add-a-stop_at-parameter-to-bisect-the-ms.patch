@@ -1,0 +1,176 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 03:35:00 +0200
+Subject: [PATCH] media: venus: add a stop_at parameter to bisect the msm8998
+ bring-up
+
+Enabling the msm8998 video-codec node kills the SoC the moment venus_core
+loads. The probe never returns; netconsole -- verified end to end on both
+transports seconds earlier -- carries the marker printed one line before it and
+then nothing at all. No oops, no call trace, no SMMU fault. The phone comes
+back on the hardware watchdog.
+
+That silence is the diagnosis: the CPU never got to report anything, so this is
+a NoC timeout rather than a fault the kernel could catch. Every instrument that
+works by printing is therefore the wrong one for the last step of this
+bring-up, and the missing interconnect vote has already been measured and
+refuted as the cause.
+
+So instrument by declining to execute instead. stop_at=N runs everything
+numbered below N and stops at the first checkpoint numbered N or above; the
+largest N that still boots names the step that wedges the bus. The checkpoints
+are monotonic across venus_probe() and venus_runtime_resume(), which nest, so a
+stop inside the resume path also ends the probe.
+
+  1  acquire clocks and power domains      7  venus_firmware_init()
+  2  request the interrupt                 8  venus_boot() -- fw load + PAS reset
+  3  pm_runtime_get_sync()                 9  venus_firmware_cfg()
+  4  icc_set_bw() bus votes               10  hfi_core_resume()
+  5  core_power(POWER_ON) -- GDSC + clks
+  6  hfi_core_resume() from resume
+
+Default -1 runs the whole probe, so this is inert unless asked for. It stays in
+the tree because the wedge is not closed and re-deriving the instrument costs a
+session.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/core.c | 70 ++++++++++++++++++++
+ 1 file changed, 70 insertions(+)
+
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -29,6 +29,44 @@
+ #include "pm_helpers.h"
+ #include "hfi_venus_io.h"
+ 
++/*
++ * Bring-up bisect for the msm8998 fabric wedge.
++ *
++ * Enabling this node on msm8998 kills the SoC instantly: the probe never
++ * returns, netconsole -- verified end to end seconds earlier -- carries the
++ * marker printed one line before it and then nothing at all, and the phone
++ * comes back on the hardware watchdog. No oops, no SMMU fault. The CPU never
++ * got to report anything, which is a NoC timeout rather than something the
++ * kernel could catch, so anything that PRINTS is the wrong instrument for the
++ * last step of this bring-up.
++ *
++ * This is an instrument that survives an unresponsive fabric instead: it does
++ * not print, it declines to execute. stop_at=N runs everything numbered below
++ * N and stops at the first checkpoint numbered N or above, so the largest N
++ * that still boots names the step that wedges the bus. The checkpoints are
++ * monotonic across probe and runtime_resume, which nest.
++ *
++ *   1  acquire clocks and power domains        7  venus_firmware_init()
++ *   2  request the interrupt                   8  venus_boot()  -- fw + PAS reset
++ *   3  pm_runtime_get_sync()                   9  venus_firmware_cfg()
++ *   4  icc_set_bw() bus votes                 10  hfi_core_resume()
++ *   5  core_power(POWER_ON)  -- GDSC + clks
++ *   6  hfi_core_resume() from resume
++ *
++ * -1 (default) runs the whole probe. Left in the tree deliberately: the wedge
++ * is not closed, and re-deriving this costs a session.
++ */
++static int stop_at = -1;
++module_param(stop_at, int, 0644);
++MODULE_PARM_DESC(stop_at,
++	"venus bring-up bisect: stop at the first checkpoint >= N (1..10); -1 = run everything");
++
++/* Stop at the first checkpoint numbered N or above. */
++static bool venus_stop_before(int n)
++{
++	return stop_at >= 0 && stop_at <= n;
++}
++
+ static void venus_coredump(struct venus_core *core)
+ {
+ 	struct device *dev;
+@@ -415,6 +453,9 @@
+ 	if (!core->pm_ops)
+ 		return -ENODEV;
+ 
++	if (venus_stop_before(1))
++		return 0;
++
+ 	if (core->pm_ops->core_get) {
+ 		ret = core->pm_ops->core_get(core);
+ 		if (ret)
+@@ -436,6 +477,9 @@
+ 	if (ret)
+ 		goto err_core_put;
+ 
++	if (venus_stop_before(2))
++		return 0;
++
+ 	ret = devm_request_threaded_irq(dev, core->irq, hfi_isr, venus_isr_thread,
+ 					IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+ 					"venus", core);
+@@ -452,22 +496,38 @@
+ 
+ 	pm_runtime_enable(dev);
+ 
++	if (venus_stop_before(3))
++		return 0;
++
+ 	ret = pm_runtime_get_sync(dev);
+ 	if (ret < 0)
+ 		goto err_runtime_disable;
+ 
++	/* 4..6 live in venus_runtime_resume(), which the get_sync above ran. */
++	if (venus_stop_before(7))
++		return 0;
++
+ 	ret = venus_firmware_init(core);
+ 	if (ret)
+ 		goto err_runtime_disable;
+ 
++	if (venus_stop_before(8))
++		return 0;
++
+ 	ret = venus_boot(core);
+ 	if (ret)
+ 		goto err_firmware_deinit;
+ 
++	if (venus_stop_before(9))
++		return 0;
++
+ 	ret = venus_firmware_cfg(core);
+ 	if (ret)
+ 		goto err_venus_shutdown;
+ 
++	if (venus_stop_before(10))
++		return 0;
++
+ 	ret = hfi_core_resume(core, true);
+ 	if (ret)
+ 		goto err_venus_shutdown;
+@@ -638,6 +698,9 @@
+ 	const struct venus_pm_ops *pm_ops = core->pm_ops;
+ 	int ret;
+ 
++	if (venus_stop_before(4))
++		return 0;
++
+ 	ret = icc_set_bw(core->video_path, kbps_to_icc(20000), 0);
+ 	if (ret)
+ 		return ret;
+@@ -646,12 +709,18 @@
+ 	if (ret)
+ 		return ret;
+ 
++	if (venus_stop_before(5))
++		return 0;
++
+ 	if (pm_ops->core_power) {
+ 		ret = pm_ops->core_power(core, POWER_ON);
+ 		if (ret)
+ 			return ret;
+ 	}
+ 
++	if (venus_stop_before(6))
++		return 0;
++
+ 	return hfi_core_resume(core, false);
+ }
+ 

@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 29 Aug 2026 04:05:00 +0200
+Subject: [PATCH] media: venus: add clk_limit to name the clock that wedges
+ msm8998
+
+The stop_at bisect placed the msm8998 fabric wedge inside
+core_power(POWER_ON): stop_at=5 leaves it unrun and the phone survives with
+venus_core loaded, stop_at=6 runs it and netconsole -- verified end to end on
+usb0 seconds earlier -- carries the marker and then nothing at all, with the
+phone returning on the hardware watchdog.
+
+On this SoC that call is one thing. vcodec_domains_enable() returns 0
+immediately because msm8998_res declares no vcodec_pmdomains, and the
+clk_set_rate() in core_clks_enable() is gated to V6 and V4-lite. The device's
+own VIDEO_TOP_GDSC is already powered by then -- genpd brings it up during the
+pm_runtime_get_sync() that reaches venus_runtime_resume(), and that is exactly
+the path stop_at=5 survives. The interconnect votes have also already been
+placed, for the same reason.
+
+What is left is clk_prepare_enable() on "core", "iface", "bus" and "mbus". So
+enable a prefix of them: clk_limit=N takes the first N, and the largest N that
+still boots names the clock whose CBCR touch never returns.
+
+Default -1 enables all of them, so this is inert unless asked for.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/pm_helpers.c | 21 ++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/drivers/media/platform/qcom/venus/pm_helpers.c b/drivers/media/platform/qcom/venus/pm_helpers.c
+--- a/drivers/media/platform/qcom/venus/pm_helpers.c
++++ b/drivers/media/platform/qcom/venus/pm_helpers.c
+@@ -38,6 +38,23 @@
+ 	return 0;
+ }
+ 
++/*
++ * Bring-up bisect, second stage. stop_at proved the msm8998 wedge is inside
++ * core_power(POWER_ON), and on this SoC that call reduces to this function:
++ * vcodec_domains_enable() returns immediately because msm8998_res declares no
++ * vcodec_pmdomains, and the clk_set_rate() above is V6/V4-lite only. The
++ * device's own VIDEO_TOP_GDSC is already on by then -- genpd powers it during
++ * the pm_runtime_get_sync() that got us here, which survives.
++ *
++ * So the bus dies on clk_prepare_enable() of one of "core", "iface", "bus",
++ * "mbus". clk_limit=N enables only the first N of them, and the largest N that
++ * still boots names the clock.
++ */
++static int clk_limit = -1;
++module_param(clk_limit, int, 0644);
++MODULE_PARM_DESC(clk_limit,
++	"venus bring-up bisect: enable only the first N core clocks (-1 = all)");
++
+ static int core_clks_enable(struct venus_core *core)
+ {
+ 	const struct freq_tbl *freq_tbl = core->res->freq_tbl;
+@@ -59,6 +76,9 @@
+ 	}
+ 
+ 	for (i = 0; i < res->clks_num; i++) {
++		if (clk_limit >= 0 && i >= clk_limit)
++			break;
++
+ 		if (IS_V6(core) || (IS_V4(core) && is_lite(core))) {
+ 			ret = clk_set_rate(core->clks[i], freq);
+ 			if (ret)

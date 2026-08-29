@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=2
+pkgrel=5
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -269,6 +269,10 @@ source="
 	0178-arm64-dts-qcom-msm8998-vote-the-bus-for-the-video-co.patch
 	0179-iio-qcom_smgr-QMI_DATA_LEN-fields-are-u32-on-the-hos.patch
 	0180-arm64-dts-qcom-msm8998-google-taimen-pull-the-NFC-IR.patch
+	0181-media-venus-add-a-stop_at-parameter-to-bisect-the-ms.patch
+	0182-arm64-dts-qcom-msm8998-google-taimen-enable-the-vide.patch
+	0183-media-venus-add-clk_limit-to-name-the-clock-that-wed.patch
+	0184-media-venus-add-boot_stage-to-split-the-CPU-access-p.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -481,4 +485,8 @@ b5adc0c5fc76ab21661ecc218726664ca288084e70448b8ef78992b0dd8bd637ad0306033878aadc
 5c4704eac40c13069a32c605f993d83cb7a539c8354bc367bfa1ab667d09543e85b4acffe86f774b1e9ca9f3cd759f5c4f72b4ab82ffcceca3426279c0ff21a6  0178-arm64-dts-qcom-msm8998-vote-the-bus-for-the-video-co.patch
 36c4148e0426dcb3678c2a0926b26245e27ef136c99b17100f4ebf588b4d0bad7133d3ad3353f5a5290ef98cd40b8fa8ef122176cb48043733b2d8f8047a7173  0179-iio-qcom_smgr-QMI_DATA_LEN-fields-are-u32-on-the-hos.patch
 fac8b3c4a535753e56a1f5a5b99219f2b64ef7bd546d48008a8d5c5f46b4ba57764110ae9afb550d956dcc3d365231508e525fa93e1a63319813a664080f8f3b  0180-arm64-dts-qcom-msm8998-google-taimen-pull-the-NFC-IR.patch
+6d73c7228a38dd0a8ea4fb44be2ac3e7042f29dd6894b3335ba0f95565fa3731ed40bf9dcb93a061c4e7b11d55eedc82183bec3595d2089317b281583bf88514  0181-media-venus-add-a-stop_at-parameter-to-bisect-the-ms.patch
+76914796b382a2c4b27d0d24c7f0ee59c4a9279cdb97508b3a62c2a6bde42eafd86bb12127d97da6263076273c17c5af63bf83c15fd5819e7da6157c22c185ac  0182-arm64-dts-qcom-msm8998-google-taimen-enable-the-vide.patch
+e250dc831373423b55468b6147c3e38ce49e81adcac238e368227800ce72ddc5bca7a0f6b84a6202e548b081714545877dfe8ff41142e3b32e74c4d5740a84df  0183-media-venus-add-clk_limit-to-name-the-clock-that-wed.patch
+c270df400657d17cebb9d2809f41cf220dc120ff491a7ed092a08888e5fe238d5ed8f5f9bd46261e5ddd295fb4a8ed869e60833062dd167a7ba1cdfebdd1a290  0184-media-venus-add-boot_stage-to-split-the-CPU-access-p.patch
 "

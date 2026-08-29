@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=5
+pkgrel=6
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -273,6 +273,7 @@ source="
 	0182-arm64-dts-qcom-msm8998-google-taimen-enable-the-vide.patch
 	0183-media-venus-add-clk_limit-to-name-the-clock-that-wed.patch
 	0184-media-venus-add-boot_stage-to-split-the-CPU-access-p.patch
+	0185-media-venus-add-preset_limit-to-name-the-preset-writ.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -489,4 +490,5 @@ fac8b3c4a535753e56a1f5a5b99219f2b64ef7bd546d48008a8d5c5f46b4ba57764110ae9afb550d
 76914796b382a2c4b27d0d24c7f0ee59c4a9279cdb97508b3a62c2a6bde42eafd86bb12127d97da6263076273c17c5af63bf83c15fd5819e7da6157c22c185ac  0182-arm64-dts-qcom-msm8998-google-taimen-enable-the-vide.patch
 e250dc831373423b55468b6147c3e38ce49e81adcac238e368227800ce72ddc5bca7a0f6b84a6202e548b081714545877dfe8ff41142e3b32e74c4d5740a84df  0183-media-venus-add-clk_limit-to-name-the-clock-that-wed.patch
 c270df400657d17cebb9d2809f41cf220dc120ff491a7ed092a08888e5fe238d5ed8f5f9bd46261e5ddd295fb4a8ed869e60833062dd167a7ba1cdfebdd1a290  0184-media-venus-add-boot_stage-to-split-the-CPU-access-p.patch
+4965ff3e9c8f50ae73a416b96844f92436c900ef1e93be275dea3e54777c4732f0fb4ce36dd4c14e770f97f58258efd39fb27a947a11af282f048562071d94b4  0185-media-venus-add-preset_limit-to-name-the-preset-writ.patch
 "

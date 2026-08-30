@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 30 Aug 2026 12:40:00 +0200
+Subject: [PATCH] Bind every V4L2 node into the sandbox, not just video0-2
+
+bindV4l() hardcodes /dev/video0, /dev/video1 and /dev/video2, with a
+comment calling itself a stop-gap. V4L2 node numbers are handed out in
+probe order, so any SoC whose camera registers several nodes before the
+video codec puts that codec above video2, and it is then absent from the
+web process' /dev entirely.
+
+On a Pixel 2 XL (msm8998, mainline 7.2) qcom-camss takes video0 through
+video5 and Venus registers the decoder as /dev/video7. Inside the sandbox
+only video0-2 exist, so gstreamer's v4l2 decoder elements cannot open the
+device, GStreamerRegistryScanner drops them, and playback silently falls
+back to avdec_h264. Measured on a 720p H.264 clip: 154% of a CPU core
+sandboxed against 41% with WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1,
+where the log shows v4l2h264dec being created instead. Nothing is logged
+when this happens -- the decoder simply is not among the candidates -- so
+it presents as "hardware decoding does not work in the browser" while the
+identical pipeline works in gst-launch outside the sandbox.
+
+Enumerate /dev and bind each video* and media* node through the existing
+bindIfExists() helper rather than naming three of them. This exposes no
+class of device the function was not already binding; it stops the set
+from depending on enumeration order.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../Launcher/glib/BubblewrapLauncher.cpp      | 25 ++++++++++++++++---
+ 1 file changed, 21 insertions(+), 4 deletions(-)
+
+--- a/Source/WebKit/UIProcess/Launcher/glib/BubblewrapLauncher.cpp
++++ b/Source/WebKit/UIProcess/Launcher/glib/BubblewrapLauncher.cpp
+@@ -456,12 +456,29 @@
+ {
+     args.appendVector(Vector<CString>({
+         "--dev-bind-try", "/dev/v4l", "/dev/v4l",
+-        // Not pretty but a stop-gap for pipewire anyway.
+-        "--dev-bind-try", "/dev/video0", "/dev/video0",
+-        "--dev-bind-try", "/dev/video1", "/dev/video1",
+-        "--dev-bind-try", "/dev/video2", "/dev/video2",
+-        "--dev-bind-try", "/dev/media0", "/dev/media0",
+     }));
++
++    // Bind every V4L2 node instead of a hardcoded video0-2 range. Node numbers
++    // are handed out in probe order, so on an SoC whose camera registers
++    // several nodes first the video codec lands well above video2 and is then
++    // invisible inside the sandbox. On a Pixel 2 XL (msm8998) camss takes
++    // video0-video5 and the Venus decoder is /dev/video7, so the v4l2 decoder
++    // elements were unusable in the web process and playback silently fell
++    // back to software -- 154% of a CPU core for 720p H.264 where the hardware
++    // path costs 41% -- while the very same decode worked outside the sandbox.
++    GDir* dir = g_dir_open("/dev", 0, nullptr);
++    if (!dir)
++        return;
++
++    while (const char* name = g_dir_read_name(dir)) {
++        if (!g_str_has_prefix(name, "video") && !g_str_has_prefix(name, "media"))
++            continue;
++
++        GUniquePtr<char> path(g_build_filename("/dev", name, nullptr));
++        bindIfExists(args, path.get(), BindFlags::Device);
++    }
++
++    g_dir_close(dir);
+ }
+ 
+ static bool enableDebugPermissions()
+--
+2.51.0

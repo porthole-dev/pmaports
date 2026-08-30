@@ -1,10 +1,35 @@
-# Forked from Alpine to carry a single upstream-bound fix: phoc segfaults in the
-# thumbnail render path when a surface texture has been dropped by a GPU reset.
-# Drop this fork once the patch is in Alpine or in a phoc release.
+# Forked from Alpine to carry TWO upstream-bound fixes for GPU-reset handling:
+#
+#   0001  phoc segfaults in the thumbnail render path when a surface texture
+#         has been dropped by a GPU reset (has_buffer() != get_texture()).
+#   0002  recreate_renderer() never damages the outputs it re-inits, so after a
+#         reset the screen keeps whatever the dead renderer left behind. Static
+#         layer-surfaces -- the panel, the OSK -- never repaint and stay visibly
+#         corrupt until something else forces a full repaint.
+#
+# Verified still missing upstream in 0.57.0: src/render.c calls
+# wlr_output_init_render() at line 141 and the string "damage_whole" does not
+# appear in the file at all.
+#
+# WHY pkgrel IS 50 AND NOT 3
+#   Alpine/pmOS ship phoc from the same pkgver. apk installs the HIGHEST
+#   version it can see regardless of which repo it came from, so a local build
+#   at -r3 loses to a stock -r4 and the patches vanish with no warning. This is
+#   not hypothetical: on 2026-08-29 a fresh install pulled stock 0.57.0-r0 over
+#   the local patched 0.56.0-r2 and both patches were silently dropped, which
+#   cost most of a session on 2026-08-30 chasing the resulting corruption as if
+#   it were a WebKit/Skia bug. A deliberately high pkgrel keeps this build
+#   winning for the whole life of a pkgver.
+#
+#   It does NOT survive a pkgver bump -- upstream 0.58.0 outranks 0.57.0-r50,
+#   by design, because silently pinning a compositor forever is worse. That
+#   transition is what tools/tk-phoccheck.sh exists to catch.
+#
+# Drop this fork once both patches are in a phoc release.
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=phoc
-pkgver=0.56.0
-pkgrel=2
+pkgver=0.57.0
+pkgrel=50
 pkgdesc="wlroots based Phone compositor for the Phosh shell"
 arch="all"
 url="https://gitlab.gnome.org/World/Phosh/phoc"
@@ -101,7 +126,7 @@ schemas() {
 }
 
 sha512sums="
-f2a22e04fc00dfde56c83750ff531b6debcf2af81b913f8d85f8b23e1dc1fd71ec3786d2f2e963ed3e3b1b4b8703ed9844452d20619fac729de5482be77b7a7b  phoc-0.56.0.tar.xz
+c3dfb5e951422ccedcc1740b788a4c9dbc517ec7c0901967298a77dc5a35b4ca4556fe97b02085868779adddb1b86539224f2c3c6277ff5264315ada54b322a3  phoc-0.57.0.tar.xz
 d30407a94db06aef808d047aa04e13f47aea3b9d84926d3237f4bd870f1140cb2098b1ea5093aba40234aa777270a2f0c5f0e635b16d09fa1f4851dddbd8ea8d  0001-render-don-t-hand-a-NULL-texture-to-the-thumbnail-ren.patch
 1b51d5de64e3a64f7c569885d8a6e95ebb59ea5706e934650838a84aa96b24f69f39f97d84edb69907f167177b6ef649e8b727edc38a7b48b9b1f3bd9bde439c  0002-render-repaint-every-output-after-recreating-the-rend.patch
 "

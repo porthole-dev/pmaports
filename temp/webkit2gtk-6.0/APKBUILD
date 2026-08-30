@@ -25,6 +25,13 @@ url="https://webkitgtk.org/"
 arch="all"
 license="LGPL-2.0-or-later AND BSD-2-Clause"
 depends="bubblewrap xdg-dbus-proxy dbus:org.freedesktop.Secrets"
+# bubblewrap and xdg-dbus-proxy are runtime depends that cmake also needs to
+# find as EXECUTABLES at configure time (BubblewrapSandboxChecks.cmake). Alpine
+# gets away with listing them only in depends= because abuild installs $depends
+# into the buildroot too; pmbootstrap resolves dependencies itself and installs
+# makedepends only, so configure dies with "xdg-dbus-proxy executable not found
+# and is needed for ENABLE_BUBBLEWRAP_SANDBOX" after ~90s. List them here too.
+#
 # libjxl-dev is listed statically below as well as in the case $CARCH block
 # further down. pmbootstrap cannot see the conditional one: pmb/parse/_apkbuild.py
 # reads APKBUILDs line by line and never executes the shell, so a makedepends
@@ -34,6 +41,8 @@ depends="bubblewrap xdg-dbus-proxy dbus:org.freedesktop.Secrets"
 # rather than a parser limitation.
 makedepends="
 	libjxl-dev
+	bubblewrap
+	xdg-dbus-proxy
 	bison
 	clang
 	cmake

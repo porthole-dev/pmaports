@@ -1,7 +1,19 @@
 maintainer="team/alpine-desktop <achill@achill.org>"
 pkgname=gst-plugins-good
 pkgver=1.28.5
-pkgrel=1
+pkgrel=50
+# pkgrel 50, not 2: this fork exists only to flip -Dv4l2=enabled, which is the
+# entire reason WebKit can reach Venus. Alpine ships the same pkgver, and apk
+# installs the highest version it can see regardless of repo -- so a stock r2
+# would silently replace this and take hardware video decode with it, with no
+# error anywhere. temp/phoc lost both its patches exactly this way on
+# 2026-08-29. A high pkgrel keeps this build winning for the life of a pkgver;
+# a pkgver bump upstream still wins, and tools/tk-pkgcheck.sh is what catches
+# that transition.
+#
+# NOTE: bumping this alone does not change the device. The installed build is
+# still 1.28.5-r1 and still works; tk-pkgcheck.sh will now report the drift
+# until this is rebuilt and installed.
 # NOTE: Upgrade together with the whole GStreamer suite &
 # only to even-numbered versions (e.g. 1.18.x, 1.20.x)!
 pkgdesc="GStreamer streaming media framework good plugins"

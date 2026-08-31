@@ -1,0 +1,76 @@
+From 02d2ead33e8de5bc6d67ef49606430e816f13147 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 31 Aug 2026 16:32:39 +0200
+Subject: [PATCH 200/201] wifi: ath10k: don't advertise a reserved VHT channel
+ width pair
+
+ath10k_create_vht_cap() assigns the firmware's VHT capability word straight
+to the band it advertises:
+
+	vht_cap.cap = ar->vht_cap_info;
+
+and never looks at it. On WCN3990 that word carries Supported Channel Width
+Set = 2 ("160 and 80+80 MHz supported") together with Extended NSS BW
+Support = 1. IEEE 802.11-2016 Table 9-250 interprets those two subfields
+jointly, and that combination is reserved. iw renders it as:
+
+	VHT Capabilities (0x738139fa):
+		Supported Channel Width: (reserved)
+
+It is also untrue of the hardware. The WCN3990 entry in ath10k_hw_params
+declares no vht160_mcs_rx_highest or vht160_mcs_tx_highest, so the block
+below leaves the VHT MCS set's Tx Highest field zero -- meaning the same
+frame advertises "160 and 80+80 supported" in the capability info and "not
+VHT Extended NSS BW capable" in the MCS set.
+
+A UniFi AP refused every association from this client with status code 18,
+ASSOC_DENIED_UNSUPP_RATE, while accepting a laptop on the same BSSID in the
+same second. The rates were never the problem: the Supported Rates element
+was byte-identical to the accepted client's, and the AP's own beacon
+advertised basic rates 6/12/24, all of which we carry. Clamping the two
+subfields to what the hardware declares turns that into a clean association
+-- eight of eight cold attempts, each with a fresh MAC, against a prior base
+rate of three acceptances in roughly 170 attempts.
+
+	before: VHT Capabilities (0x738139fa)  Supported Channel Width: (reserved)
+	after:  VHT Capabilities (0x338139f2)  Supported Channel Width: neither 160 nor 80+80
+
+Note this cannot be worked around from userspace. wpa_supplicant's vht_capa
+and vht_capa_mask are accepted and logged as applied, but mac80211's
+ieee80211_apply_vhtcap_overrides() handles a fixed set of fields and has no
+case for IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_MASK or
+IEEE80211_VHT_CAP_EXT_NSS_BW_MASK, so the override is silently discarded and
+the reserved pair still goes out on the air.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/net/wireless/ath/ath10k/mac.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
+index 293a2b8adaa2..0394ea2ca9a8 100644
+--- a/drivers/net/wireless/ath/ath10k/mac.c
++++ b/drivers/net/wireless/ath/ath10k/mac.c
+@@ -4966,6 +4966,19 @@ static struct ieee80211_sta_vht_cap ath10k_create_vht_cap(struct ath10k *ar)
+ 	vht_cap.vht_mcs.rx_mcs_map = cpu_to_le16(mcs_map);
+ 	vht_cap.vht_mcs.tx_mcs_map = cpu_to_le16(mcs_map);
+ 
++	/* Firmware can report a Supported Channel Width Set and Extended NSS
++	 * BW Support pair that IEEE 802.11-2016 Table 9-250 marks reserved.
++	 * WCN3990 reports width 2 ("160 and 80+80 MHz") together with extended
++	 * NSS BW 1, while declaring no 160 MHz rates at all, so the pair is
++	 * both reserved and untrue of the hardware. ar->vht_cap_info is taken
++	 * verbatim, which puts it into every association request we send, and
++	 * an AP is entitled to refuse that. Clamp it to what the hardware
++	 * actually declares.
++	 */
++	if (!hw->vht160_mcs_rx_highest && !hw->vht160_mcs_tx_highest)
++		vht_cap.cap &= ~(IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_MASK |
++				 IEEE80211_VHT_CAP_EXT_NSS_BW_MASK);
++
+ 	/* If we are supporting 160Mhz or 80+80, then the NIC may be able to do
+ 	 * a restricted NSS for 160 or 80+80 vs what it can do for 80Mhz.  Give
+ 	 * user-space a clue if that is the case.
+-- 
+2.55.0
+

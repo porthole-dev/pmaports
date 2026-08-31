@@ -37,6 +37,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
 +	 * for decode (bit-exact without it), and venus autoloads before the
 +	 * radios -- keep the early-boot TZ surface minimal.
 +	 */
++
  	.dma_mask = 0xddc00000 - 1,
  	.fwname = "qcom/venus-4.4/venus.mbn",
  };

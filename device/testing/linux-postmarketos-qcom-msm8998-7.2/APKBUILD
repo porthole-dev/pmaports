@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=22
+pkgrel=24
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -290,6 +290,8 @@ source="
 	0199-media-venus-msm8998-drop-the-content-protection-TZ-c.patch
 	0200-wifi-ath10k-don-t-advertise-a-reserved-VHT-channel-w.patch
 	0201-wifi-ath10k-don-t-set-DSSS-CCK-in-40-MHz-on-5-GHz.patch
+	0202-wifi-ath10k-make-in-order-rx-amsdu-buffers-persisten.patch
+	0203-media-venus-msm8998-vote-the-bus-for-the-decode-load.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -523,4 +525,6 @@ f8bdf46f7952223c0b933738559893af732eaf76716fa38560cd11c8051b7bd504e6f422699013b2
 54cec0bf127ac78c8a87e0db008194e78377c7aa80161a29ebd6bb490913c88ab279136500d23bd12cf66c3affc508e7d30e3c9eba781372e7c3a87f421bfdb5  0199-media-venus-msm8998-drop-the-content-protection-TZ-c.patch
 24f8354c2fcfb56e98df941c1650581a6b5ee6f649d0338ef4e30898340796b77ccac4923d8422400debc53a2d961cbdb6bcbc04b34328b6e65e86bdc84a5b79  0200-wifi-ath10k-don-t-advertise-a-reserved-VHT-channel-w.patch
 8cc2e8b06e3452a136ca48752f597b7b21b8bde4bcced7822043d78259812522c28e1e85133ed887fbda182d786098e668f693842bbe81f30832c80741240f3a  0201-wifi-ath10k-don-t-set-DSSS-CCK-in-40-MHz-on-5-GHz.patch
+7a449f28444c0acd1e7139235769c5c9e87845dba98c60516a3aab5d26d66f075cd044ec024fadf7216294cfee69a53e976ddb0cebdb4d89f5f9fc563f77f458  0202-wifi-ath10k-make-in-order-rx-amsdu-buffers-persisten.patch
+cd089c1a32349e008bf184ba3016b5f9f12c0a731fd7bce9d36915647ed750d55695f2d40656dd87dfd5e7598abfff38774d771e0bd2a43c0098ab81b812b99e  0203-media-venus-msm8998-vote-the-bus-for-the-decode-load.patch
 "

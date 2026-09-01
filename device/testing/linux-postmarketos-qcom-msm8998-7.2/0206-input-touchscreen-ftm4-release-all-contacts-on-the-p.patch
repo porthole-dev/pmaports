@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 1 Sep 2026 22:28:00 +0200
+Subject: [PATCH] input: touchscreen: ftm4: release all contacts on the palm
+ flag
+
+The controller reports a palm by setting the pressure byte to 255 in a
+motion event. Once it has reclassified a contact as a palm -- which a
+thumb flattening during a pinch-zoom does readily -- it stops tracking
+the fingers it had been reporting and never sends a LEAVE for them.
+Reporting the palm event as an ordinary finger therefore strands the
+slots: after the gesture the input stack still believes fingers are on
+the glass, every subsequent single-finger drag becomes a multi-touch
+gesture (scroll turns into pinch-zoom), and shell edge gestures stop
+working until the phantom slots are cleared by hand.
+
+Found on a Pixel 2 XL (msm8998) after a pinch-zoom under load left two
+tracking ids parked mid-screen (EVIOCGMTSLOTS showed slots 3 and 4 live
+with no finger on the glass). The vendor driver handles exactly this:
+on z == 255 it logs "Palm Detected" and calls
+fts_release_all_finger() before returning (ftm4_ts.c in the msm-4.4
+tree). Mirror that: drop every contact when the palm flag arrives and
+report nothing for the palm itself. Later LEAVE events for already
+released slots are harmless no-ops.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/input/touchscreen/ftm4.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index 43f64daa519c..a50cb2e98f34 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -425,6 +425,8 @@ static void ftm4_power_down_action(void *data)
+ 	ftm4_power_down(data);
+ }
+ 
++static void ftm4_release_all(struct ftm4_ts *ts);
++
+ static void ftm4_report_contact(struct ftm4_ts *ts, const u8 *event)
+ {
+ 	unsigned int slot = FIELD_GET(FTM4_MASK_TOUCH_ID, event[0]);
+@@ -440,6 +442,21 @@ static void ftm4_report_contact(struct ftm4_ts *ts, const u8 *event)
+ 		return;
+ 	}
+ 
++	/*
++	 * Pressure 255 is the controller's palm flag. Once it reclassifies a
++	 * contact as a palm -- which a thumb flattening during a pinch does
++	 * readily -- it stops tracking the fingers it had been reporting and
++	 * sends no LEAVE for them, so release everything now, exactly as the
++	 * vendor driver does. Keeping the contacts leaves phantom fingers
++	 * that turn every later drag into a multi-touch gesture until the
++	 * slots are cleared by hand.
++	 */
++	if (pressure == 255) {
++		dev_dbg(&ts->client->dev, "palm detected, releasing all contacts\n");
++		ftm4_release_all(ts);
++		return;
++	}
++
+ 	input_mt_slot(ts->input, slot);
+ 	input_mt_report_slot_state(ts->input, MT_TOOL_FINGER, true);
+ 	touchscreen_report_pos(ts->input, &ts->prop, x, y, true);

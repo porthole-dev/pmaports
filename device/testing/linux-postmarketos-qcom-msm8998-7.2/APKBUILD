@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=25
+pkgrel=26
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -294,6 +294,7 @@ source="
 	0203-media-venus-msm8998-vote-the-bus-for-the-decode-load.patch
 	0204-drm-msm-dpu-cmd-mode-send-the-pageflip-event-at-rd_p.patch
 	0205-drm-msm-a5xx-use-the-vendor-hang-detect-threshold.patch
+	0206-input-touchscreen-ftm4-release-all-contacts-on-the-p.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -531,4 +532,5 @@ f8bdf46f7952223c0b933738559893af732eaf76716fa38560cd11c8051b7bd504e6f422699013b2
 cd089c1a32349e008bf184ba3016b5f9f12c0a731fd7bce9d36915647ed750d55695f2d40656dd87dfd5e7598abfff38774d771e0bd2a43c0098ab81b812b99e  0203-media-venus-msm8998-vote-the-bus-for-the-decode-load.patch
 eb0eb6c37c6bd4612edfb4968b88275bf0b913b3173ab28d2d29032eff917e2c088253ca3180213cefc6ef8480613e247bb60815313c384fc8231c6e20524a80  0204-drm-msm-dpu-cmd-mode-send-the-pageflip-event-at-rd_p.patch
 08110231eaa72a877b787d8edb443fbe89177bacf2e38ab831d9c0be43c28f9fdcc431742804c2b745a02b231457d3670cd8fa2cf98e34e64ebb609fcfbf5f70  0205-drm-msm-a5xx-use-the-vendor-hang-detect-threshold.patch
+1d954df944018af876c3efe194bc640dcd6939a42272682e54060eb569a0c936baa030baafc790f9cf9ad26c782b1b7dc1eac97184821e2c69142a30f24161e0  0206-input-touchscreen-ftm4-release-all-contacts-on-the-p.patch
 "

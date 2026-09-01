@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 1 Sep 2026 13:20:00 +0200
+Subject: [PATCH] media: venus: msm8998: vote the bus for the decode load
+
+msm8998 is the only venus platform in the driver with a frequency table and
+no bandwidth table.  mbs_to_bw() bails out early when res->bw_tbl_dec is
+NULL, so every instance contributes zero, and load_scale_bw() then takes the
+branch meant for an idle core:
+
+	if (!total_avg && !total_peak)
+		total_avg = kbps_to_icc(1000);
+
+The result is that a full decode session runs on a 1 MB/s average vote and no
+peak vote at all.  Read back from the interconnect summary on a Pixel 2 XL
+while WebKit decodes VP9 1920x1080 at 60 fps through /dev/video6:
+
+	node          tag      avg     peak
+	mas_venus       1      125        0
+
+For the same load sdm660, the closest sibling that carries a table, votes
+1133000 kBps.  Qualcomm's own msm8998 video node asks for far more headroom
+still -- msm8998-vidc.dtsi declares qcom,bus-range-kbps = <1000 4946000> for
+the DDR path and drives it from a load-based governor.  GStreamer reports
+"A lot of buffers are being dropped ... gst_base_sink_is_too_late" on this
+device at 1080p60.
+
+Give the platform a table.  The values are sdm660's: the same struct, the same
+mechanism, and every row sits well under the ceiling the vendor declares for
+this SoC, so they are conservative rather than invented.
+
+Nothing above 4k30 is extrapolated.  msm8998 decodes up to 2563200 mbs/sec,
+so a larger load lands on the first row and is under-voted; that wants
+calibrating against the vendor governor before 4k60 is trusted.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 243e342b0ae7..eada1b6af547 100644
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -784,9 +784,51 @@ static const struct reg_val msm8998_reg_preset[] = {
+ 	{ 0xe2010, 0x00000000 },
+ };
+ 
++/*
++ * Bandwidth votes for the video-mem path, in kBps, keyed by macroblocks per
++ * second.  Without a table mbs_to_bw() returns zero for every instance and
++ * load_scale_bw() falls back to kbps_to_icc(1000) -- a vote meant for a
++ * released session -- so the decoder runs a full 1080p60 stream on a 1 MB/s
++ * average and a zero peak.  Measured on a Pixel 2 XL: while decoding VP9
++ * 1080p60, mas_venus asks for 125 avg / 0 peak in the interconnect summary
++ * and GStreamer reports buffers arriving too late.
++ *
++ * The values are sdm660's, the closest sibling that carries a table, and every
++ * one of them is far below the ceiling Qualcomm's own msm8998 video node
++ * declares for this path (qcom,bus-range-kbps = <1000 4946000> in
++ * msm8998-vidc.dtsi).  They are therefore conservative rather than invented.
++ *
++ * Nothing above 4k30 is extrapolated: msm8998 decodes to 2563200 mbs/sec, so
++ * anything larger lands on the first row and is under-voted.  That wants
++ * calibrating against the vendor's dynamic governor before 4k60 is trusted.
++ */
++static const struct bw_tbl msm8998_bw_table_dec[] = {
++	{  979200,  2365000, 0, 1892000, 0 },	/* 4k UHD @ 30 */
++	{  864000,  1978000, 0, 1554000, 0 },	/* 720p @ 240 */
++	{  489600,  1133000, 0,  895000, 0 },	/* 1080p @ 60 */
++	{  432000,   994000, 0,  781000, 0 },	/* 720p @ 120 */
++	{  244800,   580000, 0,  460000, 0 },	/* 1080p @ 30 */
++	{  216000,   501000, 0,  301000, 0 },	/* 720p @ 60 */
++	{  108000,   255000, 0,  202000, 0 },	/* 720p @ 30 */
++};
++
++static const struct bw_tbl msm8998_bw_table_enc[] = {
++	{  979200,  1044000, 0, 2446336, 0 },	/* 4k UHD @ 30 */
++	{  864000,   887000, 0, 2108416, 0 },	/* 720p @ 240 */
++	{  489600,   666000, 0, 1207296, 0 },	/* 1080p @ 60 */
++	{  432000,   578000, 0, 1058816, 0 },	/* 720p @ 120 */
++	{  244800,   346000, 0,  616448, 0 },	/* 1080p @ 30 */
++	{  216000,   293000, 0,  534528, 0 },	/* 720p @ 60 */
++	{  108000,   151000, 0,  271360, 0 },	/* 720p @ 30 */
++};
++
+ static const struct venus_resources msm8998_res = {
+ 	.freq_tbl = msm8998_freq_table,
+ 	.freq_tbl_size = ARRAY_SIZE(msm8998_freq_table),
++	.bw_tbl_enc = msm8998_bw_table_enc,
++	.bw_tbl_enc_size = ARRAY_SIZE(msm8998_bw_table_enc),
++	.bw_tbl_dec = msm8998_bw_table_dec,
++	.bw_tbl_dec_size = ARRAY_SIZE(msm8998_bw_table_dec),
+ 	.reg_tbl = msm8998_reg_preset,
+ 	.reg_tbl_size = ARRAY_SIZE(msm8998_reg_preset),
+ 	.clks = { "core", "iface", "bus", "mbus" },

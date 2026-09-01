@@ -1,0 +1,50 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 1 Sep 2026 18:50:00 +0200
+Subject: [PATCH] linux-dmabuf-v1: send the explicit LINEAR modifier to v3
+ clients
+
+wlroots collapses a format whose modifier set is exactly {LINEAR,
+INVALID} to INVALID-only in the v3 modifier events, as a workaround for
+XWayland passing unfiltered modifier lists to GBM
+(https://gitlab.freedesktop.org/xorg/xserver/-/issues/1166).
+
+On this device that set is EVERY format: mesa/freedreno on a5xx reports
+exactly one explicit modifier (LINEAR) for all 64 formats, so the
+workaround strips the explicit modifier from the entire list, for every
+v3 client, not just XWayland. GStreamer's waylandsink (>= 1.24, still
+true in 1.28.5) then drops INVALID by policy in its dmabuf_modifier
+handler, is left with an empty drm-format list, and silently falls back
+to CPU-converting 1080p video at 4-5 fps where zero-copy runs at 60
+(gstwldisplay.c: "we prefer disabling zero-copy over risking a bad
+output").
+
+The workaround does not protect anything here: xserver#1166 is about
+GBM stacks without modifier support, and freedreno's GBM on this device
+imports/creates LINEAR with explicit modifiers correctly (verified with
+eglQueryDmaBufModifiersEXT on the GBM, device and surfaceless
+platforms). Drop the special case and send the real list; INVALID is
+still in the set, so implicit-modifier clients lose nothing.
+
+Upstream-bound: wlroots should gate this workaround on the thing it
+actually fears (a GBM without modifier support) instead of erasing
+explicit LINEAR for every client of every LINEAR-only GPU.
+---
+--- a/subprojects/wlroots-0.20.x/types/wlr_linux_dmabuf_v1.c
++++ b/subprojects/wlroots-0.20.x/types/wlr_linux_dmabuf_v1.c
+@@ -800,16 +800,6 @@
+ 		return;
+ 	}
+ 
+-	// In case only INVALID and LINEAR are advertised, send INVALID only due to XWayland:
+-	// https://gitlab.freedesktop.org/xorg/xserver/-/issues/1166
+-	if (fmt->len == 2 && wlr_drm_format_has(fmt, DRM_FORMAT_MOD_INVALID)
+-			&& wlr_drm_format_has(fmt, DRM_FORMAT_MOD_LINEAR)) {
+-		uint64_t mod = DRM_FORMAT_MOD_INVALID;
+-		zwp_linux_dmabuf_v1_send_modifier(resource, fmt->format,
+-			mod >> 32, mod & 0xFFFFFFFF);
+-		return;
+-	}
+-
+ 	for (size_t i = 0; i < fmt->len; i++) {
+ 		uint64_t mod = fmt->modifiers[i];
+ 		zwp_linux_dmabuf_v1_send_modifier(resource, fmt->format,

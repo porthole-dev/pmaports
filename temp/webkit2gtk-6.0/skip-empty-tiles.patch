@@ -1,0 +1,313 @@
+diff -ru a/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.cpp b/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.cpp
+--- a/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.cpp	2026-09-02 17:13:33.229332879 +0200
++++ b/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.cpp	2026-09-02 17:15:00.352897027 +0200
+@@ -39,7 +39,9 @@
+ #include "SkiaRecordingResult.h"
+ #include "SkiaReplayCanvas.h"
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
++#include <skia/core/SkBBHFactory.h>
+ #include <skia/core/SkPictureRecorder.h>
++#include <skia/utils/SkNoDrawCanvas.h>
+ #include <skia/gpu/ganesh/GrBackendSurface.h>
+ #include <skia/gpu/ganesh/SkImageGanesh.h>
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+@@ -83,12 +85,12 @@
+     return makeUnique<SkiaPaintingEngine>();
+ }
+ 
+-void SkiaPaintingEngine::paintIntoGraphicsContext(const GraphicsLayer& layer, GraphicsContext& context, const IntRect& dirtyRect, bool contentsOpaque, float contentsScale) const
++void SkiaPaintingEngine::paintIntoGraphicsContext(const GraphicsLayer& layer, GraphicsContext& context, const IntRect& dirtyRect, bool contentsOpaque, float contentsScale, bool clearBackground) const
+ {
+     IntRect initialClip(IntPoint::zero(), dirtyRect.size());
+     context.clip(initialClip);
+ 
+-    if (!contentsOpaque) {
++    if (!contentsOpaque && clearBackground) {
+         context.setCompositeOperation(CompositeOperator::Copy);
+         context.fillRect(initialClip, Color::transparentBlack);
+         context.setCompositeOperation(CompositeOperator::SourceOver);
+@@ -157,10 +159,15 @@
+ 
+     WTFBeginSignpost(this, RecordTile);
+     SkPictureRecorder pictureRecorder;
+-    auto* recordingCanvas = pictureRecorder.beginRecording(recordRect.width(), recordRect.height());
++    // A bounding-box hierarchy lets each tile replay only the operations that touch it, and lets
++    // recordingPaintsInRect() answer without visiting the rest of the layer. The transparent clear
++    // is left out of the recording: replay() clears the tile itself, and the recording must contain
++    // nothing but content for that check to mean anything.
++    SkRTreeFactory bbhFactory;
++    auto* recordingCanvas = pictureRecorder.beginRecording(SkRect::MakeWH(recordRect.width(), recordRect.height()), &bbhFactory);
+     GraphicsContextSkia recordingContext(*recordingCanvas, renderingMode, RenderingPurpose::LayerBacking);
+     recordingContext.beginRecording();
+-    paintIntoGraphicsContext(layer, recordingContext, recordRect, contentsOpaque, contentsScale);
++    paintIntoGraphicsContext(layer, recordingContext, recordRect, contentsOpaque, contentsScale, false);
+     auto imageToFenceMap = recordingContext.endRecording();
+     auto picture = pictureRecorder.finishRecordingAsPicture();
+     WTFEndSignpost(this, RecordTile);
+@@ -168,6 +175,58 @@
+     return SkiaRecordingResult::create(WTF::move(picture), WTF::move(imageToFenceMap), recordRect, renderingMode, contentsOpaque, contentsScale);
+ }
+ 
++namespace {
++
++// A canvas that draws nothing and remembers whether it was asked to. Played back with the
++// recording's bounding-box hierarchy and a clip, it is only handed the operations whose bounds
++// touch the clip, and the abort callback stops the playback at the first one.
++class DrawProbeCanvas final : public SkNoDrawCanvas, public SkPicture::AbortCallback {
++public:
++    explicit DrawProbeCanvas(const SkIRect& bounds)
++        : SkNoDrawCanvas(bounds)
++    {
++    }
++
++    bool drewSomething() const { return m_drewSomething; }
++
++private:
++    bool abort() final { return m_drewSomething; }
++    void onDrawPaint(const SkPaint&) final { m_drewSomething = true; }
++    void onDrawBehind(const SkPaint&) final { m_drewSomething = true; }
++    void onDrawPoints(PointMode, size_t, const SkPoint[], const SkPaint&) final { m_drewSomething = true; }
++    void onDrawRect(const SkRect&, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawRegion(const SkRegion&, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawOval(const SkRect&, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawArc(const SkRect&, SkScalar, SkScalar, bool, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawRRect(const SkRRect&, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawDRRect(const SkRRect&, const SkRRect&, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawPath(const SkPath&, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawImage2(const SkImage*, SkScalar, SkScalar, const SkSamplingOptions&, const SkPaint*) final { m_drewSomething = true; }
++    void onDrawImageRect2(const SkImage*, const SkRect&, const SkRect&, const SkSamplingOptions&, const SkPaint*, SrcRectConstraint) final { m_drewSomething = true; }
++    void onDrawImageLattice2(const SkImage*, const Lattice&, const SkRect&, SkFilterMode, const SkPaint*) final { m_drewSomething = true; }
++    void onDrawAtlas2(const SkImage*, const SkRSXform[], const SkRect[], const SkColor[], int, SkBlendMode, const SkSamplingOptions&, const SkRect*, const SkPaint*) final { m_drewSomething = true; }
++    void onDrawVerticesObject(const SkVertices*, SkBlendMode, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawPatch(const SkPoint[12], const SkColor[4], const SkPoint[4], SkBlendMode, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawShadowRec(const SkPath&, const SkDrawShadowRec&) final { m_drewSomething = true; }
++    void onDrawTextBlob(const SkTextBlob*, SkScalar, SkScalar, const SkPaint&) final { m_drewSomething = true; }
++    void onDrawDrawable(SkDrawable*, const SkMatrix*) final { m_drewSomething = true; }
++    void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*) final { m_drewSomething = true; }
++    void onDrawEdgeAAQuad(const SkRect&, const SkPoint[4], QuadAAFlags, const SkColor4f&, SkBlendMode) final { m_drewSomething = true; }
++    void onDrawEdgeAAImageSet2(const ImageSetEntry[], int, const SkPoint[], const SkMatrix[], const SkSamplingOptions&, const SkPaint*, SrcRectConstraint) final { m_drewSomething = true; }
++
++    bool m_drewSomething { false };
++};
++
++} // namespace
++
++bool SkiaPaintingEngine::recordingPaintsInRect(const SkiaRecordingResult& recording, const IntRect& rect)
++{
++    DrawProbeCanvas probe(SkIRect::MakeWH(rect.width(), rect.height()));
++    probe.translate(recording.recordRect().x() - rect.x(), recording.recordRect().y() - rect.y());
++    recording.picture()->playback(&probe, &probe);
++    return probe.drewSomething();
++}
++
+ Ref<CoordinatedTileBuffer> SkiaPaintingEngine::replay(const GraphicsLayerCoordinated& layer, const RefPtr<SkiaRecordingResult>& recording, const IntRect& dirtyRect)
+ {
+     // ### Asynchronous rendering on worker threads ###
+diff -ru a/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.h b/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.h
+--- a/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.h	2026-09-02 17:13:33.223499196 +0200
++++ b/Source/WebCore/platform/graphics/skia/SkiaPaintingEngine.h	2026-09-02 17:14:32.737334855 +0200
+@@ -60,10 +60,12 @@
+     Ref<CoordinatedTileBuffer> paint(const GraphicsLayerCoordinated&, const IntRect& dirtyRect, bool contentsOpaque, float contentsScale);
+     Ref<SkiaRecordingResult> record(const GraphicsLayerCoordinated&, const IntRect& recordRect, bool contentsOpaque, float contentsScale);
+     Ref<CoordinatedTileBuffer> replay(const GraphicsLayerCoordinated&, const RefPtr<SkiaRecordingResult>&, const IntRect& dirtyRect);
++    // Whether replaying the recording into rect (in recording coordinates) would draw anything at all.
++    static bool recordingPaintsInRect(const SkiaRecordingResult&, const IntRect&);
+ 
+ private:
+     Ref<CoordinatedTileBuffer> createBuffer(RenderingMode, const IntSize&, bool contentsOpaque) const;
+-    void paintIntoGraphicsContext(const GraphicsLayer&, GraphicsContext&, const IntRect&, bool contentsOpaque, float contentsScale) const;
++    void paintIntoGraphicsContext(const GraphicsLayer&, GraphicsContext&, const IntRect&, bool contentsOpaque, float contentsScale, bool clearBackground = true) const;
+ 
+     RefPtr<WorkerPool> m_workerPool;
+ };
+diff -ru a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp	2026-09-02 17:13:33.251711268 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp	2026-09-02 17:14:32.737715143 +0200
+@@ -40,7 +40,7 @@
+     m_tiles.remove(id);
+ }
+ 
+-void CoordinatedBackingStore::updateTile(uint32_t id, const IntRect& sourceRect, const IntRect& tileRect, Ref<CoordinatedTileBuffer>&& buffer, const IntPoint& offset)
++void CoordinatedBackingStore::updateTile(uint32_t id, const IntRect& sourceRect, const IntRect& tileRect, RefPtr<CoordinatedTileBuffer>&& buffer, const IntPoint& offset)
+ {
+     auto it = m_tiles.find(id);
+     ASSERT(it != m_tiles.end());
+@@ -81,6 +81,8 @@
+ 
+     for (const auto& tile : m_tiles.values()) {
+         ASSERT(tile.scale() == m_scale);
++        if (!tile.canBePainted())
++            continue;
+         const auto allEdgesExposed = allTileEdgesExposed(layerRect, tile.rect()) ? TextureMapper::AllEdgesExposed::Yes : TextureMapper::AllEdgesExposed::No;
+ 
+ #if ENABLE(DAMAGE_TRACKING)
+@@ -103,8 +105,10 @@
+     ASSERT(!m_size.isZero());
+     FloatRect layerRect = { { }, m_size };
+     TransformationMatrix adjustedTransform = transform * TransformationMatrix::rectToRect(layerRect, targetRect);
+-    for (const auto& tile : m_tiles.values())
+-        textureMapper.drawBorder(borderColor, borderWidth, tile.rect(), adjustedTransform);
++    for (const auto& tile : m_tiles.values()) {
++        if (tile.canBePainted())
++            textureMapper.drawBorder(borderColor, borderWidth, tile.rect(), adjustedTransform);
++    }
+ }
+ 
+ void CoordinatedBackingStore::drawRepaintCounter(TextureMapper& textureMapper, int repaintCount, const Color& borderColor, const FloatRect& targetRect, const TransformationMatrix& transform)
+@@ -112,8 +116,10 @@
+     ASSERT(!m_size.isZero());
+     FloatRect layerRect = { { }, m_size };
+     TransformationMatrix adjustedTransform = transform * TransformationMatrix::rectToRect(layerRect, targetRect);
+-    for (const auto& tile : m_tiles.values())
+-        textureMapper.drawNumber(repaintCount, borderColor, tile.rect().location(), adjustedTransform);
++    for (const auto& tile : m_tiles.values()) {
++        if (tile.canBePainted())
++            textureMapper.drawNumber(repaintCount, borderColor, tile.rect().location(), adjustedTransform);
++    }
+ }
+ 
+ } // namespace WebCore
+diff -ru a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.h b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.h
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.h	2026-09-02 17:13:33.246326762 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.h	2026-09-02 17:14:32.737659037 +0200
+@@ -41,7 +41,7 @@
+ 
+     void createTile(uint32_t tileID);
+     void removeTile(uint32_t tileID);
+-    void updateTile(uint32_t tileID, const IntRect&, const IntRect&, Ref<CoordinatedTileBuffer>&&, const IntPoint&);
++    void updateTile(uint32_t tileID, const IntRect&, const IntRect&, RefPtr<CoordinatedTileBuffer>&&, const IntPoint&);
+ 
+     void processPendingUpdates();
+ 
+diff -ru a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp	2026-09-02 17:13:33.240190759 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp	2026-09-02 17:14:32.737600546 +0200
+@@ -88,8 +88,10 @@
+ 
+ void CoordinatedBackingStoreProxy::Update::waitUntilPaintingComplete()
+ {
+-    for (auto& update : m_tilesToUpdate)
+-        update.buffer->waitUntilPaintingComplete();
++    for (auto& update : m_tilesToUpdate) {
++        if (update.buffer)
++            update.buffer->waitUntilPaintingComplete();
++    }
+ }
+ 
+ Ref<CoordinatedBackingStoreProxy> CoordinatedBackingStoreProxy::create()
+@@ -114,10 +116,15 @@
+     // Update the dirty tiles.
+     IntRect tileDirtyRectUnion;
+     unsigned dirtyTilesCount = 0;
+-    for (const auto& tile : m_tiles.values()) {
++    for (auto& tile : m_tiles.values()) {
+         if (!tile.isDirty())
+             continue;
+ 
++        // An empty tile has no texture behind it, so a partial update has nothing to land on:
++        // repaint the whole tile.
++        if (tile.isEmpty)
++            tile.dirtyRect = tile.rect;
++
+         tileDirtyRectUnion.unite(tile.dirtyRect);
+         ++dirtyTilesCount;
+     }
+@@ -142,9 +149,17 @@
+                 tile.rect.x(), tile.rect.y(), tile.rect.width(), tile.rect.height(), tile.dirtyRect.x(), tile.dirtyRect.y(), tile.dirtyRect.width(), tile.dirtyRect.height());
+ 
+ #if USE(SKIA)
+-            auto buffer = recording ? layer.replay(recording, tile.dirtyRect) : layer.paint(tile.dirtyRect);
++            // A layer promoted for overlap or stacking reasons is mostly transparent: most of its
++            // tiles paint nothing. Those get no buffer, no texture and no draw call.
++            RefPtr<CoordinatedTileBuffer> buffer;
++            if (recording && !recording->contentsOpaque() && tile.dirtyRect == tile.rect && !SkiaPaintingEngine::recordingPaintsInRect(*recording, tile.rect))
++                tile.isEmpty = true;
++            else {
++                buffer = recording ? layer.replay(recording, tile.dirtyRect) : layer.paint(tile.dirtyRect);
++                tile.isEmpty = false;
++            }
+ #else
+-            auto buffer = layer.paint(tile.dirtyRect);
++            RefPtr<CoordinatedTileBuffer> buffer = layer.paint(tile.dirtyRect);
+ #endif
+ 
+             IntRect updateRect(tile.dirtyRect);
+diff -ru a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.h b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.h
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.h	2026-09-02 17:13:33.234816622 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.h	2026-09-02 17:14:32.737500778 +0200
+@@ -58,7 +58,7 @@
+             uint32_t tileID { 0 };
+             IntRect tileRect;
+             IntRect dirtyRect;
+-            Ref<CoordinatedTileBuffer> buffer;
++            RefPtr<CoordinatedTileBuffer> buffer; // Null when the layer paints nothing in this tile.
+         };
+ 
+         const Vector<uint32_t>& tilesToCreate() const { return m_tilesToCreate; }
+@@ -126,6 +126,7 @@
+         IntPoint position;
+         IntRect rect;
+         IntRect dirtyRect;
++        bool isEmpty { false }; // The last update found nothing to paint: the compositor holds no texture for it.
+     };
+ 
+     CoordinatedBackingStoreProxy() = default;
+diff -ru a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.cpp b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.cpp
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.cpp	2026-09-02 17:13:33.262194251 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.cpp	2026-09-02 17:15:00.354792061 +0200
+@@ -61,6 +61,13 @@
+         FloatRect unscaledTileRect(update.tileRect);
+         unscaledTileRect.scale(1. / m_scale);
+ 
++        if (!update.buffer) {
++            m_rect = unscaledTileRect;
++            m_texture = nullptr;
++            WTFEndSignpost(this, CoordinatedSwapBuffer);
++            continue;
++        }
++
+         OptionSet<BitmapTexture::Flags> flags { };
+         if (update.buffer->supportsAlpha())
+             flags.add(BitmapTexture::Flags::SupportsAlpha);
+@@ -88,7 +95,7 @@
+ #if USE(SKIA)
+         if (update.buffer->isBackedByOpenGL()) {
+             WTFBeginSignpost(this, CopyTextureGPUToGPU);
+-            auto& buffer = static_cast<CoordinatedAcceleratedTileBuffer&>(update.buffer.get());
++            auto& buffer = static_cast<CoordinatedAcceleratedTileBuffer&>(*update.buffer);
+             buffer.serverWait();
+ 
+             // Fast path: whole tile content changed -- take ownership of the incoming texture, replacing the existing tile buffer (avoiding texture copies).
+@@ -106,7 +113,7 @@
+ 
+         WTFBeginSignpost(this, CopyTextureCPUToGPU);
+         ASSERT(!update.buffer->isBackedByOpenGL());
+-        auto& buffer = static_cast<CoordinatedUnacceleratedTileBuffer&>(update.buffer.get());
++        auto& buffer = static_cast<CoordinatedUnacceleratedTileBuffer&>(*update.buffer);
+         m_texture->updateContents(buffer.data(), update.sourceRect, update.bufferOffset, buffer.stride(), buffer.pixelFormat());
+         WTFEndSignpost(this, CopyTextureCPUToGPU);
+ 
+diff -ru a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.h b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.h
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.h	2026-09-02 17:13:33.257081527 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreTile.h	2026-09-02 17:14:32.737755188 +0200
+@@ -39,7 +39,7 @@
+     const FloatRect& rect() const { return m_rect; }
+ 
+     struct Update {
+-        Ref<CoordinatedTileBuffer> buffer;
++        RefPtr<CoordinatedTileBuffer> buffer; // Null: the tile paints nothing, drop its texture.
+         IntRect sourceRect;
+         IntRect tileRect;
+         IntPoint bufferOffset;
+diff -ru a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayer.cpp b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayer.cpp
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayer.cpp	2026-09-02 17:13:33.267568337 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayer.cpp	2026-09-02 17:14:32.737882779 +0200
+@@ -1075,7 +1075,7 @@
+             for (auto tileID : update.tilesToRemove())
+                 m_backingStore->removeTile(tileID);
+             for (const auto& tileUpdate : update.tilesToUpdate())
+-                m_backingStore->updateTile(tileUpdate.tileID, tileUpdate.dirtyRect, tileUpdate.tileRect, tileUpdate.buffer.copyRef(), { });
++                m_backingStore->updateTile(tileUpdate.tileID, tileUpdate.dirtyRect, tileUpdate.tileRect, RefPtr { tileUpdate.buffer }, { });
+ 
+             m_backingStore->processPendingUpdates();
+         }

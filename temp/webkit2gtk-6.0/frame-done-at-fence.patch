@@ -1,0 +1,79 @@
+diff --git a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
+index e68f5d9..a63c027 100644
+--- Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
++++ Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
+@@ -203,6 +203,15 @@ RefPtr<AcceleratedBackingStore> AcceleratedBackingStore::create(WebPageProxy& we
+ AcceleratedBackingStore::AcceleratedBackingStore(WebPageProxy& webPage)
+     : m_webPage(webPage)
+     , m_fenceMonitor([this] {
++        // The frame's rendering is complete. Let the web process start on the next one now rather
++        // than after GTK has snapshotted this one: GTK picks the buffer up on its next frame clock
++        // tick, and a newer frame arriving before that simply replaces it (see frame()). This turns
++        // the frame period from "compositor paint + up to one display tick" into
++        // "max(compositor paint, display tick)".
++        if (m_frameDonePending) {
++            m_frameDonePending = false;
++            frameDone();
++        }
+         if (m_webPage)
+             gtk_widget_queue_draw(m_webPage->viewWidget());
+     })
+@@ -697,15 +706,24 @@ void AcceleratedBackingStore::didDestroyBuffer(uint64_t id)
+ 
+ void AcceleratedBackingStore::frame(uint64_t bufferID, Rects&& damageRects, WTF::UnixFileDescriptor&& renderingFenceFD)
+ {
+-    ASSERT(!m_pendingBuffer);
++    // The web process only sends the next frame after FrameDone, which we send once the previous
++    // frame's fence signalled, so no fence can still be pending here.
++    ASSERT(!m_fenceMonitor.hasFileDescriptor());
+     auto* buffer = m_buffers.get(bufferID);
+     if (!buffer) {
+         frameDone();
+         return;
+     }
+ 
++    if (m_pendingBuffer) {
++        // GTK has not snapshotted the previous frame yet: it is superseded, give its buffer back.
++        m_pendingBuffer->release();
++        m_pendingBuffer = nullptr;
++    }
++
+     m_pendingBuffer = buffer;
+     m_pendingDamageRects = WTF::move(damageRects);
++    m_frameDonePending = true;
+     m_fenceMonitor.addFileDescriptor(WTF::move(renderingFenceFD));
+ }
+ 
+@@ -756,7 +774,10 @@ void AcceleratedBackingStore::update(const LayerTreeContext& context)
+ 
+     if (m_surfaceID) {
+         if (m_pendingBuffer) {
+-            frameDone();
++            if (m_frameDonePending) {
++                m_frameDonePending = false;
++                frameDone();
++            }
+             m_pendingBuffer = nullptr;
+             m_pendingDamageRects = { };
+         }
+@@ -804,8 +825,6 @@ bool AcceleratedBackingStore::snapshot(GtkSnapshot* gtkSnapshot)
+         return false;
+ 
+     m_committedBuffer->snapshot(gtkSnapshot);
+-    if (didSwapBuffers)
+-        frameDone();
+ 
+     return didSwapBuffers;
+ }
+diff --git a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
+index ae5bcc6..f0b1a0f 100644
+--- Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
++++ Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
+@@ -247,6 +247,7 @@ private:
+     uint64_t m_surfaceID { 0 };
+     WeakPtr<WebProcessProxy> m_legacyMainFrameProcess;
+     RefPtr<Buffer> m_pendingBuffer;
++    bool m_frameDonePending { false };
+     RefPtr<Buffer> m_committedBuffer;
+     Rects m_pendingDamageRects;
+     HashMap<uint64_t, RefPtr<Buffer>> m_buffers;

@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=27
+pkgrel=28
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -296,6 +296,7 @@ source="
 	0205-drm-msm-a5xx-use-the-vendor-hang-detect-threshold.patch
 	0206-input-touchscreen-ftm4-release-all-contacts-on-the-p.patch
 	0207-media-venus-vdec-implement-VIDIOC_G_PARM.patch
+	0208-power-supply-qcom_smbx-honour-the-Type-C-current-adv.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -535,4 +536,5 @@ eb0eb6c37c6bd4612edfb4968b88275bf0b913b3173ab28d2d29032eff917e2c088253ca3180213c
 08110231eaa72a877b787d8edb443fbe89177bacf2e38ab831d9c0be43c28f9fdcc431742804c2b745a02b231457d3670cd8fa2cf98e34e64ebb609fcfbf5f70  0205-drm-msm-a5xx-use-the-vendor-hang-detect-threshold.patch
 1d954df944018af876c3efe194bc640dcd6939a42272682e54060eb569a0c936baa030baafc790f9cf9ad26c782b1b7dc1eac97184821e2c69142a30f24161e0  0206-input-touchscreen-ftm4-release-all-contacts-on-the-p.patch
 65d208b0658c924e0fed105892444ff16a5db88f10cde74d0329119910bcacb289df6d9fbc58743e363b74bbee66dfd07139283a4c09ce0066b853089788f86b  0207-media-venus-vdec-implement-VIDIOC_G_PARM.patch
+da70beb09d4db3bc5e846604340dfa838ae322d800765893e7f80888a903ad58a899b9e5e2f660f9f2bd3e2ed24d629a0babd8460a77f8ecabc187983a577280  0208-power-supply-qcom_smbx-honour-the-Type-C-current-adv.patch
 "

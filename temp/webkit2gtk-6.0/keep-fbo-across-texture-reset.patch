@@ -1,0 +1,46 @@
+diff --git a/Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp b/Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
+index 0de85c1..7734e87 100644
+--- Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
++++ Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
+@@ -215,19 +215,28 @@ void BitmapTexture::reset(const IntSize& size, OptionSet<Flags> flags)
+     m_filterOperation = nullptr;
+ 
+     if (!flags.contains(Flags::DepthBuffer)) {
+-        if (m_fbo) {
+-            glDeleteFramebuffers(1, &m_fbo);
+-            m_fbo = 0;
+-        }
+-
+-        if (m_depthBufferObject) {
+-            glDeleteRenderbuffers(1, &m_depthBufferObject);
+-            m_depthBufferObject = 0;
+-        }
+-
+-        if (m_stencilBufferObject) {
+-            glDeleteRenderbuffers(1, &m_stencilBufferObject);
+-            m_stencilBufferObject = 0;
++        // A pooled texture re-acquired at the same size with no depth buffer can keep its FBO and
++        // its stencil renderbuffer: both are bound to a texture that is not reallocated below, and
++        // recreating them on every acquisition means a fresh GPU allocation per intermediate
++        // surface per frame on drivers without a buffer suballocator (freedreno on a5xx pays a
++        // kernel round trip per buffer per submit). Only a resize or a leftover depth buffer
++        // needs them rebuilt.
++        bool rebuild = m_size != size || m_depthBufferObject;
++        if (rebuild) {
++            if (m_fbo) {
++                glDeleteFramebuffers(1, &m_fbo);
++                m_fbo = 0;
++            }
++
++            if (m_depthBufferObject) {
++                glDeleteRenderbuffers(1, &m_depthBufferObject);
++                m_depthBufferObject = 0;
++            }
++
++            if (m_stencilBufferObject) {
++                glDeleteRenderbuffers(1, &m_stencilBufferObject);
++                m_stencilBufferObject = 0;
++            }
+         }
+ 
+         m_stencilBound = false;

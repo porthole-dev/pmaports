@@ -27,7 +27,7 @@
 # Drop this fork when Alpine edge reaches 2.52.
 pkgname=webkit2gtk-6.0
 pkgver=2.52.6
-pkgrel=50
+pkgrel=51
 pkgdesc="Portable web rendering engine WebKit for GTK+ - GTK4 version"
 url="https://webkitgtk.org/"
 arch="all"
@@ -105,6 +105,8 @@ source="https://webkitgtk.org/releases/webkitgtk-$pkgver.tar.xz
 	riscv64-no-wasm.patch
 	loongarch64-fix-simde.patch
 	x11-include-order.patch
+	frame-done-at-fence.patch
+	keep-fbo-across-texture-reset.patch
 	"
 builddir="$srcdir/webkitgtk-$pkgver"
 
@@ -213,4 +215,6 @@ a3d627122e5a34dc3a10ba9f2294d1b7440e5569521e272c04a963cf8e7b0fada9eedcf773511d35
 61461d19f80108357d0469a855212308a49fb43f5a629d119f95492c3897444664cbe12beddc53d801878124a67e38b4a404d37d1ac9c0e5ce65d7586328b1d9  riscv64-no-wasm.patch
 5d5e1918baea689bc1b111779988d60aac448346bf4ab3a8430955f7771e7661269a5006b915ca2a82997680cb5c1838e8abb8d56ba3003e0b79eb8dd6736bf7  loongarch64-fix-simde.patch
 0491cf01c9fcb4cc874374ab5a41592dd737285c3ca0d821c0de38b82be66e785a977ffc1dd547e48592961dde940c8e0133e927c8d5307b41b29984eb413b52  x11-include-order.patch
+5612e8a7fbfa8b7307453b901ace54b822c326f095d97e9aef32c0a2c7134bc4e8086f2d4f9550deda74291aaeb747b6d600acba32e3db9d128444365d88182b  frame-done-at-fence.patch
+ab807cee17c5b4fcaf17ab8338f65877acb0183ba1f1301d40643677d33a867b1eb373eaede5435e54f345c3f540c5edbf763043acfde745104939db55b17fa2  keep-fbo-across-texture-reset.patch
 "

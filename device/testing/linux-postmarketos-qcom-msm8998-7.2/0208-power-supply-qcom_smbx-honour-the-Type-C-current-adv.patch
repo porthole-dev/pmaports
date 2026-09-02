@@ -5,24 +5,40 @@ Subject: [PATCH] power: supply: qcom_smbx: honour the Type-C current
  advertisement
 
 The input current limit is chosen from the BC1.2 (APSD) result alone, so
-a Type-C host port that advertises 3 A through Rp enumerates as an SDP
-and is limited to 500 mA. On a Pixel 2 XL plugged into a PD-capable
-laptop port the charger reports TYPE_C_STATUS_1 = 0x20 (UFP_TYPEC_RD3P0)
-next to APSD_RESULT = SDP and USBIN_CURRENT_LIMIT_CFG = 500 mA, and the
-battery discharges at ~300 mA under load while "Charging".
+a Type-C source that advertises 1.5 A or 3 A through the Rp pull-up on CC
+enumerates as an SDP and is held to 500 mA.
+
+On a Pixel 2 XL (msm8998/pmi8998) attached to a Type-C host port, read
+straight out of the charger block:
+
+  1308: 01   APSD_RESULT_STATUS = SDP
+  130b: 20   TYPE_C_STATUS_1    = UFP_TYPEC_RD3P0 (source offers 3 A)
+  130e: 51   TYPE_C_STATUS_4    = VBUS | DEBOUNCE_DONE | CC_ATTACHED
+  130f: 01   TYPE_C_STATUS_5    = no legacy/non-compliant cable
+
+USBIN_CURRENT_LIMIT_CFG stays at 500 mA, USBIN draws 474 mA and the
+battery gains 15 mA while idle -- and goes negative under load, on a port
+offering six times that. Honouring the advertisement lets the hardware
+settle at an input current limit of 2.05 A, drawing 1.9 A at 4.53-4.61 V
+and charging at 530-870 mA under the same load.
 
 The USB Type-C specification lets a sink draw the current advertised on
 CC without further negotiation, so take the Rp advertisement when it is
-1.5 A or 3 A and keep the BC1.2 result otherwise. The TYPE_C_STATUS_1
-bits were already defined and unused.
+1.5 A or 3 A and keep the BC1.2 result otherwise. Where a source cannot
+really supply what it advertises, the charger's own AICL walks the limit
+back down, which is what it is for.
+
+Only trust the advertisement when the port is attached as a sink on CC
+and the cable is compliant: the Rp bits retain whatever the previous
+attach left in them, so reading them unattached invents an advertisement,
+and a non-compliant legacy adapter drives Rp with a resistor that says
+nothing about the supply behind it. The TYPE_C_STATUS bits were all
+already defined and unused.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/power/supply/qcom_smbx.c | 36 +++++++++++++++++++++++++++++++-
- 1 file changed, 35 insertions(+), 1 deletion(-)
-
 diff --git a/drivers/power/supply/qcom_smbx.c b/drivers/power/supply/qcom_smbx.c
-index 22cd0b4d3004..ec9d6c92a417 100644
+index 22cd0b4d3004..0316ba042bf0 100644
 --- a/drivers/power/supply/qcom_smbx.c
 +++ b/drivers/power/supply/qcom_smbx.c
 @@ -348,6 +348,8 @@
@@ -34,26 +50,53 @@ index 22cd0b4d3004..ec9d6c92a417 100644
  #define CURRENT_MAX_UA					DCP_CURRENT_UA
  
  /* pmi8998 registers represent current in increments of 1/40th of an amp */
-@@ -547,9 +549,38 @@ static int smb_set_current_limit(struct smb_chip *chip, unsigned int val)
+@@ -547,9 +549,65 @@ static int smb_set_current_limit(struct smb_chip *chip, unsigned int val)
  			    val_raw);
  }
  
 +/*
 + * A Type-C source advertises the current it can supply through the Rp pull-up
 + * on CC, and a sink may draw it without any further negotiation (USB Type-C
-+ * spec, "Sink Requirements"). BC1.2 knows nothing about it: a PD-capable host
-+ * port that offers 3 A enumerates as an SDP and would be limited to 500 mA.
-+ * Returns -ENODEV when the source only offers the USB default, in which case
-+ * the BC1.2 result stands.
++ * spec, "Sink Requirements"). BC1.2 knows nothing about that: a host port
++ * offering 3 A through Rp still enumerates as an SDP and would be held to
++ * 500 mA.
++ *
++ * Only trust the advertisement when the port is actually attached as a sink on
++ * CC and the cable is compliant. The Rp bits keep whatever the last attach left
++ * in them, so reading them while nothing is attached invents an advertisement;
++ * and a non-compliant legacy adapter drives Rp with a resistor that carries no
++ * promise about the supply behind it.
++ *
++ * Returns -ENODEV when there is no advertisement to honour, in which case the
++ * BC1.2 result stands.
 + */
 +static int smb_typec_get_current_ua(struct smb_chip *chip, unsigned int *current_ua)
 +{
 +	unsigned int stat;
 +	int rc;
 +
++	rc = regmap_read(chip->regmap, chip->base + TYPE_C_STATUS_4, &stat);
++	if (rc < 0) {
++		dev_err(chip->dev, "Failed to read type-c status 4, rc = %d\n", rc);
++		return rc;
++	}
++
++	/* Nothing attached on CC, or we are the source: Rp is not ours to read */
++	if (!(stat & CC_ATTACHED_BIT) || stat & UFP_DFP_MODE_STATUS_BIT)
++		return -ENODEV;
++
++	rc = regmap_read(chip->regmap, chip->base + TYPE_C_STATUS_5, &stat);
++	if (rc < 0) {
++		dev_err(chip->dev, "Failed to read type-c status 5, rc = %d\n", rc);
++		return rc;
++	}
++
++	if (stat & TYPEC_NONCOMP_LEGACY_CABLE_STATUS_BIT)
++		return -ENODEV;
++
 +	rc = regmap_read(chip->regmap, chip->base + TYPE_C_STATUS_1, &stat);
 +	if (rc < 0) {
-+		dev_err(chip->dev, "Failed to read type-c status, rc = %d", rc);
++		dev_err(chip->dev, "Failed to read type-c status 1, rc = %d\n", rc);
 +		return rc;
 +	}
 +
@@ -74,7 +117,7 @@ index 22cd0b4d3004..ec9d6c92a417 100644
  	int usb_online = 0;
  	int count, rc;
  	struct smb_chip *chip;
-@@ -595,6 +626,9 @@ static void smb_status_change_work(struct work_struct *work)
+@@ -595,6 +653,9 @@ static void smb_status_change_work(struct work_struct *work)
  		break;
  	}
  

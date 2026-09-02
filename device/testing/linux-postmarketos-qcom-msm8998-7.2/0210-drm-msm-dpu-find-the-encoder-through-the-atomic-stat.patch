@@ -1,0 +1,77 @@
+From 65ff8754a3a5432e981288f20c4910d9538afc79 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 2 Sep 2026 22:27:01 +0200
+Subject: [PATCH] drm/msm/dpu: find the encoder through the atomic state, not
+ encoder->crtc
+
+get_encoder_from_crtc() walks every encoder looking for the legacy
+encoder->crtc back-pointer. That field is maintained for compatibility and
+is not the atomic source of truth, so the lookup returns NULL whenever it
+has not been set up -- and both callers are vblank hooks that DRM may call
+around a modeset:
+
+  [drm:dpu_crtc_get_vblank_counter [msm]] *ERROR* no encoder found for crtc 0
+  [drm:dpu_crtc_get_scanout_position [msm]] *ERROR* no encoder found for crtc 0
+
+Ten of those on a Pixel 2 XL in a couple of hours of ordinary use. The
+failure is not free: dpu_crtc_get_vblank_counter() returns 0 on this path,
+which makes the vblank counter appear to jump backwards, and
+dpu_crtc_get_scanout_position() reports no position so vblank timestamps
+fall back to an estimate.
+
+Every other encoder lookup in this file already iterates
+crtc->state->encoder_mask. Do the same here, and guard the case where the
+CRTC has no state at all.
+
+A disabled CRTC legitimately has no encoder, so the message becomes
+DRM_DEBUG_KMS rather than DRM_ERROR: it is a transient state, not a driver
+error.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c b/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
+index d959b7dc12a2..0401c46b8cc6 100644
+--- a/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
++++ b/drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c
+@@ -53,12 +53,13 @@ static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
+ 
+ static struct drm_encoder *get_encoder_from_crtc(struct drm_crtc *crtc)
+ {
+-	struct drm_device *dev = crtc->dev;
+ 	struct drm_encoder *encoder;
+ 
+-	drm_for_each_encoder(encoder, dev)
+-		if (encoder->crtc == crtc)
+-			return encoder;
++	if (!crtc->state)
++		return NULL;
++
++	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask)
++		return encoder;
+ 
+ 	return NULL;
+ }
+@@ -189,7 +190,7 @@ static u32 dpu_crtc_get_vblank_counter(struct drm_crtc *crtc)
+ {
+ 	struct drm_encoder *encoder = get_encoder_from_crtc(crtc);
+ 	if (!encoder) {
+-		DRM_ERROR("no encoder found for crtc %d\n", crtc->index);
++		DRM_DEBUG_KMS("no encoder found for crtc %d\n", crtc->index);
+ 		return 0;
+ 	}
+ 
+@@ -279,7 +280,7 @@ static bool dpu_crtc_get_scanout_position(struct drm_crtc *crtc,
+ 
+ 	encoder = get_encoder_from_crtc(crtc);
+ 	if (!encoder) {
+-		DRM_ERROR("no encoder found for crtc %d\n", pipe);
++		DRM_DEBUG_KMS("no encoder found for crtc %d\n", pipe);
+ 		return false;
+ 	}
+ 
+-- 
+2.55.0
+

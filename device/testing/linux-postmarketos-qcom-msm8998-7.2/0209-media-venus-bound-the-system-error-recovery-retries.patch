@@ -1,0 +1,136 @@
+From 80c7c24274082fa56dc0917b126022b1feadb918 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 2 Sep 2026 20:23:13 +0200
+Subject: [PATCH] media: venus: bound the system error recovery retries
+
+venus_sys_error_handler() re-arms itself on every failed recovery:
+
+	if (failed) {
+		disable_irq_nosync(core->irq);
+		dev_warn_ratelimited(...);
+		schedule_delayed_work(&core->work, msecs_to_jiffies(10));
+		return;
+	}
+
+There is no attempt counter and no backoff, so a failure that cannot
+clear retries every 10 ms for as long as the machine is up. Each pass is
+not cheap either: pm_runtime_get_sync(), core_deinit(), venus_shutdown(),
+hfi_reinit(), venus_boot() and hfi_core_resume(), several of which sit
+out their own timeouts before failing.
+
+Seen on msm8998 (Pixel 2 XL) after the decoder firmware asserted during
+playback:
+
+  qcom-venus: no valid instance(pkt session_id:dead, pkt:21001)
+  qcom-venus: SFR message from FW: ... Err_Fatal - vbuffer.c:569
+  qcom-venus: System error has occurred, recovery failed to init HFI
+
+The video GDSC would no longer power on -- genpd_power_on() returning
+-ETIMEDOUT out of gdsc_toggle_logic() -- so recovery could never succeed.
+The handler then ran for over fifteen minutes, 610 warnings at the rate
+the ratelimit allowed while the work itself re-ran every 10 ms, with the
+venus IRQ thread taking measurable CPU the whole time. Because the
+message is ratelimited, the log makes this look like one retry every
+couple of seconds rather than a hot loop.
+
+Count consecutive failures, back off exponentially, and give up after
+five attempts. core->sys_error stays set on give-up, which is what every
+HFI entry point already tests, so calls fail cleanly rather than hang;
+the counter is reset when a new system error arrives and when recovery
+succeeds. Recovering the hardware from this state needs a reboot either
+way, but the machine should not spin until then.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/core.c | 36 ++++++++++++++++++++----
+ drivers/media/platform/qcom/venus/core.h |  2 ++
+ 2 files changed, 33 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index eada1b6af547..2f248e602b68 100644
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -69,7 +69,8 @@ static void venus_event_notify(struct venus_core *core, u32 event)
+ 	}
+ 
+ 	mutex_lock(&core->lock);
+-	set_bit(0, &core->sys_error);
++	if (!test_and_set_bit(0, &core->sys_error))
++		core->sys_error_attempts = 0;
+ 	set_bit(0, &core->dump_core);
+ 	list_for_each_entry(inst, &core->instances, list)
+ 		inst->ops->event_notify(inst, EVT_SESSION_ERROR, NULL);
+@@ -84,6 +85,14 @@ static const struct hfi_core_ops venus_core_ops = {
+ };
+ 
+ #define RPM_WAIT_FOR_IDLE_MAX_ATTEMPTS 10
++/*
++ * Recovery re-arms itself, so a failure mode that cannot clear -- the video
++ * GDSC refusing to power on after a firmware assert, say -- would otherwise
++ * retry for as long as the machine is up. Give up after this many consecutive
++ * failures and leave core->sys_error set, which makes every HFI entry point
++ * fail cleanly instead of hanging.
++ */
++#define VENUS_MAX_RECOVERY_ATTEMPTS 5
+ 
+ static void venus_sys_error_handler(struct work_struct *work)
+ {
+@@ -160,14 +169,31 @@ static void venus_sys_error_handler(struct work_struct *work)
+ 	pm_runtime_put_sync(core->dev);
+ 
+ 	if (failed) {
++		unsigned long delay_ms;
++
+ 		disable_irq_nosync(core->irq);
+-		dev_warn_ratelimited(core->dev,
+-				     "System error has occurred, recovery failed to %s\n",
+-				     err_msg);
+-		schedule_delayed_work(&core->work, msecs_to_jiffies(10));
++
++		if (++core->sys_error_attempts >= VENUS_MAX_RECOVERY_ATTEMPTS) {
++			dev_err(core->dev,
++				"System error has occurred, recovery failed to %s after %u attempts, giving up\n",
++				err_msg, core->sys_error_attempts);
++			return;
++		}
++
++		/* Back off: a failure that needs hardware to settle is not helped
++		 * by asking again in 10 ms, and a failure that never clears must
++		 * not spin.
++		 */
++		delay_ms = 10UL << (core->sys_error_attempts - 1);
++		dev_warn(core->dev,
++			 "System error has occurred, recovery failed to %s, retrying in %lu ms (%u/%u)\n",
++			 err_msg, delay_ms, core->sys_error_attempts,
++			 VENUS_MAX_RECOVERY_ATTEMPTS);
++		schedule_delayed_work(&core->work, msecs_to_jiffies(delay_ms));
+ 		return;
+ 	}
+ 
++	core->sys_error_attempts = 0;
+ 	dev_warn(core->dev, "system error has occurred (recovered)\n");
+ 
+ 	mutex_lock(&core->lock);
+diff --git a/drivers/media/platform/qcom/venus/core.h b/drivers/media/platform/qcom/venus/core.h
+index 46705a666776..1e88f5db4ca9 100644
+--- a/drivers/media/platform/qcom/venus/core.h
++++ b/drivers/media/platform/qcom/venus/core.h
+@@ -171,6 +171,7 @@ struct venus_format {
+  * @error:	an error returned during last HFI sync operations
+  * @sys_error:	an error flag that signal system error event
+  * @sys_err_done: a waitqueue to wait for system error recovery end
++ * @sys_error_attempts:	consecutive failed recovery attempts
+  * @core_ops:	the core operations
+  * @pm_ops:	a pointer to pm operations
+  * @pm_lock:	a lock for PM operations
+@@ -231,6 +232,7 @@ struct venus_core {
+ 	struct completion done;
+ 	unsigned int error;
+ 	unsigned long sys_error;
++	unsigned int sys_error_attempts;
+ 	wait_queue_head_t sys_err_done;
+ 	const struct hfi_core_ops *core_ops;
+ 	const struct venus_pm_ops *pm_ops;
+-- 
+2.55.0
+

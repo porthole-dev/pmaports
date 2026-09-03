@@ -1,0 +1,54 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 3 Sep 2026 21:00:00 +0200
+Subject: [PATCH] freedreno/a5xx: program the MSAA state in the tile init
+
+fd5_emit_tile_init() programs the depth and colour targets for the GMEM
+pass but not the sample count; fd5_emit_sysmem_prep() programs all three.
+The MSAA registers are first written by emit_tile_renderprep(), which runs
+after the first tile's mem2gmem.  So the first restore of every batch,
+and the binning pass, run with whatever RB_RAS_MSAA_CNTL,
+RB_DEST_MSAA_CNTL and their GRAS/TPL1 counterparts held when the previous
+submit ended -- and on a5xx nothing restores register state between
+submits, so that is frequently another process's.
+
+On an a540 (chip_id 0x5040001) driving phosh, a WebKit page that leaves
+4x MSAA state behind (Skia mask passes) makes the compositor's first
+tile come back with its undamaged rows holding a sample-interleaved
+version of another surface: the same signature as an unresolved MSAA
+store.  Only pixels no draw of the frame touches are affected, since
+those are the ones the restore is supposed to carry through; the tiles
+that follow inherit the compositor's own single-sample state and are
+fine.  The first tile is the top-right one under the default 'S' tile
+order, which is where the defect had been observed as a "third bin
+column" problem.
+
+Measured on a 1440x2880 output, 40 captures per arm of a panel region no
+client repaints, corrupt meaning any variance in a region that is flat
+when correct:
+
+	default                                          40/40 corrupt
+	FD_MESA_DEBUG=nosbin                             40/40, moved to the new first tile
+	compositor repaints everything                    0/40
+	FD_MESA_DEBUG=sysmem                              0/40
+	a client whose submits end single-sampled         0/40
+	emit_msaa() in the tile init                      0/40, pixel-black
+
+Also tried and measured as no-ops on the way: a CCU invalidate at tile
+init, blend state forced to a plain copy before the blits, a second
+restore of the first tile, an RB_CNTL write in GMEM render mode, a WFI
+after the render-mode switch, a UCHE invalidate, a CCU flush.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c b/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c
+index 2f4a9e2..bdd34fe 100644
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c
+@@ -406,6 +406,7 @@ fd5_emit_tile_init(struct fd_batch *batch) assert_dt
+ 
+    emit_zs(ring, &pfb->zsbuf, batch->gmem_state);
+    emit_mrt(ring, pfb->nr_cbufs, pfb->cbufs, batch->gmem_state);
++   emit_msaa(ring, pfb->samples);
+ 
+    /* Enable stream output for the first pass (likely the binning). */
+    OUT_PKT4(ring, REG_A5XX_VPC_SO_OVERRIDE, 1);

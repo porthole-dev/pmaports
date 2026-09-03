@@ -1,0 +1,72 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 3 Sep 2026 11:10:00 +0200
+Subject: [PATCH] freedreno/a5xx: use bypass for multisampled render targets
+
+a5xx has no GMEM resolve.  emit_gmem2mem_surf() stores GMEM back to
+system memory with the resolve hardcoded off, and the correct condition
+commented out beside it:
+
+	//	bool msaa_resolve = pfb->samples > 1;
+	bool msaa_resolve = false;
+
+So a multisampled GMEM buffer is written to its single-sample
+destination without the samples ever being averaged.
+
+Captured from the hardware command stream on an a540 (chip_id 0x5040001,
+FD_RD_DUMP + cffdump), one such render pass reads:
+
+	RB_CNTL:            { WIDTH = 128 | HEIGHT = 32 }
+	RB_RAS_MSAA_CNTL:   { SAMPLES = MSAA_FOUR }
+	RB_DEST_MSAA_CNTL:  { SAMPLES = MSAA_FOUR }
+	... draws ...
+	RB_BLIT_CNTL:       { BUF = BLIT_MRT0 }
+	RB_BLIT_DST_PITCH:  512			/* 128 px * 4 bytes, 1 sample */
+	RB_CLEAR_CNTL:      { MASK = 0 }	/* no MSAA_RESOLVE */
+
+The destination pitch is single-sample while GMEM holds four samples per
+pixel, and MSAA_RESOLVE is clear, so the store reads interleaved samples
+as pixels.  Coverage belonging to one row is spread along the row: a
+filled shape gains a horizontal band at its widest extent.  Shapes with
+axis-aligned edges have almost no partially covered pixels and survive
+it; anything with a long diagonal edge does not.
+
+This is not an exotic path.  Skia renders complex paths into small
+multisampled mask surfaces, so it hits ordinary web content -- a 48px
+triangular warning glyph in a composited layer renders with a 120x24
+pixel bar across it, while the axis-aligned glyphs beside it are
+pixel-exact.  Rendering the same page with FD_MESA_DEBUG=sysmem is
+pixel-correct.
+
+Simply setting RB_CLEAR_CNTL.MSAA_RESOLVE is not a fix and makes the
+image worse, with or without splitting the RAS and DEST sample counts
+the way a4xx does for its resolve pass; the rest of the sequence the
+resolve needs is not known.  Until it is, keep the tiled path away from
+multisampled framebuffers and let bypass handle them, the same way
+layered rendering and tessellation are already handled.  The affected
+surfaces are small, so the bandwidth cost is slight, and correctness
+beats a resolve that is not implemented.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+diff --git a/src/gallium/drivers/freedreno/freedreno_gmem.c b/src/gallium/drivers/freedreno/freedreno_gmem.c
+index 9f7124d..1ef750c 100644
+--- a/src/gallium/drivers/freedreno/freedreno_gmem.c
++++ b/src/gallium/drivers/freedreno/freedreno_gmem.c
+@@ -754,6 +754,17 @@ fd_gmem_render_tiles(struct fd_batch *batch)
+       sysmem = true;
+    }
+ 
++   /* a5xx cannot resolve a multisampled GMEM buffer on store: the resolve in
++    * emit_gmem2mem_surf() is hardcoded off because the sequence it needs is
++    * not known, so the samples reach the single-sample destination unaveraged
++    * and partially covered pixels smear along their row.  Bypass resolves
++    * correctly, so use it for multisampled framebuffers.
++    */
++   if (is_a5xx(ctx->screen) && (pfb->samples > 1)) {
++      assert(ctx->emit_sysmem_prep);
++      sysmem = true;
++   }
++
+    fd_reset_wfi(batch);
+ 
+    ctx->stats.batch_total++;

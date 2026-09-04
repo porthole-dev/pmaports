@@ -25,9 +25,30 @@
 # 2.54.0 outranks it by design.
 #
 # Drop this fork when Alpine edge reaches 2.52.
+#
+# damage-clip-compositing-on-gtk.patch flips two GTK preference defaults so
+# WebKit clips its OWN compositing to the rectangles it damaged:
+#
+#   UseDamagingInformationForCompositing  false -> true   (was off everywhere)
+#   UnifyDamagedRegions                   true  -> false  (was GTK-only true)
+#
+# Upstream collects damage on GTK and forwards a tight rect to the system
+# compositor, but never uses it internally, and Unify collapses the frame's
+# damage to one bounding box. TextureMapperLayer::collectDamageSelf() marks any
+# layer with a contents buffer -- the decoded video layer -- fully damaged every
+# frame, so the bounding box IS the viewport and Epiphany recomposites all of it
+# for a playing video. Flipping only the first pref is measurably neutral for
+# exactly that reason; both are needed.
+#
+# Measured on taimen (msm8998/A540) 2026-09-04, MiniBrowser --features A/B on
+# 4K60 YouTube, 60 s: compositor commit p50 38.7 -> 35.7 ms, p90 44.6 -> 41.3,
+# worst frame 162 -> 112 ms, die at saturation 80.3 -> 77.5 C. WEBKIT_SHOW_DAMAGE
+# shows the whole viewport tinted before and discrete rectangles after.
+# Rectangles mode does NOT flood the system compositor: the wayland log shows
+# exactly one wl_surface.damage_buffer per commit in both arms.
 pkgname=webkit2gtk-6.0
 pkgver=2.52.6
-pkgrel=52
+pkgrel=53
 pkgdesc="Portable web rendering engine WebKit for GTK+ - GTK4 version"
 url="https://webkitgtk.org/"
 arch="all"
@@ -108,6 +129,7 @@ source="https://webkitgtk.org/releases/webkitgtk-$pkgver.tar.xz
 	frame-done-at-fence.patch
 	keep-fbo-across-texture-reset.patch
 	skip-empty-tiles.patch
+	damage-clip-compositing-on-gtk.patch
 	"
 builddir="$srcdir/webkitgtk-$pkgver"
 
@@ -219,4 +241,5 @@ a3d627122e5a34dc3a10ba9f2294d1b7440e5569521e272c04a963cf8e7b0fada9eedcf773511d35
 5612e8a7fbfa8b7307453b901ace54b822c326f095d97e9aef32c0a2c7134bc4e8086f2d4f9550deda74291aaeb747b6d600acba32e3db9d128444365d88182b  frame-done-at-fence.patch
 ab807cee17c5b4fcaf17ab8338f65877acb0183ba1f1301d40643677d33a867b1eb373eaede5435e54f345c3f540c5edbf763043acfde745104939db55b17fa2  keep-fbo-across-texture-reset.patch
 b12f679813e35a50cd2f7bf94fa6da9ee390b79e428fedccfc484716bdcf791727d75d6e40c4fd867e7434c688cbae52d2cc2f7e51843a5318d1e38fbe88673b  skip-empty-tiles.patch
+ed66e7d50ecd91268318f9f8ba998c7bef8080dd5a7baf1c876fe0aaf1a6ecc44bb320cc5535c203c7c8eb6004b40c4ad94ba56aa0a45c6e66d3dedb42b4263c  damage-clip-compositing-on-gtk.patch
 "

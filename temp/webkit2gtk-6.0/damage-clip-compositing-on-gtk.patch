@@ -1,0 +1,18 @@
+--- a/Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml	2026-09-04 22:30:19.314036064 +0200
++++ b/Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml	2026-09-04 22:30:19.324859002 +0200
+@@ -8450,7 +8450,6 @@
+      WebKitLegacy:
+        default: false
+      WebKit:
+-       "PLATFORM(GTK)": true
+        default: false
+      WebCore:
+        default: false
+@@ -8561,6 +8560,7 @@
+     WebKitLegacy:
+       default: false
+     WebKit:
++      "PLATFORM(GTK)": true
+       default: false
+     WebCore:
+       default: false

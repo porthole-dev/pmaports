@@ -1,7 +1,7 @@
 diff --git a/Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp b/Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
 index 0de85c1..7734e87 100644
---- Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
-+++ Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
+--- a/Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
++++ b/Source/WebCore/platform/graphics/texmap/BitmapTexture.cpp
 @@ -215,19 +215,28 @@ void BitmapTexture::reset(const IntSize& size, OptionSet<Flags> flags)
      m_filterOperation = nullptr;
  

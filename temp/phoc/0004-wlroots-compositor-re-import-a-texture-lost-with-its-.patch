@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 4 Sep 2026 22:10:00 +0200
+Subject: [PATCH] wlroots: compositor: re-import a texture lost with its
+ renderer
+
+A wlr_client_buffer's texture belongs to the renderer that imported it.
+When that renderer is destroyed -- which is exactly what a compositor does
+after a GPU reset, via wlr_renderer_destroy() and
+wlr_compositor_set_renderer() -- client_buffer_handle_renderer_destroy()
+sets client_buffer->texture to NULL so nothing is left dangling.
+
+Nothing ever puts a texture back. wlr_compositor_set_renderer() only swaps
+the pointer and the destroy listener; the only path that creates a client
+buffer is surface_apply_damage(), which runs on a client commit. So after a
+reset every surface keeps a wlr_client_buffer whose texture is NULL, and
+wlr_surface_get_texture() returns NULL for it until that client happens to
+commit again.
+
+A client that animates commits within a frame or two and recovers on its
+own. A static layer-surface does not commit at all: the wallpaper, the
+phosh panel and the on-screen keyboard stay textureless for the rest of the
+session, and the compositor draws nothing where they are. Measured on a
+Pixel 2 XL (msm8998, Adreno 540, mainline 7.2), where the A540 is reset
+several times a session under a browser load: with phoc's
+"repaint every output after recreating the renderer" fix in place the
+compositor correctly repaints, and correctly paints those surfaces blank.
+
+The source buffer survives the reset -- a dmabuf's fds and a shm pool's
+mapping are both still valid, and client_buffer->source is NULL only if the
+buffer itself was destroyed. So import it again. Doing it lazily in
+wlr_surface_get_texture() puts the recovery on the one path every consumer
+of a surface texture already goes through, and only for surfaces that are
+actually drawn.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ types/wlr_compositor.c | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/subprojects/wlroots-0.20.x/types/wlr_compositor.c b/subprojects/wlroots-0.20.x/types/wlr_compositor.c
+index 1111111..2222222 100644
+--- a/subprojects/wlroots-0.20.x/types/wlr_compositor.c
++++ b/subprojects/wlroots-0.20.x/types/wlr_compositor.c
+@@ -813,10 +813,43 @@ struct wlr_surface *wlr_surface_create(struct wlr_compositor *compositor,
+ 	return surface;
+ }
+ 
++/**
++ * Import the surface's buffer into the compositor's current renderer again.
++ *
++ * A client buffer's texture belongs to the renderer that imported it and is
++ * dropped when that renderer is destroyed, which is what happens on a GPU
++ * reset. The source buffer is still there, so import it again instead of
++ * leaving the surface without a texture until the client next commits: a
++ * client that animates recovers on its own, but a static layer-surface such
++ * as a wallpaper, a panel or an on-screen keyboard never commits again and
++ * would stay blank for the rest of the session.
++ */
++static void surface_reimport_buffer(struct wlr_surface *surface) {
++	struct wlr_buffer *source = surface->buffer->source;
++	if (source == NULL || surface->compositor->renderer == NULL) {
++		return;
++	}
++
++	wlr_buffer_lock(source);
++	struct wlr_client_buffer *buffer =
++		wlr_client_buffer_create(source, surface->compositor->renderer);
++	wlr_buffer_unlock(source);
++	if (buffer == NULL) {
++		wlr_log(WLR_ERROR, "Failed to re-import buffer");
++		return;
++	}
++
++	wlr_buffer_unlock(&surface->buffer->base);
++	surface->buffer = buffer;
++}
++
+ struct wlr_texture *wlr_surface_get_texture(struct wlr_surface *surface) {
+ 	if (surface->buffer == NULL) {
+ 		return NULL;
+ 	}
++	if (surface->buffer->texture == NULL) {
++		surface_reimport_buffer(surface);
++	}
+ 	return surface->buffer->texture;
+ }
+ 
+-- 
+2.51.0

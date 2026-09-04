@@ -1,7 +1,7 @@
 diff --git a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
 index e68f5d9..a63c027 100644
---- Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
-+++ Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
+--- a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
++++ b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
 @@ -203,6 +203,15 @@ RefPtr<AcceleratedBackingStore> AcceleratedBackingStore::create(WebPageProxy& we
  AcceleratedBackingStore::AcceleratedBackingStore(WebPageProxy& webPage)
      : m_webPage(webPage)
@@ -67,8 +67,8 @@ index e68f5d9..a63c027 100644
  }
 diff --git a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
 index ae5bcc6..f0b1a0f 100644
---- Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
-+++ Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
+--- a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
++++ b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.h
 @@ -247,6 +247,7 @@ private:
      uint64_t m_surfaceID { 0 };
      WeakPtr<WebProcessProxy> m_legacyMainFrameProcess;

@@ -84,7 +84,7 @@
 # exactly one wl_surface.damage_buffer per commit in both arms.
 pkgname=webkit2gtk-6.0
 pkgver=2.52.6
-pkgrel=56
+pkgrel=58
 pkgdesc="Portable web rendering engine WebKit for GTK+ - GTK4 version"
 url="https://webkitgtk.org/"
 arch="all"
@@ -168,6 +168,7 @@ source="https://webkitgtk.org/releases/webkitgtk-$pkgver.tar.xz
 	damage-clip-compositing-on-gtk.patch
 	cull-tiles-outside-damage.patch
 	cull-tiles-outside-clip.patch
+	pipeline-compositor-frames-in-flight.patch
 	"
 builddir="$srcdir/webkitgtk-$pkgver"
 
@@ -282,4 +283,5 @@ b12f679813e35a50cd2f7bf94fa6da9ee390b79e428fedccfc484716bdcf791727d75d6e40c4fd86
 ed66e7d50ecd91268318f9f8ba998c7bef8080dd5a7baf1c876fe0aaf1a6ecc44bb320cc5535c203c7c8eb6004b40c4ad94ba56aa0a45c6e66d3dedb42b4263c  damage-clip-compositing-on-gtk.patch
 7a8601c242307fa2777af9297a18b29d7c544a3584439e99317e52ba598586dbd0d4b6671c6f3ffa423ee7bcdd3c65705d87646015cea38d4b17d6bcad210682  cull-tiles-outside-damage.patch
 335b13f3cad7ae5f7ec5ece9037e23ce9a60a956388238f443e6906fd334bbab1217be11bb70823bc07aa83ba97bb2334ca5deac63c260cfb5ab859033376fa9  cull-tiles-outside-clip.patch
+6c010b368cb70bac25115a5992ea0d6e17140bec799aef41e6cc5d984b4ddd1c9fe0f304f0157ea7fb53495d47d431e57a24770da516bda30d93a3e5783b549d  pipeline-compositor-frames-in-flight.patch
 "

@@ -1,0 +1,64 @@
+# Android's PowerHAL, for a phone that has no PowerHAL.
+#
+# The daemon carries no device policy at all; every number is here. Basis:
+# porthole brain/findings/android-interaction-boost-is-the-remaining-perf-delta.md
+# and, for TOP_APP, the 2026-09-05 scroll campaign.
+#
+# INTERACTION  little 1171200, big 1132800 -- the vendor's touch boost floors,
+#              held 3 s past the last touch event, with PowerHAL's 44 us
+#              PMQoSCpuDmaLatency. Floors alone and latency alone both still
+#              jank; it takes the pair.
+# LAUNCH       little 1900800 (the cluster max), big 2361600 (the table max,
+#              PowerHAL asks for 2457600 which this table does not have).
+# TOP_APP      per-task uclamp_min on the threads of everything in app.slice,
+#              so the scheduler places the foreground app on the big cluster.
+#              IMPLEMENTED AND VERIFIED TO APPLY -- a browser started after the
+#              daemon, with no touch input at all, comes up with uclamp.min set
+#              on its main thread and its compositor thread -- but SHIPPED OFF,
+#              because it measured null and this file must not imply otherwise.
+#
+#              tk-scrollarm.sh, jank frames >33 ms in a 10 s drag:
+#                eleven control arms, five sweeps  32 36 37 38 38 39 41 42 43 43
+#                                                  44 46  -> mean 40.1, sd 4.1
+#                TOP_APP 512, browser only (4)     39 34 36 42  vs off 37 36 38 43
+#                uclamp 512 phoc+phosh only (2)    40 38
+#                uclamp 512 browser only (2)       40 39
+#                both clusters pinned MAX freq (2) 40 46
+#                uclamp 1024 on everything (2)     47 48
+#
+#              Nothing clears the noise. That sd puts a single arm's 95%
+#              interval at +/-8 jank and a two-arm mean at +/-5.7, so two arms
+#              a side can only resolve a ~30% change. An earlier two-arm read
+#              of this same hint looked like a clean -20% and did not survive
+#              four arms and an end-to-end test. Add
+#              `--top-app-uclamp-min N` here only with four arms a side behind
+#              it.
+#
+# ProtectControlGroups and ProtectKernelTunables are off because the whole job
+# is writing cpufreq sysfs and reading app.slice.
+
+[Unit]
+Description=Android-style power hints (INTERACTION, LAUNCH) for the phosh session
+Documentation=file:/usr/libexec/powerhintd
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/powerhintd \
+    --latency-us 44 \
+    --interaction-hold 3 \
+    --interaction /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq=1171200 \
+    --interaction /sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq=1132800 \
+    --launch-hold 5 \
+    --launch /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq=1900800 \
+    --launch /sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq=2361600 \
+    --app-slice /sys/fs/cgroup/user.slice/user-10000.slice/user@10000.service/app.slice
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=no
+ProtectKernelTunables=no
+
+[Install]
+WantedBy=multi-user.target

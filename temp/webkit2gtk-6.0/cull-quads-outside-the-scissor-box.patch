@@ -1,0 +1,43 @@
+diff --git a/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp b/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp
+index 4cd6079..e258f25 100644
+--- a/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp
++++ b/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp
+@@ -882,6 +882,38 @@ void TextureMapper::draw(const FloatRect& rect, const TransformationMatrix& mode
+     TransformationMatrix matrix(modelViewMatrix);
+     matrix.multiply(TransformationMatrix::rectToRect(FloatRect(0, 0, 1, 1), rect));
+ 
++    // Every textured and solid quad in the compositor reaches the GPU through
++    // here, and the only early-out on the way was "the scissor box is EMPTY".
++    // A quad entirely OUTSIDE a non-empty scissor box still bound its textures,
++    // set its uniforms, uploaded its vertices and issued its draw call -- and on
++    // a tiling GPU a draw is visited once per bin its bounds touch.
++    //
++    // Measured on taimen 2026-09-05, 1440x2880 panel, 1440x1024 tiles, YouTube:
++    // 76 quads and 60 Mpx of DEVICE fill per frame against a 4.1 Mpx viewport,
++    // x14.6 overdraw. 31 of those quads a frame are full-width page tiles, where
++    // three cover the screen. The GPU sits pinned at its 710 MHz ceiling -- the
++    // a540's maximum -- and the die at 78-80 C.
++    //
++    // This is the right place for the test and CoordinatedBackingStore is not:
++    // the projection matrix maps DEVICE pixels to NDC, so `matrix` has already
++    // landed the unit square in device pixels, the very space the scissor box is
++    // in. The cull in CoordinatedBackingStore compares a LAYER-space tile rect
++    // against that device-space box instead, which on a 3x device lets through
++    // three times as many tiles as it should.
++    //
++    // Affine only, and inflated by a pixel: a quad under perspective that
++    // crosses the w=0 plane has no meaningful 2D bounding box, and
++    // drawEdgeTriangles() extends antialiased edges just outside `rect`.
++    if (matrix.isAffine()) {
++        const auto& scissorBox = clipStack().current().scissorBox;
++        if (!scissorBox.isEmpty()) {
++            auto deviceBounds = enclosingIntRect(matrix.mapRect(FloatRect(0, 0, 1, 1)));
++            deviceBounds.inflate(1);
++            if (!deviceBounds.intersects(scissorBox))
++                return;
++        }
++    }
++
+     glEnableVertexAttribArray(program.vertexLocation());
+     program.setMatrix(program.modelViewMatrixLocation(), matrix);
+     program.setMatrix(program.projectionMatrixLocation(), data().projectionMatrix);

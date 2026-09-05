@@ -34,4 +34,19 @@ fi
 # taimen-dconf-profile for why a gschema override cannot do this job).
 command -v dconf >/dev/null && dconf update
 
+# powerhintd was hand-installed into /usr/local/sbin and /etc/systemd/system
+# before it was packaged (pkgrel 39). A unit in /etc SHADOWS the one this
+# package ships in /usr/lib, so leaving it there means the upgrade appears to
+# install a daemon that never runs -- with `systemctl status` happily reporting
+# the old one as active. Remove it, and only it: the guard is that the file
+# still points at the hand-installed path, so an admin's own unit is untouched.
+for u in /etc/systemd/system/powerhintd.service; do
+	if [ -f "$u" ] && grep -q '/usr/local/sbin/powerhintd' "$u"; then
+		rm -f "$u"
+		rm -rf "$u".d
+		rm -f /usr/local/sbin/powerhintd /usr/local/sbin/powerhintd.bak
+		echo "removed the hand-installed powerhintd; the packaged one takes over"
+	fi
+done
+
 exit 0

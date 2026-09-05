@@ -74,3 +74,8 @@ enable neard.service
 # basic.target was merely appended. Disabling the unit is what actually works.
 disable tuned.service
 disable tuned-ppd.service
+
+# powerhintd, packaged in pkgrel 39. Same reason as every other line here:
+# 99-default.preset says "disable *", so a unit this package ships without a
+# rule is silently disabled and the phone quietly loses its touch boost.
+enable powerhintd.service

@@ -1,0 +1,286 @@
+diff --git a/Source/WebKit/UIProcess/glib/FenceMonitor.cpp b/Source/WebKit/UIProcess/glib/FenceMonitor.cpp
+index a2ac1d7..5b304db 100644
+--- a/Source/WebKit/UIProcess/glib/FenceMonitor.cpp
++++ b/Source/WebKit/UIProcess/glib/FenceMonitor.cpp
+@@ -99,6 +99,21 @@ static bool isFileDescriptorReadable(int fd)
+     return pollFD.revents & (G_IO_IN | G_IO_NVAL);
+ }
+ 
++void FenceMonitor::reset()
++{
++    if (!m_fd)
++        return;
++
++    if (m_source) {
++        auto& source = *reinterpret_cast<FenceSource*>(m_source.get());
++        if (source.tag) {
++            g_source_remove_unix_fd(&source.base, source.tag);
++            source.tag = nullptr;
++        }
++    }
++    m_fd = { };
++}
++
+ void FenceMonitor::addFileDescriptor(UnixFileDescriptor&& fd)
+ {
+     RELEASE_ASSERT(!m_fd);
+diff --git a/Source/WebKit/UIProcess/glib/FenceMonitor.h b/Source/WebKit/UIProcess/glib/FenceMonitor.h
+index 52fc684..ecd5d41 100644
+--- a/Source/WebKit/UIProcess/glib/FenceMonitor.h
++++ b/Source/WebKit/UIProcess/glib/FenceMonitor.h
+@@ -42,6 +42,12 @@ public:
+     void addFileDescriptor(WTF::UnixFileDescriptor&&);
+     bool hasFileDescriptor() const { return !!m_fd; }
+ 
++    // Drop a fence we no longer care about, WITHOUT running the callback. Only
++    // needed with more than one frame in flight, where a newer frame can
++    // supersede one whose fence has not signalled yet; the caller owns telling
++    // the web process that the superseded frame is done.
++    void reset();
++
+ private:
+     void ensureSource();
+ 
+diff --git a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
+index a63c027..16bb48a 100644
+--- a/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
++++ b/Source/WebKit/UIProcess/gtk/AcceleratedBackingStore.cpp
+@@ -706,9 +706,19 @@ void AcceleratedBackingStore::didDestroyBuffer(uint64_t id)
+ 
+ void AcceleratedBackingStore::frame(uint64_t bufferID, Rects&& damageRects, WTF::UnixFileDescriptor&& renderingFenceFD)
+ {
+-    // The web process only sends the next frame after FrameDone, which we send once the previous
+-    // frame's fence signalled, so no fence can still be pending here.
+-    ASSERT(!m_fenceMonitor.hasFileDescriptor());
++    // With one frame in flight the web process only sends the next frame after FrameDone, which we
++    // send once the previous frame's fence signalled, so no fence can still be pending here. With
++    // pipelining on (WEBKIT_COMPOSITOR_MAX_FRAMES_IN_FLIGHT > 1) it can: the web process is painting
++    // the next frame while this one's fence is outstanding. The older frame is then superseded --
++    // nothing has drawn it and nothing will -- so drop its fence and answer its FrameDone anyway, or
++    // the web process's in-flight count never comes back down and the compositor wedges.
++    if (m_fenceMonitor.hasFileDescriptor()) {
++        m_fenceMonitor.reset();
++        if (m_frameDonePending) {
++            m_frameDonePending = false;
++            frameDone();
++        }
++    }
+     auto* buffer = m_buffers.get(bufferID);
+     if (!buffer) {
+         frameDone();
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.cpp b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.cpp
+index fc00aa6..f2fa00f 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.cpp
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.cpp
+@@ -1038,6 +1038,7 @@ void AcceleratedSurface::willRenderFrame(const IntSize& size)
+ {
+     bool sizeDidChange = m_swapChain.resize(size);
+ 
++    m_isPainting = true;
+     m_target = m_swapChain.nextTarget();
+     if (m_target)
+         m_target->willRenderFrame();
+@@ -1066,8 +1067,10 @@ void AcceleratedSurface::didRenderFrame()
+     TraceScope traceScope(WaitForCompositionCompletionStart, WaitForCompositionCompletionEnd);
+ #endif
+ 
+-    if (!m_target)
++    if (!m_target) {
++        m_isPainting = false;
+         return;
++    }
+ 
+     m_target->sync(m_useExplicitSync);
+ 
+@@ -1084,6 +1087,7 @@ void AcceleratedSurface::didRenderFrame()
+ #endif
+ 
+     m_target->didRenderFrame(WTF::move(damageRects));
++    m_isPainting = false;
+ }
+ 
+ #if ENABLE(DAMAGE_TRACKING)
+@@ -1117,7 +1121,15 @@ void AcceleratedSurface::frameDone()
+ {
+     if (m_frameCompleteHandler)
+         m_frameCompleteHandler();
+-    m_target = nullptr;
++
++    // Clearing the target is hygiene -- willRenderFrame() always reassigns it --
++    // but with more than one frame in flight this acknowledgement belongs to an
++    // OLDER frame while a newer paint is already holding a target. Nulling it
++    // there makes that paint's didRenderFrame() bail out on its `if (!m_target)`
++    // guard, the frame is never submitted, and the compositor wedges waiting for
++    // a FrameDone that can never arrive.
++    if (!m_isPainting)
++        m_target = nullptr;
+ }
+ 
+ } // namespace WebKit
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.h b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.h
+index 334bdd9..764b5ca 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.h
+@@ -387,6 +387,10 @@ private:
+     Function<void()> m_frameCompleteHandler;
+     uint64_t m_id { 0 };
+     WebCore::IntSize m_size;
++    // True between willRenderFrame() and didRenderFrame(). Only frameDone()
++    // reads it, to avoid clearing a target that a NEWER paint already claimed --
++    // which cannot happen at one frame in flight and is routine above it.
++    bool m_isPainting { false };
+     SwapChain m_swapChain;
+     RenderTarget* m_target { nullptr };
+     bool m_isVisible { false };
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.cpp b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.cpp
+index a23514c..3e51f11 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.cpp
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.cpp
+@@ -73,6 +73,14 @@ ThreadedCompositor::ThreadedCompositor(LayerTreeHost& layerTreeHost)
+ {
+     ASSERT(RunLoop::isMain());
+ 
++    // Opt-in, and bounded: every extra frame in flight is another render target
++    // the swap chain has to hold (s_maximumBuffers is 4, and one is the one
++    // being painted), and deeper queues buy latency, not frame rate.
++    if (const char* depth = getenv("WEBKIT_COMPOSITOR_MAX_FRAMES_IN_FLIGHT")) {
++        if (unsigned value = strtoul(depth, nullptr, 10))
++            m_maxFramesInFlight = std::min(value, 3u);
++    }
++
+     m_didCompositeRunLoopObserver = makeUnique<RunLoopObserver>(RunLoopObserver::WellKnownOrder::GraphicsCommit, [this] {
+         this->didCompositeRunLoopObserverFired();
+     });
+@@ -158,6 +166,12 @@ void ThreadedCompositor::stopRenderTimer()
+     m_renderTimer.stop();
+ }
+ 
++bool ThreadedCompositor::hasFreeFrameSlotLocked() const
++{
++    ASSERT(m_state.lock.isHeld());
++    return m_state.framesInFlight < m_maxFramesInFlight;
++}
++
+ bool ThreadedCompositor::isOnlyRenderingUpdatePendingAndWaitingForTiles() const
+ {
+     ASSERT(m_state.lock.isHeld());
+@@ -186,7 +200,14 @@ void ThreadedCompositor::resume()
+         return;
+ 
+     Locker locker { m_state.lock };
+-    if (m_state.state == State::Scheduled && !isOnlyRenderingUpdatePendingAndWaitingForTiles())
++    // Whatever was in flight across the suspend is gone with the swap chain,
++    // and its FrameDone is never coming. Without this the count only ever goes
++    // up and hasFreeFrameSlotLocked() throttles the compositor to a stop --
++    // a hang that needs a suspend/resize to reproduce and so would not show up
++    // in any steady-state arm.
++    m_state.framesInFlight = 0;
++    if (m_state.state == State::Scheduled && !isOnlyRenderingUpdatePendingAndWaitingForTiles()
++        && hasFreeFrameSlotLocked())
+         startRenderTimer();
+ }
+ 
+@@ -421,6 +442,32 @@ void ThreadedCompositor::renderLayerTree()
+ 
+     m_surface->didRenderFrame();
+ 
++    if (m_maxFramesInFlight > 1) {
++        // The buffer is with the UI process now. Do here what frameComplete()
++        // does at depth 1 -- retire this paint and start the next if one is
++        // pending -- so the compositor overlaps its next paint with this
++        // frame's GPU work instead of idling until the fence signals.
++        Locker locker { m_state.lock };
++        ++m_state.framesInFlight;
++        switch (m_state.state) {
++        case State::Idle:
++        case State::Scheduled:
++            break;
++        case State::InProgress:
++            if (m_state.reasons.contains(CompositionReason::RenderingUpdate) && m_state.isWaitingForTiles)
++                m_state.state = State::Scheduled;
++            else
++                m_state.state = State::Idle;
++            break;
++        case State::ScheduledWhileInProgress:
++            m_state.state = State::Scheduled;
++            if (!isOnlyRenderingUpdatePendingAndWaitingForTiles() && !m_suspendedCount.load()
++                && hasFreeFrameSlotLocked())
++                startRenderTimer();
++            break;
++        }
++    }
++
+     RunLoop::mainSingleton().dispatch([this, protectedThis = Ref { *this }] {
+         if (m_layerTreeHost)
+             m_layerTreeHost->didRenderFrame();
+@@ -466,14 +513,18 @@ void ThreadedCompositor::scheduleUpdateLocked()
+     ASSERT(m_state.lock.isHeld());
+     WTFEmitSignpost(this, ScheduleComposition, "reasons: %s, state: %s, waiting for tiles: %s, render timer active: %s", reasonsToString(m_state.reasons).ascii().data(), stateToString(m_state.state).characters(), m_state.isWaitingForTiles ? "yes" : "no", m_state.isRenderTimerActive ? "yes" : "no");
+ 
++    // With pipelining the throttle is no longer "wait for the previous frame's
++    // FrameDone" but "wait for a free slot", so every path that starts a paint
++    // has to check for one. hasFreeFrameSlotLocked() is trivially true at
++    // depth 1, where framesInFlight is never incremented.
+     switch (m_state.state) {
+     case State::Idle:
+         m_state.state = State::Scheduled;
+-        if (!m_state.isWaitingForTiles && !m_suspendedCount.load())
++        if (!m_state.isWaitingForTiles && !m_suspendedCount.load() && hasFreeFrameSlotLocked())
+             startRenderTimer();
+         break;
+     case State::Scheduled:
+-        if (!m_state.isRenderTimerActive && !m_suspendedCount.load())
++        if (!m_state.isRenderTimerActive && !m_suspendedCount.load() && hasFreeFrameSlotLocked())
+             startRenderTimer();
+         break;
+     case State::InProgress:
+@@ -491,6 +542,19 @@ void ThreadedCompositor::frameComplete()
+     Locker locker { m_state.lock };
+     WTFEmitSignpost(this, FrameComplete, "reasons: %s, state: %s, waiting for tiles: %s", reasonsToString(m_state.reasons).ascii().data(), stateToString(m_state.state).characters(), m_state.isWaitingForTiles ? "yes" : "no");
+ 
++    if (m_maxFramesInFlight > 1) {
++        // The paint state machine was already advanced at submit time (see the
++        // end of renderLayerTree), so this acknowledgement must NOT touch it --
++        // doing so would clobber the state of a paint that is currently running.
++        // It only frees a slot, and releases a paint that was waiting for one.
++        if (m_state.framesInFlight)
++            --m_state.framesInFlight;
++        if (m_state.state == State::Scheduled && !m_state.isRenderTimerActive
++            && !isOnlyRenderingUpdatePendingAndWaitingForTiles() && !m_suspendedCount.load())
++            startRenderTimer();
++        return;
++    }
++
+     switch (m_state.state) {
+     case State::Idle:
+     case State::Scheduled:
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.h b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.h
+index 14e1255..1b3da82 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/ThreadedCompositor.h
+@@ -101,6 +101,7 @@ private:
+     void startRenderTimer();
+     void stopRenderTimer();
+     bool isOnlyRenderingUpdatePendingAndWaitingForTiles() const;
++    bool hasFreeFrameSlotLocked() const;
+ 
+     void scheduleUpdateLocked();
+     void flushCompositingState(const OptionSet<WebCore::CompositionReason>&);
+@@ -140,8 +141,17 @@ private:
+         bool isWaitingForTiles WTF_GUARDED_BY_LOCK(lock) { false };
+         OptionSet<WebCore::CompositionReason> reasons WTF_GUARDED_BY_LOCK(lock);
+         Function<void()> didCompositeRenderingUpdateFunction WTF_GUARDED_BY_LOCK(lock);
++        // Frames handed to the UI process whose FrameDone has not come back yet.
++        // Always 0 unless pipelining is on; see m_maxFramesInFlight.
++        unsigned framesInFlight WTF_GUARDED_BY_LOCK(lock) { 0 };
+     } m_state;
+ 
++    // How many frames may be outstanding at once. 1 is the upstream behaviour:
++    // the compositor paints, submits, and then sits idle until the UI process
++    // answers. Above 1 it starts the next paint as soon as it has submitted,
++    // so the CPU paint overlaps the GPU work instead of following it.
++    unsigned m_maxFramesInFlight { 1 };
++
+     struct {
+         Lock lock;
+         WebCore::IntSize viewportSize;

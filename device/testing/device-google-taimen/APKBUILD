@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=37
+pkgrel=38
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -138,8 +138,6 @@ source="
 	taimen-rescue.initd
 	taimen-ambient-nudge.desktop
 	taimen-uclamp-session.desktop
-	taimen-gnome-software-prewarm.service
-	taimen-gnome-software-prewarm.desktop
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -355,8 +353,6 @@ package() {
 		"$pkgdir"/usr/libexec/taimen-uclamp-session
 	install -Dm644 "$srcdir"/taimen-uclamp-session.service \
 		"$pkgdir"/usr/lib/systemd/user/taimen-uclamp-session.service
-	install -Dm644 "$srcdir"/taimen-gnome-software-prewarm.service \
-		"$pkgdir"/usr/lib/systemd/user/taimen-gnome-software-prewarm.service
 
 	# Bound the browser scope so one app cannot reset the GPU for the whole
 	# session -- see the file's header for the fault trace and why the limit
@@ -377,8 +373,6 @@ package() {
 		"$pkgdir"/usr/lib/systemd/user/graphical-session.target.wants/taimen-ambient-nudge.service
 	ln -sf ../taimen-uclamp-session.service \
 		"$pkgdir"/usr/lib/systemd/user/graphical-session.target.wants/taimen-uclamp-session.service
-	ln -sf ../taimen-gnome-software-prewarm.service \
-		"$pkgdir"/usr/lib/systemd/user/graphical-session.target.wants/taimen-gnome-software-prewarm.service
 
 	# OpenRC counterparts -- see each .desktop file's header for why XDG
 	# autostart is the right mechanism here (no systemd --user to hang a
@@ -388,8 +382,6 @@ package() {
 		"$pkgdir"/etc/xdg/autostart/taimen-ambient-nudge.desktop
 	install -Dm644 "$srcdir"/taimen-uclamp-session.desktop \
 		"$pkgdir"/etc/xdg/autostart/taimen-uclamp-session.desktop
-	install -Dm644 "$srcdir"/taimen-gnome-software-prewarm.desktop \
-		"$pkgdir"/etc/xdg/autostart/taimen-gnome-software-prewarm.desktop
 
 	install -Dm644 "$srcdir"/iio-sensor-proxy-wait-for-ssc.conf \
 		"$pkgdir"/usr/lib/systemd/system/iio-sensor-proxy.service.d/10-wait-for-ssc.conf
@@ -555,6 +547,4 @@ b271bb6cea1ab2cc027bb0ba3f3e4d513d809571d0070015e6fd4938af20a3fda94723d5ac7ee4bf
 a4346603886f434ab15a614b8ed454601e810ca60b458491eed8e0548efc7772af722bf8f626d3301ed54fff358443be741e68f9d2ab48a28ba586213f222d14  taimen-rescue.initd
 e2c9528ccfb6a79226af530990bc5ca603ad63fa9a36439fdf344a04bc8af1b085659270d4d5e90682403524723796839c492ee2d87734b297800dbc5a913304  taimen-ambient-nudge.desktop
 2abb5206a413bc786aad46a9608ce41793fbcb561dce8f1ec050775733f04fe634e292187eaf7d9048f56197109cf2e00c261f89440c9c6eebab0f0446241c0f  taimen-uclamp-session.desktop
-039a6e2279a247afe692d04397b26d7d1cef12825204eb75c806116fd4e787c94f30b8668ca89759a618cb2d89b6f56cbe26d59b917f5668c7fe236a05c786b4  taimen-gnome-software-prewarm.service
-86e5d2a88faf22b3299f34e67f364ed239cd2bc3147b0db44f125add7d2e1ca010142ec4469fa12fb61b3dd0226886a652c80f35a6f9c8633e502c99a2287594  taimen-gnome-software-prewarm.desktop
 "

@@ -1,0 +1,43 @@
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp	2026-09-05 00:37:51.651648817 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp	2026-09-05 00:37:51.662385192 +0200
+@@ -70,7 +70,9 @@
+ 
+ #if ENABLE(DAMAGE_TRACKING)
+     const auto& frameDamage = textureMapper.damage();
+-    const auto canUseDamageToDrawTextureFragment = [&]() {
++    // The damage is comparable with the tile rects only when the layer maps
++    // onto the target one to one, and only describes a full-opacity draw.
++    const auto canUseDamage = [&]() {
+         return frameDamage
+             && !frameDamage->isEmpty()
+             && frameDamage->mode() != Damage::Mode::Full
+@@ -83,10 +85,28 @@
+         ASSERT(tile.scale() == m_scale);
+         if (!tile.canBePainted())
+             continue;
++
++#if ENABLE(DAMAGE_TRACKING)
++        // A tile that does not intersect the damage cannot contribute anything
++        // visible, so skip it entirely. TextureMapper is handed
++        // AcceleratedSurface::renderTargetDamage(), which is the damage
++        // accumulated since *this* render target was last drawn into, so what
++        // lies outside it is already present in the target even though the swap
++        // chain hands out a different buffer each frame.
++        //
++        // Without this, damage only helps edge tiles via the fragment path
++        // below, and every interior tile of a page-sized layer is redrawn in
++        // full every frame. Measured on m.youtube.com (msm8998/Adreno 540):
++        // 73 quads and 61 Mpx drawn for a 3.7 Mpx viewport, 33 of them
++        // full-width tiles belonging to three page-sized layers.
++        if (canUseDamage && !tile.rect().intersects(frameDamage->bounds()))
++            continue;
++#endif
++
+         const auto allEdgesExposed = allTileEdgesExposed(layerRect, tile.rect()) ? TextureMapper::AllEdgesExposed::Yes : TextureMapper::AllEdgesExposed::No;
+ 
+ #if ENABLE(DAMAGE_TRACKING)
+-        if (canUseDamageToDrawTextureFragment && allEdgesExposed == TextureMapper::AllEdgesExposed::No && tile.texture().isOpaque() && !tile.texture().filterOperation()) {
++        if (canUseDamage && allEdgesExposed == TextureMapper::AllEdgesExposed::No && tile.texture().isOpaque() && !tile.texture().filterOperation()) {
+             const auto tileDamageRect = intersection(tile.rect(), frameDamage->bounds());
+             if (!tileDamageRect.isEmpty()) {
+                 const auto sourceRect = FloatRect { FloatPoint { tileDamageRect.location() - tile.rect().location() }, tileDamageRect.size() };

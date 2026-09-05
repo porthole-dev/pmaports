@@ -26,6 +26,42 @@
 #
 # Drop this fork when Alpine edge reaches 2.52.
 #
+# cull-tiles-outside-damage.patch stops CoordinatedBackingStore drawing tiles
+# that cannot be visible. paintToTextureMapper() iterates every tile and calls
+# drawTexture() on each; the only damage-aware path requires
+# allEdgesExposed == No, so it helps EDGE tiles only and every interior tile of
+# a page-sized layer is redrawn in full every frame. Measured on m.youtube.com
+# (msm8998/A540): 73 quads, 61 Mpx drawn for a 3.7 Mpx viewport, 33 of them
+# full-width tiles from three page-sized layers.
+#
+# Safe because TextureMapper is handed AcceleratedSurface::renderTargetDamage()
+# -- the damage accumulated since THAT render target was last drawn into -- so
+# content outside it is already present in the buffer even though the swap
+# chain hands out a different one each frame (ThreadedCompositor.cpp, the
+# setDamage() call under DamagePropagationFlags::UseForCompositing).
+#
+# It therefore only does anything with damage-clip-compositing-on-gtk.patch
+# also applied: without UseForCompositing, textureMapper.damage() is null and
+# no culling is possible at all. That flip is the prerequisite; this is where
+# the GPU work actually comes off.
+#
+#
+# cull-tiles-outside-clip.patch is the same idea against the scissor box rather
+# than the damage, and it is the half that helps SCROLLING: while scrolling the
+# damage is the whole viewport, so the damage cull cannot fire, but most tiles
+# of a page-sized layer are still off screen. drawTexture() only early-outs
+# when the scissor box is EMPTY, so a tile that simply misses the box still
+# issues its draw call, uniforms and vertices -- and a tiling GPU visits every
+# draw once per bin it might touch. Unlike the damage cull this needs no damage
+# tracking and no preference flip.
+#
+# Why this rather than pipelining the compositor: the frame period is cpu paint
+# plus the GPU tail, serialized, and pinning the GPU to its lowest OPP took the
+# compositor period from 32.9 to 53.5 ms, so the GPU half is real work rather
+# than idle waiting. Cutting that work also cuts heat, where overlapping it
+# would raise it.
+#
+#
 # damage-clip-compositing-on-gtk.patch flips two GTK preference defaults so
 # WebKit clips its OWN compositing to the rectangles it damaged:
 #
@@ -48,7 +84,7 @@
 # exactly one wl_surface.damage_buffer per commit in both arms.
 pkgname=webkit2gtk-6.0
 pkgver=2.52.6
-pkgrel=53
+pkgrel=56
 pkgdesc="Portable web rendering engine WebKit for GTK+ - GTK4 version"
 url="https://webkitgtk.org/"
 arch="all"
@@ -130,6 +166,8 @@ source="https://webkitgtk.org/releases/webkitgtk-$pkgver.tar.xz
 	keep-fbo-across-texture-reset.patch
 	skip-empty-tiles.patch
 	damage-clip-compositing-on-gtk.patch
+	cull-tiles-outside-damage.patch
+	cull-tiles-outside-clip.patch
 	"
 builddir="$srcdir/webkitgtk-$pkgver"
 
@@ -242,4 +280,6 @@ a29b2246fe6ce5b3bce945f2b5a8d543c819556c397b2169ec37cf14a71095f38ae7ff6e4181af31
 74a99d946eb6bfa2bb2b50aa297672f58b67211aaae91909e669278deb13aec990f88e658d99a7dc90c635db82d38f6ad17049e226fd4d3db4df2cf0f8122fc5  keep-fbo-across-texture-reset.patch
 b12f679813e35a50cd2f7bf94fa6da9ee390b79e428fedccfc484716bdcf791727d75d6e40c4fd867e7434c688cbae52d2cc2f7e51843a5318d1e38fbe88673b  skip-empty-tiles.patch
 ed66e7d50ecd91268318f9f8ba998c7bef8080dd5a7baf1c876fe0aaf1a6ecc44bb320cc5535c203c7c8eb6004b40c4ad94ba56aa0a45c6e66d3dedb42b4263c  damage-clip-compositing-on-gtk.patch
+7a8601c242307fa2777af9297a18b29d7c544a3584439e99317e52ba598586dbd0d4b6671c6f3ffa423ee7bcdd3c65705d87646015cea38d4b17d6bcad210682  cull-tiles-outside-damage.patch
+335b13f3cad7ae5f7ec5ece9037e23ce9a60a956388238f443e6906fd334bbab1217be11bb70823bc07aa83ba97bb2334ca5deac63c260cfb5ab859033376fa9  cull-tiles-outside-clip.patch
 "

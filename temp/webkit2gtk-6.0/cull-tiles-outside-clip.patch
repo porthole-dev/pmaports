@@ -1,0 +1,27 @@
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp	2026-09-05 01:00:07.839245292 +0200
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStore.cpp	2026-09-05 01:00:07.850047751 +0200
+@@ -81,11 +81,24 @@
+     }();
+ #endif
+ 
++    // The scissor box, i.e. what is actually on screen after the layer's clips.
++    const FloatRect clipRect = textureMapper.clipBounds();
++
+     for (const auto& tile : m_tiles.values()) {
+         ASSERT(tile.scale() == m_scale);
+         if (!tile.canBePainted())
+             continue;
+ 
++        // A tile entirely outside the scissor box is clipped away to nothing,
++        // yet drawTexture() only early-outs when the box is EMPTY, so the draw
++        // call, its uniforms and its vertices are still issued -- and on a
++        // tiling GPU every draw is visited once per bin it might touch. The
++        // offscreen tiles of a page-sized layer are exactly this case, and
++        // unlike the damage cull above this also helps while scrolling, where
++        // the damage is the whole viewport but most tiles are still offscreen.
++        if (adjustedTransform.isIdentity() && !clipRect.isEmpty() && !tile.rect().intersects(clipRect))
++            continue;
++
+ #if ENABLE(DAMAGE_TRACKING)
+         // A tile that does not intersect the damage cannot contribute anything
+         // visible, so skip it entirely. TextureMapper is handed

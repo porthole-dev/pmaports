@@ -35,14 +35,14 @@ actually drawn.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- types/wlr_compositor.c | 33 +++++++++++++++++++++++++++++++++
- 1 file changed, 33 insertions(+)
+ types/wlr_compositor.c | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
 
 diff --git a/subprojects/wlroots-0.20.x/types/wlr_compositor.c b/subprojects/wlroots-0.20.x/types/wlr_compositor.c
 index 1111111..2222222 100644
 --- a/subprojects/wlroots-0.20.x/types/wlr_compositor.c
 +++ b/subprojects/wlroots-0.20.x/types/wlr_compositor.c
-@@ -813,10 +813,43 @@ struct wlr_surface *wlr_surface_create(struct wlr_compositor *compositor,
+@@ -813,10 +813,44 @@ struct wlr_surface *wlr_surface_create(struct wlr_compositor *compositor,
  	return surface;
  }
  
@@ -74,6 +74,7 @@ index 1111111..2222222 100644
 +
 +	wlr_buffer_unlock(&surface->buffer->base);
 +	surface->buffer = buffer;
++	wlr_log(WLR_INFO, "Re-imported a surface buffer into the new renderer");
 +}
 +
  struct wlr_texture *wlr_surface_get_texture(struct wlr_surface *surface) {

@@ -50,17 +50,25 @@ before creating the backend unless the environment says otherwise.
 
 Set PHOC_NO_OUTPUT_LAYERS to fall back to compositing everything.
 ---
- src/output.c | 430 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ src/output.c | 513 +++++++++++++++++++++++++++++++++++++++++++++++++++
  src/output.h |   1 +
  src/render.c |   8 +
  src/server.c |   6 +
- 4 files changed, 445 insertions(+)
+ 4 files changed, 528 insertions(+)
 
 diff --git a/src/output.c b/src/output.c
-index d95d6db..63ecdc0 100644
+index d95d6db..06769b6 100644
 --- a/src/output.c
 +++ b/src/output.c
-@@ -22,6 +22,7 @@
+@@ -9,6 +9,7 @@
+ #include "input-method-relay.h"
+ #include "layer-shell-effects.h"
+ #include "layer-shell.h"
++#include "layer-surface.h"
+ #include "layout-transaction.h"
+ #include "output-cutouts.h"
+ #include "output-shield.h"
+@@ -22,14 +23,17 @@
  #include "utils.h"
  #include "xwayland-surface.h"
  
@@ -68,15 +76,17 @@ index d95d6db..63ecdc0 100644
  #include <stdbool.h>
  #include <stdlib.h>
  #include <time.h>
-@@ -30,6 +31,7 @@
+ #include <wlr/backend/drm.h>
+ #include <wlr/config.h>
  #include <wlr/render/swapchain.h>
++#include <wlr/types/wlr_alpha_modifier_v1.h>
  #include <wlr/types/wlr_compositor.h>
  #include <wlr/types/wlr_gamma_control_v1.h>
 +#include <wlr/types/wlr_output_layer.h>
  #include <wlr/types/wlr_output_layout.h>
  #include <wlr/types/wlr_output_power_management_v1.h>
  #include <wlr/types/wlr_xdg_shell.h>
-@@ -79,6 +81,11 @@ typedef struct _PhocOutputPrivate {
+@@ -79,6 +83,13 @@ typedef struct _PhocOutputPrivate {
    GSList  *debug_damage;    /* (element-type: PhocDebugDamageRegion) */
  
    struct wlr_damage_ring damage_ring;
@@ -85,10 +95,12 @@ index d95d6db..63ecdc0 100644
 +  struct wlr_output_layer *plane_layer;
 +  struct wlr_surface      *planed_surface;
 +  struct wlr_box           planed_box;
++  int                      plane_refusals;
++  gint64                   plane_retry_us;
  } PhocOutputPrivate;
  
  static void phoc_output_initable_iface_init (GInitableIface *iface);
-@@ -419,6 +426,398 @@ count_surface_iterator (PhocOutput         *output,
+@@ -419,6 +430,477 @@ count_surface_iterator (PhocOutput         *output,
  }
  
  
@@ -179,6 +191,11 @@ index d95d6db..63ecdc0 100644
 +  gboolean            after;        /* has the walk passed the candidate? */
 +  struct wlr_box      box;          /* the candidate, output-buffer coords */
 +  gboolean            blocked;
++  const char         *phase;        /* which walk found it, for PHOC_DEBUG_PLANES */
++  const char         *blocker;      /* and what it was */
++  const char         *namespace;    /* layer-shell namespace, when that is what it is */
++  struct wlr_box      blocker_box;
++  int                 blocker_w, blocker_h;
 +} PhocPlaneBlockScan;
 +
 +
@@ -219,6 +236,7 @@ index d95d6db..63ecdc0 100644
 +                          void               *data)
 +{
 +  PhocPlaneScan *scan = data;
++  const struct wlr_alpha_modifier_surface_v1_state *alpha_state;
 +  struct wlr_dmabuf_attributes attribs;
 +  struct wlr_box dst;
 +  int area;
@@ -253,6 +271,11 @@ index d95d6db..63ecdc0 100644
 +    return;
 +  }
 +
++  /* A plane scans out its buffer as-is; there is nowhere to apply a fade. */
++  alpha_state = wlr_alpha_modifier_v1_get_surface_state (surface);
++  if (alpha_state && alpha_state->multiplier < 1.0)
++    return;
++
 +  dst = *box;
 +  plane_box_to_output (output, &dst, scale);
 +
@@ -282,8 +305,10 @@ index d95d6db..63ecdc0 100644
 +                        void               *data)
 +{
 +  PhocPlaneBlockScan *scan = data;
-+  pixman_box32_t *extents;
-+  struct wlr_box opaque, dummy;
++  const struct wlr_alpha_modifier_surface_v1_state *alpha_state;
++  pixman_box32_t *rects;
++  struct wlr_box dummy;
++  int n_rects;
 +
 +  if (surface == scan->candidate) {
 +    scan->after = TRUE;
@@ -293,24 +318,44 @@ index d95d6db..63ecdc0 100644
 +  if (scan->blocked || !scan->after || surface->buffer == NULL)
 +    return;
 +
-+  /* Only opaque pixels can hide a plane. A surface with an empty opaque region
-+   * -- the hole-punched parent is exactly that over the hole -- gives an empty
-+   * box here and never blocks. The region's extents are used rather than the
-+   * region itself: that over-blocks an L-shaped region, the safe direction. */
-+  extents = pixman_region32_extents (&surface->opaque_region);
-+  opaque = (struct wlr_box) {
-+    .x      = box->x + extents->x1,
-+    .y      = box->y + extents->y1,
-+    .width  = extents->x2 - extents->x1,
-+    .height = extents->y2 - extents->y1,
-+  };
-+  if (wlr_box_empty (&opaque))
++  /* A buffer the compositor is fading to nothing draws nothing, however opaque
++   * the client honestly declared it. Anything between 0 and 1 does blend
++   * something over the candidate, so it still blocks -- the test is exactly
++   * render_texture()'s own. */
++  alpha_state = wlr_alpha_modifier_v1_get_surface_state (surface);
++  if (alpha_state && alpha_state->multiplier == 0.0)
 +    return;
 +
-+  plane_box_to_output (output, &opaque, scale);
++  /* Only opaque pixels can hide a plane, and every rectangle of the region has
++   * to be tested rather than its bounding box: a shell surface that spans the
++   * screen to hold a fold-out drawer, and a window with a top and a bottom bar,
++   * both declare a couple of thin bands whose EXTENTS cover everything. Taking
++   * the extents there looks like the safe direction and is simply wrong -- it
++   * refuses every candidate. A surface with an empty opaque region, which is
++   * what the hole-punched parent is over the hole, has no rectangles at all. */
++  rects = pixman_region32_rectangles (&surface->opaque_region, &n_rects);
++  for (int i = 0; i < n_rects; i++) {
++    struct wlr_box opaque = {
++      .x      = box->x + rects[i].x1,
++      .y      = box->y + rects[i].y1,
++      .width  = rects[i].x2 - rects[i].x1,
++      .height = rects[i].y2 - rects[i].y1,
++    };
 +
-+  if (wlr_box_intersection (&dummy, &opaque, &scan->box))
-+    scan->blocked = TRUE;
++    if (wlr_box_empty (&opaque))
++      continue;
++
++    plane_box_to_output (output, &opaque, scale);
++
++    if (wlr_box_intersection (&dummy, &opaque, &scan->box)) {
++      scan->blocked = TRUE;
++      scan->blocker = surface->role ? surface->role->name : "(no role)";
++      scan->blocker_box = opaque;
++      scan->blocker_w = surface->current.width;
++      scan->blocker_h = surface->current.height;
++      return;
++    }
++  }
 +}
 +
 +/**
@@ -349,7 +394,8 @@ index d95d6db..63ecdc0 100644
 +    for (GList *l = phoc_workspace_get_views (workspace)->tail; l; l = l->prev) {
 +      PhocView *view = PHOC_VIEW (l->data);
 +
-+      if (!phoc_desktop_view_check_visibility (desktop, view))
++      if (!phoc_desktop_view_check_visibility (desktop, view) ||
++          phoc_view_get_alpha (view) != 1.0)
 +        continue;
 +
 +      scan.view = view;
@@ -370,14 +416,17 @@ index d95d6db..63ecdc0 100644
 +   * under every view and cannot block. Another view counts as a blocker
 +   * whichever side of this one it is on -- two visible app windows barely
 +   * happen on a phone shell, and being wrong there costs only the plane. */
-+  block = (PhocPlaneBlockScan) { .candidate = scan.surface, .box = scan.box };
++  block = (PhocPlaneBlockScan) { .candidate = scan.surface, .box = scan.box,
++                                 .phase = "own view" };
 +  phoc_output_view_for_each_surface (self, scan.best_view, plane_blocker_iterator, &block);
 +
 +  block.after = TRUE;
++  block.phase = "another view";
 +  for (GList *l = phoc_workspace_get_views (workspace)->tail; l && !block.blocked; l = l->prev) {
 +    PhocView *view = PHOC_VIEW (l->data);
 +
-+    if (view == scan.best_view || !phoc_desktop_view_check_visibility (desktop, view))
++    if (view == scan.best_view || !phoc_desktop_view_check_visibility (desktop, view) ||
++        phoc_view_get_alpha (view) == 0.0)
 +      continue;
 +
 +    phoc_output_view_for_each_surface (self, view, plane_blocker_iterator, &block);
@@ -387,15 +436,30 @@ index d95d6db..63ecdc0 100644
 +       layer <= ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY && !block.blocked; layer++) {
 +    GQueue *layer_surfaces = phoc_output_get_layer_surfaces_for_layer (self, layer);
 +
++    block.phase = layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP ? "layer top" : "layer overlay";
 +    for (GList *l = layer_surfaces->tail; l && !block.blocked; l = l->prev) {
-+      phoc_output_layer_surface_for_each_surface (self, PHOC_LAYER_SURFACE (l->data),
-+                                                  plane_blocker_iterator, &block);
++      PhocLayerSurface *ls = PHOC_LAYER_SURFACE (l->data);
++
++      /* phoc fades a shell surface with an alpha of its own, not the client's:
++       * phosh's 'top-panel background' is a full-screen, honestly opaque
++       * surface held at 0 until the drawer is pulled down, and render_layer()
++       * draws nothing whatsoever for it. Reading only the client's alpha
++       * modifier here left that surface vetoing every plane on the phone. */
++      if (phoc_layer_surface_get_alpha (ls) == 0.0)
++        continue;
++
++      block.namespace = phoc_layer_surface_get_namespace (ls);
++      phoc_output_layer_surface_for_each_surface (self, ls, plane_blocker_iterator, &block);
 +    }
 +  }
 +
 +  if (block.blocked) {
-+    plane_debug ("candidate %dx%d+%d+%d blocked by opaque content above it",
-+                 scan.box.width, scan.box.height, scan.box.x, scan.box.y);
++    plane_debug ("candidate %dx%d+%d+%d blocked in '%s' by %s '%s', %dx%d, opaque %dx%d+%d+%d",
++                 scan.box.width, scan.box.height, scan.box.x, scan.box.y,
++                 block.phase, block.blocker, block.namespace ?: "",
++                 block.blocker_w, block.blocker_h,
++                 block.blocker_box.width, block.blocker_box.height,
++                 block.blocker_box.x, block.blocker_box.y);
 +    return NULL;
 +  }
 +
@@ -436,13 +500,26 @@ index d95d6db..63ecdc0 100644
 +                          struct wlr_output_layer_state *layer_state)
 +{
 +  PhocOutputPrivate *priv = phoc_output_get_instance_private (self);
++  gint64 now = g_get_monotonic_time ();
 +  struct wlr_surface *surface;
 +  struct wlr_fbox src = { 0 };
 +
 +  if (G_UNLIKELY (g_getenv ("PHOC_NO_OUTPUT_LAYERS")))
 +    return NULL;
 +
-+  surface = phoc_output_pick_plane_surface (self, &src);
++  if (now < priv->plane_retry_us) {
++    /* Backing off (see below). The layer still has to be committed, disabled,
++     * or the plane would keep scanning out whatever it last accepted. */
++    surface = NULL;
++  } else {
++    if (priv->plane_retry_us && priv->plane_layer) {
++      /* Coming back from a backoff with a NEW layer, so that libliftoff plans
++       * from scratch instead of reusing the allocation it just refused. */
++      g_clear_pointer (&priv->plane_layer, wlr_output_layer_destroy);
++    }
++    priv->plane_retry_us = 0;
++    surface = phoc_output_pick_plane_surface (self, &src);
++  }
 +
 +  if (surface == NULL && priv->plane_layer == NULL)
 +    return NULL;
@@ -480,6 +557,20 @@ index d95d6db..63ecdc0 100644
 +                 priv->planed_box.x, priv->planed_box.y,
 +                 src.width, src.height, src.x, src.y);
 +
++  /* Asking costs an atomic TEST_ONLY every frame -- 5 % of a core on this
++   * phone -- and the backend's answer rarely changes between two frames. After
++   * a second of refusals, stop asking for a second, then try again with a
++   * fresh layer. Without this a page the DPU will not take is measurably worse
++   * off than before the plane path existed. */
++  if (surface && !layer_state->accepted) {
++    if (++priv->plane_refusals >= 60) {
++      priv->plane_refusals = 0;
++      priv->plane_retry_us = now + G_USEC_PER_SEC;
++    }
++  } else {
++    priv->plane_refusals = 0;
++  }
++
 +  return layer_state->accepted ? surface : NULL;
 +}
 +
@@ -487,7 +578,7 @@ index d95d6db..63ecdc0 100644
  PHOC_TRACE_NO_INLINE static bool
  scan_out_fullscreen_view (PhocOutput *self, PhocView *view, struct wlr_output_state *pending)
  {
-@@ -565,6 +964,8 @@ phoc_output_draw (PhocOutput *self)
+@@ -565,6 +1047,8 @@ phoc_output_draw (PhocOutput *self)
    struct wlr_buffer *buffer;
    struct wlr_render_pass *render_pass;
    struct wlr_output_state pending = { 0 };
@@ -496,7 +587,7 @@ index d95d6db..63ecdc0 100644
    PhocServerDebugFlags flags;
  
    if (!wlr_output->enabled)
-@@ -582,6 +983,21 @@ phoc_output_draw (PhocOutput *self)
+@@ -582,6 +1066,21 @@ phoc_output_draw (PhocOutput *self)
  
    wlr_output_state_set_damage (&pending, &priv->damage_ring.current);
  
@@ -518,7 +609,7 @@ index d95d6db..63ecdc0 100644
    /* Check if we can delegate the fullscreen surface to the output */
    if (self->fullscreen_view)
      scanned_out = scan_out_fullscreen_view (self, self->fullscreen_view, &pending);
-@@ -605,6 +1021,20 @@ phoc_output_draw (PhocOutput *self)
+@@ -605,6 +1104,20 @@ phoc_output_draw (PhocOutput *self)
    pixman_region32_init (&buffer_damage);
    wlr_damage_ring_rotate_buffer (&priv->damage_ring, buffer, &buffer_damage);
  

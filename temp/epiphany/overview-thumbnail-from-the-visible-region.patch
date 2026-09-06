@@ -1,0 +1,35 @@
+snapshot-service: take the overview thumbnail from the visible region
+
+ephy_snapshot_service asks WebKit for WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT
+one second after every top-site load, then scales the result to 650 px wide
+and crops it to 540 px tall (ephy_snapshot_service_prepare_snapshot). So the
+thumbnail is the top of the page at viewport width, and everything below the
+first ~540/650 of the width is painted, copied into shared memory, shipped to
+the UI process, converted to a pixbuf and thrown away.
+
+For a long page that is not a small amount of work. WebKit sizes a full
+document snapshot from the frame's contentsSize times the device scale
+factor, and paints all of it synchronously on the web process main thread:
+a long Wikipedia article on a phone (msm8998, 1440 px wide panel) came to
+2802 x 237522 px, a 2.66 GB bitmap. WebKit 2.52.6 crashes on that one (Skia
+refuses a raster surface over 2 GB and WebKit dereferences the null); pages
+that stay under the limit still cost hundreds of megabytes and a multi-second
+main-thread stall right after load, on a 3.7 GB device.
+
+WEBKIT_SNAPSHOT_REGION_VISIBLE gives the same picture -- the top of the page
+at viewport width -- at viewport size. The only case where it differs is a
+page shorter than the viewport, where prepare_snapshot's scale-up branch
+already handles a small image, and a viewport narrower than 650 px, where
+the same branch already applies today.
+
+--- a/lib/ephy-snapshot-service.c
++++ b/lib/ephy-snapshot-service.c
+@@ -410,7 +410,7 @@ retrieve_snapshot_from_web_view (GTask *task)
+   }
+ 
+   webkit_web_view_get_snapshot (data->web_view,
+-                                WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT,
++                                WEBKIT_SNAPSHOT_REGION_VISIBLE,
+                                 WEBKIT_SNAPSHOT_OPTIONS_NONE,
+                                 g_task_get_cancellable (task),
+                                 (GAsyncReadyCallback)on_snapshot_ready,

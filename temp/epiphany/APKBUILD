@@ -1,0 +1,98 @@
+# Forked from Alpine (community/epiphany 50.6-r0, unchanged build) to carry
+# one upstream-bound fix:
+#
+#   overview-thumbnail-from-the-visible-region.patch
+#         the overview thumbnail is taken with
+#         WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT one second after every top-site
+#         load, then scaled to 650 px and cropped to 540 px. WebKit paints the
+#         whole document synchronously on the web process main thread into a
+#         contentsSize x scale bitmap: a long Wikipedia article on taimen is
+#         2802 x 237522 px = 2.66 GB, which crashes webkitgtk 2.52.6 outright
+#         (null SkSurface) and costs hundreds of MB and a multi-second stall on
+#         every page that stays under the limit. The visible region gives the
+#         same picture at viewport size.
+#
+# WHY pkgrel IS 50: apk installs the highest version it can see regardless of
+# repo; a high pkgrel keeps this build winning for the life of the pkgver and
+# an upstream 50.7 outranks it by design. Drop this fork when the patch lands.
+#
+# Contributor: Rasmus Thomsen <oss@cogitri.dev>
+maintainer="team/gnome <achill@achill.org>"
+pkgname=epiphany
+pkgver=50.6
+pkgrel=50
+pkgdesc="Simple, clean, beautiful view of the web"
+url="https://apps.gnome.org/Epiphany"
+arch="all"
+license="GPL-3.0-or-later"
+depends="
+	dbus:org.freedesktop.Secrets
+	gsettings-desktop-schemas
+	gst-plugins-good
+	"
+makedepends="
+	blueprint-compiler
+	desktop-file-utils
+	gcr4-dev
+	git
+	gsettings-desktop-schemas-dev
+	gst-plugins-base-dev
+	gtk+3.0-dev
+	icu-dev
+	iso-codes-dev
+	itstool
+	json-glib-dev
+	libadwaita-dev
+	libarchive-dev
+	libdazzle-dev
+	libnotify-dev
+	libportal-dev
+	libsecret-dev
+	libxml2-dev
+	meson
+	nettle-dev
+	sqlite-dev
+	webkit2gtk-6.0-dev
+	"
+checkdepends="appstream-glib xvfb-run ibus"
+subpackages="$pkgname-lang $pkgname-doc $pkgname-dbg"
+source="https://download.gnome.org/sources/epiphany/${pkgver%%.*}/epiphany-$pkgver.tar.xz
+	overview-thumbnail-from-the-visible-region.patch
+	"
+options="!check" # broken
+
+# secfixes:
+#   42.2-r0:
+#     - CVE-2022-29536
+#   41.3-r0:
+#     - CVE-2021-45085
+#     - CVE-2021-45086
+#     - CVE-2021-45087
+#     - CVE-2021-45088
+
+prepare() {
+	default_prepare
+
+	git init -q
+}
+
+build() {
+	abuild-meson \
+		-Db_lto=true \
+		. output
+	meson compile -C output
+}
+
+check() {
+	# https://gitlab.gnome.org/GNOME/epiphany/issues/829
+	env PATH="$PATH:$builddir/output/src" xvfb-run meson test --print-errorlogs -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+}
+
+sha512sums="
+f4676af5582b01bf799ebe126d4989ea031e5fb2b8a411b4238b59b8d412893f3ad7f1b8b0efb58e8569d36eb904fa24e438c22642df6e6ee3c89d53036341c3  epiphany-50.6.tar.xz
+95e3d1ec34eee3af40edcc0d655d43724dce6ec003a88d4a4c0d388e1711619b2727c1656d2b491480155bed799fecd6ae3edb2044f272b21d2ca3ae4552d809  overview-thumbnail-from-the-visible-region.patch
+"

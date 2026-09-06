@@ -30,13 +30,14 @@ stream list downstream matches mainline's msm8998 venus node exactly.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/core.c | 21 +++++++++++
- 1 file changed, 21 insertions(+)
+ drivers/media/platform/qcom/venus/core.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
 
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 8f0b70a77d67..7a3b16b621ac 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -868,6 +868,25 @@
+@@ -868,6 +868,25 @@ static const struct venus_resources msm8998_res = {
  	.vmem_id = VIDC_RESOURCE_NONE,
  	.vmem_size = 0,
  	.vmem_addr = 0,

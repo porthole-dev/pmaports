@@ -1,4 +1,4 @@
-From b807d3b3f3f966fe3646bc52d0bb89c829367fd6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Wed, 2 Sep 2026 18:08:57 +0200
 Subject: [PATCH] power: supply: qcom_smbx: honour the Type-C current
@@ -37,6 +37,9 @@ already defined and unused.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
+ drivers/power/supply/qcom_smbx.c | 63 +++++++++++++++++++++++++++++++-
+ 1 file changed, 62 insertions(+), 1 deletion(-)
+
 diff --git a/drivers/power/supply/qcom_smbx.c b/drivers/power/supply/qcom_smbx.c
 index 22cd0b4d3004..0316ba042bf0 100644
 --- a/drivers/power/supply/qcom_smbx.c
@@ -127,6 +130,3 @@ index 22cd0b4d3004..0316ba042bf0 100644
  	smb_set_current_limit(chip, current_ua);
  	power_supply_changed(chip->chg_psy);
  }
--- 
-2.55.0
-

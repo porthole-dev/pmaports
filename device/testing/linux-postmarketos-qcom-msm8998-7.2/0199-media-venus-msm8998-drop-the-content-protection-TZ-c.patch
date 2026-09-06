@@ -25,9 +25,13 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 6 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 9eba36ec67b0..16836071f595 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -940,7 +940,9 @@
+@@ -934,10 +934,12 @@ static const struct venus_resources msm8998_res = {
+ 	 * <0x1000000 0x24800000>. sdm845 independently carries the same four
+ 	 * values.
+ 	 */
 -	.cp_start = 0,
 -	.cp_size = 0x70800000,
 -	.cp_nonpixel_start = 0x1000000,

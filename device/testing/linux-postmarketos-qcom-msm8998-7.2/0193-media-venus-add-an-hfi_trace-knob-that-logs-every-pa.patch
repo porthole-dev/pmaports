@@ -20,10 +20,50 @@ session bring-up is done.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
+ drivers/media/platform/qcom/venus/hfi_msgs.c  | 10 ++++++++++
+ drivers/media/platform/qcom/venus/hfi_venus.c |  9 +++++++++
+ 2 files changed, 19 insertions(+)
 
+diff --git a/drivers/media/platform/qcom/venus/hfi_msgs.c b/drivers/media/platform/qcom/venus/hfi_msgs.c
+index 47b99d5b5af7..8ec134ef7a3f 100644
+--- a/drivers/media/platform/qcom/venus/hfi_msgs.c
++++ b/drivers/media/platform/qcom/venus/hfi_msgs.c
+@@ -19,6 +19,8 @@
+ #define VER_STR_SZ		128
+ #define SMEM_IMG_OFFSET_VENUS	(14 * 128)
+ 
++extern int venus_hfi_trace;
++
+ static void event_seq_changed(struct venus_core *core, struct venus_inst *inst,
+ 			      struct hfi_msg_event_notify_pkt *pkt)
+ {
+@@ -39,6 +41,10 @@ static void event_seq_changed(struct venus_core *core, struct venus_inst *inst,
+ 
+ 	inst->error = HFI_ERR_NONE;
+ 
++	if (venus_hfi_trace)
++		dev_info(core->dev, "hfi rx: seq-changed data1 %#x data2 %#x\n",
++			 pkt->event_data1, pkt->event_data2);
++
+ 	switch (pkt->event_data1) {
+ 	case HFI_EVENT_DATA_SEQUENCE_CHANGED_SUFFICIENT_BUF_RESOURCES:
+ 	case HFI_EVENT_DATA_SEQUENCE_CHANGED_INSUFFICIENT_BUF_RESOURCES:
+@@ -812,6 +818,10 @@ u32 hfi_process_msg_packet(struct venus_core *core, struct hfi_pkt_hdr *hdr)
+ 	bool found = false;
+ 	unsigned int i;
+ 
++	if (venus_hfi_trace)
++		dev_info(core->dev, "hfi rx: %#x size %u\n",
++			 hdr->pkt_type, hdr->size);
++
+ 	for (i = 0; i < ARRAY_SIZE(handlers); i++) {
+ 		handler = &handlers[i];
+ 		if (handler->pkt != hdr->pkt_type)
+diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platform/qcom/venus/hfi_venus.c
+index 659d13ecb306..c082f97f7f6b 100644
 --- a/drivers/media/platform/qcom/venus/hfi_venus.c
-+++ b/drivers/media/platform/qcom/venus/hfi_venus.c	2026-08-29 14:39:36.387935060 +0200
-@@ -388,6 +388,11 @@
++++ b/drivers/media/platform/qcom/venus/hfi_venus.c
+@@ -433,6 +433,11 @@ static void venus_soft_int(struct venus_hfi_device *hdev)
  	writel(clear_bit, cpu_ic_base + CPU_IC_SOFTINT);
  }
  
@@ -35,7 +75,7 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  static int venus_iface_cmdq_write_nolock(struct venus_hfi_device *hdev,
  					 void *pkt, bool sync)
  {
-@@ -403,6 +408,10 @@
+@@ -448,6 +453,10 @@ static int venus_iface_cmdq_write_nolock(struct venus_hfi_device *hdev,
  	cmd_packet = (struct hfi_pkt_hdr *)pkt;
  	hdev->last_packet_type = cmd_packet->pkt_type;
  
@@ -46,36 +86,3 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  	queue = &hdev->queues[IFACEQ_CMD_IDX];
  
  	ret = venus_write_queue(hdev, queue, pkt, &rx_req);
---- a/drivers/media/platform/qcom/venus/hfi_msgs.c
-+++ b/drivers/media/platform/qcom/venus/hfi_msgs.c	2026-08-29 14:39:36.388276414 +0200
-@@ -19,6 +19,8 @@
- #define VER_STR_SZ		128
- #define SMEM_IMG_OFFSET_VENUS	(14 * 128)
- 
-+extern int venus_hfi_trace;
-+
- static void event_seq_changed(struct venus_core *core, struct venus_inst *inst,
- 			      struct hfi_msg_event_notify_pkt *pkt)
- {
-@@ -39,6 +41,10 @@
- 
- 	inst->error = HFI_ERR_NONE;
- 
-+	if (venus_hfi_trace)
-+		dev_info(core->dev, "hfi rx: seq-changed data1 %#x data2 %#x\n",
-+			 pkt->event_data1, pkt->event_data2);
-+
- 	switch (pkt->event_data1) {
- 	case HFI_EVENT_DATA_SEQUENCE_CHANGED_SUFFICIENT_BUF_RESOURCES:
- 	case HFI_EVENT_DATA_SEQUENCE_CHANGED_INSUFFICIENT_BUF_RESOURCES:
-@@ -812,6 +819,10 @@
- 	bool found = false;
- 	unsigned int i;
- 
-+	if (venus_hfi_trace)
-+		dev_info(core->dev, "hfi rx: %#x size %u\n",
-+			 hdr->pkt_type, hdr->size);
-+
- 	for (i = 0; i < ARRAY_SIZE(handlers); i++) {
- 		handler = &handlers[i];
- 		if (handler->pkt != hdr->pkt_type)

@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 29 Aug 2026 16:50:00 +0200
-Subject: [PATCH] media: venus: msm8998: restore the TZ threshold registers after
- firmware boot
+Subject: [PATCH] media: venus: msm8998: restore the TZ threshold registers
+ after firmware boot
 
 After a power-collapse resume the firmware never answers another HFI
 message: TZ accepts the resume (scm_set_remote_state(1) = 0), the ARM9
@@ -27,9 +27,11 @@ works, where before it timed out at SESSION_INIT.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/hfi_venus.c | 14 ++++++++++++++
- 1 file changed, 14 insertions(+)
+ drivers/media/platform/qcom/venus/hfi_venus.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
 
+diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platform/qcom/venus/hfi_venus.c
+index c082f97f7f6b..e958e4ebb6dc 100644
 --- a/drivers/media/platform/qcom/venus/hfi_venus.c
 +++ b/drivers/media/platform/qcom/venus/hfi_venus.c
 @@ -9,6 +9,7 @@
@@ -40,7 +42,7 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  #include <linux/kernel.h>
  #include <linux/slab.h>
  
-@@ -567,6 +568,18 @@
+@@ -683,6 +684,18 @@ static int venus_run(struct venus_hfi_device *hdev)
  
  	venus_hwversion(hdev);
  

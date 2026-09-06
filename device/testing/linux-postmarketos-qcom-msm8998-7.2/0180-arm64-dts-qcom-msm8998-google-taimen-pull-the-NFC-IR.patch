@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 29 Aug 2026 02:40:00 +0200
-Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: pull the NFC IRQ line
- down
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: pull the NFC IRQ
+ line down
 
 gpio92 carries the PN553's interrupt and is described IRQ_TYPE_LEVEL_HIGH.
 Biasing it with a pull-up asserts that interrupt permanently whenever the
@@ -30,9 +30,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 11 insertions(+), 1 deletion(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index e4bae0859c11..8fb5e1239fae 100644
 --- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
 +++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
-@@ -539,12 +539,22 @@
+@@ -561,12 +561,22 @@ ts_i2c_switch: ts-i2c-switch {
  	 * nfc_enable_active). The vendor groups gpio116 -- the eSE enable --
  	 * into nfc_enable_active; it is left out here because the eSE is not
  	 * described and driving its enable line would be a side effect.

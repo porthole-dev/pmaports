@@ -1,0 +1,151 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 4 Sep 2026 16:18:09 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: give the a540 GPU OPPs the vendor
+ CPR ceilings
+
+The GPU OPP table's opp-microvolt values were documented as downstream's
+GFX CPR4 open-loop ceilings, but they were not. Downstream's GFX CPR4
+regulator on msm8998 v2 (msm8998-v2.dtsi, &gfx_vreg) carries per-corner
+ceilings for every fused part (fuse combos 1-7):
+
+    MHz       180  257  342  414  515  596  670  710
+    ceiling   724  724  772  832  916  968 1024 1088 mV
+
+Without closed-loop CPR the ceiling is the only voltage safe for every
+fused part. The table we carried instead put 596 MHz at 900 mV (68 mV
+under its ceiling), 515 MHz at 900 mV, and 710 MHz at 1056 mV (32 mV
+under its 1088 mV ceiling). The wahoo board then set a blanket 988 mV
+floor on pm8005 s1 ("HACK: shoot GPU voltage high to stabilize Adreno 540
+at high frequencies"), which does nothing above 670 MHz and burns 988 mV
+at 257 MHz where the ceiling is 724 mV.
+
+Adreno 540 hangs on this device clustered at 710 MHz with the SoC above
+70 C, in different GPU blocks under different workloads -- the signature
+of a rail run below the silicon's need under thermal stress, not of any
+one command stream. Give each OPP its real per-corner CPR ceiling and
+drop the board's blanket floor: the top rail comes up 32 mV where the
+hangs are, and the low rail drops to its true ceiling, saving power at
+idle frequencies.
+
+Keep the <target min max> triplet with max at the 1.1 V rail limit
+because pm8005 s1's steps are coarse and an exact value that is not a
+step is rejected by _opp_supported_by_regulators().
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+(cherry picked from commit d1b99c699a9494a3c520c77af37d90a51e6b8a73)
+---
+ .../boot/dts/qcom/msm8998-google-wahoo.dtsi   |  9 ------
+ arch/arm64/boot/dts/qcom/msm8998.dtsi         | 30 +++++++++----------
+ 2 files changed, 15 insertions(+), 24 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+index 4c118b66ed31..0a8b69ad9fdf 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi
+@@ -504,15 +504,6 @@ &adreno_smmu {
+ 	status = "okay";
+ };
+ 
+-/*
+- * HACK: Shoot GPU voltage high to stabilize Adreno 540 at high frequencies
+- *       until the GPU CPR is brought up.
+- */
+-&pm8005_s1 {
+-	regulator-min-microvolt = <988000>; /* 0,524V -> 0,988V */
+-	//regulator-max-microvolt = <1100000>;
+-};
+-
+ &tlmm {
+ 	gpio-reserved-ranges = <0 4>, <81 4>;
+ 
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index a1179399ae13..a73be4fb1b06 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -2539,14 +2539,14 @@ adreno_gpu: gpu@5000000 {
+ 			#cooling-cells = <2>;
+ 
+ 			/*
+-			 * opp-microvolt is the vdd_gfx (core rail) voltage,
+-			 * taken from downstream's GFX CPR4 open-loop ceilings
+-			 * (msm-4.4 msm8998-v2.dtsi: SVS 828 mV, NOM 900 mV,
+-			 * TURBO 1056 mV) with the freq->corner map from
+-			 * qcom,gfxfreq-speedbin0: <=414 SVS, 515/596 NOM,
+-			 * 670/710 TURBO. Ceiling values, so safe on any bin
+-			 * without CPR. Consumed only when the board wires
+-			 * vdd-supply on the GPU node.
++			 * opp-microvolt is the vdd_gfx (core rail) voltage:
++			 * downstream's GFX CPR4 per-corner ceilings for
++			 * msm8998 v2 (msm-4.4 msm8998-v2.dtsi, &gfx_vreg,
++			 * qcom,cpr-voltage-ceiling for fuse combos 1-7),
++			 * one corner per OPP. The ceiling is the only value
++			 * safe for every fused part without closed-loop CPR.
++			 * Consumed only when the board wires vdd-supply on
++			 * the GPU node.
+ 			 *
+ 			 * Triplets <target min max> with max at the rail
+ 			 * ceiling, because pm8005 s1 has discrete voltage
+@@ -2567,7 +2567,7 @@ opp-710000097 {
+ 					opp-hz = /bits/ 64 <710000097>;
+ 					opp-avg-kBps = <14432000>;
+ 					opp-peak-kBps = <14432000>;
+-					opp-microvolt = <1056000 1056000 1100000>;
++					opp-microvolt = <1088000 1088000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_TURBO>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+@@ -2576,7 +2576,7 @@ opp-670000048 {
+ 					opp-hz = /bits/ 64 <670000048>;
+ 					opp-avg-kBps = <14432000>;
+ 					opp-peak-kBps = <14432000>;
+-					opp-microvolt = <1056000 1056000 1100000>;
++					opp-microvolt = <1024000 1024000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_TURBO>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+@@ -2585,7 +2585,7 @@ opp-596000097 {
+ 					opp-hz = /bits/ 64 <596000097>;
+ 					opp-avg-kBps = <12440000>;
+ 					opp-peak-kBps = <12440000>;
+-					opp-microvolt = <900000 900000 1100000>;
++					opp-microvolt = <968000 968000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_NOM>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+@@ -2594,7 +2594,7 @@ opp-515000097 {
+ 					opp-hz = /bits/ 64 <515000097>;
+ 					opp-avg-kBps = <12440000>;
+ 					opp-peak-kBps = <12440000>;
+-					opp-microvolt = <900000 900000 1100000>;
++					opp-microvolt = <916000 916000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_NOM>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+@@ -2603,7 +2603,7 @@ opp-414000000 {
+ 					opp-hz = /bits/ 64 <414000000>;
+ 					opp-avg-kBps = <8136000>;
+ 					opp-peak-kBps = <8136000>;
+-					opp-microvolt = <828000 828000 1100000>;
++					opp-microvolt = <832000 832000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_SVS>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+@@ -2612,7 +2612,7 @@ opp-342000000 {
+ 					opp-hz = /bits/ 64 <342000000>;
+ 					opp-avg-kBps = <6144000>;
+ 					opp-peak-kBps = <6144000>;
+-					opp-microvolt = <828000 828000 1100000>;
++					opp-microvolt = <772000 772000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_LOW_SVS>;
+ 					opp-supported-hw = <0xff>;
+ 				};
+@@ -2621,7 +2621,7 @@ opp-257000000 {
+ 					opp-hz = /bits/ 64 <257000000>;
+ 					opp-avg-kBps = <3296000>;
+ 					opp-peak-kBps = <3296000>;
+-					opp-microvolt = <828000 828000 1100000>;
++					opp-microvolt = <724000 724000 1100000>;
+ 					opp-level = <RPM_SMD_LEVEL_MIN_SVS>;
+ 					opp-supported-hw = <0xff>;
+ 				};

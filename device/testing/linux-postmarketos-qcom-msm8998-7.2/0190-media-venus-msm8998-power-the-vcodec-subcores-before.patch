@@ -31,14 +31,15 @@ than one consumer.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- arch/arm64/boot/dts/qcom/msm8998.dtsi    | 14 ++++++++++----
- drivers/media/platform/qcom/venus/core.c | 24 ++++++++++++++++++++++++
- 2 files changed, 34 insertions(+), 4 deletions(-)
+ arch/arm64/boot/dts/qcom/msm8998.dtsi    |  5 ++++-
+ drivers/media/platform/qcom/venus/core.c | 25 +++++++++++++++++++++++-
+ 2 files changed, 28 insertions(+), 2 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 7caea30bdaa9..572232091028 100644
 --- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
 +++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
-@@ -3175,7 +3175,10 @@
+@@ -4232,7 +4232,10 @@ venus: video-codec@cc00000 {
  			compatible = "qcom,msm8998-venus";
  			reg = <0x0cc00000 0xff000>;
  			interrupts = <GIC_SPI 287 IRQ_TYPE_LEVEL_HIGH>;
@@ -51,9 +52,10 @@ diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/ms
  				 <&mmcc VIDEO_AHB_CLK>,
  				 <&mmcc VIDEO_AXI_CLK>,
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 40cfe40a6967..876885198566 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -881,7 +881,30 @@
+@@ -881,7 +881,30 @@ static const struct venus_resources msm8998_res = {
  	.clks_num = 6,
  	.vcodec0_clks = { "core" },
  	.vcodec1_clks = { "core" },

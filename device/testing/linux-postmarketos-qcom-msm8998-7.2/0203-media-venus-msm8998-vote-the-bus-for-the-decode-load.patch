@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
-Date: Mon, 1 Sep 2026 13:20:00 +0200
+Date: Tue, 1 Sep 2026 13:20:00 +0200
 Subject: [PATCH] media: venus: msm8998: vote the bus for the decode load
 
 msm8998 is the only venus platform in the driver with a frequency table and
@@ -35,11 +35,14 @@ calibrating against the vendor governor before 4k60 is trusted.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
+ drivers/media/platform/qcom/venus/core.c | 42 ++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
-index 243e342b0ae7..eada1b6af547 100644
+index 16836071f595..8c273c6b1193 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -784,9 +784,51 @@ static const struct reg_val msm8998_reg_preset[] = {
+@@ -864,9 +864,51 @@ static const struct reg_val msm8998_reg_preset[] = {
  	{ 0xe2010, 0x00000000 },
  };
  
@@ -90,4 +93,4 @@ index 243e342b0ae7..eada1b6af547 100644
 +	.bw_tbl_dec_size = ARRAY_SIZE(msm8998_bw_table_dec),
  	.reg_tbl = msm8998_reg_preset,
  	.reg_tbl_size = ARRAY_SIZE(msm8998_reg_preset),
- 	.clks = { "core", "iface", "bus", "mbus" },
+ 	/*

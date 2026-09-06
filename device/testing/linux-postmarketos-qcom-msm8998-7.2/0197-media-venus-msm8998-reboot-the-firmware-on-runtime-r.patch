@@ -25,13 +25,14 @@ restore contract has that mainline's does not; take it to linux-media.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/core.c | 36 ++++++++++++++++++++++++
- 1 file changed, 36 insertions(+)
+ drivers/media/platform/qcom/venus/core.c | 35 ++++++++++++++++++++++++
+ 1 file changed, 35 insertions(+)
 
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 2863c5f0d499..7eec533c5d4b 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -736,6 +736,41 @@
+@@ -725,6 +725,41 @@ static __maybe_unused int venus_runtime_resume(struct device *dev)
  	if (venus_stop_before(6))
  		return 0;
  

@@ -43,10 +43,15 @@ Link: http://lists.infradead.org/pipermail/ath10k/2026-February/
 Signed-off-by: Richard Acayan <mailingradian@gmail.com>
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
+ drivers/net/wireless/ath/ath10k/htt.h    |  4 +++
+ drivers/net/wireless/ath/ath10k/htt_rx.c | 41 ++++++++++++++++++------
+ 2 files changed, 36 insertions(+), 9 deletions(-)
+
 diff --git a/drivers/net/wireless/ath/ath10k/htt.h b/drivers/net/wireless/ath/ath10k/htt.h
+index 838934643f21..c0e6c305f755 100644
 --- a/drivers/net/wireless/ath/ath10k/htt.h
 +++ b/drivers/net/wireless/ath/ath10k/htt.h
-@@ -1929,6 +1929,10 @@
+@@ -1936,6 +1936,10 @@ struct ath10k_htt {
  	bool bundle_tx;
  	struct sk_buff_head tx_req_head;
  	struct sk_buff_head tx_complete_head;
@@ -58,9 +63,10 @@ diff --git a/drivers/net/wireless/ath/ath10k/htt.h b/drivers/net/wireless/ath/at
  
  struct ath10k_htt_tx_ops {
 diff --git a/drivers/net/wireless/ath/ath10k/htt_rx.c b/drivers/net/wireless/ath/ath10k/htt_rx.c
+index b7a8d03ceccc..a19fba4ba2b2 100644
 --- a/drivers/net/wireless/ath/ath10k/htt_rx.c
 +++ b/drivers/net/wireless/ath/ath10k/htt_rx.c
-@@ -297,6 +297,8 @@
+@@ -296,6 +296,8 @@ void ath10k_htt_rx_free(struct ath10k_htt *htt)
  	skb_queue_purge(&htt->rx_in_ord_compl_q);
  	skb_queue_purge(&htt->tx_fetch_ind_q);
  
@@ -69,7 +75,7 @@ diff --git a/drivers/net/wireless/ath/ath10k/htt_rx.c b/drivers/net/wireless/ath
  	spin_lock_bh(&htt->rx_ring.lock);
  	ath10k_htt_rx_ring_free(htt);
  	spin_unlock_bh(&htt->rx_ring.lock);
-@@ -846,6 +848,8 @@
+@@ -846,6 +848,8 @@ int ath10k_htt_rx_alloc(struct ath10k_htt *htt)
  	skb_queue_head_init(&htt->tx_fetch_ind_q);
  	atomic_set(&htt->num_mpdus_ready, 0);
  
@@ -78,7 +84,7 @@ diff --git a/drivers/net/wireless/ath/ath10k/htt_rx.c b/drivers/net/wireless/ath
  	ath10k_dbg(ar, ATH10K_DBG_BOOT, "htt rx ring size %d fill_level %d\n",
  		   htt->rx_ring.size, htt->rx_ring.fill_level);
  	return 0;
-@@ -3264,7 +3268,6 @@
+@@ -3265,7 +3269,6 @@ static int ath10k_htt_rx_in_ord_ind(struct ath10k *ar, struct sk_buff *skb)
  	struct ath10k_htt *htt = &ar->htt;
  	struct htt_resp *resp = (void *)skb->data;
  	struct ieee80211_rx_status *status = &htt->rx_status;
@@ -86,7 +92,7 @@ diff --git a/drivers/net/wireless/ath/ath10k/htt_rx.c b/drivers/net/wireless/ath
  	struct sk_buff_head amsdu;
  	u16 peer_id;
  	u16 msdu_count;
-@@ -3299,16 +3302,32 @@
+@@ -3300,16 +3303,32 @@ static int ath10k_htt_rx_in_ord_ind(struct ath10k *ar, struct sk_buff *skb)
  		return -EINVAL;
  	}
  
@@ -122,7 +128,7 @@ diff --git a/drivers/net/wireless/ath/ath10k/htt_rx.c b/drivers/net/wireless/ath
  
  	if (ret < 0) {
  		ath10k_warn(ar, "failed to pop paddr list: %d\n", ret);
-@@ -3320,11 +3339,12 @@
+@@ -3321,11 +3340,12 @@ static int ath10k_htt_rx_in_ord_ind(struct ath10k *ar, struct sk_buff *skb)
  	 * separately.
  	 */
  	if (offload)
@@ -138,7 +144,7 @@ diff --git a/drivers/net/wireless/ath/ath10k/htt_rx.c b/drivers/net/wireless/ath
  		switch (ret) {
  		case 0:
  			/* Note: The in-order indication may report interleaved
-@@ -3340,12 +3360,15 @@
+@@ -3341,12 +3361,15 @@ static int ath10k_htt_rx_in_ord_ind(struct ath10k *ar, struct sk_buff *skb)
  			ath10k_htt_rx_h_enqueue(ar, &amsdu, status);
  			break;
  		case -EAGAIN:

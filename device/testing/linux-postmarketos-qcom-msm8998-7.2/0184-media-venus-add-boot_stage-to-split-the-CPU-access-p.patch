@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 29 Aug 2026 04:25:00 +0200
-Subject: [PATCH] media: venus: add boot_stage to split the CPU access path from
- the firmware
+Subject: [PATCH] media: venus: add boot_stage to split the CPU access path
+ from the firmware
 
 stop_at placed the msm8998 wedge exactly at hfi_core_resume(core, true), on a
 clean boot with a control proving the module was absent beforehand:
@@ -32,13 +32,14 @@ Default -1, so this is inert unless asked for.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/hfi_venus.c | 56 ++++++++++++++
- 1 file changed, 56 insertions(+)
+ drivers/media/platform/qcom/venus/hfi_venus.c | 55 +++++++++++++++++++
+ 1 file changed, 55 insertions(+)
 
 diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platform/qcom/venus/hfi_venus.c
+index bd82066bb6e7..4ef8e90e0bae 100644
 --- a/drivers/media/platform/qcom/venus/hfi_venus.c
 +++ b/drivers/media/platform/qcom/venus/hfi_venus.c
-@@ -463,6 +463,39 @@
+@@ -463,6 +463,39 @@ static int venus_hfi_core_set_resource(struct venus_core *core, u32 id,
  	return 0;
  }
  
@@ -78,7 +79,7 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
  static int venus_boot_core(struct venus_hfi_device *hdev)
  {
  	struct device *dev = hdev->core->dev;
-@@ -481,11 +514,21 @@
+@@ -481,11 +514,21 @@ static int venus_boot_core(struct venus_hfi_device *hdev)
  		mask_val = WRAPPER_INTR_MASK_A2HVCODEC_MASK;
  	}
  
@@ -100,7 +101,7 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
  	while (!ctrl_status && count < max_tries) {
  		ctrl_status = readl(cpu_cs_base + CPU_CS_SCIACMDARG0);
  		if ((ctrl_status & CPU_CS_SCIACMDARG0_ERROR_STATUS_MASK) == 4) {
-@@ -540,8 +583,14 @@
+@@ -540,8 +583,14 @@ static int venus_run(struct venus_hfi_device *hdev)
  	 * Re-program all of the registers that get reset as a result of
  	 * regulator_disable() and _enable()
  	 */
@@ -115,7 +116,7 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
  	writel(hdev->ifaceq_table.da, cpu_cs_base + UC_REGION_ADDR);
  	writel(SHARED_QSIZE, cpu_cs_base + UC_REGION_SIZE);
  	writel(hdev->ifaceq_table.da, cpu_cs_base + CPU_CS_SCIACMDARG2);
-@@ -549,6 +598,9 @@
+@@ -549,6 +598,9 @@ static int venus_run(struct venus_hfi_device *hdev)
  	if (hdev->sfr.da)
  		writel(hdev->sfr.da, cpu_cs_base + SFR_ADDR);
  
@@ -125,7 +126,7 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
  	ret = venus_boot_core(hdev);
  	if (ret) {
  		dev_err(dev, "failed to reset venus core\n");
-@@ -670,6 +722,9 @@
+@@ -670,6 +722,9 @@ static int venus_power_on(struct venus_hfi_device *hdev)
  	if (hdev->power_enabled)
  		return 0;
  

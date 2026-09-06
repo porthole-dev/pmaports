@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 29 Aug 2026 12:30:00 +0200
-Subject: [PATCH] media: venus: write the VBIF presets before the firmware boots
+Subject: [PATCH] media: venus: write the VBIF presets before the firmware
+ boots
 
 preset_limit placed the msm8998 wedge on one write: 0x00000003 to
 base+0x80124, the first VBIF register, from venus_set_registers(). Netconsole
@@ -32,12 +33,13 @@ correct rather than a bug.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/core.c      |  3 +++
- drivers/media/platform/qcom/venus/hfi_venus.c | 30 +++++++++++++++++++++-
+ drivers/media/platform/qcom/venus/core.c      |  4 +++
+ drivers/media/platform/qcom/venus/hfi_venus.c | 36 ++++++++++++++++++-
  drivers/media/platform/qcom/venus/hfi_venus.h |  1 +
- 3 files changed, 33 insertions(+), 1 deletion(-)
+ 3 files changed, 40 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 9a744420763d..40cfe40a6967 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
 @@ -27,6 +27,7 @@
@@ -48,7 +50,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  #include "hfi_venus_io.h"
  
  /*
-@@ -514,6 +515,9 @@
+@@ -514,6 +515,9 @@ static int venus_probe(struct platform_device *pdev)
  	if (venus_stop_before(8))
  		return 0;
  
@@ -59,11 +61,12 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  	if (ret)
  		goto err_firmware_deinit;
 diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platform/qcom/venus/hfi_venus.c
+index 170a4bac9b08..f5d5abb33c07 100644
 --- a/drivers/media/platform/qcom/venus/hfi_venus.c
 +++ b/drivers/media/platform/qcom/venus/hfi_venus.c
-@@ -364,6 +364,31 @@
- 	dma_free_attrs(dev, mem->size, mem->kva, mem->da, mem->attrs);
- }
+@@ -369,6 +369,31 @@ module_param(preset_limit, int, 0644);
+ MODULE_PARM_DESC(preset_limit,
+ 	"venus bring-up bisect: write only the first N register presets (-1 = all)");
  
 +/*
 + * Bring-up bisect, sixth stage -- and the first one taken from the vendor
@@ -93,7 +96,7 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
  static void venus_set_registers(struct venus_hfi_device *hdev)
  {
  	const struct venus_resources *res = hdev->core->res;
-@@ -586,7 +611,8 @@
+@@ -606,7 +631,8 @@ static int venus_run(struct venus_hfi_device *hdev)
  	if (venus_stop_boot(2))
  		return 0;
  
@@ -103,7 +106,7 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
  
  	if (venus_stop_boot(3))
  		return 0;
-@@ -1831,3 +1857,11 @@
+@@ -1851,3 +1877,11 @@ void venus_hfi_queues_reinit(struct venus_core *core)
  
  	mutex_unlock(&hdev->lock);
  }
@@ -116,9 +119,10 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
 +		venus_set_registers(hdev);
 +}
 diff --git a/drivers/media/platform/qcom/venus/hfi_venus.h b/drivers/media/platform/qcom/venus/hfi_venus.h
+index 1b656ef2bf07..d24761571e09 100644
 --- a/drivers/media/platform/qcom/venus/hfi_venus.h
 +++ b/drivers/media/platform/qcom/venus/hfi_venus.h
-@@ -11,5 +11,6 @@
+@@ -11,5 +11,6 @@ struct venus_core;
  void venus_hfi_destroy(struct venus_core *core);
  int venus_hfi_create(struct venus_core *core);
  void venus_hfi_queues_reinit(struct venus_core *core);

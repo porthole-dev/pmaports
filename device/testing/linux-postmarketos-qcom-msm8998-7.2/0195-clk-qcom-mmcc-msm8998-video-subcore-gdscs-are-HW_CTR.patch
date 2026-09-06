@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 29 Aug 2026 16:20:00 +0200
-Subject: [PATCH] clk: qcom: mmcc-msm8998: video subcore gdscs are HW_CTRL_TRIGGER
+Subject: [PATCH] clk: qcom: mmcc-msm8998: video subcore gdscs are
+ HW_CTRL_TRIGGER
 
 With the vcodec subcore clocks finally named on the venus node,
 core_power_v1() enables them right after powering the subcore domains --
@@ -27,9 +28,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/clk/qcom/mmcc-msm8998.c b/drivers/clk/qcom/mmcc-msm8998.c
+index 7eda248b45bc..0c1256b47fa0 100644
 --- a/drivers/clk/qcom/mmcc-msm8998.c
 +++ b/drivers/clk/qcom/mmcc-msm8998.c
-@@ -2564,7 +2564,7 @@
+@@ -2562,7 +2562,7 @@ static struct gdsc video_subcore0_gdsc = {
  	},
  	.parent = &video_top_gdsc.pd,
  	.pwrsts = PWRSTS_OFF_ON,
@@ -38,7 +40,7 @@ diff --git a/drivers/clk/qcom/mmcc-msm8998.c b/drivers/clk/qcom/mmcc-msm8998.c
  };
  
  static struct gdsc video_subcore1_gdsc = {
-@@ -2576,7 +2576,7 @@
+@@ -2574,7 +2574,7 @@ static struct gdsc video_subcore1_gdsc = {
  	},
  	.parent = &video_top_gdsc.pd,
  	.pwrsts = PWRSTS_OFF_ON,

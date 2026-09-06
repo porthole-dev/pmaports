@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sat, 29 Aug 2026 13:20:00 +0200
-Subject: [PATCH] media: venus: rate the core clocks on 3XX before touching registers
+Subject: [PATCH] media: venus: rate the core clocks on 3XX before touching
+ registers
 
 Everything else is measured innocent for the msm8998 VBIF wedge: power, all
 six clocks enabled, both subcore domains active in SW mode, the TZ handshake,
@@ -22,13 +23,14 @@ set_clk_rate=1 does what the vendor does. Default off.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/pm_helpers.c | 18 +++++++++++++++++-
- 1 file changed, 17 insertions(+), 1 deletion(-)
+ .../media/platform/qcom/venus/pm_helpers.c    | 21 ++++++++++++++++++-
+ 1 file changed, 20 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/media/platform/qcom/venus/pm_helpers.c b/drivers/media/platform/qcom/venus/pm_helpers.c
+index 48b36cee43c1..70ec293d8f0b 100644
 --- a/drivers/media/platform/qcom/venus/pm_helpers.c
 +++ b/drivers/media/platform/qcom/venus/pm_helpers.c
-@@ -50,6 +50,25 @@
+@@ -50,6 +50,25 @@ static int core_clks_get(struct venus_core *core)
   * "mbus". clk_limit=N enables only the first N of them, and the largest N that
   * still boots names the clock.
   */
@@ -54,7 +56,7 @@ diff --git a/drivers/media/platform/qcom/venus/pm_helpers.c b/drivers/media/plat
  static int clk_limit = -1;
  module_param(clk_limit, int, 0644);
  MODULE_PARM_DESC(clk_limit,
-@@ -79,7 +98,7 @@
+@@ -79,7 +98,7 @@ static int core_clks_enable(struct venus_core *core)
  		if (clk_limit >= 0 && i >= clk_limit)
  			break;
  

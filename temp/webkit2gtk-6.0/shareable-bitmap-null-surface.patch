@@ -1,0 +1,50 @@
+[Skia] ShareableBitmap::createGraphicsContext() dereferences a null SkSurface
+
+SkSurfaces::WrapPixels() returns nullptr when the pixel geometry is not
+something Skia can raster into: SkSurfaceValidateRasterInfo() refuses an
+empty size and, more to the point here, any image whose
+height * rowBytes exceeds SK_MaxS32 (SkSurface_Raster.cpp). createGraphicsContext()
+then calls surface->getCanvas() on the null pointer and the web process
+dies with SIGSEGV.
+
+This is reachable from the public API. webkit_web_view_get_snapshot() with
+WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT sizes the bitmap from
+LocalFrameView::contentsSize() times the device scale factor
+(WebPage::takeSnapshot); Epiphany asks for exactly that for its overview
+thumbnails one second after every top-site load. A long Wikipedia article
+laid out 2802 px wide comes to 237522 px tall on a phone: 2802 * 4 * 237522
+is 2.66 GB, SharedMemory::allocate() happily hands out the memfd, Skia says
+no, and the process crashes. Observed twice in a row on webkitgtk 2.52.6
+(aarch64, GTK4, Skia CPU rendering), coredump symbolized:
+
+    #0 getCachedCanvas               SkSurface_Base.h:208
+    #1 SkSurface::getCanvas          SkSurface.cpp:83
+    #2 ShareableBitmap::createGraphicsContext  ShareableBitmapSkia.cpp:68
+    #3 ImageBufferShareableBitmapBackend::create
+    #4 WebChromeClient::createImageBuffer
+    #5 WebImage::create
+    #6 WebPage::snapshotAtSize        WebPage.cpp:3282
+    #7 WebPage::takeSnapshot          WebPage.cpp:3150
+
+Check the surface. On failure Skia does not invoke the release proc, so the
+ref() taken for it has to be dropped by hand or the bitmap -- and its shared
+memory -- leaks. Every caller already handles a null GraphicsContext:
+ImageBufferShareableBitmapBackend::create() returns nullptr and
+WebImage::create() falls back to createEmpty(), so the snapshot request
+completes with an empty image instead of taking the page down.
+
+--- a/Source/WebCore/platform/graphics/skia/ShareableBitmapSkia.cpp
++++ b/Source/WebCore/platform/graphics/skia/ShareableBitmapSkia.cpp
+@@ -64,6 +64,12 @@ std::unique_ptr<GraphicsContext> ShareableBitmap::createGraphicsContext()
+     auto surface = SkSurfaces::WrapPixels(m_configuration.imageInfo(), mutableSpan().data(), bytesPerRow(), [](void*, void* context) {
+         static_cast<ShareableBitmap*>(context)->deref();
+     }, this, &properties);
++    if (!surface) {
++        // Skia refuses geometries it cannot raster into (empty, or larger than
++        // SK_MaxS32 bytes) and does not call the release proc when it does.
++        deref();
++        return nullptr;
++    }
+ 
+     auto* canvas = surface->getCanvas();
+     if (!canvas)

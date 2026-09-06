@@ -1,0 +1,75 @@
+[GTK][WPE] Composite layers whose CSS filter moves pixels instead of blurring on the main thread
+
+WebChromeClient::allowedCompositingTriggers() leaves FilterTrigger out for every
+WebKit2 port, so RenderLayerCompositor::requiresCompositingForFilters() never
+promotes a layer for its `filter:` alone and the filter is applied in software,
+inside the layer paint, on the web process main thread. On Cocoa that path runs
+on Core Image and is cheap. On the Skia ports it is SkBlurImageFilter on the CPU.
+
+Measured on a msm8998 phone (webkitgtk 2.52.6, GTK4/Wayland, Skia CPU rendering)
+playing m.youtube.com with ambient mode -- a 720x675 div with `filter: blur(40px)`
+and a 1.5x2.5 2D transform, showing a blurred copy of the video behind the
+player: every 7-12 s the web process main thread spends 1.4-3.2 s in
+
+    SkBlurEngine / SkBlurImageFilter::onFilterImage
+    FEGaussianBlurSkiaApplier::apply
+    FilterEffect::apply
+    RenderLayer::updateFilterPaintingStrategy / paintLayerByApplyingTransform
+    RenderLayer::paintLayerWithEffects / paintList
+
+(eu-stack on the running process, symbolized). For that long the whole window
+stops: no wl_surface commits from the UI process, the media element stops
+counting frames. Ten such holes in a 100 s window, with the compositor and every
+other thread idle in between.
+
+Coordinated Graphics already composites filters: GraphicsLayerCoordinated::setFilters()
+takes anything but reference filters and TextureMapper::applyFilters() runs them
+as GPU passes on the compositor thread, downsampling for large blur radii. Only
+the trigger is missing. Forcing the same page's filtered elements into layers
+from the inspector (will-change: transform) makes the holes disappear: the
+longest commit gap in 100 s goes from 3.2 s to 0.29 s.
+
+Doing that for every filter is not free, though: the same page has 47 filtered
+elements, mostly `brightness(0.9)` on thumbnails, and each composited filter
+costs an intermediate surface per frame -- the compositor's frame period rose
+from 34 to 45 ms with all 47 promoted. A colour-matrix filter is one cheap pass
+per pixel in software; only the filters that move pixels (blur, drop-shadow) are
+the ones whose software cost scales into seconds. So enable FilterTrigger on
+USE(COORDINATED_GRAPHICS) and, on that path, require a pixel-moving filter.
+Reference filters stay in software: GraphicsLayerCoordinated cannot composite
+them anyway.
+
+--- a/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
++++ b/Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.h
+@@ -295,6 +295,11 @@
+             CanvasTrigger |
+ #if PLATFORM(COCOA) || USE(COORDINATED_GRAPHICS)
+             ScrollableNonMainFrameTrigger |
++#endif
++#if USE(COORDINATED_GRAPHICS)
++            // TextureMapper applies filters as GPU passes on the compositor thread; the
++            // software path (FilterEffect on Skia CPU) runs inside the main-thread layer paint.
++            FilterTrigger |
+ #endif
+ #if PLATFORM(IOS_FAMILY)
+             AnimatedOpacityTrigger | // Allow opacity animations to trigger compositing mode for iPhone: <rdar://problem/7830677>
+--- a/Source/WebCore/rendering/RenderLayerCompositor.cpp
++++ b/Source/WebCore/rendering/RenderLayerCompositor.cpp
+@@ -3973,7 +3973,17 @@ bool RenderLayerCompositor::requiresCompositingForFilters(RenderLayerModelObject
+     if (!(m_compositingTriggers & ChromeClient::FilterTrigger))
+         return false;
+ 
++#if USE(COORDINATED_GRAPHICS)
++    // A composited filter costs an intermediate surface every frame, which a colour-matrix
++    // filter on a thumbnail does not earn. The filters worth a layer are the ones whose
++    // software cost is a blur over the layer's area, i.e. the ones that move pixels; reference
++    // filters cannot be composited by GraphicsLayerCoordinated at all.
++    if (!renderer.hasFilter())
++        return false;
++    return renderer.style().filter().hasFilterThatMovesPixels() && !renderer.style().filter().hasReferenceFilter();
++#else
+     return renderer.hasFilter();
++#endif
+ }
+ 
+ bool RenderLayerCompositor::requiresCompositingForWillChange(RenderLayerModelObject& renderer) const

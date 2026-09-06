@@ -2,7 +2,7 @@
 maintainer="team/alpine-desktop <achill@achill.org>"
 pkgname=mesa
 pkgver=26.1.6
-pkgrel=12
+pkgrel=14
 pkgdesc="Mesa DRI OpenGL library"
 url="https://www.mesa3d.org"
 arch="all"
@@ -84,6 +84,7 @@ source="https://mesa.freedesktop.org/archive/mesa-${pkgver/_/-}.tar.xz
 	llvm22-armhf.patch
 	a5xx-msaa-sysmem.patch
 	a5xx-tile-init-msaa.patch
+	a5xx-tile-parity.patch
 	"
 builddir="$srcdir/mesa-${pkgver/_/-}"
 options="!check" # TODO
@@ -436,4 +437,5 @@ ce1887fb7d425b94c375a0547bee40c308809c01f5ce1bcddabcc69a7fcb445efb9d5f5c7bac49b2
 689a9f604845e00351e0dc067a0fc2f0c721fb57f3e02431bcb1c338fb31964af74b6725eddea647076e0356161bac403c31cfe09f8dd1ec4fcfd9a06ea097a8  llvm22-armhf.patch
 96c8cabd12319947696768cf8009a14fdb758747bedb7f105b247f34724784bf8a4060c6d398a7afe1d62171e856de0c1514f7866ac8f7ef71d8de0f55e97c03  a5xx-msaa-sysmem.patch
 a3218b1dd5420f3cf514d61cd688c8b366f4d90a1b40806e5b60c0140985f51c9e5acd2e477382c669eca1ae5ff1b1a6706c074d2180ba12b145b90a24f50657  a5xx-tile-init-msaa.patch
+724e357105c2651354ea7705bb993ba6f7fb3112493bb718d6a235be1c6f2b04d06e2573f983723f4d1ed790b7f0b47f414b0a6a86789a828da3525372b5c1b3  a5xx-tile-parity.patch
 "

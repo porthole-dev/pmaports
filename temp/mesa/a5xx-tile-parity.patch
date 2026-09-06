@@ -1,0 +1,54 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 4 Sep 2026 20:40:00 +0200
+Subject: [PATCH] freedreno/a5xx: bracket GMEM passes with the CCU maintenance the vendor driver emits
+
+A static reconstruction of the a540 vendor GL driver's tile loop (its
+packets are rodata templates, so every event id is known) shows two
+cache-maintenance events fd5 never emits in the GMEM path, both at
+positions that bound the restore blit where an a540 lockup was decoded
+(RB and UCHE busy, ME parked on the WFI after a tile's restore):
+
+  - PC_CCU_INVALIDATE_COLOR and PC_CCU_INVALIDATE_DEPTH at the start of
+    every GMEM pass, between the LRZ flush and the power/CCU setup.
+    Without them, CCU lines the previous submit (on a5xx, frequently
+    another process) left behind survive into the first restore.
+  - PC_CCU_FLUSH_COLOR_TS, PC_CCU_FLUSH_DEPTH_TS and CACHE_FLUSH_TS at
+    the end of the pass, before the UCHE invalidate; tile_fini only
+    invalidates today, while the sysmem path already flushes the CCU.
+
+Pure additions, matching the vendor's order.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+--- a/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c	2026-09-04 20:08:22.137190795 +0200
++++ b/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c	2026-09-04 20:31:19.226553418 +0200
+@@ -393,6 +393,14 @@
+    OUT_PKT7(ring, CP_SKIP_IB2_ENABLE_GLOBAL, 1);
+    OUT_RING(ring, 0x0);
+ 
++   /* The vendor driver invalidates both CCU caches here, between the LRZ
++    * flush and the power/CCU setup, at the start of every GMEM pass; on
++    * a5xx nothing else clears lines the previous submit (another process)
++    * left behind before the first restore writes GMEM through the CCU.
++    */
++   fd5_event_write(batch, ring, PC_CCU_INVALIDATE_COLOR, false);
++   fd5_event_write(batch, ring, PC_CCU_INVALIDATE_DEPTH, false);
++
+    OUT_PKT4(ring, REG_A5XX_PC_POWER_CNTL, 1);
+    OUT_RING(ring, ctx->screen->info->num_sp_cores - 1); /* PC_POWER_CNTL */
+ 
+@@ -691,6 +699,14 @@
+ 
+    fd5_emit_lrz_flush(batch, ring);
+ 
++   /* Flush the CCU and the cache with timestamps before the UCHE
++    * invalidate, as the vendor driver does at the end of every GMEM pass;
++    * the sysmem path already does the CCU half of this in sysmem_fini.
++    */
++   fd5_event_write(batch, ring, PC_CCU_FLUSH_COLOR_TS, true);
++   fd5_event_write(batch, ring, PC_CCU_FLUSH_DEPTH_TS, true);
++   fd5_event_write(batch, ring, CACHE_FLUSH_TS, true);
++
+    fd5_cache_flush(batch, ring);
+    fd5_set_render_mode(batch->ctx, ring, BYPASS);
+ }

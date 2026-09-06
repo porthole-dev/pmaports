@@ -1,7 +1,7 @@
-From 4e68303ff14555b1946cd65b3e6c7b858f6e6b5d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 31 Aug 2026 16:32:53 +0200
-Subject: [PATCH 201/201] wifi: ath10k: don't set DSSS/CCK in 40 MHz on 5 GHz
+Subject: [PATCH] wifi: ath10k: don't set DSSS/CCK in 40 MHz on 5 GHz
 
 ath10k_get_ht_cap() sets IEEE80211_HT_CAP_DSSSCCK40 unconditionally:
 
@@ -29,10 +29,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 6 insertions(+)
 
 diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
-index 0394ea2ca9a8..3c6c34996592 100644
+index 4afe880c4639..36bf43b7c2d5 100644
 --- a/drivers/net/wireless/ath/ath10k/mac.c
 +++ b/drivers/net/wireless/ath/ath10k/mac.c
-@@ -5076,6 +5076,12 @@ static void ath10k_mac_setup_ht_vht_cap(struct ath10k *ar)
+@@ -5071,6 +5071,12 @@ static void ath10k_mac_setup_ht_vht_cap(struct ath10k *ar)
  	if (ar->phy_capability & WHAL_WLAN_11A_CAPABILITY) {
  		band = &ar->mac.sbands[NL80211_BAND_5GHZ];
  		band->ht_cap = ht_cap;
@@ -45,6 +45,3 @@ index 0394ea2ca9a8..3c6c34996592 100644
  		band->vht_cap = vht_cap;
  	}
  }
--- 
-2.55.0
-

@@ -1,4 +1,4 @@
-From 80c7c24274082fa56dc0917b126022b1feadb918 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Wed, 2 Sep 2026 20:23:13 +0200
 Subject: [PATCH] media: venus: bound the system error recovery retries
@@ -47,10 +47,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  2 files changed, 33 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
-index eada1b6af547..2f248e602b68 100644
+index 8c273c6b1193..4712652d1aca 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -69,7 +69,8 @@ static void venus_event_notify(struct venus_core *core, u32 event)
+@@ -108,7 +108,8 @@ static void venus_event_notify(struct venus_core *core, u32 event)
  	}
  
  	mutex_lock(&core->lock);
@@ -60,7 +60,7 @@ index eada1b6af547..2f248e602b68 100644
  	set_bit(0, &core->dump_core);
  	list_for_each_entry(inst, &core->instances, list)
  		inst->ops->event_notify(inst, EVT_SESSION_ERROR, NULL);
-@@ -84,6 +85,14 @@ static const struct hfi_core_ops venus_core_ops = {
+@@ -123,6 +124,14 @@ static const struct hfi_core_ops venus_core_ops = {
  };
  
  #define RPM_WAIT_FOR_IDLE_MAX_ATTEMPTS 10
@@ -75,7 +75,7 @@ index eada1b6af547..2f248e602b68 100644
  
  static void venus_sys_error_handler(struct work_struct *work)
  {
-@@ -160,14 +169,31 @@ static void venus_sys_error_handler(struct work_struct *work)
+@@ -199,14 +208,31 @@ static void venus_sys_error_handler(struct work_struct *work)
  	pm_runtime_put_sync(core->dev);
  
  	if (failed) {
@@ -112,7 +112,7 @@ index eada1b6af547..2f248e602b68 100644
  
  	mutex_lock(&core->lock);
 diff --git a/drivers/media/platform/qcom/venus/core.h b/drivers/media/platform/qcom/venus/core.h
-index 46705a666776..1e88f5db4ca9 100644
+index 1fff66db14b3..cc36dd015a98 100644
 --- a/drivers/media/platform/qcom/venus/core.h
 +++ b/drivers/media/platform/qcom/venus/core.h
 @@ -171,6 +171,7 @@ struct venus_format {
@@ -131,6 +131,3 @@ index 46705a666776..1e88f5db4ca9 100644
  	wait_queue_head_t sys_err_done;
  	const struct hfi_core_ops *core_ops;
  	const struct venus_pm_ops *pm_ops;
--- 
-2.55.0
-

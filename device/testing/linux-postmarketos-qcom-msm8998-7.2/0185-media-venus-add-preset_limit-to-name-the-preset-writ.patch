@@ -18,13 +18,14 @@ boots names the write that never returns. Default -1 writes all of them.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/hfi_venus.c | 21 ++++++++++
- 1 file changed, 21 insertions(+)
+ drivers/media/platform/qcom/venus/hfi_venus.c | 22 ++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platform/qcom/venus/hfi_venus.c
+index 4ef8e90e0bae..170a4bac9b08 100644
 --- a/drivers/media/platform/qcom/venus/hfi_venus.c
 +++ b/drivers/media/platform/qcom/venus/hfi_venus.c
-@@ -364,6 +364,11 @@
+@@ -364,6 +364,11 @@ static void venus_free(struct venus_hfi_device *hdev, struct mem_desc *mem)
  	dma_free_attrs(dev, mem->size, mem->kva, mem->da, mem->attrs);
  }
  
@@ -36,7 +37,7 @@ diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platf
  static void venus_set_registers(struct venus_hfi_device *hdev)
  {
  	const struct venus_resources *res = hdev->core->res;
-@@ -371,8 +376,23 @@
+@@ -371,8 +376,23 @@ static void venus_set_registers(struct venus_hfi_device *hdev)
  	unsigned int count = res->reg_tbl_size;
  	unsigned int i;
  

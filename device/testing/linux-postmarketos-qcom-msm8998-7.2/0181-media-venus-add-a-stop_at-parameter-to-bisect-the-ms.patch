@@ -35,10 +35,11 @@ session.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/core.c | 70 ++++++++++++++++++++
- 1 file changed, 70 insertions(+)
+ drivers/media/platform/qcom/venus/core.c | 69 ++++++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
 
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 243e342b0ae7..8f0b70a77d67 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
 @@ -29,6 +29,44 @@
@@ -86,7 +87,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  static void venus_coredump(struct venus_core *core)
  {
  	struct device *dev;
-@@ -415,6 +453,9 @@
+@@ -415,6 +453,9 @@ static int venus_probe(struct platform_device *pdev)
  	if (!core->pm_ops)
  		return -ENODEV;
  
@@ -96,7 +97,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  	if (core->pm_ops->core_get) {
  		ret = core->pm_ops->core_get(core);
  		if (ret)
-@@ -436,6 +477,9 @@
+@@ -436,6 +477,9 @@ static int venus_probe(struct platform_device *pdev)
  	if (ret)
  		goto err_core_put;
  
@@ -106,7 +107,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  	ret = devm_request_threaded_irq(dev, core->irq, hfi_isr, venus_isr_thread,
  					IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
  					"venus", core);
-@@ -452,22 +496,38 @@
+@@ -452,22 +496,38 @@ static int venus_probe(struct platform_device *pdev)
  
  	pm_runtime_enable(dev);
  
@@ -145,7 +146,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  	ret = hfi_core_resume(core, true);
  	if (ret)
  		goto err_venus_shutdown;
-@@ -638,6 +698,9 @@
+@@ -638,6 +698,9 @@ static __maybe_unused int venus_runtime_resume(struct device *dev)
  	const struct venus_pm_ops *pm_ops = core->pm_ops;
  	int ret;
  
@@ -155,7 +156,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  	ret = icc_set_bw(core->video_path, kbps_to_icc(20000), 0);
  	if (ret)
  		return ret;
-@@ -646,12 +709,18 @@
+@@ -646,12 +709,18 @@ static __maybe_unused int venus_runtime_resume(struct device *dev)
  	if (ret)
  		return ret;
  

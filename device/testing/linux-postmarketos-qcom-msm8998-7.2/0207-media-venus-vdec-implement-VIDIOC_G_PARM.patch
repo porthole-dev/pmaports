@@ -1,4 +1,4 @@
-From 4c1041824e6c92a6e089786eaf7fc942a3b28108 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Wed, 2 Sep 2026 10:09:35 +0200
 Subject: [PATCH] media: venus: vdec: implement VIDIOC_G_PARM
@@ -60,6 +60,3 @@ index 6a43ea191da1..f9d9df4dabaf 100644
  	.vidioc_enum_framesizes = vdec_enum_framesizes,
  	.vidioc_subscribe_event = vdec_subscribe_event,
  	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
--- 
-2.55.0
-

@@ -31,14 +31,14 @@ This replaces the reboot-on-resume attempt, which is reverted here.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/core.c | 44 ++++++------------------
- 1 file changed, 12 insertions(+), 32 deletions(-)
+ drivers/media/platform/qcom/venus/core.c | 42 ++++--------------------
+ 1 file changed, 7 insertions(+), 35 deletions(-)
 
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 7eec533c5d4b..9eba36ec67b0 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -520,7 +520,14 @@
- 	ret = venus_enumerate_codecs(core, VIDC_SESSION_TYPE_ENC);
+@@ -562,6 +562,13 @@ static int venus_probe(struct platform_device *pdev)
  	if (ret)
  		goto err_of_depopulate;
  
@@ -52,7 +52,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  	ret = pm_runtime_put_sync(dev);
  	if (ret) {
  		pm_runtime_get_noresume(dev);
-@@ -736,41 +736,6 @@
+@@ -725,41 +732,6 @@ static __maybe_unused int venus_runtime_resume(struct device *dev)
  	if (venus_stop_before(6))
  		return 0;
  

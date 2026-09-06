@@ -32,15 +32,16 @@ VIDC_CLKS_NUM_MAX to fit, which no other platform's count exceeds.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- arch/arm64/boot/dts/qcom/msm8998.dtsi        |  7 +++++--
- drivers/media/platform/qcom/venus/core.c     | 17 ++++++++++++++++-
- drivers/media/platform/qcom/venus/core.h     |  2 +-
- 3 files changed, 22 insertions(+), 4 deletions(-)
+ arch/arm64/boot/dts/qcom/msm8998.dtsi    |  7 +++++--
+ drivers/media/platform/qcom/venus/core.c | 19 +++++++++++++++++--
+ drivers/media/platform/qcom/venus/core.h |  2 +-
+ 3 files changed, 23 insertions(+), 5 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index c237a1210abe..7caea30bdaa9 100644
 --- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
 +++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
-@@ -3179,8 +3179,11 @@
+@@ -4236,8 +4236,11 @@ venus: video-codec@cc00000 {
  			clocks = <&mmcc VIDEO_CORE_CLK>,
  				 <&mmcc VIDEO_AHB_CLK>,
  				 <&mmcc VIDEO_AXI_CLK>,
@@ -55,9 +56,10 @@ diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/ms
  				 <&mmss_smmu 0x401>,
  				 <&mmss_smmu 0x40a>,
 diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 7a3b16b621ac..9a744420763d 100644
 --- a/drivers/media/platform/qcom/venus/core.c
 +++ b/drivers/media/platform/qcom/venus/core.c
-@@ -858,8 +858,23 @@
+@@ -858,8 +858,23 @@ static const struct venus_resources msm8998_res = {
  	.freq_tbl_size = ARRAY_SIZE(msm8998_freq_table),
  	.reg_tbl = msm8998_reg_preset,
  	.reg_tbl_size = ARRAY_SIZE(msm8998_reg_preset),
@@ -84,6 +86,7 @@ diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/q
  	.vcodec1_clks = { "core" },
  	.vcodec_clks_num = 1,
 diff --git a/drivers/media/platform/qcom/venus/core.h b/drivers/media/platform/qcom/venus/core.h
+index 46705a666776..1fff66db14b3 100644
 --- a/drivers/media/platform/qcom/venus/core.h
 +++ b/drivers/media/platform/qcom/venus/core.h
 @@ -23,7 +23,7 @@

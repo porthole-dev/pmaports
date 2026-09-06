@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 4 Sep 2026 18:47:44 +0200
+Subject: [PATCH] drm/msm: [BRINGUP] gpu_opp_adjust: raise GPU OPP voltages at
+ runtime
+
+A bring-up module to A/B the vdd_gfx voltage of individual OPPs on a
+running kernel without a reboot: insmod with freq=<hz>,... uv=<uv>,...
+The defaults are the four wahoo OPPs that sat under downstream's GFX
+CPR4 per-corner ceilings (710/596/515/414 MHz), so a bare insmod applies
+the ceilings the DTS change carries.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/gpu/drm/msm/Makefile         |  1 +
+ drivers/gpu/drm/msm/gpu_opp_adjust.c | 43 ++++++++++++++++++++++++++++
+ 2 files changed, 44 insertions(+)
+ create mode 100644 drivers/gpu/drm/msm/gpu_opp_adjust.c
+
+diff --git a/drivers/gpu/drm/msm/Makefile b/drivers/gpu/drm/msm/Makefile
+index d0c3a4c6703b..0a251b2cf896 100644
+--- a/drivers/gpu/drm/msm/Makefile
++++ b/drivers/gpu/drm/msm/Makefile
+@@ -251,3 +251,4 @@ $(addprefix $(obj)/,$(msm-y)): $(addprefix $(obj)/,$(ADRENO_HEADERS))
+ $(addprefix $(obj)/,$(msm-display-y)): $(addprefix $(obj)/,$(DISPLAY_HEADERS))
+ 
+ targets += $(ADRENO_HEADERS) $(DISPLAY_HEADERS) $(ADRENO_PERFCNTRS)
++obj-m += gpu_opp_adjust.o
+diff --git a/drivers/gpu/drm/msm/gpu_opp_adjust.c b/drivers/gpu/drm/msm/gpu_opp_adjust.c
+new file mode 100644
+index 000000000000..ec2434fea462
+--- /dev/null
++++ b/drivers/gpu/drm/msm/gpu_opp_adjust.c
+@@ -0,0 +1,43 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Runtime GPU OPP voltage adjuster for A/B without a reboot: raise the
++ * vdd_gfx target of the given OPPs on the qcom,adreno device.
++ *
++ *   insmod gpu_opp_adjust.ko freq=710000097,596000097 uv=1088000,968000
++ */
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
++#include <linux/pm_opp.h>
++
++#define N 8
++/* defaults: the OPPs the wahoo table runs under downstream's GFX CPR4 ceilings */
++static unsigned long freq[N] = { 710000097, 596000097, 515000097, 414000000 };
++static unsigned long uv[N] = { 1088000, 968000, 916000, 832000 };
++static int nfreq = 4, nuv = 4;
++module_param_array(freq, ulong, &nfreq, 0444);
++module_param_array(uv, ulong, &nuv, 0444);
++
++static int __init gpu_opp_adjust_init(void)
++{
++	struct device_node *np = of_find_compatible_node(NULL, NULL, "qcom,adreno");
++	struct platform_device *pdev = np ? of_find_device_by_node(np) : NULL;
++	int i, ret;
++
++	of_node_put(np);
++	if (!pdev)
++		return -ENODEV;
++	if (nfreq != nuv || !nfreq)
++		return -EINVAL;
++	for (i = 0; i < nfreq; i++) {
++		ret = dev_pm_opp_adjust_voltage(&pdev->dev, freq[i], uv[i], uv[i], 1100000);
++		pr_info("gpu_opp_adjust: %lu Hz -> %lu uV (ret %d)\n", freq[i], uv[i], ret);
++	}
++	put_device(&pdev->dev);
++	return 0;
++}
++static void __exit gpu_opp_adjust_exit(void) { }
++module_init(gpu_opp_adjust_init);
++module_exit(gpu_opp_adjust_exit);
++MODULE_LICENSE("GPL");

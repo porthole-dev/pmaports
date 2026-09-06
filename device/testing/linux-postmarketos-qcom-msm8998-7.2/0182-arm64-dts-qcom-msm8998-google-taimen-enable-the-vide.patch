@@ -21,13 +21,14 @@ Power+VolDown to escape.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 28 ++++++++++
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 28 +++++++++++++++++++
  1 file changed, 28 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index 8fb5e1239fae..78b35ca9053a 100644
 --- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
 +++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
-@@ -1179,3 +1179,31 @@
+@@ -1224,3 +1224,31 @@ imx179_ep: endpoint {
  		};
  	};
  };

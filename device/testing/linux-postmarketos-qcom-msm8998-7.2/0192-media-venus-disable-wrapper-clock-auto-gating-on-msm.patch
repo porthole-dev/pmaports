@@ -37,13 +37,14 @@ demonstrably do not need it.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/hfi_venus.c | 20 ++++++++++++++++++++
- 1 file changed, 20 insertions(+)
+ drivers/media/platform/qcom/venus/hfi_venus.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
 
 diff --git a/drivers/media/platform/qcom/venus/hfi_venus.c b/drivers/media/platform/qcom/venus/hfi_venus.c
+index f5d5abb33c07..659d13ecb306 100644
 --- a/drivers/media/platform/qcom/venus/hfi_venus.c
 +++ b/drivers/media/platform/qcom/venus/hfi_venus.c
-@@ -608,6 +608,25 @@
+@@ -631,6 +631,25 @@ static int venus_run(struct venus_hfi_device *hdev)
  	if (venus_stop_boot(2))
  		return 0;
  

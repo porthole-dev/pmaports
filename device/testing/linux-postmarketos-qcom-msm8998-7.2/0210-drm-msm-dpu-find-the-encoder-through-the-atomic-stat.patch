@@ -1,4 +1,4 @@
-From 65ff8754a3a5432e981288f20c4910d9538afc79 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Wed, 2 Sep 2026 22:27:01 +0200
 Subject: [PATCH] drm/msm/dpu: find the encoder through the atomic state, not
@@ -72,6 +72,3 @@ index d959b7dc12a2..0401c46b8cc6 100644
  		return false;
  	}
  
--- 
-2.55.0
-

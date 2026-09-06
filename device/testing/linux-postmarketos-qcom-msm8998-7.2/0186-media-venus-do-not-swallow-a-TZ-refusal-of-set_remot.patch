@@ -25,13 +25,14 @@ patch is to stop special-casing -EINVAL rather than to add a knob.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/media/platform/qcom/venus/firmware.c | 37 +++++++++++++++
- 1 file changed, 37 insertions(+)
+ drivers/media/platform/qcom/venus/firmware.c | 37 +++++++++++++++++++-
+ 1 file changed, 36 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/media/platform/qcom/venus/firmware.c b/drivers/media/platform/qcom/venus/firmware.c
+index 1de7436713ed..7722ab8c8783 100644
 --- a/drivers/media/platform/qcom/venus/firmware.c
 +++ b/drivers/media/platform/qcom/venus/firmware.c
-@@ -53,14 +53,49 @@
+@@ -53,14 +53,49 @@ static void venus_reset_cpu(struct venus_core *core)
  	}
  }
  

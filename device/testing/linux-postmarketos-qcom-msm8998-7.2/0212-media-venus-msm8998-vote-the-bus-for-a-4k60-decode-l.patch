@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 4 Sep 2026 18:47:44 +0200
+Subject: [PATCH] media: venus: msm8998: vote the bus for a 4k60 decode load
+
+The msm8998 decoder bandwidth table stopped at the 4k30 row, so a
+2160p60 session (1944000 macroblocks/s) landed on that row and voted
+2.365 GB/s for twice the traffic. Add a 4k60 row at twice the 4k30
+figures, still under the 4946000 kBps ceiling the vendor's msm8998
+video node declares for this path.
+
+Measured on a Pixel 2 XL: the venus VP9 decoder already reaches 82 fps
+at 3840x2160 through GStreamer into a sink that accepts video metadata,
+and 69 fps through ffmpeg, on the old vote; this row is the honest vote
+for that load, not the fix for a throughput problem.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/core.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/media/platform/qcom/venus/core.c b/drivers/media/platform/qcom/venus/core.c
+index 4712652d1aca..1c8aacc5283a 100644
+--- a/drivers/media/platform/qcom/venus/core.c
++++ b/drivers/media/platform/qcom/venus/core.c
+@@ -909,6 +909,7 @@ static const struct reg_val msm8998_reg_preset[] = {
+  * calibrating against the vendor's dynamic governor before 4k60 is trusted.
+  */
+ static const struct bw_tbl msm8998_bw_table_dec[] = {
++	{ 1944000,  4730000, 0, 3784000, 0 },	/* 4k UHD @ 60: 2x the 4k30 row, under the vendor's 4946000 kBps ceiling */
+ 	{  979200,  2365000, 0, 1892000, 0 },	/* 4k UHD @ 30 */
+ 	{  864000,  1978000, 0, 1554000, 0 },	/* 720p @ 240 */
+ 	{  489600,  1133000, 0,  895000, 0 },	/* 1080p @ 60 */

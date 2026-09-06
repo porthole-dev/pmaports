@@ -1,8 +1,8 @@
-From 02d2ead33e8de5bc6d67ef49606430e816f13147 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Mon, 31 Aug 2026 16:32:39 +0200
-Subject: [PATCH 200/201] wifi: ath10k: don't advertise a reserved VHT channel
- width pair
+Subject: [PATCH] wifi: ath10k: don't advertise a reserved VHT channel width
+ pair
 
 ath10k_create_vht_cap() assigns the firmware's VHT capability word straight
 to the band it advertises:
@@ -48,10 +48,10 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  1 file changed, 13 insertions(+)
 
 diff --git a/drivers/net/wireless/ath/ath10k/mac.c b/drivers/net/wireless/ath/ath10k/mac.c
-index 293a2b8adaa2..0394ea2ca9a8 100644
+index 830822566ffe..4afe880c4639 100644
 --- a/drivers/net/wireless/ath/ath10k/mac.c
 +++ b/drivers/net/wireless/ath/ath10k/mac.c
-@@ -4966,6 +4966,19 @@ static struct ieee80211_sta_vht_cap ath10k_create_vht_cap(struct ath10k *ar)
+@@ -4961,6 +4961,19 @@ static struct ieee80211_sta_vht_cap ath10k_create_vht_cap(struct ath10k *ar)
  	vht_cap.vht_mcs.rx_mcs_map = cpu_to_le16(mcs_map);
  	vht_cap.vht_mcs.tx_mcs_map = cpu_to_le16(mcs_map);
  
@@ -71,6 +71,3 @@ index 293a2b8adaa2..0394ea2ca9a8 100644
  	/* If we are supporting 160Mhz or 80+80, then the NIC may be able to do
  	 * a restricted NSS for 160 or 80+80 vs what it can do for 80Mhz.  Give
  	 * user-space a clue if that is the case.
--- 
-2.55.0
-

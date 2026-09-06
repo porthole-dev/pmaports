@@ -1,8 +1,41 @@
 diff --git a/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp b/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp
-index 4cd6079..e258f25 100644
+index 4cd6079..488e8f2 100644
 --- a/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp
 +++ b/Source/WebCore/platform/graphics/texmap/TextureMapper.cpp
-@@ -882,6 +882,38 @@ void TextureMapper::draw(const FloatRect& rect, const TransformationMatrix& mode
+@@ -877,11 +877,75 @@ void TextureMapper::drawUnitRect(TextureMapperShaderProgram& program, GLenum dra
+     glBindBuffer(GL_ARRAY_BUFFER, 0);
+ }
+ 
++// "No effect" and "never fired" are indistinguishable from outside a cull, and
++// this project has already paid for that once: cull-tiles-outside-clip.patch
++// compares a layer-space rect against a device-space scissor box and therefore
++// could barely fire on a 3x-DPR device, which from outside looked exactly like a
++// cull that simply did not help. WEBKIT_CULL_STATS=1 makes the two
++// distinguishable.
++static void countQuadCull(bool wasCulled)
++{
++    static const bool enabled = [] {
++        const char* env = getenv("WEBKIT_CULL_STATS");
++        return env && *env && *env != '0';
++    }();
++    if (!enabled) [[likely]]
++        return;
++
++    static std::atomic<unsigned> culledCount { 0 };
++    static std::atomic<unsigned> drawnCount { 0 };
++    if (wasCulled)
++        culledCount++;
++    else
++        drawnCount++;
++    unsigned culled = culledCount.load();
++    unsigned drawn = drawnCount.load();
++    unsigned total = culled + drawn;
++    if (total && !(total % 2000))
++        WTFLogAlways("quad cull: %u drawn, %u culled (%.0f%% of quads culled)", drawn, culled, 100.0 * culled / total);
++}
++
+ void TextureMapper::draw(const FloatRect& rect, const TransformationMatrix& modelViewMatrix, TextureMapperShaderProgram& program, GLenum drawingMode, OptionSet<TextureMapperFlags> flags)
+ {
      TransformationMatrix matrix(modelViewMatrix);
      matrix.multiply(TransformationMatrix::rectToRect(FloatRect(0, 0, 1, 1), rect));
  
@@ -33,10 +66,14 @@ index 4cd6079..e258f25 100644
 +        if (!scissorBox.isEmpty()) {
 +            auto deviceBounds = enclosingIntRect(matrix.mapRect(FloatRect(0, 0, 1, 1)));
 +            deviceBounds.inflate(1);
-+            if (!deviceBounds.intersects(scissorBox))
++            if (!deviceBounds.intersects(scissorBox)) {
++                countQuadCull(true);
 +                return;
++            }
 +        }
 +    }
++
++    countQuadCull(false);
 +
      glEnableVertexAttribArray(program.vertexLocation());
      program.setMatrix(program.modelViewMatrixLocation(), matrix);

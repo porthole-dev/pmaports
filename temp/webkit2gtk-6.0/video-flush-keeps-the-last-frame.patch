@@ -1,0 +1,228 @@
+Keep the last video frame across a GStreamer flush on non-RGB buffers.
+
+THE BUG
+
+MediaPlayerPrivateGStreamer::flushCurrentBuffer() runs on every GST_EVENT_FLUSH_START
+and on every GST_QUERY_DRAIN that reaches the video sink pad (GStreamerVideoSinkCommon.cpp
+:64 and :149), i.e. on every DASH quality switch and every V4L2 dynamic-resolution-change
+drain. It calls CoordinatedPlatformLayerBufferProxy::dropCurrentBufferWhilePreservingTexture(),
+which hops to the compositing run loop and calls
+CoordinatedPlatformLayer::replaceCurrentContentsBufferWithCopy():
+
+    m_contentsBuffer.pending = nullptr;
+    if (is<CoordinatedPlatformLayerBufferVideo>(*m_contentsBuffer.committed))
+        m_contentsBuffer.pending = downcast<...Video>(*m_contentsBuffer.committed).copyBuffer();
+    m_contentsBuffer.committed = WTF::move(m_contentsBuffer.pending);
+    ensureTarget().setContentsLayer(m_contentsBuffer.committed.get());
+
+CoordinatedPlatformLayerBufferVideo::copyBuffer() bailed out with nullptr unless the inner
+buffer was a CoordinatedPlatformLayerBufferRGB *wrapping a foreign texture id*. On a device
+that decodes with a V4L2 stateful hardware decoder (venus on msm8998, Mesa freedreno a540,
+USE(GBM) on), createBufferIfNeeded() never produces that: it produces a DMABuf buffer, or an
+ExternalOES / YUV buffer, or no inner buffer at all (a mapped sysmem frame uploaded lazily in
+paintToTextureMapper()). So copyBuffer() returned nullptr, setContentsLayer(nullptr) ran, and
+TextureMapperLayer::paintSelf() bailed at "if (!contentsLayer) return" -- the video area
+painted nothing until the next decoded frame arrived. Symptom: a black flash of the video
+rectangle several times per minute on 4K60 YouTube. "dropCurrentBufferWhilePreservingTexture"
+preserved no texture at all on this path.
+
+WHAT EACH BUFFER SUBCLASS HOLDS (why the old buffer cannot simply be kept)
+
+  CoordinatedPlatformLayerBufferRGB
+      Either a Ref<BitmapTexture> that owns its own glTexImage2D storage (m_textureID == 0),
+      or a bare foreign GLuint (m_textureID != 0) owned by whoever created it -- a GstGLMemory
+      texture, or a texture imported from a dmabuf. The foreign-id case is the only one the
+      old code copied, with BitmapTexture::copyFromExternalTexture() (a glCopyTexSubImage2D
+      through a scratch FBO).
+
+  CoordinatedPlatformLayerBufferDMABuf                            (USE(GBM))
+      A Ref<DMABufBuffer> holding dup()ed dmabuf fds of the V4L2 CAPTURE buffer plus an
+      optional fence fd. On first paint it lazily imports those fds through
+      EGL_LINUX_DMA_BUF_EXT into BitmapTextures cached on the DMABufBuffer, which is itself
+      cached as qdata on the GstMemory. Retaining it retains the decoder's memory.
+
+  CoordinatedPlatformLayerBufferExternalOES
+      A bare GLuint of a GL_TEXTURE_EXTERNAL_OES texture owned by the GstGLMemory of the
+      frame being flushed. Retaining it retains the GstBuffer. It also cannot be copied with
+      copyFromExternalTexture(): an external OES texture is not a valid FBO colour attachment,
+      it can only be read by a shader that samples samplerExternalOES.
+
+  CoordinatedPlatformLayerBufferYUV
+      Up to four plane textures, either bare foreign GLuints from the GstGLMemory or
+      BitmapTextures imported from the frame's dmabuf fds. Same ownership problem, and turning
+      them into RGB needs the YUV-to-RGB shader pass.
+
+  CoordinatedPlatformLayerBufferVideo itself
+      An optional GstMappedFrame -- a live GST_MAP_READ (or GST_MAP_GL) mapping of the
+      GstBuffer -- plus the inner buffer above.
+
+So on every non-RGB path the flushed frame is decoder-pool memory, and the whole point of the
+drop is to let the pool reclaim it. Nothing can be handed over as is; the pixels must be
+copied into storage WebKit owns.
+
+APPROACH CHOSEN: one TextureMapper pass into a pooled BitmapTexture -- option (a)
+
+copyBuffer() keeps its existing fast path unchanged, and everything else falls through to a
+new copyBufferByPainting(), which renders the buffer once into a BitmapTexture acquired from
+BitmapTexturePool and returns a CoordinatedPlatformLayerBufferRGB wrapping it. Every subclass
+already implements paintToTextureMapper(), so this single path covers DMABuf, ExternalOES,
+YUV and the not-yet-uploaded mapped frame without naming any of them -- which is also why the
+patch needs no new USE(GBM) / USE(GSTREAMER_GL) guards. The result holds a Ref<BitmapTexture>
+and nothing else: no GstBuffer, no fds, no EGLImage, no mapping.
+
+It is reachable at that point in the code. replaceCurrentContentsBufferWithCopy() runs on the
+compositing run loop (CoordinatedPlatformLayerBufferProxy dispatches it there), which is the
+thread ThreadedCompositor made its GLContext current on, and the pre-existing RGB path already
+issues raw GL there. TextureMapper::create() is cheap on an already-used context:
+TextureMapperGLData looks up its SharedGLData in a per-platform-context static map, so the
+compiled shader programs are shared with the compositor's own TextureMapper; only a small VBO
+cache is per instance. A separate instance is used rather than plumbing the compositor's
+through CoordinatedPlatformLayer::Client, because beginPainting()/endPainting() save and
+restore GL state into the instance and a fresh one provably cannot disturb a frame in flight.
+
+Why the other two options are worse:
+
+  (b) a virtual copyBuffer() per subclass. DMABuf-YUV, YUV and ExternalOES all need a shader
+      pass to become RGB, so each override would end up doing exactly what (a) does, three
+      times, and each would still need a TextureMapper. More code, same mechanism, and it
+      spreads the flush contract across four classes.
+
+  (c) push the sysmem gst_buffer_copy_deep() that flushCurrentBuffer() already makes. It is
+      pushable -- pushTextureToCompositor() is right there and setDisplayBuffer() is
+      thread-safe -- but the deep copy of a hardware frame is NV12, and the sysmem branch of
+      paintToTextureMapper() uploads plane 0 as PixelFormat::BGRA8. The layer would show the
+      Y plane as garbage colour instead of black. Fixing that means writing the NV12 upload
+      path, which is more work than (a) and duplicates the YUV shader that already exists.
+      It also memcpys 12 MB of uncached dmabuf per 4K flush on the streaming thread.
+
+DETAILS THAT ARE EASY TO GET WRONG
+
+  * Orientation flags (ShouldRotateTexture90/180/270, ShouldFlipTexture, ShouldPremultiply)
+    are consumed by the paint, so the copy must not carry them or they would be applied twice.
+    A quarter turn also transposes the frame, so the copy is allocated at the transposed size
+    and painted over its whole extent; TextureMapperLayer paints a contents layer into
+    m_state.contentsRect and never consults the buffer's own size, so this is safe.
+    ShouldBlend is kept: it describes compositing of the copy, not its texels.
+
+  * TextureMapper::endPainting() restores the bound framebuffer, program, scissor and depth
+    state, but NOT the viewport, and BitmapTexture::bindAsSurface() changed it to the copy's
+    size. AcceleratedSurface::willRenderFrame() only calls glViewport() when the surface was
+    resized, and ThreadedCompositor::paintToCurrentGLContext() reads GL_VIEWPORT in
+    beginPainting() to build the clip stack and the projection matrix -- so a stale viewport
+    would corrupt every later frame. bindSurface(nullptr) before endPainting() restores it,
+    the same way TextureMapperLayer unwinds its intermediate surfaces.
+
+RISK
+
+  * Cost: one full-frame textured quad plus a pooled RGBA texture (33 MB at 4K) per flush,
+    on the compositing thread, while dropCurrentBufferWhilePreservingTexture(ShouldWait::Yes)
+    blocks the streaming thread. Flushes happen a few times a minute, not per frame. If the
+    a540 makes this visible, the cheap knob is to skip the copy above some size and accept
+    the black flash for very large frames.
+  * The pooled texture is held until the next decoded frame replaces the contents buffer, so
+    the pool's high-water mark grows by one frame-sized texture.
+  * The rotated-video path (transposed size) is reasoned from the shader's texture-coordinate
+    rotation and TextureMapperLayer's use of contentsRect; it is not covered by an existing
+    layout test and has not been exercised on device.
+  * Unchanged behaviour when the inner buffer is an RGB buffer over a foreign texture id --
+    the old code path is byte-for-byte the same -- and on ports whose video layer is always
+    RGB the new branch is never reached.
+
+diff --git a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.h b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.h
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.h
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.h
+@@ -39,11 +39,12 @@
+     CoordinatedPlatformLayerBufferVideo(GstBuffer*, const GstVideoInfo*, std::optional<DMABufFormat>, std::optional<GstVideoDecoderPlatform>, bool gstGLEnabled, OptionSet<TextureMapperFlags>);
+     virtual ~CoordinatedPlatformLayerBufferVideo();
+ 
+-    std::unique_ptr<CoordinatedPlatformLayerBuffer> copyBuffer() const;
++    std::unique_ptr<CoordinatedPlatformLayerBuffer> copyBuffer();
+ 
+ private:
+     void paintToTextureMapper(TextureMapper&, const FloatRect&, const TransformationMatrix& modelViewMatrix = TransformationMatrix(), float opacity = 1.0) override;
+ 
++    std::unique_ptr<CoordinatedPlatformLayerBuffer> copyBufferByPainting();
+     std::unique_ptr<CoordinatedPlatformLayerBuffer> createBufferIfNeeded(GstBuffer*, const GstVideoInfo*, std::optional<DMABufFormat>, bool gstGLEnabled);
+ #if USE(GBM)
+     std::unique_ptr<CoordinatedPlatformLayerBuffer> createBufferFromDMABufMemory(GstBuffer*, const GstVideoInfo*, std::optional<DMABufFormat>);
+diff --git a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.cpp b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.cpp
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.cpp
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedPlatformLayerBufferVideo.cpp
+@@ -32,6 +32,7 @@
+ #include "CoordinatedPlatformLayerBufferExternalOES.h"
+ #include "CoordinatedPlatformLayerBufferRGB.h"
+ #include "CoordinatedPlatformLayerBufferYUV.h"
++#include "GLContext.h"
+ #include "TextureMapper.h"
+ 
+ #if USE(GSTREAMER_GL)
+@@ -68,20 +69,60 @@
+ 
+ CoordinatedPlatformLayerBufferVideo::~CoordinatedPlatformLayerBufferVideo() = default;
+ 
+-std::unique_ptr<CoordinatedPlatformLayerBuffer> CoordinatedPlatformLayerBufferVideo::copyBuffer() const
++std::unique_ptr<CoordinatedPlatformLayerBuffer> CoordinatedPlatformLayerBufferVideo::copyBuffer()
+ {
+-    if (!m_buffer || !is<CoordinatedPlatformLayerBufferRGB>(*m_buffer))
++    // A buffer wrapping a plain GL texture is copied texel by texel, no shader pass needed.
++    if (m_buffer && is<CoordinatedPlatformLayerBufferRGB>(*m_buffer)) {
++        auto& buffer = downcast<CoordinatedPlatformLayerBufferRGB>(*m_buffer);
++        if (auto textureID = buffer.textureID()) {
++            auto size = buffer.size();
++            auto texture = BitmapTexture::create(size);
++            texture->copyFromExternalTexture(textureID, { IntPoint::zero(), size }, { });
++            return CoordinatedPlatformLayerBufferRGB::create(WTF::move(texture), m_flags, nullptr);
++        }
++    }
++
++    // Every other buffer type (DMABuf, ExternalOES, YUV, and the not yet uploaded mapped frame)
++    // reads memory owned by the decoder buffer pool, which is exactly the memory the caller is
++    // about to reclaim, so it can't be handed over. Render it once into a texture of our own.
++    return copyBufferByPainting();
++}
++
++std::unique_ptr<CoordinatedPlatformLayerBuffer> CoordinatedPlatformLayerBufferVideo::copyBufferByPainting()
++{
++    if (!m_buffer && !m_videoFrame)
+         return nullptr;
+ 
+-    auto& buffer = downcast<CoordinatedPlatformLayerBufferRGB>(*m_buffer);
+-    auto textureID = buffer.textureID();
+-    if (!textureID)
++    // TextureMapper requires a current GL context, both to be created and to paint.
++    if (!GLContext::current())
+         return nullptr;
+ 
+-    auto size = buffer.size();
+-    auto texture = BitmapTexture::create(size);
+-    texture->copyFromExternalTexture(textureID, { IntPoint::zero(), size }, { });
+-    return CoordinatedPlatformLayerBufferRGB::create(WTF::move(texture), m_flags, nullptr);
++    // Painting bakes the orientation flags into the copy, and a quarter turn transposes the frame,
++    // so the copy is allocated with the rotated size and painted over its whole extent.
++    bool isQuarterTurn = m_flags.containsAny({ TextureMapperFlags::ShouldRotateTexture90, TextureMapperFlags::ShouldRotateTexture270 });
++    auto size = isQuarterTurn ? m_size.transposedSize() : m_size;
++    if (size.isEmpty())
++        return nullptr;
++
++    // Blending is applied when the copy is composited, not when it is created, so it survives; the
++    // remaining flags describe the source texels and are consumed by the paint below.
++    OptionSet<BitmapTexture::Flags> textureFlags;
++    OptionSet<TextureMapperFlags> copyFlags;
++    if (m_flags.contains(TextureMapperFlags::ShouldBlend)) {
++        textureFlags.add(BitmapTexture::Flags::SupportsAlpha);
++        copyFlags.add(TextureMapperFlags::ShouldBlend);
++    }
++
++    auto texture = BitmapTexturePool::singleton().acquireTexture(size, textureFlags);
++    auto textureMapper = TextureMapper::create();
++    textureMapper->beginPainting(TextureMapper::FlipY::No, texture.ptr());
++    paintToTextureMapper(*textureMapper, FloatRect(FloatPoint::zero(), size));
++    // endPainting() restores the bound framebuffer but not the viewport, which the compositor only
++    // sets when the surface is resized, so unbind the surface to put both back.
++    textureMapper->bindSurface(nullptr);
++    textureMapper->endPainting();
++
++    return CoordinatedPlatformLayerBufferRGB::create(WTF::move(texture), copyFlags, nullptr);
+ }
+ 
+ std::unique_ptr<CoordinatedPlatformLayerBuffer> CoordinatedPlatformLayerBufferVideo::createBufferIfNeeded(GstBuffer* buffer, const GstVideoInfo* videoInfo, std::optional<DMABufFormat> dmabufFormat, bool gstGLEnabled)

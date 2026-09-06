@@ -1,0 +1,57 @@
+Do not lay out fixed/sticky renderers again on every asynchronously-handled scroll.
+
+LocalFrameView::updateLayoutViewport() recomputes the layout viewport origin on
+every scroll position change and, when it moved, calls setBaseLayoutViewportOrigin()
+with the default TriggerLayoutOrNot::Yes -- which runs
+setViewportConstrainedObjectsNeedLayout(), i.e. setNeedsLayout() on every
+position:fixed and position:sticky renderer in the frame.
+
+AsyncScrollingCoordinator::reconcileScrollingState() already pre-sets the same
+origin with TriggerLayoutOrNot::No precisely so this does not happen, but the
+origin it carries is the one the scrolling thread computed for the PREVIOUS
+committed position, so on a continuous drag the recomputation here almost always
+differs and the early return in setBaseLayoutViewportOrigin() does not fire.
+
+Measured on a msm8998 phone (webkitgtk 2.52.6, GTK4/Wayland, async scrolling on),
+one 11.7 s continuous drag of a settled 74 000 px article:
+
+    setViewportConstrainedObjectsNeedLayout   540 calls
+    AsyncScrollingCoordinator::reconcile      596 calls
+    LocalFrameViewLayoutContext::performLayout 297 calls, 1565 ms
+
+A fixed or sticky element's containing block is the RenderView, so one
+setNeedsLayout() on it dirties the root: the next layout the page's own script
+forces (any window.scrollY / offsetTop / scrollTop read in a scroll handler) is
+then a document-wide layout instead of a no-op. The same article with its
+scripts removed -- nothing forcing layout -- costs 9 layouts, which is why this
+never showed up as "layout is hot" in a profile.
+
+The condition under which this work changes nothing on screen is exactly the one
+LocalFrameView::shouldUpdateCompositingLayersAfterScrolling() already computes
+for the sibling call in updateCompositingLayersAfterScrolling(), and its comment
+states the rule: "If the scrolling thread is updating the fixed elements, then
+the LocalFrameView should not update them as well." It returns true -- keeping
+the old behaviour -- for subframes, for programmatic scrolls, when there is no
+scrolling coordinator, when the frame has synchronous scrolling reasons (which
+includes HasNonLayerViewportConstrainedObjects, i.e. a fixed element that failed
+to get a layer), and for anchor-positioned viewport-constrained objects. So the
+layout is skipped only where the scrolling tree owns those layers' positions.
+
+--- a/Source/WebCore/page/LocalFrameView.cpp
++++ b/Source/WebCore/page/LocalFrameView.cpp
+@@ -2006,7 +2006,14 @@ void LocalFrameView::updateLayoutViewport()
+ 
+     LayoutPoint newLayoutViewportOrigin = computeLayoutViewportOrigin(visualViewportRect(), minStableLayoutViewportOrigin(), maxStableLayoutViewportOrigin(), layoutViewport, scrollBehaviorForFixedElements());
+     if (newLayoutViewportOrigin != m_layoutViewportOrigin) {
+-        setBaseLayoutViewportOrigin(newLayoutViewportOrigin);
++        // When the scrolling thread owns the viewport-constrained layers, laying their
++        // renderers out again on every scroll changes nothing on screen -- the same
++        // condition updateCompositingLayersAfterScrolling() uses to skip its own work.
++        // It is not free: a fixed or sticky element's containing block is the RenderView,
++        // so one setNeedsLayout() per scroll turns the next layout the page forces into a
++        // document-wide one.
++        setBaseLayoutViewportOrigin(newLayoutViewportOrigin, shouldUpdateCompositingLayersAfterScrolling()
++            ? TriggerLayoutOrNot::Yes : TriggerLayoutOrNot::No);
+         LOG_WITH_STREAM(Scrolling, stream << "layoutViewport changed to " << layoutViewportRect());
+     }
+     layoutOrVisualViewportChanged();

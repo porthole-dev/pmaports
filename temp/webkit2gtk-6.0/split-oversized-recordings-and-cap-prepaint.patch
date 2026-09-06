@@ -1,8 +1,6 @@
-diff --git a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp
-index 50852e0..52645ef 100644
 --- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp
 +++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp
-@@ -97,6 +97,35 @@ Ref<CoordinatedBackingStoreProxy> CoordinatedBackingStoreProxy::create()
+@@ -99,6 +99,35 @@
      return adoptRef(*new CoordinatedBackingStoreProxy());
  }
  
@@ -11,18 +9,18 @@ index 50852e0..52645ef 100644
 +// thread, so its cost tracks that rect's AREA -- and the rect it is handed is a
 +// BOUNDING BOX over every dirty tile. Two dirty tiles at opposite ends of a
 +// 5438px layer make that box the whole layer, so repainting two tiles records
-+// the entire page. Measured on taimen 2026-09-05: Page::updateRendering() took
-+// 1205 ms on the first interaction with such a page, 601 ms of it in style and
-+// 476 ms in layout, all of it main-thread.
++// the entire page. Measured on taimen 2026-09-05: one Page::updateRendering()
++// took 1205 ms on the first interaction with such a page, 601 ms of it in style
++// and 476 ms in layout, all main-thread.
 +//
 +// When most of the bounding box is not actually dirty, record each tile on its
-+// own instead: N small tree walks whose total area is the area really being
-+// repainted, rather than one walk over mostly-clean space. Adjacent tiles keep
-+// the single recording, where the box is tight and one walk is cheaper.
++// own instead: N small tree walks totalling the area really being repainted,
++// rather than one walk over mostly-clean space. Adjacent tiles keep the single
++// recording, where the box is tight and one walk is cheaper.
 +//
 +// Ratio of bounding-box area to dirty area above which to split. 0 disables,
-+// which is the default so this lands as a no-op and can be A/B'd at runtime.
-+static bool shouldRecordPerTile(const WebCore::IntRect& boundingBox, uint64_t dirtyArea)
++// which is the default, so this lands as a no-op and can be A/B'd at runtime.
++static bool shouldRecordPerTile(const IntRect& boundingBox, uint64_t dirtyArea)
 +{
 +    static double splitRatio = [] {
 +        const char* env = getenv("WEBKIT_SKIA_RECORD_SPLIT_RATIO");
@@ -38,21 +36,23 @@ index 50852e0..52645ef 100644
  OptionSet<CoordinatedBackingStoreProxy::UpdateResult> CoordinatedBackingStoreProxy::updateIfNeeded(const IntRect& unscaledVisibleRect, const IntRect& unscaledContentsRect, float contentsScale, bool shouldCreateAndDestroyTiles, const Vector<IntRect, 1>& dirtyRegion, Damage& damage, CoordinatedPlatformLayer& layer)
  {
      Vector<uint32_t> tilesToCreate;
-@@ -114,11 +143,13 @@ OptionSet<CoordinatedBackingStoreProxy::UpdateResult> CoordinatedBackingStorePro
+@@ -116,6 +145,7 @@
      // Update the dirty tiles.
      IntRect tileDirtyRectUnion;
      unsigned dirtyTilesCount = 0;
 +    uint64_t tileDirtyArea = 0;
-     for (const auto& tile : m_tiles.values()) {
+     for (auto& tile : m_tiles.values()) {
          if (!tile.isDirty())
              continue;
+@@ -126,6 +156,7 @@
+             tile.dirtyRect = tile.rect;
  
          tileDirtyRectUnion.unite(tile.dirtyRect);
 +        tileDirtyArea += static_cast<uint64_t>(tile.dirtyRect.width()) * tile.dirtyRect.height();
          ++dirtyTilesCount;
      }
  
-@@ -127,10 +158,17 @@ OptionSet<CoordinatedBackingStoreProxy::UpdateResult> CoordinatedBackingStorePro
+@@ -134,10 +165,17 @@
          WTFBeginSignpost(this, UpdateTiles, "dirty tiles: %u", dirtyTilesCount);
  
  #if USE(SKIA)
@@ -61,11 +61,10 @@ index 50852e0..52645ef 100644
 +        // mostly clean, in which case record each tile separately. See
 +        // shouldRecordPerTile().
          RefPtr<SkiaRecordingResult> recording;
--        if (layer.client().paintingEngine().useThreadedRendering()) [[likely]]
--            recording = layer.record(tileDirtyRectUnion);
 +        bool recordPerTile = false;
-+        const bool threadedRendering = layer.client().paintingEngine().useThreadedRendering();
-+        if (threadedRendering) [[likely]] {
+         if (layer.client().paintingEngine().useThreadedRendering()) [[likely]]
+-            recording = layer.record(tileDirtyRectUnion);
++        {
 +            recordPerTile = shouldRecordPerTile(tileDirtyRectUnion, tileDirtyArea);
 +            if (!recordPerTile)
 +                recording = layer.record(tileDirtyRectUnion);
@@ -73,33 +72,34 @@ index 50852e0..52645ef 100644
  #endif
  
          unsigned dirtyTileIndex = 0;
-@@ -142,6 +180,10 @@ OptionSet<CoordinatedBackingStoreProxy::UpdateResult> CoordinatedBackingStorePro
-                 tile.rect.x(), tile.rect.y(), tile.rect.width(), tile.rect.height(), tile.dirtyRect.x(), tile.dirtyRect.y(), tile.dirtyRect.width(), tile.dirtyRect.height());
- 
+@@ -151,6 +189,11 @@
  #if USE(SKIA)
+             // A layer promoted for overlap or stacking reasons is mostly transparent: most of its
+             // tiles paint nothing. Those get no buffer, no texture and no draw call.
 +            // replay() offsets by recordRect - paintRect, so a recording whose
-+            // rect IS the tile replays with a zero translation. Correct either way.
++            // rect IS this tile replays with a zero translation. Correct either way.
 +            if (recordPerTile)
 +                recording = layer.record(tile.dirtyRect);
-             auto buffer = recording ? layer.replay(recording, tile.dirtyRect) : layer.paint(tile.dirtyRect);
- #else
-             auto buffer = layer.paint(tile.dirtyRect);
-@@ -203,7 +245,28 @@ void CoordinatedBackingStoreProxy::invalidateRegion(const Vector<IntRect, 1>& di
++
+             RefPtr<CoordinatedTileBuffer> buffer;
+             if (recording && !recording->contentsOpaque() && tile.dirtyRect == tile.rect && !SkiaPaintingEngine::recordingPaintsInRect(*recording, tile.rect))
+                 tile.isEmpty = true;
+@@ -218,7 +261,28 @@
  
  void CoordinatedBackingStoreProxy::createOrDestroyTiles(const IntRect& unscaledVisibleRect, const IntRect& unscaledContentsRect, const IntSize& unscaledViewportSize, float contentsScale, int maxTextureSize, Damage& damage, Vector<uint32_t>& tilesToCreate, Vector<uint32_t>& tilesToRemove)
  {
 -    float coverAreaMultiplier = MemoryPressureHandler::singleton().isUnderMemoryPressure() ? 1.0f : 2.0f;
-+    // 2.0 inflates the backing store to twice the visible rect in EACH
-+    // dimension, i.e. FOUR TIMES the viewport area, and every one of those tiles
-+    // is created, rasterised and kept in memory. Measured on taimen 2026-09-05
-+    // at 1440x2880 with 1440x1024 tiles: ~12 tiles per page-sized layer, three
-+    // such layers, 31 full-width tiles drawn per frame.
++    // 2.0 inflates the backing store to twice the visible rect in EACH dimension,
++    // i.e. FOUR TIMES the viewport area, and every one of those tiles is created,
++    // rasterised and held in memory. Measured on taimen 2026-09-05 at 1440x2880
++    // with 1440x1024 tiles: ~12 tiles per page-sized layer, three such layers,
++    // 31 full-width tiles drawn per frame.
 +    //
-+    // It buys prepainted content ahead of a scroll, so it is a real trade and
-+    // not simply waste -- but 4x the screen is a desktop default, and a phone
-+    // with 3.7 GB and a fill-rate-bound GPU is not a desktop. Android tunes the
++    // It buys prepainted content ahead of a scroll, so it is a real trade and not
++    // simply waste -- but 4x the screen is a desktop default, and a phone with
++    // 3.7 GB and a fill-rate-bound GPU is not a desktop. Android tunes the
 +    // equivalent prepaint down on memory-constrained devices; this exposes the
-+    // same knob rather than hardcoding one number for every device.
++    // same knob instead of hardcoding a second number for every device.
 +    // Unset keeps upstream's 2.0, so this lands as a no-op.
 +    static const float overriddenCoverMultiplier = [] {
 +        const char* env = getenv("WEBKIT_LAYERS_COVER_MULTIPLIER");

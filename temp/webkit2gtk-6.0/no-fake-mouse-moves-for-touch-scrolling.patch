@@ -1,0 +1,180 @@
+Do not dispatch fake mouse moves while the page is driven by touch
+
+LocalFrameView::scheduleScrollEvent() (Source/WebCore/page/LocalFrameView.cpp:6393-6398)
+calls EventHandler::dispatchFakeMouseMoveEventSoon() on every scroll position change.
+dispatchFakeMouseMoveEventSoon() (Source/WebCore/page/EventHandler.cpp:3967-3990) arms a
+100 ms / 250 ms one-shot timer that is restarted on every scroll, so it fires shortly after
+each drag stops. When it fires it runs Document::hitTest -- which calls Document::updateLayout()
+unconditionally -- and then Document::updateHoverActiveState, which rebuilds the hover/active
+chains and can invalidate style with Style::InvalidationScope::Descendants on an ancestor.
+
+The point of that work is to refresh :hover under a pointer that did not move while the content
+scrolled out from under it. On a touch-only device there is no pointer, so all of it is waste.
+
+Measured with uprobes on a Pixel 2 XL (aarch64, GTK4/Wayland, Epiphany), one 11.7 s continuous
+finger drag of a settled 74 000 px Wikipedia article:
+
+    EventHandler::dispatchFakeMouseMoveEventSoon   314 calls   (one per scroll position change)
+    Document::hitTest(request, location, result)    75 calls,   97 ms
+    Document::updateHoverActiveState                73 calls,  437 ms   (max 25 ms)
+
+That is over half a second of main-thread time in a 11.7 s drag, spent on hover state for a
+pointer that does not exist, and each of those 75 hit tests also forces a layout.
+
+Approach
+
+ChromeClient::shouldDispatchFakeMouseMoveEvents() (Source/WebCore/page/ChromeClient.h:651,
+default true) already gates dispatchFakeMouseMoveEventSoon() at EventHandler.cpp:3978, and it is
+that call site's only consumer. The WebKit2 plumbing behind it is complete and unused:
+
+    WebChromeClient::shouldDispatchFakeMouseMoveEvents()
+        Source/WebKit/WebProcess/WebCoreSupport/WebChromeClient.cpp:1875-1878
+    WebPage::shouldDispatchFakeMouseMoveEvents() / setShouldDispatchFakeMouseMoveEvents()
+        Source/WebKit/WebProcess/WebPage/WebPage.h:1601, :2522, backing m_shouldDispatchFakeMouseMoveEvents at :3081
+    IPC message SetShouldDispatchFakeMouseMoveEvents
+        Source/WebKit/WebProcess/WebPage/WebPage.messages.in:653
+    WebPageProxy::setShouldDispatchFakeMouseMoveEvents(bool)
+        Source/WebKit/UIProcess/WebPageProxy.h:2097 (public), Source/WebKit/UIProcess/WebPageProxy.cpp:15062
+
+A tree-wide grep for setShouldDispatchFakeMouseMoveEvents / SetShouldDispatchFakeMouseMoveEvents
+finds only the declaration, the definition, the message and the WebPage setter: no port anywhere
+in the tree calls the WebPageProxy setter. This patch is its first caller.
+
+So this is a UI-process, port-local change: WebKitWebViewBase tracks whether the last input came
+from touch and flips the existing switch on a transition. No WebCore change, no new IPC message,
+no new serialized event field.
+
+Why not gate on EventHandler::m_lastKnownMousePositionSource
+
+LastKnownMousePositionSource (Source/WebCore/page/EventHandler.h:143, stored at :708, set at
+EventHandler.cpp:5635) looks like it should already answer this, but it cannot:
+
+  * Touch is reachable only through mousePositionSource(const PlatformMouseEvent&)
+    (EventHandler.cpp:1983-1987), which returns Touch when syntheticClickType() != NoTap. The GTK
+    port never sets a synthetic click type, so on GTK the value is never Touch. Its only reader is
+    updateMouseEventTargetAfterLayoutIfNeeded() at EventHandler.cpp:3165, for a different purpose.
+
+  * More decisively, a plain touch scroll on GTK4 delivers no mouse event at all. The touch-drag
+    handlers synthesize only wheel events -- webkitWebViewBaseTouchDragBegin at
+    Source/WebKit/UIProcess/API/gtk/WebKitWebViewBase.cpp:2236, TouchDragUpdate at :2263 and :2282,
+    TouchSwipe at :2325. The mouse events those handlers do synthesize (already tagged
+    PlatformMouseEvent::IsTouch::Yes at :2222-2224, :2260-2261, :2267, :2296) are emitted only for
+    tap and long-press-drag, never for scrolling.
+
+  * During a touch scroll the source therefore ends up Wheel, set either at EventHandler.cpp:3535
+    or from WebPageProxy.cpp:4337 -- indistinguishable from a real mouse wheel. Making it
+    distinguishable would mean a new field on PlatformWheelEvent and WebWheelEvent plus its
+    serialization, touching every port, to answer a question the UI process already knows the
+    answer to for free.
+
+PlatformMouseEvent::IsTouch (Source/WebCore/platform/PlatformMouseEvent.h:91-93) is likewise no
+help here: it is #if PLATFORM(GTK) only, has a single reader (DragController.cpp:1011), and again
+is never set on the scroll path.
+
+Correctness with both a touchscreen and a mouse
+
+The flag is set true from exactly one place, webkitWebViewBaseTouchPress, whose GtkGestureClick is
+gtk_gesture_single_set_touch_only(TRUE) (see webkitWebViewBaseConstructed), so it fires on finger
+down and never for a pointer. Every touch interaction -- tap, drag-scroll, swipe, long press,
+pinch -- begins with that press, and the handler has no early return.
+
+It is set false from every real pointer entry point: the GtkEventControllerMotion handler
+webkitWebViewBaseMotion, the GtkEventControllerScroll handler handleScroll (GTK4), and their GTK3
+equivalents webkitWebViewBaseMotionNotifyEvent -- after its existing GDK_SOURCE_TOUCHSCREEN bail
+out -- and webkitWebViewBaseScrollEvent. Touchscreens produce GDK_TOUCH_* events, not GDK_SCROLL
+or GDK_MOTION_NOTIFY, so none of these fire for touch.
+
+The two error directions are deliberately asymmetric. A missed "real pointer" only restores today's
+behaviour, so the resets are placed early and liberally; a spurious "touch" would stop :hover
+updating until the pointer moves, so the single setter is restricted to a touch-only gesture.
+Hover on tap is unaffected: it is driven by the real Motion/Press/Release events synthesized in
+webkitWebViewBaseTouchRelease, not by the fake-move timer. After a real wheel scroll with a mouse,
+:hover still updates, because the wheel goes through handleScroll, which clears the flag first.
+
+The transition guard means one IPC message per input-source change, not one per event -- zero
+messages for the 314 scroll updates measured above.
+
+Result on the target device: dispatchFakeMouseMoveEventSoon returns at EventHandler.cpp:3978 for
+the whole drag, and the 75 hit tests, their forced layouts, and 437 ms of updateHoverActiveState
+disappear.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+--- a/Source/WebKit/UIProcess/API/gtk/WebKitWebViewBase.cpp
++++ b/Source/WebKit/UIProcess/API/gtk/WebKitWebViewBase.cpp
+@@ -382,6 +382,7 @@
+     bool isLongPressed;
+     bool isBeingDragged;
+     bool pageGrabbedTouch;
++    bool lastInputWasTouch { false };
+ 
+     std::unique_ptr<PointerLockManager> pointerLockManager;
+ 
+@@ -1457,6 +1458,24 @@
+     RELEASE_ASSERT_NOT_REACHED();
+ }
+ 
++// Touch drags scroll the page by synthesizing wheel events, and every scroll makes WebCore schedule
++// a fake mouse move to refresh :hover under the pointer. While the page is being driven by touch
++// there is no pointer to refresh hover for, and each fake move costs a hit test plus the layout that
++// hit test forces, so suppress them until a real pointer is seen again. Only ever set from the
++// touch-only gestures, and cleared by any real pointer motion or scroll, so a device with both a
++// touchscreen and a mouse keeps working: the wrong answer in the permissive direction merely
++// restores the default behaviour.
++static void webkitWebViewBaseSetLastInputWasTouch(WebKitWebViewBase* webViewBase, bool lastInputWasTouch)
++{
++    WebKitWebViewBasePrivate* priv = webViewBase->priv;
++    if (priv->lastInputWasTouch == lastInputWasTouch)
++        return;
++
++    priv->lastInputWasTouch = lastInputWasTouch;
++    if (priv->pageProxy)
++        priv->pageProxy->setShouldDispatchFakeMouseMoveEvents(!lastInputWasTouch);
++}
++
+ #if !USE(GTK4)
+ static gboolean webkitWebViewBaseScrollEvent(GtkWidget* widget, GdkEventScroll* eventScroll)
+ {
+@@ -1470,6 +1489,8 @@
+     if (priv->dialog)
+         return GDK_EVENT_PROPAGATE;
+ 
++    webkitWebViewBaseSetLastInputWasTouch(webViewBase, false);
++
+     ViewGestureController* controller = webkitWebViewBaseViewGestureController(webViewBase);
+     if (controller && controller->isSwipeGestureEnabled()) {
+         double deltaX, deltaY;
+@@ -1554,6 +1575,8 @@
+     if (priv->dialog)
+         return GDK_EVENT_PROPAGATE;
+ 
++    webkitWebViewBaseSetLastInputWasTouch(webViewBase, false);
++
+     // With old versions of libinput, event can be null for synthesized scroll-end events.
+     auto* event = gtk_event_controller_get_current_event(eventController);
+     if (shouldForwardWheelEvent(webViewBase, event)) {
+@@ -1668,6 +1691,8 @@
+     if (gdk_device_get_source(gdk_event_get_source_device(reinterpret_cast<GdkEvent*>(event))) == GDK_SOURCE_TOUCHSCREEN)
+         return GTK_WIDGET_CLASS(webkit_web_view_base_parent_class)->motion_notify_event(widget, event);
+ 
++    webkitWebViewBaseSetLastInputWasTouch(webViewBase, false);
++
+     if (priv->pointerLockManager) {
+         double x, y;
+         gdk_event_get_root_coords(reinterpret_cast<GdkEvent*>(event), &x, &y);
+@@ -1756,6 +1781,8 @@
+     if (priv->dialog)
+         return GDK_EVENT_PROPAGATE;
+ 
++    webkitWebViewBaseSetLastInputWasTouch(webViewBase, false);
++
+     if (priv->pointerLockManager) {
+         priv->pointerLockManager->didReceiveMotionEvent(FloatPoint(x, y));
+         return GDK_EVENT_STOP;
+@@ -2179,6 +2206,7 @@
+ static void webkitWebViewBaseTouchPress(WebKitWebViewBase* webViewBase, int nPress, double x, double y, GtkGesture*)
+ {
+     gtk_widget_grab_focus(GTK_WIDGET(webViewBase));
++    webkitWebViewBaseSetLastInputWasTouch(webViewBase, true);
+     webViewBase->priv->isLongPressed = false;
+ }
+ 

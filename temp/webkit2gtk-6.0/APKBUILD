@@ -82,9 +82,37 @@
 # shows the whole viewport tinted before and discrete rectangles after.
 # Rectangles mode does NOT flood the system compositor: the wayland log shows
 # exactly one wl_surface.damage_buffer per commit in both arms.
+#
+# dont-relayout-fixed-objects-on-async-scroll.patch,
+# no-fake-mouse-moves-for-touch-scrolling.patch and
+# video-flush-keeps-the-last-frame.patch are the 2026-09-06 scroll/video
+# campaign. Each carries its own measured rationale in its header; in short:
+#   * LocalFrameView::updateLayoutViewport() calls setNeedsLayout() on every
+#     fixed/sticky renderer on every scroll even when the scrolling thread owns
+#     those layers -- 540 times per 12 s drag, and a fixed element's containing
+#     block is the RenderView, so it dirties the root.
+#   * every scroll arms a fake mousemove; on a touch-only device it fires at each
+#     drag stop and costs a forced layout plus a hover restyle (73 calls, 437 ms
+#     per drag) to update :hover for a pointer that does not exist.
+#   * a GStreamer flush nulls the video layer on any hardware-buffer path
+#     (DMABuf / external-OES / YUV), so every YouTube quality switch blanks the
+#     video until the next decoded frame -- the "quick flash" on 4K60.
+#
+# shareable-bitmap-null-surface.patch (r62) and
+# composite-css-filters-on-coordinated-graphics.patch (r63), 2026-09-06:
+#   * Epiphany asks for a FULL_DOCUMENT snapshot for its overview thumbnail;
+#     a long article is 2802x237522 px = 2.66 GB, Skia refuses a raster surface
+#     over 2 GB and ShareableBitmap::createGraphicsContext() dereferenced the
+#     null. Upstream main has the same bug. (temp/epiphany stops asking.)
+#   * the GTK port never composites a layer for its CSS filter alone, so
+#     YouTube's ambient-mode blur(40px) was rasterised by Skia on the CPU on
+#     the web process main thread, 1.4-3.2 s per repaint every 7-12 s -- the
+#     multi-second video freezes. FilterTrigger on Coordinated Graphics, gated
+#     to filters that move pixels so 40 brightness() thumbnails do not each
+#     cost an intermediate surface per frame (measured: 34 -> 45 ms p50).
 pkgname=webkit2gtk-6.0
 pkgver=2.52.6
-pkgrel=60
+pkgrel=63
 pkgdesc="Portable web rendering engine WebKit for GTK+ - GTK4 version"
 url="https://webkitgtk.org/"
 arch="all"
@@ -171,6 +199,11 @@ source="https://webkitgtk.org/releases/webkitgtk-$pkgver.tar.xz
 	pipeline-compositor-frames-in-flight.patch
 	cull-quads-outside-the-scissor-box.patch
 	split-oversized-recordings-and-cap-prepaint.patch
+	dont-relayout-fixed-objects-on-async-scroll.patch
+	no-fake-mouse-moves-for-touch-scrolling.patch
+	video-flush-keeps-the-last-frame.patch
+	shareable-bitmap-null-surface.patch
+	composite-css-filters-on-coordinated-graphics.patch
 	"
 builddir="$srcdir/webkitgtk-$pkgver"
 
@@ -286,6 +319,11 @@ ed66e7d50ecd91268318f9f8ba998c7bef8080dd5a7baf1c876fe0aaf1a6ecc44bb320cc5535c203
 7a8601c242307fa2777af9297a18b29d7c544a3584439e99317e52ba598586dbd0d4b6671c6f3ffa423ee7bcdd3c65705d87646015cea38d4b17d6bcad210682  cull-tiles-outside-damage.patch
 335b13f3cad7ae5f7ec5ece9037e23ce9a60a956388238f443e6906fd334bbab1217be11bb70823bc07aa83ba97bb2334ca5deac63c260cfb5ab859033376fa9  cull-tiles-outside-clip.patch
 6c010b368cb70bac25115a5992ea0d6e17140bec799aef41e6cc5d984b4ddd1c9fe0f304f0157ea7fb53495d47d431e57a24770da516bda30d93a3e5783b549d  pipeline-compositor-frames-in-flight.patch
-438de69ffc955ef3108f551d412301b3706ca25d18f39e53af97bb22fe54fa3ca89a2f85180b124f43d72edac6f2333ec6349e2a4c4f7965420720eb14df46eb  cull-quads-outside-the-scissor-box.patch
-caa06fbf5a179ede5797f183f693fa6aa941ae26e8adc49c0e0073a530bb1eb3518653cb1ae2404ff761465506f9768865bed625bad749af29b47cd9a5dea2cf  split-oversized-recordings-and-cap-prepaint.patch
+e83ac6ea0d53baf0cc9bfc7d8e9d664eb458e4e02456f8a874ef107965e37b48934b89f9baf1579cb2139f4c8e78b6967e99431ed92f9e983e43d23a2554b4c8  cull-quads-outside-the-scissor-box.patch
+7c2986326b779ad2ded5ad8a8d63836123ab0c3028a0c96568c2941ffc8fc19751eea2d8977b4333efdc75e8c10c9b99d5ef5fe46a8e737030273fbbf5d0e679  split-oversized-recordings-and-cap-prepaint.patch
+da8cc7efd0db5d945d8f54dbac966f6bbcdd95fb926a89a7be83c0c8d0c9c9d7de139568a9d114c9efe5cd629159c2bdf861174d57f7297998196527a3190006  dont-relayout-fixed-objects-on-async-scroll.patch
+df5dacdd95d4d984602138811a4d80013e40524e0f0221d937859cc179cce06992ce4538cf2d518b8f8357cf4906a3a53f37ca3bd65e19d38474d78f970887d2  no-fake-mouse-moves-for-touch-scrolling.patch
+16953b98672624cb978274c47bd54eed6cd36c92410f61a1c3efa4dbe96a36c57313f42320cdb4a1dbb1a6e8e10826453dd1c420f90801b2bad3eddfbfc0de3a  video-flush-keeps-the-last-frame.patch
+e4d083247706964f260bb35840dcafef32c1b1e724851059dd1b92375ffa5d9eef51d4c5e18a659777d9588d8d729741684497aff8ea6d1344152457ac384f82  shareable-bitmap-null-surface.patch
+c81ee6444f78d0805c16ad4b61451ba6da92392337a5d6709e15a805323e0ad05d339e64b369d28674f18a8c3b9ccb6e10acbba070db48d06af5239798357756  composite-css-filters-on-coordinated-graphics.patch
 "

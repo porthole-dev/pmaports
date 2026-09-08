@@ -40,6 +40,24 @@
 #include <unistd.h>
 
 #define NATIVE_BIN_DIR "/native/usr/lib/ccache/bin"
+#define NATIVE_LLD "/native/usr/bin/ld.lld"
+#define NATIVE_LINK_MARKER "/native/etc/crossdirect-native-link"
+
+// Is native linking turned on? Two ways in, because they serve different
+// callers. The environment variable is for a compiler invocation run by hand.
+// The marker file is for a real package build: pmbootstrap builds abuild's
+// environment from an explicit dict (pmb/build/backend.py) and forwards
+// nothing from the host, so an exported variable never reaches this process
+// during a build. The file lives in the native chroot, which outlives a
+// buildroot zap.
+//
+// Only ever called after isLink && isClang have already passed, so the stat
+// happens on link steps and not on the ~113k compiles of a large package.
+bool native_link_enabled()
+{
+	return getenv("PMB_CROSSDIRECT_NATIVE_LINK") != NULL
+	       || access(NATIVE_LINK_MARKER, F_OK) == 0;
+}
 
 void exit_userfriendly()
 {
@@ -64,15 +82,44 @@ bool argv_has_arg(int argc, char **argv, const char *arg)
 
 int main(int argc, char **argv)
 {
-	// we have a max of four extra args ("-target", "HOSTSPEC", "--sysroot=/", "-Wl,-rpath-link=/lib:/usr/lib"), plus one ending null
-	char *newargv[argc + 5];
+	// we have a max of five extra args ("-target", "HOSTSPEC", "--sysroot=/",
+	// "-Wl,-rpath-link=/lib:/usr/lib", "--ld-path=..."), plus one ending null
+	char *newargv[argc + 6];
 	char *executableName = basename(argv[0]);
 	char newExecutable[PATH_MAX];
 	bool isClang = (strcmp(executableName, "clang") == 0 || strcmp(executableName, "clang++") == 0);
 	bool startsWithHostSpec = (strncmp(HOSTSPEC, executableName, sizeof(HOSTSPEC) - 1) == 0);
 
+	// No -c means the driver is being asked to link, not just compile a TU.
+	bool isLink = !argv_has_arg(argc, argv, "-c");
+
+	// A link step normally goes to the qemu binary to avoid a broken cross-ld
+	// (pmaports#227). That does not describe lld, which is multi-target and
+	// cross-links to aarch64 from x86_64 without any emulation.
+	//
+	// Opt-in, because qemu is the safe default for every other toolchain, and
+	// narrow on purpose: clang only, and only when the caller either asked for
+	// lld or expressed no preference. An explicit -fuse-ld=<anything else> is
+	// respected by falling through to qemu rather than silently substituting a
+	// linker the package did not choose.
+	//
+	// isLink is load-bearing beyond the routing: it keeps --ld-path off compile
+	// invocations, where clang would warn "argument unused during compilation"
+	// and take any -Werror package down with it, and it keeps the line below
+	// out of the log for all ~113k compiles of a package like webkit.
+	bool nativeLink = isLink
+			  && isClang
+			  && (argv_has_arg(argc, argv, "-fuse-ld=lld")
+			      || !argv_has_arg(argc, argv, "-fuse-ld="))
+			  && native_link_enabled();
+
+	// Say so on stderr: a build log is otherwise the only place the two paths
+	// can be told apart, and they differ by hours.
+	if (nativeLink)
+		fprintf(stderr, "crossdirect: linking natively (%s)\n", executableName);
+
 	// linker is involved: just use qemu binary (to avoid broken cross-ld, pmaports#227)
-	if (!argv_has_arg(argc, argv, "-c")) {
+	if (isLink && !nativeLink) {
 		snprintf(newExecutable, sizeof(newExecutable), "/usr/bin/%s", executableName);
 		if (execv(newExecutable, argv) == -1) {
 			fprintf(stderr, "ERROR: crossdirect: failed to execute %s: %s\n", newExecutable, strerror(errno));
@@ -101,6 +148,16 @@ int main(int argc, char **argv)
 		// binary, but instead have a -target argument
 		*newArgsPtr++ = "-target";
 		*newArgsPtr++ = HOSTSPEC;
+
+		// ld.lld lives in /native/usr/bin, but the clang driver resolves
+		// through /native/usr/lib/llvm*/bin, and the execve below passes no
+		// PATH -- so a bare -fuse-ld=lld cannot find it. Name it outright.
+		// -B/native/usr/bin would also make it findable and is wrong: it puts
+		// the native x86_64-only /native/usr/bin/ld ahead of the cross one,
+		// which fails as "unrecognised emulation mode: aarch64linux" and reads
+		// exactly like the broken cross-ld this branch exists to avoid.
+		if (nativeLink)
+			*newArgsPtr++ = "--ld-path=" NATIVE_LLD;
 	}
 	*newArgsPtr++ = "--sysroot=/";
 

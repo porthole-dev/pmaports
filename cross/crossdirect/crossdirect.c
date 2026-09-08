@@ -51,8 +51,9 @@
 // during a build. The file lives in the native chroot, which outlives a
 // buildroot zap.
 //
-// Only ever called after isLink && isClang have already passed, so the stat
-// happens on link steps and not on the ~113k compiles of a large package.
+// Only ever called after notCompile && isClang have already passed, so the
+// stat happens on the handful of invocations that are not compiles, and not on
+// the ~113k compiles of a large package.
 bool native_link_enabled()
 {
 	return getenv("PMB_CROSSDIRECT_NATIVE_LINK") != NULL
@@ -80,6 +81,17 @@ bool argv_has_arg(int argc, char **argv, const char *arg)
 	return false;
 }
 
+// argv_has_arg() matches on prefix, which is right for "-fuse-ld=" and wrong
+// for a bare mode flag: "-E" would also match "-Efoo". These need equality.
+bool argv_has_exact(int argc, char **argv, const char *arg)
+{
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], arg))
+			return true;
+	}
+	return false;
+}
+
 int main(int argc, char **argv)
 {
 	// we have a max of five extra args ("-target", "HOSTSPEC", "--sysroot=/",
@@ -90,8 +102,21 @@ int main(int argc, char **argv)
 	bool isClang = (strcmp(executableName, "clang") == 0 || strcmp(executableName, "clang++") == 0);
 	bool startsWithHostSpec = (strncmp(HOSTSPEC, executableName, sizeof(HOSTSPEC) - 1) == 0);
 
-	// No -c means the driver is being asked to link, not just compile a TU.
-	bool isLink = !argv_has_arg(argc, argv, "-c");
+	// Upstream's test: no -c means "the linker is involved". It is what gates
+	// the qemu detour and must keep gating it exactly, so the default path is
+	// bit-for-bit what it was.
+	bool notCompile = !argv_has_arg(argc, argv, "-c");
+
+	// ...but it is too coarse to decide whether to pass a LINKER flag. -E
+	// (preprocess only) and -S (compile to assembly) also lack -c and also
+	// produce nothing to link. Measured on one webkit build: 3591 invocations
+	// took the native path and only 214 were real links, so 3377 preprocessor
+	// runs collected a --ld-path they had no use for -- 3568 "argument unused
+	// during compilation" warnings, which is noise here and a build failure in
+	// any package that compiles with -Werror.
+	bool isLink = notCompile
+		      && !argv_has_exact(argc, argv, "-E")
+		      && !argv_has_exact(argc, argv, "-S");
 
 	// A link step normally goes to the qemu binary to avoid a broken cross-ld
 	// (pmaports#227). That does not describe lld, which is multi-target and
@@ -103,15 +128,19 @@ int main(int argc, char **argv)
 	// respected by falling through to qemu rather than silently substituting a
 	// linker the package did not choose.
 	//
-	// isLink is load-bearing beyond the routing: it keeps --ld-path off compile
-	// invocations, where clang would warn "argument unused during compilation"
-	// and take any -Werror package down with it, and it keeps the line below
-	// out of the log for all ~113k compiles of a package like webkit.
-	bool nativeLink = isLink
-			  && isClang
-			  && (argv_has_arg(argc, argv, "-fuse-ld=lld")
-			      || !argv_has_arg(argc, argv, "-fuse-ld="))
-			  && native_link_enabled();
+	// Routing and flagging are separate decisions, and conflating them was the
+	// bug. Everything eligible runs natively -- preprocessing under qemu is
+	// pure waste, and skipping it is part of the measured win -- but only a
+	// real link gets --ld-path. On anything else clang warns "argument unused
+	// during compilation", which takes any -Werror package down with it, and
+	// it keeps the line below out of the log for every compile in a package
+	// the size of webkit.
+	bool nativeRun = notCompile
+			 && isClang
+			 && (argv_has_arg(argc, argv, "-fuse-ld=lld")
+			     || !argv_has_arg(argc, argv, "-fuse-ld="))
+			 && native_link_enabled();
+	bool nativeLink = nativeRun && isLink;
 
 	// Say so on stderr: a build log is otherwise the only place the two paths
 	// can be told apart, and they differ by hours.
@@ -119,7 +148,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "crossdirect: linking natively (%s)\n", executableName);
 
 	// linker is involved: just use qemu binary (to avoid broken cross-ld, pmaports#227)
-	if (isLink && !nativeLink) {
+	if (notCompile && !nativeRun) {
 		snprintf(newExecutable, sizeof(newExecutable), "/usr/bin/%s", executableName);
 		if (execv(newExecutable, argv) == -1) {
 			fprintf(stderr, "ERROR: crossdirect: failed to execute %s: %s\n", newExecutable, strerror(errno));

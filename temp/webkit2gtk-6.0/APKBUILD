@@ -110,9 +110,46 @@
 #     multi-second video freezes. FilterTrigger on Coordinated Graphics, gated
 #     to filters that move pixels so 40 brightness() thumbnails do not each
 #     cost an intermediate surface per frame (measured: 34 -> 45 ms p50).
+#
+# lead-the-prepaint-in-the-scroll-direction.patch, 2026-09-09. The backing
+# store prepaints (multiplier - 1) x viewport height of tiles, and upstream
+# splits that budget EQUALLY above and below the visible rect. During a fling
+# only the leading half is ever shown; the trailing half is content the user
+# has already passed. This adds WEBKIT_LAYERS_COVER_LEAD, the share of the
+# vertical budget to put ahead, defaulting to 0.5 -- which is upstream's split
+# exactly, so it lands as a no-op and is A/B'd at runtime.
+#
+# WHY IT IS WORTH HAVING. Measured on taimen 2026-09-09, one 6-fling drag:
+# raising the multiplier from 2 to 4 removed every frame that was more than
+# half unpainted, and cost 740 -> 1415 MB of tile memory against a scope capped
+# at 1500M. Moving the SAME budget forward is the cheap half of that. The block
+# it has to bridge is CoordinatedPlatformLayer::record on the main thread: on
+# the YouTube watch page that is 2954 ms of an 11.4 s drag window, p90 135 ms,
+# max 200 ms, and the compositor keeps scrolling at 60 Hz through all of it.
+#
+# IT IS A TRADE. The trailing prepaint is what makes an immediate reversal
+# cheap, so a lead near 1.0 buys a smooth fling and pays for it the moment the
+# user flings back.
+#
+# AND IT MEASURED NULL, so it stays off. Three arms a side on a 79000 px
+# Wikipedia article, 0.5 (= upstream) against 0.85:
+#
+#   lead   blank band >40% of the viewport   client worst frame   jank>33ms
+#   0.5              0, 2, 2                  93, 215, 182 ms      11, 26, 25
+#   0.85             3, 2, 2                  133, 236, 72 ms      19, 28, 15
+#
+# Means 20.7 janks either way, and the band metric saturates at 1.0 in five of
+# the six arms, so a partial improvement could hide inside it. Read it as "no
+# effect this arm can see", not as proof of zero.
+#
+# WHY, most likely: the block that has to be bridged is ~200 ms of record on
+# the main thread, and a fling covers more than the WHOLE prepaint budget in
+# that time -- so what is needed is more budget, not better-placed budget.
+# Raising WEBKIT_LAYERS_COVER_MULTIPLIER to 4 does remove the worst frames and
+# costs 740 -> 1415 MB of tile memory, which is why it is not the answer either.
 pkgname=webkit2gtk-6.0
 pkgver=2.52.6
-pkgrel=63
+pkgrel=64
 pkgdesc="Portable web rendering engine WebKit for GTK+ - GTK4 version"
 url="https://webkitgtk.org/"
 arch="all"
@@ -204,6 +241,7 @@ source="https://webkitgtk.org/releases/webkitgtk-$pkgver.tar.xz
 	video-flush-keeps-the-last-frame.patch
 	shareable-bitmap-null-surface.patch
 	composite-css-filters-on-coordinated-graphics.patch
+	lead-the-prepaint-in-the-scroll-direction.patch
 	"
 builddir="$srcdir/webkitgtk-$pkgver"
 
@@ -326,4 +364,5 @@ df5dacdd95d4d984602138811a4d80013e40524e0f0221d937859cc179cce06992ce4538cf2d518b
 16953b98672624cb978274c47bd54eed6cd36c92410f61a1c3efa4dbe96a36c57313f42320cdb4a1dbb1a6e8e10826453dd1c420f90801b2bad3eddfbfc0de3a  video-flush-keeps-the-last-frame.patch
 e4d083247706964f260bb35840dcafef32c1b1e724851059dd1b92375ffa5d9eef51d4c5e18a659777d9588d8d729741684497aff8ea6d1344152457ac384f82  shareable-bitmap-null-surface.patch
 c81ee6444f78d0805c16ad4b61451ba6da92392337a5d6709e15a805323e0ad05d339e64b369d28674f18a8c3b9ccb6e10acbba070db48d06af5239798357756  composite-css-filters-on-coordinated-graphics.patch
+c8d830f88cb50e949bea73bdcd0d1a0951ade40f9694a97513ea60188bd0311b7c1b70e08e885bef8f2827a57cb52dc2a9cd67c0c25d033a4cc1268f15ffece7  lead-the-prepaint-in-the-scroll-direction.patch
 "

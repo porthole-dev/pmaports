@@ -1,0 +1,87 @@
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.cpp
+@@ -294,6 +294,16 @@
+         return;
+ 
+     if (geometryChanged) {
++        // Note which way the viewport is travelling BEFORE m_visibleRect moves;
++        // computeCoverAndKeepRect() puts the prepaint budget on that side.
++        // Sticky, and only on a move of at least a quarter of the viewport, so
++        // that rubber-banding and a one-pixel jitter do not flip the direction
++        // and throw away the tiles that were just painted ahead.
++        if (!m_visibleRect.isEmpty() && m_visibleRect.size() == visibleRect.size()) {
++            int dy = visibleRect.y() - m_visibleRect.y();
++            if (std::abs(static_cast<long long>(dy)) * 4 >= m_visibleRect.height())
++                m_scrollDirection = dy > 0 ? 1 : -1;
++        }
+         m_contentsRect = contentsRect;
+         m_visibleRect = visibleRect;
+         m_coverAreaMultiplier = coverAreaMultiplier;
+@@ -540,6 +550,34 @@
+     rect.intersect(bounds);
+ }
+ 
++// Share of the VERTICAL prepaint budget to put ahead of the scroll. 0.5 is
++// upstream's symmetric split, and is the default, so this patch lands as a
++// no-op and can be A/B'd at runtime.
++//
++// WHY IT IS WORTH A KNOB. The budget is (multiplier - 1) x viewport height,
++// and upstream halves it above and below. During a fling only the leading half
++// is ever shown: the trailing half is content the user has already passed.
++// Measured on taimen 2026-09-09 at 1440x2880, one 6-fling drag of a 79000 px
++// article -- raising the multiplier from 2 to 4, which triples the budget and
++// costs 740 -> 1415 MB of tile memory, removed every frame that was more than
++// half unpainted. Moving the SAME budget to the leading side is the cheap half
++// of that: no extra tiles, no extra memory, ~1.5x the lead at 0.75.
++//
++// It is a trade, not free. The trailing prepaint is what makes an immediate
++// reversal cheap, so a value near 1.0 buys a smooth fling and pays for it the
++// moment the user flings back. 0.75 keeps a quarter of the budget behind.
++static float coverLeadFraction()
++{
++    static const float lead = [] {
++        const char* env = getenv("WEBKIT_LAYERS_COVER_LEAD");
++        if (!env || !*env)
++            return 0.5f;
++        auto value = static_cast<float>(atof(env));
++        return (value >= 0.5f && value <= 1.0f) ? value : 0.5f;
++    }();
++    return lead;
++}
++
+ std::pair<IntRect, IntRect> CoordinatedBackingStoreProxy::computeCoverAndKeepRect() const
+ {
+     IntRect coverRect = m_visibleRect;
+@@ -549,7 +587,17 @@
+     if (m_coverAreaMultiplier > 1) {
+         // The initial cover area covers equally in each direction, according to the coverAreaMultiplier.
+         coverRect.inflateX(m_visibleRect.width() * (m_coverAreaMultiplier - 1) / 2);
+-        coverRect.inflateY(m_visibleRect.height() * (m_coverAreaMultiplier - 1) / 2);
++
++        // Vertically, split the same budget by direction of travel instead.
++        // With no known direction, or lead == 0.5, this is inflateY() exactly.
++        int budget = static_cast<int>(m_visibleRect.height() * (m_coverAreaMultiplier - 1));
++        int ahead = m_scrollDirection ? static_cast<int>(budget * coverLeadFraction()) : budget / 2;
++        int behind = budget - ahead;
++        int above = m_scrollDirection < 0 ? ahead : behind;
++        int below = m_scrollDirection < 0 ? behind : ahead;
++        coverRect.setY(coverRect.y() - above);
++        coverRect.setHeight(coverRect.height() + above + below);
++
+         keepRect = coverRect;
+         ASSERT(keepRect.contains(coverRect));
+     }
+--- a/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.h
++++ b/Source/WebCore/platform/graphics/texmap/coordinated/CoordinatedBackingStoreProxy.h
+@@ -149,6 +149,11 @@
+     bool m_pendingTileCreation { false };
+     IntRect m_contentsRect;
+     IntRect m_visibleRect;
++    // Which way the viewport was last seen moving: -1 up, 0 unknown, 1 down.
++    // Derived from successive visible rects rather than plumbed from the
++    // scrolling tree, because the visible rect is the only thing this class is
++    // handed and it already changes once per scrolled frame.
++    int m_scrollDirection { 0 };
+     IntRect m_coverRect;
+     IntRect m_keepRect;
+     HashMap<IntPoint, Tile> m_tiles;

@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=41
+pkgrel=42
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -127,6 +127,7 @@ source="
 	taimen-gsk.conf
 	taimen-av1.conf
 	taimen-webkit.conf
+	taimen-chromium.conf
 	taimen-epiphany-memory.conf
 	taimen-panic.conf
 	taimen-dnssec.conf
@@ -311,6 +312,11 @@ package() {
 	# ~/.config and being wiped by a rootfs reflash.
 	install -Dm644 "$srcdir"/taimen-webkit.conf \
 		"$pkgdir"/usr/lib/environment.d/60-taimen-webkit.conf
+
+	# Chromium's flags file. Read it: without --disable-gpu-rasterization the
+	# GPU process faults the a540 and the reset takes the whole session down.
+	install -Dm644 "$srcdir"/taimen-chromium.conf \
+		"$pkgdir"/etc/chromium/taimen-chromium.conf
 
 	# Stop advertising AV1, which this SoC's Venus firmware does not list among
 	# the codecs it can decode. See the file's header for the firmware evidence
@@ -557,6 +563,7 @@ fe7a7ea7bc5410ce6076ba12252ce43f5f26c24d9c92d98f5969ca861c45dad109e3e75dfe7a647a
 099af1a90fb815ae24831cca5e167f46f53aa9b50517d0d44abe2613aa904545dd3259d9aad8f2f2075130e76ff91dc8081ab719f115f7e0a4b4884f83ab0b78  taimen-gsk.conf
 affcfc2eea5afff6b57bdcdcc8173ca30585a088a5d47c38410076d5e3c101ef11506f06a9e2a6b516afa24d6b932a1a6d8549c1f99b848b8121597cae33f28a  taimen-av1.conf
 12344eff61f411b2c3dfe1d24dd18cd4892321f6236ccd696bfc00c044e7649fb110e47f49bf0f499c14a5e5747433418b276e4261d03387b760cb7d56c984cb  taimen-webkit.conf
+0cfab60cdd0189965cb0b3902bfc2c3f510d6c1df5499dba97e8cbe35b52b3ad0590278ac952a4cb32f81a4a1ab575cc682717714493e7584435e7ca2e397dc0  taimen-chromium.conf
 b64e3104b6a03b86cfe18dd2b352f3d5e1b1c41a44f172822a9cce9a2f840378f566b42ec4b75132c7275853c5612ba2886bd82575eef0ad32af7cf9440b4dce  taimen-epiphany-memory.conf
 9c430b5e0dcaa796d6ed883e03de53823f8f0f329d37fd362a23cf768125e35dd9bc0b112153e68bd86d17ea5f0cc031c7bd315e3e26668f53201da2b6fdf2fe  taimen-panic.conf
 232f64d440f776a811d16790a7fa115a6b36e1808dc952ba3cf7d33ab248d2f13ce7a305e62add149934f907b4a3e5e9af38648b69c92ca491ed0c83d222c8f8  taimen-dnssec.conf

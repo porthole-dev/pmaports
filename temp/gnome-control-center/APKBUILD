@@ -14,7 +14,8 @@
 # pkgrel is 50 so this build outranks Alpine's 50.4-r0 from any repo, while an
 # upstream 50.5 still outranks it by design.
 #
-# SUBMITTED: gnome-control-center MR. Drop this fork when it lands.
+# NOT YET SUBMITTED upstream: no gnome-control-center MR covers this yet. Drop
+# this fork when one lands.
 
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: Rasmus Thomsen <oss@cogitri.dev>
@@ -112,5 +113,5 @@ package() {
 sha512sums="
 60e4bc9e6b31edf2765f786bcbd49bed683f21960f48eeb6bb87c44602fb7ae32d85b7d930e8cdcfcd8d0eb5a9c5a1d0c08e0a8ddd213f8c5a4c8d29c3359c95  gnome-control-center-50.4.tar.xz
 350aa443149c71851ad4de0976c7fc5cb626ba0c57a8d41e6ef80da1c65ed84a4dfa2483ae92630a3b611c4bfa9360ded82b55e8cd0e3907294c025e4f6b1671  README.alpine
-e6cd95ec6de6313c6b6ef2a33ec16450dcea3e7603e1fd8433b37625985c83322887c7958d7a2cfe4703b27cd17a9a5b6afe9fae6d1566e6c06651b7d400ebde  privacy-add-an-nfc-page.patch
+793fd2941ebf1f99c6c8de61059aa24fecc2f00ce03214352f0bd439113ae22a9f121d4a9e6f85a80986e1f097f378f4a07bf121c8a7c5f5472b1df34127f033  privacy-add-an-nfc-page.patch
 "

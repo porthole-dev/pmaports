@@ -10,8 +10,9 @@
 # pkgrel is 50 so this build outranks Alpine's 0.20-r0 from any repo, while an
 # upstream 0.21 still outranks it by design.
 #
-# SUBMITTED: linux-nfc@lists.01.org (neard) and an Alpine aports MR. Drop this
-# fork the day either lands and Alpine rebuilds.
+# NOT YET SUBMITTED upstream: this needs to go to linux-nfc@lists.01.org
+# (neard) and an Alpine aports MR. Drop this fork the day either lands and
+# Alpine rebuilds.
 
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: Minecrell <minecrell@minecrell.net>

@@ -1,0 +1,75 @@
+From c9a17992557fe09c1622d4849e632ddc6c623a33 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 10 Sep 2026 11:35:29 +0200
+Subject: [PATCH] build: install a D-Bus activation file, and enable the unit
+ for real
+
+neard can be started by neither of the two mechanisms a system service is
+normally started by. There is no /usr/share/dbus-1/system-services/org.neard.service,
+so the bus cannot activate it on demand even though the unit is already
+Type=dbus with BusName=org.neard. And the unit's [Install] section contains
+only Alias=, so 'systemctl enable neard' exits 0, creates no
+multi-user.target.wants symlink, and leaves the service disabled -- which
+reads as success and is not.
+
+The result is that a distribution shipping this package unmodified gives its
+users an NFC stack that nothing can start. postmarketOS carries a per-device
+drop-in for exactly this; so, presumably, does anyone else who noticed.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ Makefile.am              | 7 +++++++
+ src/neard.service.in     | 1 +
+ src/org.neard.service.in | 5 +++++
+ 3 files changed, 13 insertions(+)
+ create mode 100644 src/org.neard.service.in
+
+diff --git a/Makefile.am b/Makefile.am
+index 592fb7c..bc2619a 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -111,6 +111,10 @@ dbusdir = ${sysconfdir}/dbus-1/system.d/
+ 
+ dist_dbus_DATA = src/org.neard.conf
+ 
++dbusservicedir = ${datadir}/dbus-1/system-services
++
++dbusservice_DATA = src/org.neard.service
++
+ if SE
+ dist_dbus_DATA += se/org.neard.se.conf
+ endif
+@@ -153,6 +157,9 @@ endif
+ EXTRA_DIST += src/neard.service.in
+ CLEANFILES += src/neard.service
+ 
++EXTRA_DIST += src/org.neard.service.in
++CLEANFILES += src/org.neard.service
++
+ if TEST
+ testdir = $(pkglibdir)/test
+ test_SCRIPTS = $(test_scripts)
+diff --git a/src/neard.service.in b/src/neard.service.in
+index dfa238c..540da7e 100644
+--- a/src/neard.service.in
++++ b/src/neard.service.in
+@@ -9,4 +9,5 @@ ExecStart=@pkglibexecdir@/neard -n
+ LimitNPROC=1
+ 
+ [Install]
++WantedBy=multi-user.target
+ Alias=dbus-org.neard.service
+diff --git a/src/org.neard.service.in b/src/org.neard.service.in
+new file mode 100644
+index 0000000..f7df805
+--- /dev/null
++++ b/src/org.neard.service.in
+@@ -0,0 +1,5 @@
++[D-BUS Service]
++Name=org.neard
++Exec=@pkglibexecdir@/neard -n
++User=root
++SystemdService=neard.service
+-- 
+2.55.0
+

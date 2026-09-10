@@ -12,6 +12,9 @@
 #               v4l2-sandbox-mainline-device-nodes.patch.
 #   LAUNCHES    xkb-survive-a-seat-with-no-keymap.patch. Without it the browser
 #               SIGSEGVs before its first window on any wlroots compositor.
+#   HANDHELD    ozone is wayland-only. Nothing here is SoC-specific: the apk
+#               is meant to serve any aarch64 pmOS handheld, msm8998 and
+#               sdm845 alike. Per-device flags go in the device package.
 #
 # Everything else is Alpine's aport unmodified; rebase on it rather than
 # carrying divergence.
@@ -784,6 +787,44 @@ _configure() {
 		;;
 	esac
 
+	# A HANDHELD, NOT A DESKTOP.
+	#
+	# Nothing below is specific to one SoC. Device-specific behaviour belongs
+	# in the device package's /etc/chromium/*.conf, never here: taimen's
+	# --disable-gpu-rasterization (an a540 shader-core bug) would be a
+	# pointless loss on an a630.
+	#
+	# ozone: pmOS handhelds run a Wayland compositor -- phoc, or plasma-mobile
+	# -- and no X server. build/config/ozone.gni turns ozone_platform_x11 on
+	# by default for is_linux, so the X11 backend is otherwise compiled,
+	# linked and shipped to devices that can never select it.
+	# ozone_auto_platforms=false is what makes the choice explicit; headless
+	# has to be named too, because this package builds headless_shell. NOTE
+	# this makes the package Wayland-only: an X11 session cannot run it.
+	#
+	# optimize_for_size is deliberately NOT set, and it is the obvious thing
+	# to reach for here. Chrome for Android sets it as
+	# `!is_high_end_android && (is_android || is_castos || is_fuchsia)`
+	# (build/config/compiler/compiler.gni) -- and an arm64 phone with 4 GB or
+	# more is on the high-end side of that line, which is both of the devices
+	# this apk targets. Trading V8 and Blink throughput for ~15% of binary
+	# size is the wrong trade for either of them; a 1 GB armv7 device would
+	# be a different question.
+	case "$CARCH" in
+	aarch64)
+		local _phone_gn="
+		ozone_auto_platforms=false
+		ozone_platform=\"wayland\"
+		ozone_platform_headless=true
+		ozone_platform_wayland=true
+		ozone_platform_x11=false
+		"
+		;;
+	*)
+		local _phone_gn=""
+		;;
+	esac
+
 	case "$CARCH" in
 	armv7)
 		local maglev=false
@@ -857,6 +898,7 @@ _configure() {
 		use_vaapi=$vaapi
 		use_v4l2_codec=$v4l2
 		v8_enable_maglev=$maglev
+		$_phone_gn
 		"
 
 	# shellcheck disable=2090,2116

@@ -1,7 +1,7 @@
 From d7393f3678a9c39b5c1e181922f29e13b727fddf Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:27:53 +0200
-Subject: [PATCH 1/7] nfc: add an NFC portal
+Subject: [PATCH 1/8] nfc: add an NFC portal
 
 There is no sanctioned way for a sandboxed application to use NFC. neard is a
 system-bus service, so an application either gets the whole system bus or
@@ -529,7 +529,7 @@ index 0000000..71fac0a
 From 3cd8bb619e1a2b35b4466f671a7a530831e67a12 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:40:03 +0200
-Subject: [PATCH 2/7] nfc: fix translation extraction, orphan docs, and doc
+Subject: [PATCH 2/8] nfc: fix translation extraction, orphan docs, and doc
  comment form
 
 Review of the previous commit found three registration/shape problems:
@@ -759,7 +759,7 @@ index 71fac0a..372fda1 100644
 From 925b518d54854b4a679cf269e932d79507618ad8 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:52:34 +0200
-Subject: [PATCH 3/7] nfc: IsNFCPresent follows neard
+Subject: [PATCH 3/8] nfc: IsNFCPresent follows neard
 
 Nearly no machine has an NFC adapter, so an application needs to be able to
 hide its NFC UI rather than call into a portal that will fail. The property is
@@ -1015,7 +1015,7 @@ index 372fda1..f2500ec 100644
 From e652c5a571fad36b8e09605aa0260c628bdeaa2a Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 17:33:36 +0200
-Subject: [PATCH 4/7] nfc: OpenNFCRemote hands out a filtered neard connection
+Subject: [PATCH 4/8] nfc: OpenNFCRemote hands out a filtered neard connection
 
 A permitted application gets a socket to an xdg-dbus-proxy filtered onto the
 system bus, on which it sees org.neard and can start and stop the poll loop,
@@ -1602,7 +1602,7 @@ index f2500ec..9b22149 100644
 From da2e278c1117604793a4209eaa832b16834f9d7c Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 18:01:25 +0200
-Subject: [PATCH 5/7] nfc: do not wait forever for a proxy that never starts
+Subject: [PATCH 5/8] nfc: do not wait forever for a proxy that never starts
 
 g_subprocess_launcher_take_fd leaves the launcher holding its own copy of
 the fd until it is finalized, and the launcher here is a g_autoptr that
@@ -2001,7 +2001,7 @@ index 9b22149..762b07d 100644
 From e328a1516df5f68e898db6bb300a7e0ffe39a25b Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 18:18:48 +0200
-Subject: [PATCH 6/7] nfc: free a proxy's slot when the proxy itself dies
+Subject: [PATCH 6/8] nfc: free a proxy's slot when the proxy itself dies
 
 The per-sender cap was a lifetime quota rather than a concurrency one. The
 only thing that freed a slot was the application leaving the bus: closing
@@ -2338,7 +2338,7 @@ index 762b07d..6c0f3e9 100644
 From 64db92e39524612d8a271e2cb85e238ee510320c Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 21:36:25 +0200
-Subject: [PATCH 7/7] nfc: bound the readiness wait, and say what the interface
+Subject: [PATCH 7/8] nfc: bound the readiness wait, and say what the interface
  means
 
 The wait for xdg-dbus-proxy's readiness byte covered only half of what can
@@ -2729,6 +2729,269 @@ index 6c0f3e9..8c6f950 100644
 +
 +        # And the portal is still answering.
 +        xdp.check_version(dbus_con, "NFC", 1)
+-- 
+2.55.0
+
+
+From 2a99fd83162e1073be4f9d0c02080c20ff1dc002 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 10 Sep 2026 21:56:59 +0200
+Subject: [PATCH 8/8] nfc: the proxy table is reached from two threads, so lock
+ it
+
+nfc->proxies was an unlocked GHashTable mutated from more than one thread.
+xdp_context_take_and_export_portal exports every portal that is not the
+host portal with HANDLE_METHOD_INVOCATIONS_IN_THREAD, so OpenNFCRemote --
+its count of a sender's proxies, its insert, and its rollback -- runs on a
+GTask worker thread, while the two paths that free a slot, a proxy exiting
+and the caller leaving the bus, run on a main context. Two applications
+calling OpenNFCRemote at the same instant is a concurrent insert during a
+possible resize, and an iteration concurrent with an insert.
+
+Guard every access with a G_LOCK, which is what xdp-session.c does with its
+own table. Two things shape where the critical sections fall.
+
+The lock is not held across anything that blocks. nfc_proxy_new spawns a
+process and then waits up to five seconds for it to signal readiness;
+holding a global lock across that would put every other caller behind the
+slowest spawn and turn a fixed cost into a queue. So the spawn happens
+between two critical sections, not inside one.
+
+That leaves the count and the insert in different critical sections, which
+is where the cap would have leaked: a burst of simultaneous calls could
+each pass the check and then all insert. The insert now re-counts under the
+same lock it inserts with, so the cap is exact, and a call that loses the
+race gives back the proxy it had already started. The cheap check before
+the spawn stays, so an application looping on this does not pay to start a
+process it will not be given.
+
+Nothing called while the lock is held takes it again. The one thing that
+runs under the lock and is not a table operation is nfc_proxy_free, as the
+table's key-destroy function: it closes the sync fd, which makes
+xdg-dbus-proxy exit, but the child watch that notices only dispatches from
+a main context once the current callback has returned, and the reference it
+drops to the GSubprocess is never the last one while a wait is pending.
+Arming that wait moves inside the insert's critical section, because from
+the moment the table holds the proxy a peer disconnect on the main context
+can free it, and proxy->subprocess with it.
+
+The two lifecycle sites stay unlocked and say why: the table is created in
+nfc_new before the portal is exported, and destroyed in finalize once
+nothing holds a reference to the Nfc.
+
+Also rewrap a paragraph in the XML that had a sentence starting mid-line.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ data/org.freedesktop.portal.NFC.xml |   9 +--
+ src/nfc.c                           | 103 +++++++++++++++++++++++-----
+ 2 files changed, 89 insertions(+), 23 deletions(-)
+
+diff --git a/data/org.freedesktop.portal.NFC.xml b/data/org.freedesktop.portal.NFC.xml
+index b9bdcd2..bcea1c5 100644
+--- a/data/org.freedesktop.portal.NFC.xml
++++ b/data/org.freedesktop.portal.NFC.xml
+@@ -67,10 +67,11 @@
+         The returned connection's lifetime is tied to the caller's session bus
+         connection, not to @fd: the portal tears the connection down when the
+         caller disappears from the session bus. This differs from the Camera
+-        portal's ``OpenPipeWireRemote``, where the fd stands on its own. An application that calls this and then drops its session
+-        bus connection (a short script letting it go out of scope, say) will
+-        see @fd close a moment later, and should hold that connection for as
+-        long as it uses this one.
++        portal's ``OpenPipeWireRemote``, where the fd stands on its own. An
++        application that calls this and then drops its session bus connection
++        (a short script letting it go out of scope, say) will see @fd close a
++        moment later, and should hold that connection for as long as it uses
++        this one.
+ 
+         There are currently no supported keys in the @options vardict.
+     -->
+diff --git a/src/nfc.c b/src/nfc.c
+index 1d11c57..be97e6c 100644
+--- a/src/nfc.c
++++ b/src/nfc.c
+@@ -55,10 +55,21 @@ struct _Nfc
+   GDBusObjectManager *neard_manager;
+ 
+   /* Set of the NfcProxy handed out by OpenNFCRemote, so that they can be
+-   * shut down when the application they were opened for goes away. */
++   * shut down when the application they were opened for goes away.
++   *
++   * Guarded by the proxies lock below: OpenNFCRemote runs on a GTask worker
++   * thread, because xdp_context_take_and_export_portal exports every portal
++   * with HANDLE_METHOD_INVOCATIONS_IN_THREAD, while the two paths that remove
++   * from it -- a proxy exiting, and the caller leaving the bus -- run on a
++   * main context. */
+   GHashTable *proxies;
+ };
+ 
++/* The tree's convention for a table reached from more than one thread; see
++ * G_LOCK_DEFINE (sessions) in xdp-session.c. Not recursive, so nothing called
++ * while it is held may take it again. */
++G_LOCK_DEFINE_STATIC (proxies);
++
+ struct _NfcClass
+ {
+   XdpDbusNFCSkeletonClass parent_class;
+@@ -299,6 +310,14 @@ typedef struct
+   char *sender;
+ } NfcProxy;
+ 
++/* Usually called as the proxies table's key-destroy function, which means
++ * with the proxies lock held; it does not need the lock itself, and
++ * handle_open_nfc_remote calls it directly for a proxy it never inserted.
++ * Nothing it does takes the lock again: closing the sync
++ * fd makes xdg-dbus-proxy exit, but the child watch that notices only
++ * dispatches from a main context once the current callback has returned, and
++ * dropping this reference to the GSubprocess is never the last one while a
++ * wait is pending. */
+ static void
+ nfc_proxy_free (gpointer data)
+ {
+@@ -526,6 +545,7 @@ nfc_proxy_new (const char  *sender,
+   return proxy;
+ }
+ 
++/* Call with the proxies lock held. */
+ static guint
+ count_proxies_for_sender (Nfc        *nfc,
+                           const char *sender)
+@@ -578,7 +598,9 @@ on_proxy_exited (GObject      *source,
+ 
+   g_subprocess_wait_finish (G_SUBPROCESS (source), result, NULL);
+ 
++  G_LOCK (proxies);
+   g_hash_table_foreach_remove (nfc->proxies, proxy_has_subprocess, source);
++  G_UNLOCK (proxies);
+ }
+ 
+ static gboolean
+@@ -600,8 +622,27 @@ on_peer_disconnect (XdpContext *context,
+ 
+   /* Removing the proxy closes its sync fd, which makes xdg-dbus-proxy exit.
+    * Without this every OpenNFCRemote call would leave a process behind. */
++  G_LOCK (proxies);
+   g_hash_table_foreach_remove (nfc->proxies, proxy_is_for_sender,
+                                (gpointer) sender);
++  G_UNLOCK (proxies);
++}
++
++static gboolean
++return_too_many_proxies (GDBusMethodInvocation *invocation)
++{
++  /* Not NOT_ALLOWED: the application holds the permission, so the one
++   * sensible response to being told it does not would be to ask the user
++   * for it again -- a dialog that cannot fix what it appears to be about.
++   * Name the limit in the message, since a developer reading a journal
++   * has no other way to see the cause. */
++  g_dbus_method_invocation_return_error (invocation,
++                                         XDG_DESKTOP_PORTAL_ERROR,
++                                         XDG_DESKTOP_PORTAL_ERROR_FAILED,
++                                         "Too many NFC connections open "
++                                         "at once (the limit is %d)",
++                                         NFC_MAX_PROXIES_PER_SENDER);
++  return G_DBUS_METHOD_INVOCATION_HANDLED;
+ }
+ 
+ static gboolean
+@@ -617,6 +658,7 @@ handle_open_nfc_remote (XdpDbusNFC            *object,
+   XdpPermission permission;
+   const char *sender;
+   NfcProxy *proxy;
++  gboolean over_cap;
+   int fd_id;
+   int fd;
+ 
+@@ -635,22 +677,19 @@ handle_open_nfc_remote (XdpDbusNFC            *object,
+ 
+   sender = g_dbus_method_invocation_get_sender (invocation);
+ 
+-  if (count_proxies_for_sender (nfc, sender) >= NFC_MAX_PROXIES_PER_SENDER)
+-    {
+-      /* Not NOT_ALLOWED: the application holds the permission, so the one
+-       * sensible response to being told it does not would be to ask the user
+-       * for it again -- a dialog that cannot fix what it appears to be about.
+-       * Name the limit in the message, since a developer reading a journal
+-       * has no other way to see the cause. */
+-      g_dbus_method_invocation_return_error (invocation,
+-                                             XDG_DESKTOP_PORTAL_ERROR,
+-                                             XDG_DESKTOP_PORTAL_ERROR_FAILED,
+-                                             "Too many NFC connections open "
+-                                             "at once (the limit is %d)",
+-                                             NFC_MAX_PROXIES_PER_SENDER);
+-      return G_DBUS_METHOD_INVOCATION_HANDLED;
+-    }
++  /* A cheap reject, so an application looping on this does not pay to start a
++   * process it will not be given. It is not what enforces the cap -- the
++   * check below, in the same critical section as the insert, is. */
++  G_LOCK (proxies);
++  over_cap = count_proxies_for_sender (nfc, sender) >= NFC_MAX_PROXIES_PER_SENDER;
++  G_UNLOCK (proxies);
++
++  if (over_cap)
++    return return_too_many_proxies (invocation);
+ 
++  /* Deliberately with no lock held: this spawns a process and then waits up
++   * to NFC_PROXY_READY_TIMEOUT_MS for it. Holding a global lock across that
++   * would put every other caller behind the slowest spawn. */
+   proxy = nfc_proxy_new (sender, &fd, &error);
+   if (proxy == NULL)
+     {
+@@ -662,9 +701,29 @@ handle_open_nfc_remote (XdpDbusNFC            *object,
+       return G_DBUS_METHOD_INVOCATION_HANDLED;
+     }
+ 
+-  g_hash_table_add (nfc->proxies, proxy);
+-  g_subprocess_wait_async (proxy->subprocess, NULL,
+-                           on_proxy_exited, g_object_ref (nfc));
++  /* Count and insert in one critical section, so that simultaneous calls
++   * cannot each pass the check above and then all insert. Arming the child
++   * watch belongs in here too: from the moment the table holds the proxy, a
++   * peer disconnect on the main context can free it, and proxy->subprocess
++   * with it. Neither call blocks. */
++  G_LOCK (proxies);
++  over_cap = count_proxies_for_sender (nfc, sender) >= NFC_MAX_PROXIES_PER_SENDER;
++  if (!over_cap)
++    {
++      g_hash_table_add (nfc->proxies, proxy);
++      g_subprocess_wait_async (proxy->subprocess, NULL,
++                               on_proxy_exited, g_object_ref (nfc));
++    }
++  G_UNLOCK (proxies);
++
++  if (over_cap)
++    {
++      /* Lost a race with another call from the same sender. Freeing the proxy
++       * closes its sync fd, which is what makes xdg-dbus-proxy exit. */
++      nfc_proxy_free (proxy);
++      close (fd);
++      return return_too_many_proxies (invocation);
++    }
+ 
+   out_fd_list = g_unix_fd_list_new ();
+   fd_id = g_unix_fd_list_append (out_fd_list, fd, &error);
+@@ -672,7 +731,9 @@ handle_open_nfc_remote (XdpDbusNFC            *object,
+ 
+   if (fd_id == -1)
+     {
++      G_LOCK (proxies);
+       g_hash_table_remove (nfc->proxies, proxy);
++      G_UNLOCK (proxies);
+       g_dbus_method_invocation_return_error (invocation,
+                                              XDG_DESKTOP_PORTAL_ERROR,
+                                              XDG_DESKTOP_PORTAL_ERROR_FAILED,
+@@ -704,6 +765,10 @@ nfc_finalize (GObject *object)
+   g_clear_object (&nfc->neard_cancellable);
+   g_clear_object (&nfc->neard_manager);
+   g_clear_object (&nfc->access_impl);
++  /* No lock here, or in nfc_new where the table is created: finalize only
++   * runs once nothing holds a reference to the Nfc, and so nothing can be
++   * reaching nfc->proxies, while nfc_new runs before the portal is exported.
++   * Every other access is under the proxies lock. */
+   g_clear_pointer (&nfc->proxies, g_hash_table_unref);
+ 
+   G_OBJECT_CLASS (nfc_parent_class)->finalize (object);
 -- 
 2.55.0
 

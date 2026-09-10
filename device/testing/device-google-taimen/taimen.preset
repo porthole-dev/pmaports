@@ -35,11 +35,12 @@ enable taimen-rescue.service
 enable sns-reg.service
 
 # neard, moved here from a post-install symlink in pkgrel 52. neard's own
-# [Install] has no WantedBy (see neard-install.conf, the drop-in that adds
-# one) -- without a line here it is silently disabled the same way
-# taimen-rescue.service was on the r24->r28 upgrade (see above). No OpenRC
-# counterpart exists for neard: Alpine's neard package ships no /etc/init.d
-# script at all, so there is nothing to enable there (tracked separately).
+# [Install] now carries WantedBy=multi-user.target directly -- temp/neard
+# adds it in the unit itself, no drop-in needed any more -- but that alone
+# is not enough: without a line here it is silently disabled the same way
+# taimen-rescue.service was on the r24->r28 upgrade (see above). OpenRC
+# parity already exists too: main/neard-openrc ships /etc/init.d/neard and
+# is pulled in by this package's openrc() subpackage depends= below.
 enable neard.service
 
 # tuned / tuned-ppd: do not start them at boot.

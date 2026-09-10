@@ -1,4 +1,4 @@
-From 8528e883d853d2e2f0d310caa60854e2155d5761 Mon Sep 17 00:00:00 2001
+From 833d2f103015cd2a2b859ada321df8a41c01335f Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 12:08:13 +0200
 Subject: [PATCH] privacy: add an NFC page
@@ -32,12 +32,12 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  ...org.gnome.Settings-nfc-access-symbolic.svg |   4 +
  panels/privacy/meson.build                    |   2 +
  panels/privacy/nfc/cc-nfc-page.blp            |  22 ++
- panels/privacy/nfc/cc-nfc-page.c              | 285 ++++++++++++++++++
+ panels/privacy/nfc/cc-nfc-page.c              | 300 ++++++++++++++++++
  panels/privacy/nfc/cc-nfc-page.h              |  30 ++
  panels/privacy/nfc/meson.build                |  14 +
  panels/privacy/privacy.gresource.xml          |   1 +
  po/POTFILES.in                                |   1 +
- 11 files changed, 380 insertions(+)
+ 11 files changed, 395 insertions(+)
  create mode 100644 panels/privacy/icons/scalable/org.gnome.Settings-nfc-access-symbolic.svg
  create mode 100644 panels/privacy/nfc/cc-nfc-page.blp
  create mode 100644 panels/privacy/nfc/cc-nfc-page.c
@@ -177,10 +177,10 @@ index 0000000..e428c56
 +}
 diff --git a/panels/privacy/nfc/cc-nfc-page.c b/panels/privacy/nfc/cc-nfc-page.c
 new file mode 100644
-index 0000000..f26f5d6
+index 0000000..fe6bc03
 --- /dev/null
 +++ b/panels/privacy/nfc/cc-nfc-page.c
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,300 @@
 +/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
 + *
 + * Copyright (C) 2026 Giuseppe Maggio
@@ -312,20 +312,35 @@ index 0000000..f26f5d6
 +  sync_switch (self);
 +}
 +
-+/* (transfer full) (nullable): the first adapter neard is publishing. */
++/* (transfer full) (nullable): the adapter at the lowest object path, so the
++   choice is deterministic on the rare machine that publishes more than
++   one -- GDBusObjectManager has no notion of path order on its own. */
 +static GDBusProxy *
 +find_adapter (GDBusObjectManager *manager)
 +{
 +  GList *objects = g_dbus_object_manager_get_objects (manager);
 +  GDBusProxy *found = NULL;
++  const gchar *found_path = NULL;
 +
-+  for (GList *l = objects; l != NULL && found == NULL; l = l->next)
++  for (GList *l = objects; l != NULL; l = l->next)
 +    {
-+      GDBusInterface *iface = g_dbus_object_get_interface (G_DBUS_OBJECT (l->data),
-+                                                           NEARD_ADAPTER_IFACE);
++      GDBusObject *object = G_DBUS_OBJECT (l->data);
++      GDBusInterface *iface = g_dbus_object_get_interface (object, NEARD_ADAPTER_IFACE);
 +
-+      if (iface != NULL)
-+        found = G_DBUS_PROXY (iface);
++      if (iface == NULL)
++        continue;
++
++      if (found == NULL ||
++          g_strcmp0 (g_dbus_object_get_object_path (object), found_path) < 0)
++        {
++          g_clear_object (&found);
++          found = G_DBUS_PROXY (iface);
++          found_path = g_dbus_object_get_object_path (object);
++        }
++      else
++        {
++          g_object_unref (iface);
++        }
 +    }
 +
 +  g_list_free_full (objects, g_object_unref);

@@ -1,0 +1,698 @@
+From ff72ca3d7c0f9089afa6df9b41ec89c78804a4b1 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 10 Sep 2026 10:17:56 +0200
+Subject: [PATCH] mobile-providers: resolve the MVNOs sharing an MCC/MNC
+
+An MCC/MNC pair identifies a network, not a provider. Every MVNO reselling
+that network reports the same one, and the database lists them as siblings
+of the host network, so the lookup had several equally good candidates and
+returned whichever the hash iteration reached first. In practice that is the
+most recently added one, which is systematically the MVNO -- host networks
+have been in the database since the beginning.
+
+So an Italian subscriber is offered internet.postemobile.it, and a
+T-Mobile US subscriber pwg, which is US Mobile's. Neither works.
+
+The database already carries what is needed to do better, and has for years:
+
+  - provider primary="true|false" says which provider owns the MCC/MNC and
+    which ones piggy-back on it. It was added in 2023 specifically so that
+    clients could stop guessing (mobile-broadband-provider-info!105), and
+    43 providers are tagged today. Nothing has ever read it.
+  - gsm/gid1 records the EF_GID1 of an MVNO's SIMs (!141).
+
+Score the candidates the way Android's CarrierResolver does: a match on a
+higher tier beats any match that does not reach that tier, and anything the
+database does not state about a provider is a wildcard. With no MVNO data at
+all every candidate scores alike and the result is the MCC/MNC match it has
+always been, so older databases keep working unchanged.
+
+Add nma_mobile_providers_database_lookup_3gpp_sim() for callers that can read
+the SIM. libnma has no business talking to ModemManager, so the SIM's fields
+are passed in, as CarrierResolver passes its subscription rule into match().
+EF_GID1 is matched as a case-insensitive prefix because SIMs pad it with
+filler the database does not record -- again what Android does. The provider
+name doubles as EF_SPN, which is what MVNOs are named after; unlike gid1 it
+is a display name rather than a declared matcher, so a mismatch only fails to
+earn the tier instead of ruling the provider out.
+
+Against the database shipped today this changes 17 MCC/MNC pairs in 8
+countries, every one of them from a reseller to the network it resells:
+Ting and US Mobile to T-Mobile, simyo to E-Plus, nju mobile to Orange,
+Mineo and OCN to NTTdocomo, Bip to 3, and so on. The remaining 779 are
+unchanged.
+---
+ src/libnma.ver                    |   5 +
+ src/nma-mobile-providers.c        | 267 ++++++++++++++++++++++++------
+ src/nma-mobile-providers.h        |   5 +
+ src/nma-version.h.in              |   7 +
+ src/tests/meson.build             |  12 ++
+ src/tests/test-mobile-providers.c | 215 ++++++++++++++++++++++++
+ 6 files changed, 456 insertions(+), 55 deletions(-)
+ create mode 100644 src/tests/test-mobile-providers.c
+
+diff --git a/src/libnma.ver b/src/libnma.ver
+index dd9e33e..5917680 100644
+--- a/src/libnma.ver
++++ b/src/libnma.ver
+@@ -139,3 +139,8 @@ libnma_1_8_36 {
+ 	nma_ws_owe_get_type;
+ 	nma_ws_owe_new;
+ } libnma_1_8_28;
++
++libnma_1_10_8 {
++global:
++	nma_mobile_providers_database_lookup_3gpp_sim;
++} libnma_1_8_36;
+diff --git a/src/nma-mobile-providers.c b/src/nma-mobile-providers.c
+index 16041f6..5457908 100644
+--- a/src/nma-mobile-providers.c
++++ b/src/nma-mobile-providers.c
+@@ -196,6 +196,17 @@ G_DEFINE_BOXED_TYPE (NMAMobileProvider,
+                      nma_mobile_provider_ref,
+                      nma_mobile_provider_unref)
+ 
++/* <provider primary="true|false">: whether this provider owns the MCC/MNC or
++ * is an MVNO piggy-backing on whoever does. Most of the database says neither,
++ * which has to sort between the two -- an untagged provider is a better guess
++ * than a self-declared MVNO and a worse one than a self-declared host network.
++ */
++typedef enum {
++	PROVIDER_PRIMACY_MVNO    = 0, /* primary="false"    */
++	PROVIDER_PRIMACY_UNKNOWN = 1, /* attribute absent   */
++	PROVIDER_PRIMACY_HOST    = 2, /* primary="true"     */
++} ProviderPrimacy;
++
+ struct _NMAMobileProvider {
+ 	volatile gint refs;
+ 
+@@ -207,6 +218,9 @@ struct _NMAMobileProvider {
+ 
+ 	GPtrArray *mcc_mnc;  /* GPtrArray of strings */
+ 	GArray *cdma_sid; /* GArray of guint32 */
++
++	GPtrArray *gid1; /* GPtrArray of strings; <gid1>, EF_GID1 of the MVNO's SIMs */
++	ProviderPrimacy primacy;
+ };
+ 
+ static NMAMobileProvider *
+@@ -216,6 +230,7 @@ provider_new (void)
+ 
+ 	provider = g_slice_new0 (NMAMobileProvider);
+ 	provider->refs = 1;
++	provider->primacy = PROVIDER_PRIMACY_UNKNOWN;
+ 	provider->lcl_names = g_hash_table_new_full (g_str_hash, g_str_equal,
+ 	                                             (GDestroyNotify) g_free,
+ 	                                             (GDestroyNotify) g_free);
+@@ -249,6 +264,9 @@ nma_mobile_provider_unref (NMAMobileProvider *provider)
+ 		if (provider->cdma_sid)
+ 			g_array_unref (provider->cdma_sid);
+ 
++		if (provider->gid1)
++			g_ptr_array_unref (provider->gid1);
++
+ 		g_slice_free (NMAMobileProvider, provider);
+ 	}
+ }
+@@ -588,9 +606,20 @@ parser_country_start (MobileParser *parser,
+                       const char **attribute_names,
+                       const char **attribute_values)
+ {
++	int i;
++
+ 	if (!strcmp (name, "provider")) {
+ 		parser->state = PARSER_PROVIDER;
+ 		parser->current_provider = provider_new ();
++
++		for (i = 0; attribute_names && attribute_names[i]; i++) {
++			if (!strcmp (attribute_names[i], "primary")) {
++				parser->current_provider->primacy =   !strcmp (attribute_values[i], "true")
++				                                    ? PROVIDER_PRIMACY_HOST
++				                                    : PROVIDER_PRIMACY_MVNO;
++				break;
++			}
++		}
+ 	}
+ }
+ 
+@@ -780,6 +809,17 @@ static void
+ parser_gsm_end (MobileParser *parser,
+                 const char *name)
+ {
++	if (!strcmp (name, "gid1")) {
++		if (parser->text_buffer && parser->text_buffer[0]) {
++			if (!parser->current_provider->gid1)
++				parser->current_provider->gid1 = g_ptr_array_new_full (2, g_free);
++			g_ptr_array_add (parser->current_provider->gid1,
++			                 g_strstrip (parser->text_buffer));
++			parser->text_buffer = NULL;
++		}
++		return;
++	}
++
+ 	if (!strcmp (name, "gsm")) {
+ 		g_free (parser->text_buffer);
+ 		parser->text_buffer = NULL;
+@@ -1248,21 +1288,186 @@ nma_mobile_providers_database_lookup_country (NMAMobileProvidersDatabase *self,
+ 	return (NMACountryInfo *) g_hash_table_lookup (self->priv->countries, country_code);
+ }
+ 
++/* Match quality tiers, mirroring the scoring in Android's CarrierResolver: a
++ * match at a higher tier beats any match that does not reach that tier, so the
++ * result is deterministic no matter what order the database is parsed in.
++ *
++ * Everything the database does not state about a provider is a wildcard, which
++ * is what keeps this working against older data: with no MVNO information at
++ * all every candidate scores the same, and the lookup degrades to the MCC/MNC
++ * match it has always been.
++ */
++#define MATCH_SCORE_GID1          (1 << 4) /* <gid1> matched the SIM's EF_GID1  */
++#define MATCH_SCORE_SPN           (1 << 3) /* <name> matched the SIM's EF_SPN   */
++#define MATCH_SCORE_PRIMACY_SHIFT 1        /* bits 1-2: primary="true|false"    */
++#define MATCH_SCORE_MNC3          (1 << 0) /* 3-digit MNC beats 2-digit         */
++
++/* Returns 2 for a 3-digit MNC match, 1 for a 2-digit one, 0 for no match. */
++static guint
++provider_match_3gpp_mcc_mnc (NMAMobileProvider *provider,
++                             const gchar *mccmnc,
++                             guint mccmnc_len)
++{
++	guint best = 0;
++	guint i;
++
++	if (!provider->mcc_mnc)
++		return 0;
++
++	for (i = 0; i < provider->mcc_mnc->len; i++) {
++		const gchar *mccmnc_iter = provider->mcc_mnc->pdata[i];
++		guint mccmnc_iter_len;
++
++		/* The array is NULL-terminated for nma_mobile_provider_get_3gpp_mcc_mnc(). */
++		if (!mccmnc_iter)
++			break;
++
++		if (strncmp (mccmnc_iter, mccmnc, 3))
++			/* MCC was wrong */
++			continue;
++
++		/* Match both 2-digit and 3-digit MNC; prefer a 3-digit match if
++		 * found, otherwise a 2-digit one. The cases, with examples:
++		 *  a) input: 123/456 --> iter: 123/456 (3-digit match)
++		 *  b) input: 123/45  --> iter: 123/045 (3-digit match)
++		 *  c) input: 123/045 --> iter: 123/45  (2-digit match)
++		 *  d) input: 123/45  --> iter: 123/45  (2-digit match)
++		 */
++		mccmnc_iter_len = strlen (mccmnc_iter);
++
++		if (mccmnc_iter_len == 6) {
++			/* Covers cases a) and b) */
++			if (   (mccmnc_len == 6 && !strncmp (mccmnc + 3, mccmnc_iter + 3, 3))
++			    || (mccmnc_len == 5 && mccmnc_iter[3] == '0' && !strncmp (mccmnc + 3, mccmnc_iter + 4, 2)))
++				return 2;
++			continue;
++		}
++
++		if (mccmnc_iter_len == 5) {
++			/* Covers cases c) and d) */
++			if (   (mccmnc_len == 5 && !strncmp (mccmnc + 3, mccmnc_iter + 3, 2))
++			    || (mccmnc_len == 6 && mccmnc[3] == '0' && !strncmp (mccmnc + 4, mccmnc_iter + 3, 2)))
++				best = 1;
++		}
++	}
++
++	return best;
++}
++
++static gboolean
++provider_match_gid1 (NMAMobileProvider *provider, const gchar *gid1)
++{
++	guint i;
++
++	/* Android matches EF_GID1 as a case-insensitive *prefix*, because SIMs are
++	 * known to pad the field with filler bytes the database does not record.
++	 */
++	for (i = 0; i < provider->gid1->len; i++) {
++		const gchar *iter = provider->gid1->pdata[i];
++
++		if (iter && !g_ascii_strncasecmp (gid1, iter, strlen (iter)))
++			return TRUE;
++	}
++
++	return FALSE;
++}
++
++/* Returns the match score, or -1 if @provider is not a candidate at all. */
++static int
++provider_match_score (NMAMobileProvider *provider,
++                      const gchar *mccmnc,
++                      guint mccmnc_len,
++                      const gchar *spn,
++                      const gchar *gid1)
++{
++	guint mnc_match;
++	int score;
++
++	mnc_match = provider_match_3gpp_mcc_mnc (provider, mccmnc, mccmnc_len);
++	if (!mnc_match)
++		return -1;
++
++	score = (mnc_match == 2 ? MATCH_SCORE_MNC3 : 0);
++	score += provider->primacy << MATCH_SCORE_PRIMACY_SHIFT;
++
++	/* <gid1> is a matcher the database states deliberately, so a disagreement
++	 * rules the provider out at any score: these SIMs are not its subscribers.
++	 * A caller that does not know the SIM's EF_GID1 leaves it a wildcard
++	 * rather than discarding data it cannot evaluate.
++	 */
++	if (provider->gid1 && gid1 && gid1[0]) {
++		if (!provider_match_gid1 (provider, gid1))
++			return -1;
++		score += MATCH_SCORE_GID1;
++	}
++
++	/* <name> is a display name rather than a declared matcher, so a mismatch
++	 * only fails to earn the tier -- it never rules the provider out. It
++	 * discriminates because MVNOs are named for the EF_SPN their SIMs carry
++	 * ("PosteMobile", "ho."), while the host network's own subscribers
++	 * usually present no service provider name at all.
++	 */
++	if (   spn && spn[0]
++	    && provider->name
++	    && !g_ascii_strcasecmp (spn, provider->name))
++		score += MATCH_SCORE_SPN;
++
++	return score;
++}
++
+ /**
+  * nma_mobile_providers_database_lookup_3gpp_mcc_mnc:
+  * @self: a #NMAMobileProvidersDatabase.
+  * @mccmnc: the MCC/MNC string to look for.
+  *
++ * Looks up the provider for a MCC/MNC pair. Where several providers share it --
++ * a host network and the MVNOs riding on it -- the one flagged
++ * <literal>primary</literal> in the database wins.
++ *
++ * Callers that can read the SIM should prefer
++ * nma_mobile_providers_database_lookup_3gpp_sim(), which can tell the MVNOs
++ * apart instead of assuming the subscriber is on the host network.
++ *
+  * Returns: (transfer none): a #NMAMobileProvider or %NULL if not found.
+  */
+ NMAMobileProvider *
+ nma_mobile_providers_database_lookup_3gpp_mcc_mnc (NMAMobileProvidersDatabase *self,
+                                                    const gchar *mccmnc)
++{
++	return nma_mobile_providers_database_lookup_3gpp_sim (self, mccmnc, NULL, NULL);
++}
++
++/**
++ * nma_mobile_providers_database_lookup_3gpp_sim:
++ * @self: a #NMAMobileProvidersDatabase.
++ * @mccmnc: the MCC/MNC string to look for.
++ * @spn: (allow-none): the SIM's service provider name (EF_SPN), or %NULL if unknown.
++ * @gid1: (allow-none): the SIM's group identifier level 1 (EF_GID1) as a hex
++ *   string, or %NULL if unknown.
++ *
++ * Looks up the provider a SIM belongs to.
++ *
++ * An MCC/MNC pair identifies a network, not a provider: every MVNO reselling
++ * that network reports the same one, so matching on it alone cannot say which
++ * of them issued the SIM. The extra fields disambiguate, and each is optional --
++ * whatever the caller cannot supply is treated as a wildcard, and a provider
++ * the database says nothing about still matches on MCC/MNC as before.
++ *
++ * Returns: (transfer none): a #NMAMobileProvider or %NULL if not found.
++ *
++ * Since: 1.10.8
++ */
++NMAMobileProvider *
++nma_mobile_providers_database_lookup_3gpp_sim (NMAMobileProvidersDatabase *self,
++                                               const gchar *mccmnc,
++                                               const gchar *spn,
++                                               const gchar *gid1)
+ {
+ 	GHashTableIter iter;
+ 	gpointer value;
+ 	GSList *piter;
+-	NMAMobileProvider *provider_match_2mnc = NULL;
++	NMAMobileProvider *best_provider = NULL;
++	int best_score = -1;
+ 	guint mccmnc_len;
+ 
+ 	g_return_val_if_fail (NMA_IS_MOBILE_PROVIDERS_DATABASE (self), NULL);
+@@ -1285,65 +1490,17 @@ nma_mobile_providers_database_lookup_3gpp_mcc_mnc (NMAMobileProvidersDatabase *s
+ 		     piter;
+ 		     piter = g_slist_next (piter)) {
+ 			NMAMobileProvider *provider = piter->data;
+-			const gchar **mccmnc_list;
+-			guint i;
++			int score;
+ 
+-			/* Search through MCC/MNC list */
+-			mccmnc_list = nma_mobile_provider_get_3gpp_mcc_mnc (provider);
+-			if (!mccmnc_list)
+-				continue;
+-
+-			for (i = 0; mccmnc_list[i]; i++) {
+-				const gchar *mccmnc_iter;
+-				guint mccmnc_iter_len;
+-
+-				mccmnc_iter = mccmnc_list[i];
+-				mccmnc_iter_len = strlen (mccmnc_iter);
+-
+-				/* Match both 2-digit and 3-digit MNC; prefer a
+-				 * 3-digit match if found, otherwise a 2-digit one.
+-				 */
+-
+-				if (strncmp (mccmnc_iter, mccmnc, 3))
+-					/* MCC was wrong */
+-					continue;
+-
+-				/* Now we have the following match cases, examples given:
+-				 *  a) input: 123/456 --> iter: 123/456 (3-digit match)
+-				 *  b) input: 123/45  --> iter: 123/045 (3-digit match)
+-				 *  c) input: 123/045 --> iter: 123/45  (2-digit match)
+-				 *  d) input: 123/45  --> iter: 123/45  (2-digit match)
+-				 */
+-
+-				if (mccmnc_iter_len == 6) {
+-					/* Covers cases a) and b) */
+-					if (   (mccmnc_len == 6 && !strncmp (mccmnc + 3, mccmnc_iter + 3, 3))
+-					    || (mccmnc_len == 5 && mccmnc_iter[3] == '0' && !strncmp (mccmnc + 3, mccmnc_iter + 4, 2)))
+-						/* 3-digit MNC match! */
+-						return provider;
+-
+-					/* MNC was wrong */
+-					continue;
+-				}
+-
+-				if (   !provider_match_2mnc
+-				    && mccmnc_iter_len == 5) {
+-					if (   (mccmnc_len == 5 && !strncmp (mccmnc + 3, mccmnc_iter + 3, 2))
+-					    || (mccmnc_len == 6 && mccmnc[3] == '0' && !strncmp (mccmnc + 4, mccmnc_iter + 3, 2))) {
+-						/* Store the 2-digit MNC match, but keep looking,
+-						 * we may have a 3-digit MNC match */
+-						provider_match_2mnc = provider;
+-						continue;
+-					}
+-
+-					/* MNC was wrong */
+-					continue;
+-				}
++			score = provider_match_score (provider, mccmnc, mccmnc_len, spn, gid1);
++			if (score > best_score) {
++				best_score = score;
++				best_provider = provider;
+ 			}
+ 		}
+ 	}
+ 
+-	return provider_match_2mnc;
++	return best_provider;
+ }
+ 
+ /**
+diff --git a/src/nma-mobile-providers.h b/src/nma-mobile-providers.h
+index 5b18cef..5f53b97 100644
+--- a/src/nma-mobile-providers.h
++++ b/src/nma-mobile-providers.h
+@@ -136,6 +136,11 @@ NMACountryInfo    *nma_mobile_providers_database_lookup_country      (NMAMobileP
+                                                                       const gchar *country_code);
+ NMAMobileProvider *nma_mobile_providers_database_lookup_3gpp_mcc_mnc (NMAMobileProvidersDatabase *self,
+                                                                       const gchar *mccmnc);
++NMA_AVAILABLE_IN_1_10_8
++NMAMobileProvider *nma_mobile_providers_database_lookup_3gpp_sim     (NMAMobileProvidersDatabase *self,
++                                                                      const gchar *mccmnc,
++                                                                      const gchar *spn,
++                                                                      const gchar *gid1);
+ NMAMobileProvider *nma_mobile_providers_database_lookup_cdma_sid     (NMAMobileProvidersDatabase *self,
+                                                                       guint32 sid);
+ 
+diff --git a/src/nma-version.h.in b/src/nma-version.h.in
+index 8f8e0a6..cae7842 100644
+--- a/src/nma-version.h.in
++++ b/src/nma-version.h.in
+@@ -64,6 +64,7 @@
+ #define NMA_VERSION_1_8_34 (NMA_ENCODE_VERSION (1, 8, 34))
+ #define NMA_VERSION_1_8_36 (NMA_ENCODE_VERSION (1, 8, 36))
+ #define NMA_VERSION_1_10_6 (NMA_ENCODE_VERSION (1, 10, 6))
++#define NMA_VERSION_1_10_8 (NMA_ENCODE_VERSION (1, 10, 8))
+ 
+ /* For releases, NMA_API_VERSION is equal to NMA_VERSION.
+  *
+@@ -158,4 +159,10 @@
+ # define NMA_AVAILABLE_IN_1_8_36
+ #endif
+ 
++#if NMA_VERSION_MAX_ALLOWED < NMA_VERSION_1_10_8
++# define NMA_AVAILABLE_IN_1_10_8            G_UNAVAILABLE(1.10,8)
++#else
++# define NMA_AVAILABLE_IN_1_10_8
++#endif
++
+ #endif  /* NMA_VERSION_H */
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index 33c04d8..bc2a58e 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -30,3 +30,15 @@ foreach tst : tests
+     )
+   endif
+ endforeach
++
++test(
++  'mobile-providers',
++  executable(
++    'test-mobile-providers',
++    'test-mobile-providers.c',
++    include_directories: incs,
++    dependencies: [ gtk_dep, libnm_dep, libnma_dep ],
++    c_args: cflags,
++    install: false
++  )
++)
+diff --git a/src/tests/test-mobile-providers.c b/src/tests/test-mobile-providers.c
+new file mode 100644
+index 0000000..5343024
+--- /dev/null
++++ b/src/tests/test-mobile-providers.c
+@@ -0,0 +1,215 @@
++// SPDX-License-Identifier: LGPL-2.1+
++/*
++ * Provider lookup for MCC/MNC pairs that several providers share.
++ */
++
++#include "nm-default.h"
++
++#include <glib/gstdio.h>
++
++#include "nma-mobile-providers.h"
++
++/* Two countries' worth of the shapes the real database contains:
++ *  - it: a host network and two MVNOs on one MCC/MNC, one of the MVNOs tagged
++ *        and one not, which is how mobile-broadband-provider-info looks in
++ *        practice -- the tagging is incomplete.
++ *  - de: an MVNO that states a <gid1>, sharing its MCC/MNC with the host.
++ *  - gb: no MVNO information at all, and a 2-digit and a 3-digit MNC to check
++ *        the pre-existing preference still holds.
++ */
++static const char *service_providers_xml =
++"<?xml version=\"1.0\"?>"
++"<serviceproviders format=\"2.0\">"
++"  <country code=\"it\">"
++"    <provider primary=\"true\">"
++"      <name>Vodafone</name>"
++"      <gsm><network-id mcc=\"222\" mnc=\"10\"/>"
++"           <apn value=\"mobile.vodafone.it\"/></gsm>"
++"    </provider>"
++"    <provider primary=\"false\">"
++"      <name>PosteMobile</name>"
++"      <gsm><network-id mcc=\"222\" mnc=\"10\"/>"
++"           <apn value=\"internet.postemobile.it\"/></gsm>"
++"    </provider>"
++"    <provider>"
++"      <name>ho.</name>"
++"      <gsm><network-id mcc=\"222\" mnc=\"10\"/>"
++"           <apn value=\"web.ho-mobile.it\"/></gsm>"
++"    </provider>"
++"  </country>"
++"  <country code=\"de\">"
++"    <provider primary=\"false\">"
++"      <name>winSIM</name>"
++"      <gsm><network-id mcc=\"262\" mnc=\"23\"/>"
++"           <gid1>d3e35801</gid1>"
++"           <apn value=\"internet.winsim\"/></gsm>"
++"    </provider>"
++"    <provider primary=\"true\">"
++"      <name>o2</name>"
++"      <gsm><network-id mcc=\"262\" mnc=\"23\"/>"
++"           <apn value=\"internet\"/></gsm>"
++"    </provider>"
++"  </country>"
++"  <country code=\"gb\">"
++"    <provider>"
++"      <name>Two Digit</name>"
++"      <gsm><network-id mcc=\"234\" mnc=\"15\"/>"
++"           <apn value=\"two.digit\"/></gsm>"
++"    </provider>"
++"    <provider>"
++"      <name>Three Digit</name>"
++"      <gsm><network-id mcc=\"234\" mnc=\"015\"/>"
++"           <apn value=\"three.digit\"/></gsm>"
++"    </provider>"
++"  </country>"
++"</serviceproviders>";
++
++static const char *country_codes_xml =
++"<?xml version=\"1.0\"?>"
++"<iso_3166_entries>"
++"  <iso_3166_entry alpha_2_code=\"IT\" name=\"Italy\"/>"
++"  <iso_3166_entry alpha_2_code=\"DE\" name=\"Germany\"/>"
++"  <iso_3166_entry alpha_2_code=\"GB\" name=\"United Kingdom\"/>"
++"</iso_3166_entries>";
++
++typedef struct {
++	char *dir;
++	NMAMobileProvidersDatabase *db;
++} Fixture;
++
++static void
++fixture_set_up (Fixture *f, gconstpointer user_data)
++{
++	gs_free_error GError *error = NULL;
++	gs_free char *providers_path = NULL;
++	gs_free char *countries_path = NULL;
++
++	f->dir = g_dir_make_tmp ("nma-mobile-providers-XXXXXX", &error);
++	g_assert_no_error (error);
++
++	providers_path = g_build_filename (f->dir, "serviceproviders.xml", NULL);
++	countries_path = g_build_filename (f->dir, "iso_3166.xml", NULL);
++
++	g_assert (g_file_set_contents (providers_path, service_providers_xml, -1, &error));
++	g_assert_no_error (error);
++	g_assert (g_file_set_contents (countries_path, country_codes_xml, -1, &error));
++	g_assert_no_error (error);
++
++	f->db = nma_mobile_providers_database_new_sync (countries_path, providers_path, NULL, &error);
++	g_assert_no_error (error);
++	g_assert (NMA_IS_MOBILE_PROVIDERS_DATABASE (f->db));
++}
++
++static void
++fixture_tear_down (Fixture *f, gconstpointer user_data)
++{
++	gs_free char *providers_path = g_build_filename (f->dir, "serviceproviders.xml", NULL);
++	gs_free char *countries_path = g_build_filename (f->dir, "iso_3166.xml", NULL);
++
++	g_clear_object (&f->db);
++	g_unlink (providers_path);
++	g_unlink (countries_path);
++	g_rmdir (f->dir);
++	g_free (f->dir);
++}
++
++static void
++assert_lookup (Fixture *f,
++               const char *mccmnc,
++               const char *spn,
++               const char *gid1,
++               const char *expected_name)
++{
++	NMAMobileProvider *provider;
++
++	provider = nma_mobile_providers_database_lookup_3gpp_sim (f->db, mccmnc, spn, gid1);
++	if (!expected_name) {
++		g_assert_null (provider);
++		return;
++	}
++	g_assert_nonnull (provider);
++	g_assert_cmpstr (nma_mobile_provider_get_name (provider), ==, expected_name);
++}
++
++/* Without SIM data the host network has to win, or the APN offered to a
++ * host-network subscriber is some reseller's. Which reseller depends on hash
++ * iteration order, which is the whole bug.
++ */
++static void
++test_primary_wins (Fixture *f, gconstpointer user_data)
++{
++	assert_lookup (f, "22210", NULL, NULL, "Vodafone");
++
++	/* An untagged provider still beats one tagged primary="false": the
++	 * database tags MVNOs far more consistently than host networks. */
++	assert_lookup (f, "26223", NULL, NULL, "o2");
++}
++
++/* The MVNO's own subscribers must not be given the host network's APN. */
++static void
++test_spn_identifies_mvno (Fixture *f, gconstpointer user_data)
++{
++	assert_lookup (f, "22210", "PosteMobile", NULL, "PosteMobile");
++	assert_lookup (f, "22210", "ho.",         NULL, "ho.");
++	assert_lookup (f, "22210", "POSTEMOBILE", NULL, "PosteMobile");
++}
++
++/* A host network's SIMs commonly carry no service provider name at all, and an
++ * SPN nobody is named after must not throw the lookup away.
++ */
++static void
++test_spn_falls_back (Fixture *f, gconstpointer user_data)
++{
++	assert_lookup (f, "22210", "",                 NULL, "Vodafone");
++	assert_lookup (f, "22210", "Some Reseller Ltd", NULL, "Vodafone");
++}
++
++/* <gid1> is stated deliberately, so unlike a name it rules a provider out. */
++static void
++test_gid1 (Fixture *f, gconstpointer user_data)
++{
++	/* Matches, and outranks the host network's primary="true". */
++	assert_lookup (f, "26223", NULL, "d3e35801", "winSIM");
++	/* SIMs pad EF_GID1; Android matches a case-insensitive prefix. */
++	assert_lookup (f, "26223", NULL, "D3E35801FFFFFFFF", "winSIM");
++	/* Stated and contradicted: winSIM is not a candidate at all. */
++	assert_lookup (f, "26223", NULL, "FF", "o2");
++	/* Not stated by the caller: a wildcard, not a rejection. */
++	assert_lookup (f, "26223", NULL, NULL, "o2");
++}
++
++/* Whatever else changes, the MNC width preference and the old entry point must
++ * behave as they always have.
++ */
++static void
++test_unchanged_behaviour (Fixture *f, gconstpointer user_data)
++{
++	NMAMobileProvider *old, *new;
++
++	assert_lookup (f, "234015", NULL, NULL, "Three Digit");
++	assert_lookup (f, "23415",  NULL, NULL, "Three Digit");
++	assert_lookup (f, "234099", NULL, NULL, NULL);
++	assert_lookup (f, "2341",   NULL, NULL, NULL);
++	assert_lookup (f, "2340155", NULL, NULL, NULL);
++
++	old = nma_mobile_providers_database_lookup_3gpp_mcc_mnc (f->db, "22210");
++	new = nma_mobile_providers_database_lookup_3gpp_sim (f->db, "22210", NULL, NULL);
++	g_assert (old == new);
++}
++
++int
++main (int argc, char **argv)
++{
++	g_test_init (&argc, &argv, NULL);
++
++#define ADD(path, func) \
++	g_test_add (path, Fixture, NULL, fixture_set_up, func, fixture_tear_down)
++
++	ADD ("/mobile-providers/primary-wins", test_primary_wins);
++	ADD ("/mobile-providers/spn-identifies-mvno", test_spn_identifies_mvno);
++	ADD ("/mobile-providers/spn-falls-back", test_spn_falls_back);
++	ADD ("/mobile-providers/gid1", test_gid1);
++	ADD ("/mobile-providers/unchanged-behaviour", test_unchanged_behaviour);
++
++	return g_test_run ();
++}
+-- 
+2.55.0
+

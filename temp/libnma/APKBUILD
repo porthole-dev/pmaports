@@ -1,0 +1,98 @@
+# TEMPORARY FORK of community/libnma.
+#
+# An MCC/MNC pair names a network, not a provider: every MVNO reselling that
+# network reports the same one. libnma returned whichever candidate the hash
+# iteration reached first -- reliably an MVNO, since host networks have been in
+# mobile-broadband-provider-info from the start -- so gnome-control-center's
+# Mobile Network panel offers an Italian SIM internet.postemobile.it and a
+# T-Mobile US one US Mobile's pwg.
+#
+# The patch scores the candidates the way Android's CarrierResolver does, using
+# the provider primary= and gsm/gid1 fields the database has carried unread
+# since 2023, and adds nma_mobile_providers_database_lookup_3gpp_sim() for a
+# caller holding the SIM's EF_SPN/EF_GID1. Needs temp/mobile-broadband-provider-
+# info for Italy, whose providers carry no primary= tag.
+#
+# pkgrel is 50 so this build outranks Alpine's 1.10.6-r4 from any repo, while an
+# upstream 1.10.7 still outranks it by design.
+#
+# NOT YET SUBMITTED upstream. No libnma issue or MR covers this; the live thread
+# is mobile-broadband-provider-info#32. Drop this fork when the patch lands.
+
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
+# Contributor: Rasmus Thomsen <oss@cogitri.dev>
+pkgname=libnma
+pkgver=1.10.6
+pkgrel=50
+pkgdesc="NetworkManager GUI client library"
+url="https://gitlab.gnome.org/GNOME/libnma"
+arch="all"
+license="LGPL-2.1-or-later"
+depends="mobile-broadband-provider-info $pkgname-common"
+makedepends="
+	gcr4-dev
+	glib-dev
+	gobject-introspection-dev
+	gtk+3.0-dev
+	gtk4.0-dev
+	iso-codes-dev
+	meson
+	mobile-broadband-provider-info
+	networkmanager-dev
+	vala
+	"
+subpackages="$pkgname-dev $pkgname-lang $pkgname-common $pkgname-gtk4"
+source="https://download.gnome.org/sources/libnma/${pkgver%.*}/libnma-$pkgver.tar.xz
+	resolve-mvnos-sharing-an-mcc-mnc.patch
+	"
+
+prepare() {
+	default_prepare
+
+	# The release tarball ships a pre-generated src/nma-version.h beside the
+	# .in it was generated from; the git tree has only the .in. Every header
+	# pulls it in as #include "nma-version.h", and a quoted include is
+	# resolved against the including file's own directory first -- so the
+	# stale copy in src/ wins over the one meson generates from the patched
+	# .in, and the new NMA_AVAILABLE_IN_* macro is never defined. Drop it.
+	rm -f src/nma-version.h
+}
+
+build() {
+	abuild-meson \
+		-Db_lto=true \
+		-Dlibnma_gtk4=true \
+		-Dgtk_doc=false \
+		. output
+	meson compile -C output
+}
+
+check() {
+	meson test --print-errorlogs -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+
+	# in network-manager-applet
+	rm "$pkgdir"/usr/share/glib-2.0/schemas/org.gnome.nm-applet.gschema.xml
+}
+
+common() {
+	pkgdesc="$pkgdesc (shared data for GTK3 and GTK4 libraries)"
+	depends=""
+
+	amove usr/share/glib-2.0/schemas
+}
+
+gtk4() {
+	pkgdesc="$pkgdesc (GTK4 library)"
+
+	amove usr/lib/libnma-gtk4.so.*
+	amove usr/lib/girepository-1.0/NMA4-*.typelib
+}
+
+sha512sums="
+4801db35a8d510c651fc91da4f394a665a4ba5c35fbefe0496363c404b49d5f4e103f49084220ee58b995684d2ac93643320b7d1777ebeea555e7657768a1f6a  libnma-1.10.6.tar.xz
+0bff83c2d9fdc71bd6812414037462a5ff4643c7222b4b8d9425cc05ad1379eb411947f026a5ff6df9390e3cd563885d638da7e384747ec89107ef1006eff185  resolve-mvnos-sharing-an-mcc-mnc.patch
+"

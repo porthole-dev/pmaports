@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=44
+pkgrel=45
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -110,8 +110,6 @@ source="
 	ucm/VoiceCall.conf
 	ucm/taimen.conf
 	iio-sensor-proxy-wait-for-ssc.conf
-	taimen-nfc-toggle
-	taimen-nfc-toggle.desktop
 	taimen-sns-reg-prepare
 	modules-load.conf
 	taimen-crash-reboot.conf
@@ -445,17 +443,6 @@ package() {
 	mkdir -p "$pkgdir"/usr/share/alsa/ucm2/conf.d/msm8998
 	ln -s /usr/share/alsa/ucm2/Google/taimen/taimen.conf \
 		"$pkgdir"/usr/share/alsa/ucm2/conf.d/msm8998/Google-Pixel-2-XL.conf
-
-	# There is no NFC control anywhere in phosh or GNOME Settings -- no
-	# panel, no quick setting -- and phosh's quick settings are not
-	# user-extensible without writing a plugin, so the hardware was only
-	# reachable from a terminal. This is a launcher, which is the one
-	# extension point that does exist. No polkit rule is needed: neard's
-	# D-Bus policy already lets a session user set Powered.
-	install -Dm755 "$srcdir"/taimen-nfc-toggle \
-		"$pkgdir"/usr/bin/taimen-nfc-toggle
-	install -Dm644 "$srcdir"/taimen-nfc-toggle.desktop \
-		"$pkgdir"/usr/share/applications/taimen-nfc-toggle.desktop
 }
 
 openrc() {
@@ -540,8 +527,6 @@ b5d4c97d455b526c6b0e335fb13f48c3b0761aa59897d6c28d92c4ee4f70182b0bbddde54e11fcd2
 d5735ae01224da00aabfbe7cb9061560f63edf9c50d510cfebc96f969ae2942d7e970ed458e2c64ec51c62836dad49b85a8a0706fb75d7a5e5f8f3061fd2e02a  VoiceCall.conf
 e29b33ba6c864f93a71451c7b89e5b51bd98edb2c565f8b0f1f60b0c303edb85e466882dc2489ae8662c5368aa25819b24d9a8da29c10a1b04e97d5bb317703f  taimen.conf
 0c4b35807a836c2fbbc78afcdb12e10c439ef9ce76e01304657b542a8b48f30a084f954c9441e809ea2fd42e3b2100c779bc2312676924572068a68297705236  iio-sensor-proxy-wait-for-ssc.conf
-9ad10623be9fd5f4454c69bf0061424169c355cba8530fb6a6dad0c5cb9a4a424e0f5579b3a3231f28ce4038b732ec283cf600dd71125a1ad29761753ddd5359  taimen-nfc-toggle
-e52aa8f71334fae23a9901975fe82c7345ffaa5b79cd484177a75ce305f292ec3abdde9add4ffb9d683b29acc5a1047fcf5f9eb320289b1da0c8e6631239754c  taimen-nfc-toggle.desktop
 1ea1bc8e7ea32f2c362acbef037b0a3d209eff6d0104b6b30e3a334e03661649e31f8b8477d3bd3ba4cf44ec83d373fd3fae1231c4ef23a79fd8ccc98b400c2a  taimen-sns-reg-prepare
 06248e1e6359966877eeaf0ff9a6f8e9b552198c7d3d376be0c8716358488c72362e7f2eedd99a845fe52fd916ebdb37948afd55ab7e35c26b10e0115f4b3c8f  modules-load.conf
 67a7d77e2860b0517d239993191a8f7debbc9cb06059b4b78eaecdfd0185bd31b4be7f828588696a799e5c825f1665105a3df74be1e2f0dd950b31edd4cdc432  taimen-crash-reboot.conf

@@ -2,13 +2,22 @@
 # Contributor: Elly Fong-Jones <elly@elly.town>
 # Maintainer: lauren n. liberda <lauren@selfisekai.rocks>
 #
-# FORKED for taimen (msm8998 / Adreno 540), 2026-09-09. Two changes, both in
-# the gn args, and one extra conf file. See the `use_v4l2_codec` comment below
-# and v4l2-venus.conf. Everything else is Alpine's aport unmodified; rebase on
-# it rather than carrying divergence.
+# FORKED for taimen (msm8998 / Adreno 540), 2026-09-09, and since generalised:
+# the apk is meant to serve any aarch64 postmarketOS handheld, not one SoC.
+# Divergence from Alpine is grouped and marked in place with the source that
+# justifies it:
+#
+#   HW DECODE   use_v4l2_codec on / use_vaapi off, plus two patches -- see the
+#               gn args below, v4l2-venus.conf, and
+#               v4l2-sandbox-mainline-device-nodes.patch.
+#   LAUNCHES    xkb-survive-a-seat-with-no-keymap.patch. Without it the browser
+#               SIGSEGVs before its first window on any wlroots compositor.
+#
+# Everything else is Alpine's aport unmodified; rebase on it rather than
+# carrying divergence.
 pkgname=chromium
 pkgver=152.0.7977.82
-pkgrel=50
+pkgrel=51
 _copium_tag=152.0
 # DEPS file -> deps['src/third_party/test_fonts']['objects'][0]['object_name']
 # (for the given version, when it changes)
@@ -170,6 +179,9 @@ source="
 	pvalloc.patch
 	rust-cbor.patch
 	temp-failure-retry.patch
+
+	v4l2-sandbox-mainline-device-nodes.patch
+	xkb-survive-a-seat-with-no-keymap.patch
 	"
 _copium_patches="
 	cr133-ffmpeg-no-noh264parse.patch
@@ -736,6 +748,26 @@ _configure() {
 	#
 	# It costs one runtime flag, because the master feature switch keys off
 	# USE_VAAPI: see v4l2-venus.conf, which this package installs.
+	#
+	# STATEFUL AND STATELESS ARE BOTH IN, AND THE CHOICE IS MADE AT RUNTIME.
+	# There is no second gn arg to find: media/gpu/v4l2/BUILD.gn compiles
+	# v4l2_stateful_video_decoder.cc AND v4l2_video_decoder.cc with its
+	# stateless backend and the h264/vp8/vp9 delegates from this one arg.
+	# VideoDecoderPipeline::Create() then calls IsV4L2DecoderStateful()
+	# (media/gpu/v4l2/v4l2_utils.cc), which QUERYCAPs the decoder and picks
+	# V4L2StatefulVideoDecoder if OUTPUT advertises whole-stream formats
+	# (V4L2_PIX_FMT_H264/VP8/VP9) and V4L2VideoDecoder if it advertises the
+	# slice/frame ones. venus is the first kind -- on msm8998 and on sdm845
+	# alike; a Rockchip or an i.MX8 is the second; one package serves both.
+	# H.265 rides along on enable_hevc_parser_and_hw_decoder, pinned below
+	# rather than left to a default that is only true while is_linux is.
+	#
+	# THE PIECE THAT IS NOT A GN ARG. The GPU process opens those nodes
+	# through the seccomp broker, and the broker's permission list holds only
+	# ChromeOS's /dev/video-dec* and /dev/media-dec* names -- on a plain Linux
+	# build it is not even consulted for V4L2. Without
+	# v4l2-sandbox-mainline-device-nodes.patch this configuration builds
+	# perfectly and silently decodes in software.
 	case "$CARCH" in
 	riscv64)
 		# no vaapi on riscv support
@@ -783,6 +815,7 @@ _configure() {
 		custom_toolchain=\"//build/toolchain/linux/unbundle:default\"
 		disable_fieldtrial_testing_config=true
 		enable_hangout_services_extension=true
+		enable_hevc_parser_and_hw_decoder=true
 		enable_nocompile_tests=false
 		enable_rust=true
 		enable_stripping=false
@@ -1110,7 +1143,7 @@ ca4f98300f2037a40e02f6c2ffa04427fdf08cdce8de34cc944a5ccb69d4279090d2b8476d5e77bd
 d805e9353da0b52c866a7812593c26b293a7bb4c153012c2e94ff027c7ece7c261b65032f81de334eb9a37eef1f5b962940a22c0193dd7cef26e1aecee4682a6  rollup-wasm-4.22.4.tgz.noauto
 1b16564f85a03f3eb934ec51289dc6159e2454202d40f48354f947d6ceffac8889e9eb4c0f4dfaafb3a15101566d54039f832bc9a8433c3c463e2d1dac2d2acc  chromium-launcher.sh
 9cfcb41d69c5a515b6f9fe2a629579fa499e1f48eb58a0ce4ec8e5029d450bcafb6d963019aaac9a6838244bee9f9ba7fe5ef6146a0ca6b20fcda4ab7f059476  chromium.conf
-4267fd7068b5ea7bed2045c9cfbf86ad64dd4ed294a43438f3d19c94d2498ea1ec9f717b0cbcecf1545a8837d94380e05fe22db66f009e938db0dc28c97eefe9  v4l2-venus.conf
+465046ed488d91074bb62bafcfcc4530b356eccd95824947cc8a87015432d6bfb2b4810c4b0d23c94b9470bc3dda6dd501fe4a7d6ce939c60723fb8ff0d7532c  v4l2-venus.conf
 fc60d06eead34b854a65065522a3d3c871b04a107ff020f55647b006227b5378ecae63c862d7e61be4fa947150db64ade66178acf78d19ee3e467a6acd0cee54  zz-features.conf
 2d8237a940ea691bd10b08315429677a587f7ef9692a0cca53bfd066eae82998a6c71f402a8669e9de39f94d7f3280745d1628ea6eac5d76ca7116844d4e0dac  google-api.keys
 69b45005451ccd69c354b4c2910e92371cb801665f5e300dbecd36f8bc4ce68e77a431b5dac07c0937787debb4e93b7aadefa0a1e76c4ae334d2547ca3ca14ff  0001-hotfix-ignore-a-new-warning-in-rust-1.89.patch
@@ -1135,4 +1168,6 @@ b75908a45ee2f4f806eec8d86fca2f51fda3531b88de48ef4539c364a40d7e2897cdaf38b715682d
 03f829a2da633533ef3fd0f287f5ec602d936a97a98b53cd2415553c2537ae9d571f35397ca7c9fb3f4b0806c300e3b189569f8d979ca132e1a2a4dae7206396  pvalloc.patch
 76a44fc0351fffb4bc9af9f7f5e39d610877e7777534e9660dc9b98f730a97d286f420f31c4321e40a6c381894d5de1b1d3948d4af412852beac57b8a4ad143a  rust-cbor.patch
 e48693e6b7aeebf69a5acbf80d9a35defe4c23835121dfeb58b051ac7c527e758a41004f4d193274fe1b01c0bfb1dbc77b09cb6a404a3fdee507a2918afb0edb  temp-failure-retry.patch
+16fb2c3f652de61615956040e5ddfdd386f38b876f1f09a63a0134bb5d4673c1c3fc9116f594cfacdb150433e97c278a789310052a96fb170fca28df3e307950  v4l2-sandbox-mainline-device-nodes.patch
+9b72ae1fbc53e79d1645f81b2c2f8d2d4a696cdf01bd7e0972f7038ea656c94d1e87a3e7293822d1e67e995b640c74ea84a5d1d1da0f77a11f7b262125afde3f  xkb-survive-a-seat-with-no-keymap.patch
 "

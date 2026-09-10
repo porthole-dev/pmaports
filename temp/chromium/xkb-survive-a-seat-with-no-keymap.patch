@@ -1,0 +1,56 @@
+A seat that advertises the keyboard capability and never sends a keymap
+terminates the browser on the first modifiers event.
+
+phoc, and every wlroots compositor a handheld runs, has to advertise
+wl_seat's keyboard capability because the on-screen keyboard needs it. A
+phone has no physical keyboard, so no wl_keyboard.keymap event is ever
+sent. The protocol trace on a Pixel 2 XL is:
+
+    wl_seat#30.capabilities(6)                     # keyboard|touch
+     -> wl_seat#30.get_keyboard(new id wl_keyboard#9)
+    wl_keyboard#9.enter(842, wl_surface#36, array[0])
+    wl_keyboard#9.modifiers(843, 0, 0, 0, 0)
+
+with no keymap event in between. WaylandKeyboard::OnModifiers() forwards
+that straight to XkbKeyboardLayoutEngine::UpdateModifiers(), which
+dereferences an xkb_state that was never built:
+
+    #0  xkb_state_update_mask (libxkbcommon.so.0 + 0x23b34)  SEGV_MAPERR
+
+Every launch, before a window appears. XkbLookup() in the same file
+already returns early on a null state; these two entry points did not.
+GTK tolerates a null keymap, which is why GTK browsers have never shown
+this and Chromium always does.
+
+--- a/ui/events/ozone/layout/xkb/xkb_keyboard_layout_engine.cc
++++ b/ui/events/ozone/layout/xkb/xkb_keyboard_layout_engine.cc
+@@ -966,6 +966,17 @@
+                                              uint32_t latched,
+                                              uint32_t locked,
+                                              uint32_t group) {
++  // A seat may advertise the keyboard capability and never send a keymap. A
++  // handheld running a wlroots compositor does exactly that: the on-screen
++  // keyboard needs wl_seat to carry the keyboard capability, while the device
++  // has no physical keyboard for a wl_keyboard.keymap event to describe. The
++  // first wl_keyboard.modifiers event then arrives before SetCurrentLayout*()
++  // has built any state, and dereferencing it terminates the browser during
++  // startup. XkbLookup() below already returns early for the same reason.
++  if (!xkb_state_) {
++    return 0;
++  }
++
+   auto* state = xkb_state_.get();
+   xkb_state_update_mask(state, depressed, latched, locked, 0, 0, group);
+   auto component = static_cast<xkb_state_component>(XKB_STATE_MODS_DEPRESSED |
+@@ -985,6 +996,11 @@
+ DomCode XkbKeyboardLayoutEngine::GetDomCodeByKeysym(
+     uint32_t keysym,
+     const std::optional<std::vector<std::string_view>>& modifiers) const {
++  // No keymap, no keycodes to map back to. See UpdateModifiers() above.
++  if (!xkb_state_) {
++    return DomCode::NONE;
++  }
++
+   // Look up all candidates.
+   auto range = std::equal_range(
+       xkb_keysym_map_.begin(), xkb_keysym_map_.end(), XkbKeysymMapEntry{keysym},

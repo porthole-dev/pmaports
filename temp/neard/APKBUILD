@@ -10,12 +10,20 @@
 # pkgrel is 50 so this build outranks Alpine's 0.20-r0 from any repo, while an
 # upstream 0.21 still outranks it by design.
 #
-# NOT YET SUBMITTED upstream: this needs to go to linux-nfc@lists.01.org
-# (neard) and an Alpine aports MR. Drop this fork the day either lands and
-# Alpine rebuilds.
+# NOT YET SUBMITTED upstream: linux-nfc@lists.01.org is dead, 01.org was
+# retired by Intel in 2022. neard's own README (0.20 tarball) gives the live
+# addresses: the mailing list is oe-linux-nfc@lists.linux.dev, and the project
+# also takes GitHub pull requests at https://github.com/linux-nfc/neard --
+# probably the better route now. Also needs an Alpine aports MR. Drop this
+# fork the day either lands and Alpine rebuilds.
+#
+# url= below is the same dead 01.org address, inherited byte-for-byte from
+# Alpine's aport -- that belongs in the Alpine MR, not a reason to diverge
+# this fork.
 
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: Minecrell <minecrell@minecrell.net>
+# Contributor: Achill Gilgenast <achill@achill.org>
 pkgname=neard
 pkgver=0.20
 pkgrel=50

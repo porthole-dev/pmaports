@@ -46,6 +46,33 @@ depends="
 	xdg-utils
 	"
 _llvmver=22
+# TWO ENTRIES HERE ARE LOAD-BEARING FOR THE CROSS BUILD, AND NEITHER LOOKS IT.
+# pmb/build/init.py::init_compiler decides what goes in the NATIVE chroot -- the
+# one crossdirect execs into -- by matching literal strings in this list:
+#
+#   "rust" | "cargo" | "cargo-auditable"  ->  cross_pkgs += <all deps>
+#   "clang" | "clang-dev"                 ->  cross_pkgs += ["clang"]
+#   otherwise                             ->  cross_pkgs += gcc/g++ for $CARCH
+#
+# The rust arm is the problem. It copies EVERY dependency into the native
+# chroot, runtime ones included, and this package's runtime depends open with
+# `$pkgname-common=$pkgver-r$pkgrel`. apk cannot satisfy that on x86_64, so
+# pmbootstrap builds a COMPLETE x86_64 chromium first, to produce a
+# chromium-common nothing will ever install. Measured: the aarch64 build does
+# not start until that one finishes. pmbootstrap's own comment at the call site
+# calls this "a workaround for rust ... this should all be refactored"; until it
+# is, `cmd:rustc` asks for the same package (rust provides it) without matching
+# the string.
+#
+# `clang` then has to be named explicitly, because it is the arm that puts a
+# host clang -- clang22, the same version as clang$_llvmver -- where crossdirect
+# looks for it. Without it _configure() correctly refuses to use crossdirect and
+# every compile runs under qemu.
+#
+# The cost of this pairing, stated: the arms are if/elif/else, so choosing clang
+# means gcc-$CARCH and g++-$CARCH are NOT in the native chroot. Nothing here
+# compiles with gcc -- $CC and $CXX are clang -- but a stray bare `cc` from some
+# third_party script would fail loudly rather than fall back.
 makedepends="
 	alsa-lib-dev
 	bash
@@ -54,6 +81,7 @@ makedepends="
 	brotli-dev
 	bzip2-dev
 	cairo-dev
+	clang
 	clang$_llvmver-dev
 	clang$_llvmver-rtlib
 	crc32c-dev
@@ -120,7 +148,7 @@ makedepends="
 	python3
 	qt6-qtbase-dev
 	re2-dev
-	rust
+	cmd:rustc
 	rust-bindgen
 	rustfmt
 	samurai

@@ -20,6 +20,7 @@
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: Rasmus Thomsen <oss@cogitri.dev>
 # Contributor: Pablo Correa Gomez <pabloyoyoista@postmarketos.org>
+# Contributor: team/gnome <achill@achill.org>
 pkgname=gnome-control-center
 pkgver=50.4
 pkgrel=50

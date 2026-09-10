@@ -1,4 +1,4 @@
-From fea05e644162eeea7f8a6e3ce81b489df2faa123 Mon Sep 17 00:00:00 2001
+From 8528e883d853d2e2f0d310caa60854e2155d5761 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 12:08:13 +0200
 Subject: [PATCH] privacy: add an NFC page
@@ -149,7 +149,7 @@ index 4360b10..d72c49e 100644
    'usage/cc-usage-page.c',
 diff --git a/panels/privacy/nfc/cc-nfc-page.blp b/panels/privacy/nfc/cc-nfc-page.blp
 new file mode 100644
-index 0000000..f42d2b9
+index 0000000..e428c56
 --- /dev/null
 +++ b/panels/privacy/nfc/cc-nfc-page.blp
 @@ -0,0 +1,22 @@
@@ -167,8 +167,8 @@ index 0000000..f42d2b9
 +    content: Adw.PreferencesPage {
 +      Adw.PreferencesGroup {
 +        Adw.SwitchRow nfc_row {
-+          title: _("_NFC");
-+          subtitle: _("Allow permitted apps to use NFC");
++          title: _("_NFC Access");
++          subtitle: _("Allow apps to use NFC");
 +          use-underline: true;
 +        }
 +      }

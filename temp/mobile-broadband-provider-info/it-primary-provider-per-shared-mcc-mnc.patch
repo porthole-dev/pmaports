@@ -1,0 +1,81 @@
+From 8f8de8402afd3fda2bac26f9045b2ee81441efdd Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 10 Sep 2026 10:20:13 +0200
+Subject: [PATCH] it: mark which provider owns each shared MCC/MNC
+
+Backport onto the 20251101 release of the main-branch change, for
+distributions building from that tarball.
+---
+ serviceproviders.xml | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/serviceproviders.xml b/serviceproviders.xml
+index 8ba1e03..cee56f0 100644
+--- a/serviceproviders.xml
++++ b/serviceproviders.xml
+@@ -7294,7 +7294,7 @@ conceived.
+ 
+ <country code="it">
+ 	<name>Italy</name>
+-	<provider>
++	<provider primary="true">
+ 		<name>Vodafone</name>
+ 		<gsm>
+ 			<network-id mcc="222" mnc="10"/>
+@@ -7317,7 +7317,7 @@ conceived.
+ 			</apn>
+ 		</gsm>
+ 	</provider>
+-	<provider>
++	<provider primary="true">
+ 		<name>TIM</name>
+ 		<gsm>
+ 			<network-id mcc="222" mnc="01"/>
+@@ -7386,7 +7386,7 @@ conceived.
+ 			</apn>
+ 		</gsm>
+ 	</provider>
+-	<provider>
++	<provider primary="false">
+ 		<name>Fastweb</name>
+ 		<gsm>
+ 			<network-id mcc="222" mnc="99"/>
+@@ -7410,7 +7410,7 @@ conceived.
+ 			</apn>
+ 		</gsm>
+ 	</provider>
+-	<provider>
++	<provider primary="false">
+ 		<name>PosteMobile</name>
+ 		<gsm>
+ 			<network-id mcc="222" mnc="10"/>
+@@ -7426,7 +7426,7 @@ conceived.
+ 			</apn>
+ 		</gsm>
+ 	</provider>
+-	<provider>
++	<provider primary="false">
+ 		<name>CoopVoce</name>
+ 		<gsm>
+ 			<network-id mcc="222" mnc="01"/>
+@@ -7448,7 +7448,7 @@ conceived.
+ 			</apn>
+ 		</gsm>
+ 	</provider>
+-	<provider>
++	<provider primary="false">
+ 		<!-- MVNO operating on 3's network -->
+ 		<!-- www.bip.it -->
+ 		<name>Bip</name>
+@@ -7485,7 +7485,7 @@ conceived.
+ 			</apn>
+ 		</gsm>
+ 	</provider>
+-	<provider>
++	<provider primary="false">
+ 		<!-- MVNO operating on TIM's network -->
+ 		<name>Tiscali</name>
+ 		<gsm>
+-- 
+2.55.0
+

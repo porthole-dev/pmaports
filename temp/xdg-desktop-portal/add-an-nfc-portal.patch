@@ -1,7 +1,7 @@
 From d7393f3678a9c39b5c1e181922f29e13b727fddf Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:27:53 +0200
-Subject: [PATCH 1/6] nfc: add an NFC portal
+Subject: [PATCH 1/7] nfc: add an NFC portal
 
 There is no sanctioned way for a sandboxed application to use NFC. neard is a
 system-bus service, so an application either gets the whole system bus or
@@ -529,7 +529,7 @@ index 0000000..71fac0a
 From 3cd8bb619e1a2b35b4466f671a7a530831e67a12 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:40:03 +0200
-Subject: [PATCH 2/6] nfc: fix translation extraction, orphan docs, and doc
+Subject: [PATCH 2/7] nfc: fix translation extraction, orphan docs, and doc
  comment form
 
 Review of the previous commit found three registration/shape problems:
@@ -759,7 +759,7 @@ index 71fac0a..372fda1 100644
 From 925b518d54854b4a679cf269e932d79507618ad8 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:52:34 +0200
-Subject: [PATCH 3/6] nfc: IsNFCPresent follows neard
+Subject: [PATCH 3/7] nfc: IsNFCPresent follows neard
 
 Nearly no machine has an NFC adapter, so an application needs to be able to
 hide its NFC UI rather than call into a portal that will fail. The property is
@@ -1015,7 +1015,7 @@ index 372fda1..f2500ec 100644
 From e652c5a571fad36b8e09605aa0260c628bdeaa2a Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 17:33:36 +0200
-Subject: [PATCH 4/6] nfc: OpenNFCRemote hands out a filtered neard connection
+Subject: [PATCH 4/7] nfc: OpenNFCRemote hands out a filtered neard connection
 
 A permitted application gets a socket to an xdg-dbus-proxy filtered onto the
 system bus, on which it sees org.neard and can start and stop the poll loop,
@@ -1602,7 +1602,7 @@ index f2500ec..9b22149 100644
 From da2e278c1117604793a4209eaa832b16834f9d7c Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 18:01:25 +0200
-Subject: [PATCH 5/6] nfc: do not wait forever for a proxy that never starts
+Subject: [PATCH 5/7] nfc: do not wait forever for a proxy that never starts
 
 g_subprocess_launcher_take_fd leaves the launcher holding its own copy of
 the fd until it is finalized, and the launcher here is a g_autoptr that
@@ -2001,7 +2001,7 @@ index 9b22149..762b07d 100644
 From e328a1516df5f68e898db6bb300a7e0ffe39a25b Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 18:18:48 +0200
-Subject: [PATCH 6/6] nfc: free a proxy's slot when the proxy itself dies
+Subject: [PATCH 6/7] nfc: free a proxy's slot when the proxy itself dies
 
 The per-sender cap was a lifetime quota rather than a concurrency one. The
 only thing that freed a slot was the application leaving the bus: closing
@@ -2331,6 +2331,404 @@ index 762b07d..6c0f3e9 100644
  
      def test_open_remote_survives_a_proxy_that_never_starts(
          self, portals, dbus_con, xdp_app_info
+-- 
+2.55.0
+
+
+From 64db92e39524612d8a271e2cb85e238ee510320c Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 10 Sep 2026 21:36:25 +0200
+Subject: [PATCH 7/7] nfc: bound the readiness wait, and say what the interface
+ means
+
+The wait for xdg-dbus-proxy's readiness byte covered only half of what can
+go wrong. A proxy that *dies* is caught by the read seeing EOF, once the
+parent has dropped its copy of the write end. A proxy that *starts and
+hangs* -- blocked connecting to or authenticating against an unresponsive
+system bus -- writes no byte and never exits, so there is no EOF to see and
+the read never returns: the call, the thread it runs on and the process it
+spawned are held for the life of the portal, and nothing will ever reap any
+of them. poll() with a timeout, and give up.
+
+Giving up also has to kill the child. Dropping the last reference to a
+GSubprocess does not, so both failure paths now say so explicitly rather
+than leaving a proxy running with nothing holding it.
+
+The rest is what a first read of this interface from outside would ask for:
+
+  - OpenNFCRemote gets org.gtk.GDBus.C.Name, so gdbus-codegen emits
+    handle_open_nfc_remote rather than handle_open_nfcremote, the way
+    Camera's OpenPipeWireRemote already does;
+  - both methods get org.qtproject.QtDBus.QtTypeName.In0, which every other
+    portal XML with an a{sv} in-arg carries and this one did not, and which
+    Qt and KDE generate their bindings from;
+  - the XML says that the returned connection's lifetime is tied to the
+    caller's session bus connection and not to the fd. That is a real
+    difference from OpenPipeWireRemote, it is what an application author
+    will assume it shares, and getting it wrong looks exactly like the
+    connection dying at random a fifth of a second in;
+  - the permission constants move to xdp-types.h beside CAMERA_'s, with an
+    NFC_DBUS_IFACE to match, so this is no longer the one file in src/
+    defining its own;
+  - the file carries the full licence block the other data/*.xml do, not
+    just the SPDX line;
+  - a NEWS entry.
+
+The test for a proxy that hangs needs a stand-in that starts and stays,
+which /bin/false cannot be. It also asserts the process is gone afterwards,
+which is the half that catches a missing force_exit.
+
+And xdg_dbus_proxy_pids() skips on a kernel without CONFIG_PROC_CHILDREN
+instead of raising FileNotFoundError, which read as two unrelated failures.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ NEWS.md                             | 13 +++++
+ data/org.freedesktop.portal.NFC.xml | 24 +++++++++
+ src/nfc.c                           | 75 ++++++++++++++++++++++-----
+ src/xdp-types.h                     |  4 ++
+ tests/test_nfc.py                   | 79 ++++++++++++++++++++++++++++-
+ 5 files changed, 179 insertions(+), 16 deletions(-)
+
+diff --git a/NEWS.md b/NEWS.md
+index 63d11ce..f553ff1 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -1,3 +1,16 @@
++Changes in 1.23.0
++=================
++Released: Not yet
++
++New Features:
++
++- Add an NFC Portal (`org.freedesktop.portal.NFC`). `AccessNFC` asks the user
++  through the existing Access dialog, and `OpenNFCRemote` hands a permitted
++  application a file descriptor for a `xdg-dbus-proxy`-filtered connection to
++  neard on the system bus: it may enumerate adapters and tags, poll, and read
++  and write records, and may not change the adapter's power state, which stays
++  the user's switch
++
+ Changes in 1.22.1
+ =================
+ Released: 2026-06-17
+diff --git a/data/org.freedesktop.portal.NFC.xml b/data/org.freedesktop.portal.NFC.xml
+index 50b6d80..b9bdcd2 100644
+--- a/data/org.freedesktop.portal.NFC.xml
++++ b/data/org.freedesktop.portal.NFC.xml
+@@ -3,6 +3,19 @@
+  Copyright (C) 2026 Giuseppe Maggio
+ 
+  SPDX-License-Identifier: LGPL-2.1-or-later
++
++ This library is free software; you can redistribute it and/or
++ modify it under the terms of the GNU Lesser General Public
++ License as published by the Free Software Foundation; either
++ version 2.1 of the License, or (at your option) any later version.
++
++ This library is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ Lesser General Public License for more details.
++
++ You should have received a copy of the GNU Lesser General Public
++ License along with this library. If not, see <http://www.gnu.org/licenses/>.
+ -->
+ 
+ <node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+@@ -33,6 +46,7 @@
+         open a connection to the NFC adapter.
+     -->
+     <method name="AccessNFC">
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In0" value="QVariantMap"/>
+       <arg type="a{sv}" name="options" direction="in"/>
+       <arg type="o" name="handle" direction="out"/>
+     </method>
+@@ -50,10 +64,20 @@
+         permission to use NFC, granted through
+         org.freedesktop.portal.NFC.AccessNFC().
+ 
++        The returned connection's lifetime is tied to the caller's session bus
++        connection, not to @fd: the portal tears the connection down when the
++        caller disappears from the session bus. This differs from the Camera
++        portal's ``OpenPipeWireRemote``, where the fd stands on its own. An application that calls this and then drops its session
++        bus connection (a short script letting it go out of scope, say) will
++        see @fd close a moment later, and should hold that connection for as
++        long as it uses this one.
++
+         There are currently no supported keys in the @options vardict.
+     -->
+     <method name="OpenNFCRemote">
++      <annotation name="org.gtk.GDBus.C.Name" value="open_nfc_remote"/>
+       <annotation name="org.gtk.GDBus.C.UnixFD" value="true"/>
++      <annotation name="org.qtproject.QtDBus.QtTypeName.In0" value="QVariantMap"/>
+       <arg type="a{sv}" name="options" direction="in"/>
+       <arg type="h" name="fd" direction="out"/>
+     </method>
+diff --git a/src/nfc.c b/src/nfc.c
+index a3d63e1..1d11c57 100644
+--- a/src/nfc.c
++++ b/src/nfc.c
+@@ -26,6 +26,7 @@
+ #include <gio/gunixfdlist.h>
+ #include <glib/gi18n.h>
+ #include <glib/gstdio.h>
++#include <poll.h>
+ #include <sys/socket.h>
+ #include <sys/un.h>
+ #include <unistd.h>
+@@ -37,9 +38,6 @@
+ #include "xdp-request.h"
+ #include "xdp-utils.h"
+ 
+-#define NFC_PERMISSION_TABLE "devices"
+-#define NFC_PERMISSION_DEVICE_NFC "nfc"
+-
+ #define NEARD_BUS_NAME "org.neard"
+ #define NEARD_OBJECT_PATH "/"
+ #define NEARD_ADAPTER_IFACE "org.neard.Adapter"
+@@ -273,8 +271,7 @@ static const char * const nfc_proxy_filter[] = {
+ 
+ /* The cap exists because every live proxy costs the *portal* a file descriptor
+  * and a process, so an application looping on OpenNFCRemote would exhaust
+- * xdg-desktop-portal rather than itself, and take every other portal in the
+- * session down with it.
++ * xdg-desktop-portal rather than itself.
+  *
+  * One connection is all an application needs: a D-Bus connection multiplexes,
+  * so nothing pushes it to open one per tag or per thread. The headroom is for
+@@ -316,12 +313,49 @@ nfc_proxy_free (gpointer data)
+   g_free (proxy);
+ }
+ 
++/* Long enough that a loaded machine binding a socket and connecting to the
++ * system bus is never mistaken for a wedged one, short enough that a proxy
++ * which will never answer does not hold a thread and a process for the life
++ * of the session. A healthy proxy writes its byte in single-digit
++ * milliseconds. */
++#define NFC_PROXY_READY_TIMEOUT_MS 5000
++
++/* Wait for xdg-dbus-proxy to say it is listening.
++ *
++ * Bounded, because the two ways this fails are not the same. A proxy that
++ * *dies* is covered by the read seeing EOF, once the parent has dropped its
++ * copy of the write end -- see nfc_proxy_new. A proxy that *starts and hangs*,
++ * blocked connecting to or authenticating against a wedged system bus, writes
++ * no byte and never exits, so there is no EOF to ever see: an unbounded read
++ * here would keep this call, its thread and that process for the life of the
++ * portal. */
+ static gboolean
+ read_ready_byte (int      fd,
+                  GError **error)
+ {
++  struct pollfd pfd = { .fd = fd, .events = POLLIN };
+   char byte;
+   ssize_t n;
++  int r;
++
++  do
++    r = poll (&pfd, 1, NFC_PROXY_READY_TIMEOUT_MS);
++  while (r == -1 && errno == EINTR);
++
++  if (r == 0)
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
++                   "xdg-dbus-proxy did not start: it did not signal readiness "
++                   "within %d ms", NFC_PROXY_READY_TIMEOUT_MS);
++      return FALSE;
++    }
++
++  if (r == -1)
++    {
++      g_set_error (error, G_IO_ERROR, g_io_error_from_errno (errno),
++                   "xdg-dbus-proxy did not start: %s", g_strerror (errno));
++      return FALSE;
++    }
+ 
+   do
+     n = read (fd, &byte, 1);
+@@ -451,23 +485,36 @@ nfc_proxy_new (const char  *sender,
+    * finalized, and this one holds the proxy's end of the sync socket. Drop it
+    * now: while the parent holds a copy, a read below can never see EOF, so a
+    * proxy that dies before it is ready -- a rejected argument, an LSM denial,
+-   * a socket it cannot bind -- would hang this read forever, and it is on
+-   * xdg-desktop-portal's one main loop. */
++   * a socket it cannot bind -- would hang this read until the timeout instead
++   * of failing at once. */
+   g_subprocess_launcher_close (launcher);
+ 
+-  if (subprocess == NULL ||
+-      !read_ready_byte (sync_fd, error))
++  if (subprocess == NULL)
+     {
+       g_unlink (path);
+       g_rmdir (directory);
+       return NULL;
+     }
+ 
++  if (!read_ready_byte (sync_fd, error))
++    {
++      /* Dropping the last reference to a GSubprocess does not kill the child.
++       * A proxy that started and hung would otherwise be left running with
++       * nothing holding it and nothing that will ever reap it. */
++      g_subprocess_force_exit (subprocess);
++      g_unlink (path);
++      g_rmdir (directory);
++      return NULL;
++    }
++
+   fd = connect_to (path, error);
+   g_unlink (path);
+   g_rmdir (directory);
+   if (fd == -1)
+-    return NULL;
++    {
++      g_subprocess_force_exit (subprocess);
++      return NULL;
++    }
+ 
+   proxy = g_new0 (NfcProxy, 1);
+   proxy->subprocess = g_steal_pointer (&subprocess);
+@@ -634,9 +681,9 @@ handle_open_nfc_remote (XdpDbusNFC            *object,
+       return G_DBUS_METHOD_INVOCATION_HANDLED;
+     }
+ 
+-  xdp_dbus_nfc_complete_open_nfcremote (object, invocation,
+-                                        out_fd_list,
+-                                        g_variant_new_handle (fd_id));
++  xdp_dbus_nfc_complete_open_nfc_remote (object, invocation,
++                                         out_fd_list,
++                                         g_variant_new_handle (fd_id));
+   return G_DBUS_METHOD_INVOCATION_HANDLED;
+ }
+ 
+@@ -644,7 +691,7 @@ static void
+ nfc_iface_init (XdpDbusNFCIface *iface)
+ {
+   iface->handle_access_nfc = handle_access_nfc;
+-  iface->handle_open_nfcremote = handle_open_nfc_remote;
++  iface->handle_open_nfc_remote = handle_open_nfc_remote;
+ }
+ 
+ static void
+diff --git a/src/xdp-types.h b/src/xdp-types.h
+index c9dee7c..830eb17 100644
+--- a/src/xdp-types.h
++++ b/src/xdp-types.h
+@@ -97,6 +97,10 @@ typedef struct _XdpDbusImplAccess XdpDbusImplAccess;
+ #define LOCATION_PERMISSION_TABLE "location"
+ #define LOCATION_PERMISSION_ID "location"
+ 
++#define NFC_DBUS_IFACE DESKTOP_DBUS_IFACE ".NFC"
++#define NFC_PERMISSION_TABLE "devices"
++#define NFC_PERMISSION_DEVICE_NFC "nfc"
++
+ #define NOTIFICATION_DBUS_IFACE DESKTOP_DBUS_IFACE ".Notification"
+ #define NOTIFICATION_DBUS_IMPL_IFACE DESKTOP_DBUS_IMPL_IFACE ".Notification"
+ #define NOTIFICATION_PERMISSION_TABLE "notifications"
+diff --git a/tests/test_nfc.py b/tests/test_nfc.py
+index 6c0f3e9..8c6f950 100644
+--- a/tests/test_nfc.py
++++ b/tests/test_nfc.py
+@@ -10,6 +10,7 @@ import pathlib
+ import pytest
+ import signal
+ import socket
++import sys
+ import time
+ 
+ from gi.repository import Gio, GLib
+@@ -40,11 +41,17 @@ def xdg_dbus_proxy_pids(portal_pid):
+ 
+     They are spawned as children of the portal, so its task children are where
+     they can be found. Needs CONFIG_PROC_CHILDREN, which every mainstream
+-    distribution kernel sets.
++    distribution kernel sets; without it /proc/<pid>/task/<tid>/children does
++    not exist and there is no other way to ask, so the tests that need this
++    skip rather than failing as if the portal had misbehaved.
+     """
+     found = []
+     for task in pathlib.Path(f"/proc/{portal_pid}/task").iterdir():
+-        for child in (task / "children").read_text().split():
++        try:
++            children = (task / "children").read_text()
++        except FileNotFoundError:
++            pytest.skip("kernel has no CONFIG_PROC_CHILDREN")
++        for child in children.split():
+             try:
+                 comm = pathlib.Path(f"/proc/{child}/comm").read_text().strip()
+             except OSError:
+@@ -451,3 +458,71 @@ class TestNfcProxyFailure:
+         # And the portal is still answering, rather than wedged behind a read
+         # that will never return.
+         xdp.check_version(dbus_con, "NFC", 1)
++
++
++class TestNfcProxyThatHangs:
++    """The portal must survive a proxy that starts and never signals."""
++
++    @pytest.fixture
++    def required_templates(self):
++        return {"access": {}, "neard": {}}
++
++    @pytest.fixture
++    def stand_in_pid_file(self, tmp_path):
++        return tmp_path / "stand-in.pid"
++
++    @pytest.fixture
++    def xdp_overwrite_env(self, tmp_path, stand_in_pid_file):
++        # A proxy that dies is caught by the readiness read seeing EOF. A
++        # proxy that *starts and hangs* -- blocked connecting to or
++        # authenticating against a wedged system bus -- writes no byte and
++        # never exits, so there is no EOF to see. /bin/false cannot stand in
++        # for that; a program that sleeps can. exec keeps the pid, so the pid
++        # recorded here is the one the portal has to kill.
++        stand_in = tmp_path / "hanging-dbus-proxy"
++        stand_in.write_text(
++            f"#!{sys.executable}\n"
++            "import os, time\n"
++            f"open({str(stand_in_pid_file)!r}, 'w').write(str(os.getpid()))\n"
++            "time.sleep(600)\n"
++        )
++        stand_in.chmod(0o755)
++        return {"XDP_DBUS_PROXY": str(stand_in)}
++
++    def test_open_remote_gives_up_on_a_proxy_that_never_signals(
++        self, portals, dbus_con, xdp_app_info, stand_in_pid_file
++    ):
++        """The readiness wait is bounded, and gives the proxy back.
++
++        Unbounded, this call, the thread it runs on and the process it
++        spawned were all held for the life of the portal.
++        """
++        TestNfc.set_permissions(self, dbus_con, xdp_app_info.app_id, ["yes"])
++        nfc_intf = xdp.get_portal_iface(dbus_con, "NFC")
++
++        start = time.monotonic()
++        with pytest.raises(dbus.exceptions.DBusException) as excinfo:
++            nfc_intf.OpenNFCRemote(
++                {}, dbus_interface="org.freedesktop.portal.NFC", timeout=60
++            )
++        elapsed = time.monotonic() - start
++
++        assert excinfo.value.get_dbus_name() == "org.freedesktop.portal.Error.Failed"
++        # Bounded at 5s in nfc.c, and nowhere near the 600s the stand-in sleeps.
++        assert elapsed < 30
++
++        # And the proxy is not left running. Dropping the last reference to a
++        # GSubprocess does not kill the child, so giving up on one has to say
++        # so explicitly.
++        pid = int(stand_in_pid_file.read_text().strip())
++        for _ in range(50):
++            try:
++                os.kill(pid, 0)
++            except ProcessLookupError:
++                break
++            time.sleep(0.1)
++        else:
++            pytest.fail(f"the stand-in proxy {pid} was left running")
++
++        # And the portal is still answering.
++        xdp.check_version(dbus_con, "NFC", 1)
 -- 
 2.55.0
 

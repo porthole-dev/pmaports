@@ -39,8 +39,9 @@ enable sns-reg.service
 # adds it in the unit itself, no drop-in needed any more -- but that alone
 # is not enough: without a line here it is silently disabled the same way
 # taimen-rescue.service was on the r24->r28 upgrade (see above). OpenRC
-# parity already exists too: main/neard-openrc ships /etc/init.d/neard and
-# is pulled in by this package's openrc() subpackage depends= below.
+# parity already exists too: community/neard-openrc ships /etc/init.d/neard
+# and is pulled in by this device package's APKBUILD, in the openrc()
+# subpackage's own depends=.
 enable neard.service
 
 # tuned / tuned-ppd: do not start them at boot.

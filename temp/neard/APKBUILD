@@ -48,7 +48,8 @@ subpackages="
 	"
 source="
 	https://git.kernel.org/pub/scm/network/nfc/neard.git/snapshot/neard-$pkgver.tar.gz
-	dbus-activation-and-wantedby.patch
+	0001-build-install-a-D-Bus-system-service-activation-file.patch
+	0002-build-enable-neard.service-by-default.patch
 	neard.initd
 	"
 
@@ -90,6 +91,7 @@ package() {
 
 sha512sums="
 5048a618be096753ef7f22b57770a7e1c0450878f0b75632668c72935f9e1b2945041cfd5733e824e8883cf9e4e2bc83c6c2597430cc356858f6de60947a47b9  neard-0.20.tar.gz
-7f89609ca57f4696cc40a284ed57600b70f86551b8b602ea454ae1b50c35d7ae827931e819c51dfa1b9f6f996ed446f06d97ae8e4dca1b8eb07a825eba18073b  dbus-activation-and-wantedby.patch
+932a78efcfebc95ce193d54ccc20927f72b74478dfdf5b7d925d569811db6340eae3b6cd2a03f61be4f4cc348334af7e282902c420832156bcfd0f87e04b4a13  0001-build-install-a-D-Bus-system-service-activation-file.patch
+cadc2eeaa4f641597d35b089d363595762eb1c4430687fa0917e37f6c699329fc21214fe9d15335f147afc921a8af9abbc1cdd8c7aa565a5c92889c826ec1691  0002-build-enable-neard.service-by-default.patch
 6e28ffa74687cc409856d8966d9e794e523254781133e61adb81007ed00b7f057122ca8dfa967684312a613e9a3898865844320e4302990046d871a0a9b66eb5  neard.initd
 "

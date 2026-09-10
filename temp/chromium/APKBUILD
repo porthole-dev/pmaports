@@ -15,6 +15,8 @@
 #   HANDHELD    ozone is wayland-only. Nothing here is SoC-specific: the apk
 #               is meant to serve any aarch64 pmOS handheld, msm8998 and
 #               sdm845 alike. Per-device flags go in the device package.
+#   CROSS SPEED $CC/$CXX are routed through crossdirect and check is off. See
+#               _configure(); it is worth hours.
 #
 # Everything else is Alpine's aport unmodified; rebase on it rather than
 # carrying divergence.
@@ -209,7 +211,15 @@ _copium_patches="
 	cr152-unbundle-opus-devtools.patch
 	"
 # chrome-sandbox can use suid when user namespaces aren't available, but uses only userns and drops privileges normally
-options="suid"
+#
+# !check: abuild's want_check() skips the suite when CBUILD != CHOST, and a
+# crossdirect build is NOT that -- it runs inside the target buildroot with the
+# compiler quietly redirected, so CBUILD == CHOST and the tests would build and
+# run. That means five more link targets (net_unittests alone is enormous) and
+# then executing them, plus xvfb, under qemu on a foreign arch. Alpine runs
+# them on a native builder; this fork cannot, and pretending otherwise costs
+# hours to produce results about qemu.
+options="suid !check"
 
 case "$CARCH" in
 riscv64)
@@ -727,10 +737,51 @@ _configure() {
 	export CXXFLAGS="${CXXFLAGS/-fstack-clash-protection}"
 	export CFLAGS="${CFLAGS/-fstack-clash-protection}"
 
-	export AR="/usr/lib/llvm$_llvmver/bin/llvm-ar"
-	export CC="/usr/lib/llvm$_llvmver/bin/clang"
-	export CXX="/usr/lib/llvm$_llvmver/bin/clang++"
-	export NM="/usr/lib/llvm$_llvmver/bin/llvm-nm"
+	# TOOLCHAIN -- and the single decision that sets how long this takes.
+	#
+	# custom_toolchain=unbundle:default means gn records $CC and $CXX
+	# verbatim: build/toolchain/linux/unbundle/BUILD.gn is `cc = getenv("CC")`,
+	# nothing more. Whatever is exported here is what ninja executes for every
+	# one of ~59000 steps.
+	#
+	# An ABSOLUTE path therefore defeats crossdirect. pmbootstrap cross-builds
+	# by putting /native/usr/lib/crossdirect/$CARCH first on PATH, holding
+	# symlinks named clang, clang++, gcc, cc ... to one wrapper that
+	# re-executes the HOST's compiler with -target and --sysroot=/. It decides
+	# on argv[0], so "/usr/lib/llvm22/bin/clang" is never a name it can match,
+	# and every compile runs the target-arch clang under qemu instead. Naming
+	# the wrapper is the whole fix; the chain it opens is
+	#
+	#   crossdirect -> /native/usr/lib/ccache/bin/clang (ccache, natively)
+	#               -> /native/usr/bin/clang            (host clang $_llvmver)
+	#
+	# llvm-ar and llvm-nm read and write any target's objects, so the host
+	# copies serve aarch64 output and skip qemu as well.
+	#
+	# Every arm of the condition is checked rather than assumed: PMB_CROSS is
+	# exported by pmbootstrap (pmb/build/backend.py), and a missing piece falls
+	# back to the plain in-chroot toolchain rather than failing the build.
+	local _llvm="/usr/lib/llvm$_llvmver"
+	local _xdir="/native/usr/lib/crossdirect/$CARCH"
+	export AR="$_llvm/bin/llvm-ar"
+	export CC="$_llvm/bin/clang"
+	export CXX="$_llvm/bin/clang++"
+	export NM="$_llvm/bin/llvm-nm"
+
+	local _crossdirect=false
+	if [ "$PMB_CROSS" = "crossdirect" ] \
+		&& [ -x "$_xdir/clang" ] && [ -x "$_xdir/clang++" ] \
+		&& [ -x "/native/usr/lib/ccache/bin/clang" ] \
+		&& [ -x "/native/usr/bin/clang" ]; then
+		_crossdirect=true
+		export CC="$_xdir/clang"
+		export CXX="$_xdir/clang++"
+		[ -x "/native$_llvm/bin/llvm-ar" ] && export AR="/native$_llvm/bin/llvm-ar"
+		[ -x "/native$_llvm/bin/llvm-nm" ] && export NM="/native$_llvm/bin/llvm-nm"
+		msg "crossdirect: compiling on the host ($CC)"
+	else
+		msg "crossdirect: NOT in use, compiling under emulation ($CC)"
+	fi
 
 	msg "Configuring build"
 
@@ -836,6 +887,11 @@ _configure() {
 		;;
 	esac
 
+	# ccache. Behind crossdirect it is already in the chain and running on the
+	# host (crossdirect execs /native/usr/lib/ccache/bin/<name>), so a second
+	# wrapper here would put a target-arch ccache under qemu in front of every
+	# compile -- one emulated process per translation unit, to reach a cache
+	# that is being consulted anyway.
 	case "$USE_CCACHE" in
 	1)
 		local cc_wrapper="ccache"
@@ -844,10 +900,31 @@ _configure() {
 		local cc_wrapper=""
 		;;
 	esac
+	if $_crossdirect; then
+		cc_wrapper=""
+	fi
+
+	# LINKER. use_mold=true makes compiler.gni set use_lld=false -- the
+	# declaration is literally `use_lld = is_clang && ... && !use_mold` -- and
+	# clang is then invoked with -fuse-ld=mold. crossdirect links natively only
+	# for lld, and refuses for any other linker the caller named, deliberately,
+	# so that it never substitutes one the package did not choose. Under mold
+	# every link therefore goes back to qemu, and linking is the half of this
+	# build that does not parallelise. Ask for lld when crossdirect is driving;
+	# keep mold for a native build, where it is the faster of the two.
+	#
+	# The native-link path is itself opt-in on the host side and reads
+	# /native/etc/crossdirect-native-link. Absent that file this is merely a
+	# different linker, never a broken one.
+	local mold=true
+	if $_crossdirect; then
+		mold=false
+	fi
 
 	# shellcheck disable=2089
 	local gn_config="
 		blink_enable_generated_code_formatting=false
+		blink_symbol_level=0
 		cc_wrapper=\"$cc_wrapper\"
 		chrome_pgo_phase=0
 		clang_base_path=\"/usr/lib/llvm$_llvmver\"
@@ -888,7 +965,7 @@ _configure() {
 		treat_warnings_as_errors=false
 		use_clang_modules=false
 		use_custom_libcxx=true
-		use_mold=true
+		use_mold=$mold
 		use_qt6=true
 		use_pulseaudio=true
 		use_safe_libstdcxx=false

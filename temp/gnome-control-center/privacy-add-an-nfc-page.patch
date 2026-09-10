@@ -1,6 +1,6 @@
-From 9fc1d0d37adfb44f5e117e32a9a66b949737710d Mon Sep 17 00:00:00 2001
+From b8e83e85ac3271deb24a27227319881eaf2c783b Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
-Date: Thu, 10 Sep 2026 12:08:13 +0200
+Date: Thu, 10 Sep 2026 21:14:33 +0200
 Subject: [PATCH] privacy: add an NFC page
 
 There is no NFC control anywhere in GNOME. The hardware is common on phones and
@@ -20,9 +20,12 @@ not:
     panel follows it. Nearly every machine has a camera, so that page is always
     shown; nearly no machine has NFC.
 
-The per-app permission list the camera page carries is deliberately absent:
-there is no org.freedesktop.portal.NFC yet, so there are no permissions to
-show. It slots into the same page when there is.
+It also carries the same Permitted Apps list the camera page does, reading the
+same freedesktop permission store (table "devices", id "nfc") that
+org.freedesktop.portal.NFC writes: a row per sandboxed app that has been
+granted NFC, with a switch that revokes the grant, and the same "apps that are
+not sandboxed can use NFC without asking" caveat camera states. The list
+follows the store live, through the Changed signal.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---

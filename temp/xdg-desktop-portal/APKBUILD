@@ -5,7 +5,7 @@
 # permitted app a filtered connection to neard's system-bus API via
 # xdg-dbus-proxy -- the app can poll, enumerate and read tags, but cannot
 # call Properties.Set on the adapter. That stays the user's switch, in
-# Settings ▸ Privacy ▸ NFC. Full design:
+# Settings ▸ Privacy & Security ▸ NFC. Full design:
 # docs/superpowers/specs/2026-09-10-nfc-toggle-and-portal-design.md.
 #
 # Built with -Dnfc=enabled explicitly. It is a meson `feature` option that

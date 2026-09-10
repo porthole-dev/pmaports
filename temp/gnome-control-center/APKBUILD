@@ -7,12 +7,15 @@
 # the radio on this phone was reachable only from a terminal, or from the
 # taimen-nfc-toggle launcher this replaces.
 #
-# The per-app permission list is not here: it needs org.freedesktop.portal.NFC,
-# which does not exist yet. See
+# It also carries the Permitted Apps list, reading the same freedesktop
+# permission store (table "devices", id "nfc") that org.freedesktop.portal.NFC
+# writes -- see temp/xdg-desktop-portal, and
 # docs/superpowers/specs/2026-09-10-nfc-toggle-and-portal-design.md.
 #
-# pkgrel is 50 so this build outranks Alpine's 50.4-r0 from any repo, while an
-# upstream 50.5 still outranks it by design.
+# pkgrel is 50+ so this build outranks Alpine's 50.4-r0 from any repo, while an
+# upstream 50.5 still outranks it by design. Bump it whenever the patch changes:
+# the patch is not part of pkgver, so apk cannot otherwise tell two builds of
+# 50.4 apart.
 #
 # NOT YET SUBMITTED upstream: no gnome-control-center MR covers this yet. Drop
 # this fork when one lands.
@@ -23,7 +26,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: team/gnome <achill@achill.org>
 pkgname=gnome-control-center
 pkgver=50.4
-pkgrel=50
+pkgrel=51
 pkgdesc="GNOME control center"
 url="https://gitlab.gnome.org/GNOME/gnome-control-center"
 arch="all"
@@ -114,5 +117,5 @@ package() {
 sha512sums="
 60e4bc9e6b31edf2765f786bcbd49bed683f21960f48eeb6bb87c44602fb7ae32d85b7d930e8cdcfcd8d0eb5a9c5a1d0c08e0a8ddd213f8c5a4c8d29c3359c95  gnome-control-center-50.4.tar.xz
 350aa443149c71851ad4de0976c7fc5cb626ba0c57a8d41e6ef80da1c65ed84a4dfa2483ae92630a3b611c4bfa9360ded82b55e8cd0e3907294c025e4f6b1671  README.alpine
-47d5301ab0a1a037880df4cdc7f1b9c50a687e34efc18e5cbd092ab45b38cdce535a2bc82fd3e89b12060efbc4a6d0c92a1debd0099e3263643d55ca7c36b166  privacy-add-an-nfc-page.patch
+f2a48ab00a9e76c7f201423329fb07e39d47cb792a3a3c30899630e8c5fae445bc2d968823c769a806d7bdc5e0651dbcefdd6319d45b91ea89141145f69ba0cc  privacy-add-an-nfc-page.patch
 "

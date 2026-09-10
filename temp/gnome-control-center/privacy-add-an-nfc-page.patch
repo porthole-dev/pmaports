@@ -1,0 +1,551 @@
+From fea05e644162eeea7f8a6e3ce81b489df2faa123 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Thu, 10 Sep 2026 12:08:13 +0200
+Subject: [PATCH] privacy: add an NFC page
+
+There is no NFC control anywhere in GNOME. The hardware is common on phones and
+present on plenty of laptops, neard drives it on every distribution that ships
+it, and a user's only way to turn the radio on or off is busctl.
+
+This is the camera page with the parts that do not apply removed. Two
+differences, both forced by NFC being real hardware where the camera flag is
+not:
+
+  - The switch is bound to org.neard.Adapter Powered over the system bus, not
+    to a GSetting. disable-camera exists because a camera has no power switch;
+    an NFC adapter has one, and binding to it means the switch reflects the
+    radio even when something else changes it.
+
+  - The page hides itself when neard reports no adapter, and the row in the
+    panel follows it. Nearly every machine has a camera, so that page is always
+    shown; nearly no machine has NFC.
+
+The per-app permission list the camera page carries is deliberately absent:
+there is no org.freedesktop.portal.NFC yet, so there are no permissions to
+show. It slots into the same page when there is.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ panels/privacy/cc-privacy-panel.blp           |  10 +
+ panels/privacy/cc-privacy-panel.c             |  10 +
+ panels/privacy/icons/meson.build              |   1 +
+ ...org.gnome.Settings-nfc-access-symbolic.svg |   4 +
+ panels/privacy/meson.build                    |   2 +
+ panels/privacy/nfc/cc-nfc-page.blp            |  22 ++
+ panels/privacy/nfc/cc-nfc-page.c              | 285 ++++++++++++++++++
+ panels/privacy/nfc/cc-nfc-page.h              |  30 ++
+ panels/privacy/nfc/meson.build                |  14 +
+ panels/privacy/privacy.gresource.xml          |   1 +
+ po/POTFILES.in                                |   1 +
+ 11 files changed, 380 insertions(+)
+ create mode 100644 panels/privacy/icons/scalable/org.gnome.Settings-nfc-access-symbolic.svg
+ create mode 100644 panels/privacy/nfc/cc-nfc-page.blp
+ create mode 100644 panels/privacy/nfc/cc-nfc-page.c
+ create mode 100644 panels/privacy/nfc/cc-nfc-page.h
+ create mode 100644 panels/privacy/nfc/meson.build
+
+diff --git a/panels/privacy/cc-privacy-panel.blp b/panels/privacy/cc-privacy-panel.blp
+index 10e6c51..4e78dc0 100644
+--- a/panels/privacy/cc-privacy-panel.blp
++++ b/panels/privacy/cc-privacy-panel.blp
+@@ -65,6 +65,16 @@ template $CcPrivacyPanel: $CcPanel {
+             action-target: "'camera'";
+           }
+ 
++          $CcListRow nfc_row {
++            visible: false;
++            title: _("_NFC");
++            subtitle: _("Control NFC access");
++            icon-name: "org.gnome.Settings-nfc-access-symbolic";
++            show-arrow: true;
++            action-name: "navigation.push";
++            action-target: "'nfc'";
++          }
++
+           $CcListRow bolt_row {
+             visible: false;
+             title: _("_Thunderbolt");
+diff --git a/panels/privacy/cc-privacy-panel.c b/panels/privacy/cc-privacy-panel.c
+index 4ae1421..94d8db7 100644
+--- a/panels/privacy/cc-privacy-panel.c
++++ b/panels/privacy/cc-privacy-panel.c
+@@ -30,6 +30,7 @@
+ #include "firmware-security/cc-firmware-security-page.h"
+ #include "cc-list-row.h"
+ #include "location/cc-location-page.h"
++#include "nfc/cc-nfc-page.h"
+ #include "cc-privacy-resources.h"
+ #include "screen/cc-screen-page.h"
+ #include "usage/cc-usage-page.h"
+@@ -40,6 +41,7 @@ struct _CcPrivacyPanel
+ 
+   CcListRow         *bolt_row;
+   CcListRow         *location_row;
++  CcListRow         *nfc_row;
+ };
+ 
+ CC_PANEL_REGISTER (CcPrivacyPanel, cc_privacy_panel)
+@@ -70,6 +72,7 @@ cc_privacy_panel_class_init (CcPrivacyPanelClass *klass)
+ 
+   gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, bolt_row);
+   gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, location_row);
++  gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, nfc_row);
+ 
+   g_type_ensure (CC_TYPE_CAMERA_PAGE);
+   g_type_ensure (CC_TYPE_DIAGNOSTICS_PAGE);
+@@ -103,4 +106,11 @@ cc_privacy_panel_init (CcPrivacyPanel *self)
+   g_object_bind_property (location_page, "visible",
+                           self->location_row, "visible", G_BINDING_SYNC_CREATE);
+ #endif
++
++  CcNfcPage *nfc_page = g_object_new (CC_TYPE_NFC_PAGE, NULL);
++
++  cc_panel_add_subpage (CC_PANEL (self), "nfc", ADW_NAVIGATION_PAGE (nfc_page));
++
++  g_object_bind_property (nfc_page, "visible",
++                          self->nfc_row, "visible", G_BINDING_SYNC_CREATE);
+ }
+diff --git a/panels/privacy/icons/meson.build b/panels/privacy/icons/meson.build
+index 59a4777..2033cb2 100644
+--- a/panels/privacy/icons/meson.build
++++ b/panels/privacy/icons/meson.build
+@@ -5,6 +5,7 @@ install_data(
+   'scalable/org.gnome.Settings-device-security-symbolic.svg',
+   'scalable/org.gnome.Settings-location-access-symbolic.svg',
+   'scalable/org.gnome.Settings-microphone-access-symbolic.svg',
++  'scalable/org.gnome.Settings-nfc-access-symbolic.svg',
+   'scalable/org.gnome.Settings-screen-lock-symbolic.svg',
+   'scalable/org.gnome.Settings-thunderbolt-access-symbolic.svg',
+   'scalable/org.gnome.Settings-trash-file-history-symbolic.svg',
+diff --git a/panels/privacy/icons/scalable/org.gnome.Settings-nfc-access-symbolic.svg b/panels/privacy/icons/scalable/org.gnome.Settings-nfc-access-symbolic.svg
+new file mode 100644
+index 0000000..9548407
+--- /dev/null
++++ b/panels/privacy/icons/scalable/org.gnome.Settings-nfc-access-symbolic.svg
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<svg height="16px" viewBox="0 0 16 16" width="16px" xmlns="http://www.w3.org/2000/svg">
++    <path d="M 4.038 4.099 A 4.6 4.6 0 0 1 4.038 11.901 L 3.243 10.629 A 3.1 3.1 0 0 0 3.243 5.371 Z M 6.243 1 A 8.4 8.4 0 0 1 6.243 15 L 5.414 13.75 A 6.9 6.9 0 0 0 5.414 2.25 Z M 11.592 1 A 12.2 12.2 0 0 1 11.592 15 L 10.363 14.139 A 10.7 10.7 0 0 0 10.363 1.861 Z M 1.6 6.5 A 1.5 1.5 0 0 1 1.6 9.5 A 1.5 1.5 0 0 1 1.6 6.5 Z" fill="#222222"/>
++</svg>
+diff --git a/panels/privacy/meson.build b/panels/privacy/meson.build
+index 4360b10..d72c49e 100644
+--- a/panels/privacy/meson.build
++++ b/panels/privacy/meson.build
+@@ -18,6 +18,7 @@ subdir('diagnostics')
+ subdir('firmware-security')
+ subdir('icons')
+ subdir('location')
++subdir('nfc')
+ subdir('screen')
+ subdir('usage')
+ 
+@@ -45,6 +46,7 @@ sources = files(
+   'firmware-security/cc-firmware-security-page.c',
+   'firmware-security/cc-firmware-security-utils.c',
+   'location/cc-location-page.c',
++  'nfc/cc-nfc-page.c',
+   'cc-privacy-panel.c',
+   'screen/cc-screen-page.c',
+   'usage/cc-usage-page.c',
+diff --git a/panels/privacy/nfc/cc-nfc-page.blp b/panels/privacy/nfc/cc-nfc-page.blp
+new file mode 100644
+index 0000000..f42d2b9
+--- /dev/null
++++ b/panels/privacy/nfc/cc-nfc-page.blp
+@@ -0,0 +1,22 @@
++using Gtk 4.0;
++using Adw 1;
++
++template $CcNfcPage: Adw.NavigationPage {
++  title: _("NFC");
++  tag: "nfc";
++
++  child: Adw.ToolbarView {
++    [top]
++    Adw.HeaderBar {}
++
++    content: Adw.PreferencesPage {
++      Adw.PreferencesGroup {
++        Adw.SwitchRow nfc_row {
++          title: _("_NFC");
++          subtitle: _("Allow permitted apps to use NFC");
++          use-underline: true;
++        }
++      }
++    };
++  };
++}
+diff --git a/panels/privacy/nfc/cc-nfc-page.c b/panels/privacy/nfc/cc-nfc-page.c
+new file mode 100644
+index 0000000..f26f5d6
+--- /dev/null
++++ b/panels/privacy/nfc/cc-nfc-page.c
+@@ -0,0 +1,285 @@
++/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
++ *
++ * Copyright (C) 2026 Giuseppe Maggio
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "cc-nfc-page.h"
++
++#include <gio/gio.h>
++
++#define NEARD_BUS_NAME      "org.neard"
++#define NEARD_ADAPTER_IFACE "org.neard.Adapter"
++
++/* Unlike the camera page, this switch is not backed by a GSetting. A camera
++ * cannot be powered off, so org.gnome.desktop.privacy disable-camera stands in
++ * for a switch the hardware does not have; an NFC adapter has a real one, and
++ * making it the single source of truth is what keeps the switch honest when
++ * something else changes the radio.
++ */
++struct _CcNfcPage
++{
++  AdwNavigationPage parent_instance;
++
++  AdwSwitchRow *nfc_row;
++
++  GDBusObjectManager *manager;
++  GDBusProxy         *adapter;
++  GCancellable       *cancellable;
++  gboolean            syncing;
++};
++
++G_DEFINE_TYPE (CcNfcPage, cc_nfc_page, ADW_TYPE_NAVIGATION_PAGE)
++
++static void
++sync_switch (CcNfcPage *self)
++{
++  g_autoptr(GVariant) powered = NULL;
++  gboolean active = FALSE;
++
++  if (self->adapter != NULL)
++    powered = g_dbus_proxy_get_cached_property (self->adapter, "Powered");
++
++  if (powered != NULL)
++    active = g_variant_get_boolean (powered);
++
++  /* Moving the switch ourselves must not be mistaken for the user moving it. */
++  self->syncing = TRUE;
++  adw_switch_row_set_active (self->nfc_row, active);
++  self->syncing = FALSE;
++}
++
++static void
++on_powered_set (GObject      *source_object,
++                GAsyncResult *res,
++                gpointer      user_data)
++{
++  g_autoptr(GVariant) reply = NULL;
++  g_autoptr(GError) error = NULL;
++
++  reply = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source_object),
++                                         res,
++                                         &error);
++  if (reply != NULL)
++    return;
++
++  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    return;
++
++  g_warning ("Failed to change the NFC adapter power state: %s", error->message);
++
++  /* The radio did not move, so the switch must not claim it did. */
++  sync_switch (CC_NFC_PAGE (user_data));
++}
++
++static void
++on_switch_active (GObject    *object,
++                  GParamSpec *pspec,
++                  gpointer    user_data)
++{
++  CcNfcPage *self = user_data;
++  gboolean active;
++
++  if (self->syncing || self->adapter == NULL)
++    return;
++
++  active = adw_switch_row_get_active (self->nfc_row);
++
++  g_dbus_connection_call (g_dbus_proxy_get_connection (self->adapter),
++                          NEARD_BUS_NAME,
++                          g_dbus_proxy_get_object_path (self->adapter),
++                          "org.freedesktop.DBus.Properties",
++                          "Set",
++                          g_variant_new ("(ssv)",
++                                         NEARD_ADAPTER_IFACE,
++                                         "Powered",
++                                         g_variant_new_boolean (active)),
++                          NULL,
++                          G_DBUS_CALL_FLAGS_NONE,
++                          -1,
++                          self->cancellable,
++                          on_powered_set,
++                          self);
++}
++
++static void
++set_adapter (CcNfcPage  *self,
++             GDBusProxy *adapter)
++{
++  g_set_object (&self->adapter, adapter);
++
++  /* Nearly no machine has an NFC adapter. The row in the panel follows this
++     through a property binding, so a desktop never sees a dead entry. */
++  gtk_widget_set_visible (GTK_WIDGET (self), adapter != NULL);
++
++  sync_switch (self);
++}
++
++/* (transfer full) (nullable): the first adapter neard is publishing. */
++static GDBusProxy *
++find_adapter (GDBusObjectManager *manager)
++{
++  GList *objects = g_dbus_object_manager_get_objects (manager);
++  GDBusProxy *found = NULL;
++
++  for (GList *l = objects; l != NULL && found == NULL; l = l->next)
++    {
++      GDBusInterface *iface = g_dbus_object_get_interface (G_DBUS_OBJECT (l->data),
++                                                           NEARD_ADAPTER_IFACE);
++
++      if (iface != NULL)
++        found = G_DBUS_PROXY (iface);
++    }
++
++  g_list_free_full (objects, g_object_unref);
++
++  return found;
++}
++
++static void
++on_object_added (GDBusObjectManager *manager,
++                 GDBusObject        *object,
++                 gpointer            user_data)
++{
++  CcNfcPage *self = user_data;
++  g_autoptr(GDBusInterface) iface = NULL;
++
++  if (self->adapter != NULL)
++    return;
++
++  iface = g_dbus_object_get_interface (object, NEARD_ADAPTER_IFACE);
++  if (iface != NULL)
++    set_adapter (self, G_DBUS_PROXY (iface));
++}
++
++static void
++on_object_removed (GDBusObjectManager *manager,
++                   GDBusObject        *object,
++                   gpointer            user_data)
++{
++  CcNfcPage *self = user_data;
++  g_autoptr(GDBusProxy) next = NULL;
++
++  if (self->adapter == NULL)
++    return;
++
++  if (g_strcmp0 (g_dbus_object_get_object_path (object),
++                 g_dbus_proxy_get_object_path (self->adapter)) != 0)
++    return;
++
++  next = find_adapter (manager);
++  set_adapter (self, next);
++}
++
++static void
++on_properties_changed (GDBusObjectManagerClient *manager,
++                       GDBusObjectProxy         *object_proxy,
++                       GDBusProxy               *interface_proxy,
++                       GVariant                 *changed_properties,
++                       const gchar * const      *invalidated_properties,
++                       gpointer                  user_data)
++{
++  CcNfcPage *self = user_data;
++
++  if (interface_proxy != self->adapter)
++    return;
++
++  /* The client has already updated the proxy's cached properties. */
++  sync_switch (self);
++}
++
++static void
++on_manager_ready (GObject      *source_object,
++                  GAsyncResult *res,
++                  gpointer      user_data)
++{
++  CcNfcPage *self;
++  GDBusObjectManager *manager;
++  g_autoptr(GDBusProxy) adapter = NULL;
++  g_autoptr(GError) error = NULL;
++
++  manager = g_dbus_object_manager_client_new_for_bus_finish (res, &error);
++  if (manager == NULL)
++    {
++      if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++        g_warning ("Failed to connect to neard: %s", error->message);
++      return;
++    }
++
++  self = user_data;
++  self->manager = manager;
++
++  g_signal_connect_object (manager, "object-added",
++                           G_CALLBACK (on_object_added), self, 0);
++  g_signal_connect_object (manager, "object-removed",
++                           G_CALLBACK (on_object_removed), self, 0);
++  g_signal_connect_object (manager, "interface-proxy-properties-changed",
++                           G_CALLBACK (on_properties_changed), self, 0);
++
++  adapter = find_adapter (manager);
++  set_adapter (self, adapter);
++}
++
++static void
++cc_nfc_page_finalize (GObject *object)
++{
++  CcNfcPage *self = CC_NFC_PAGE (object);
++
++  g_cancellable_cancel (self->cancellable);
++  g_clear_object (&self->cancellable);
++
++  g_clear_object (&self->adapter);
++  g_clear_object (&self->manager);
++
++  G_OBJECT_CLASS (cc_nfc_page_parent_class)->finalize (object);
++}
++
++static void
++cc_nfc_page_class_init (CcNfcPageClass *klass)
++{
++  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++
++  object_class->finalize = cc_nfc_page_finalize;
++
++  gtk_widget_class_set_template_from_resource (widget_class, "/org/gnome/control-center/privacy/nfc/cc-nfc-page.ui");
++
++  gtk_widget_class_bind_template_child (widget_class, CcNfcPage, nfc_row);
++}
++
++static void
++cc_nfc_page_init (CcNfcPage *self)
++{
++  gtk_widget_init_template (GTK_WIDGET (self));
++
++  /* Hidden until neard says there is an adapter. */
++  gtk_widget_set_visible (GTK_WIDGET (self), FALSE);
++
++  self->cancellable = g_cancellable_new ();
++
++  g_signal_connect (self->nfc_row, "notify::active",
++                    G_CALLBACK (on_switch_active), self);
++
++  g_dbus_object_manager_client_new_for_bus (G_BUS_TYPE_SYSTEM,
++                                            G_DBUS_OBJECT_MANAGER_CLIENT_FLAGS_NONE,
++                                            NEARD_BUS_NAME,
++                                            "/",
++                                            NULL, NULL, NULL,
++                                            self->cancellable,
++                                            on_manager_ready,
++                                            self);
++}
+diff --git a/panels/privacy/nfc/cc-nfc-page.h b/panels/privacy/nfc/cc-nfc-page.h
+new file mode 100644
+index 0000000..e5a3c98
+--- /dev/null
++++ b/panels/privacy/nfc/cc-nfc-page.h
+@@ -0,0 +1,30 @@
++/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
++ *
++ * Copyright (C) 2026 Giuseppe Maggio
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, see <http://www.gnu.org/licenses/>.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#pragma once
++
++#include <adwaita.h>
++
++G_BEGIN_DECLS
++
++#define CC_TYPE_NFC_PAGE (cc_nfc_page_get_type ())
++G_DECLARE_FINAL_TYPE (CcNfcPage, cc_nfc_page, CC, NFC_PAGE, AdwNavigationPage)
++
++G_END_DECLS
+diff --git a/panels/privacy/nfc/meson.build b/panels/privacy/nfc/meson.build
+new file mode 100644
+index 0000000..eb57dcc
+--- /dev/null
++++ b/panels/privacy/nfc/meson.build
+@@ -0,0 +1,14 @@
++ui_sources = files(
++  'cc-nfc-page.blp',
++)
++
++ui_compiled = []
++foreach ui_source : ui_sources
++  ui_compiled += fs.name(fs.replace_suffix(ui_source, '.ui'))
++endforeach
++
++blueprints += custom_target(
++  input: ui_sources,
++  output: ui_compiled,
++  command: [blueprint_compiler, 'batch-compile', '@OUTDIR@', '@CURRENT_SOURCE_DIR@', '@INPUT@']
++)
+diff --git a/panels/privacy/privacy.gresource.xml b/panels/privacy/privacy.gresource.xml
+index e8e2863..d97a2fb 100644
+--- a/panels/privacy/privacy.gresource.xml
++++ b/panels/privacy/privacy.gresource.xml
+@@ -11,6 +11,7 @@
+     <file preprocess="xml-stripblanks">firmware-security/cc-firmware-security-help-dialog.ui</file>
+     <file preprocess="xml-stripblanks">firmware-security/cc-firmware-security-page.ui</file>
+     <file preprocess="xml-stripblanks">location/cc-location-page.ui</file>
++    <file preprocess="xml-stripblanks">nfc/cc-nfc-page.ui</file>
+     <file preprocess="xml-stripblanks">cc-privacy-panel.ui</file>
+     <file preprocess="xml-stripblanks">screen/cc-screen-page.ui</file>
+     <file preprocess="xml-stripblanks">usage/cc-usage-page.ui</file>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index e910c9e..07e341b 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -171,6 +171,7 @@ panels/privacy/firmware-security/cc-firmware-security-page.c
+ panels/privacy/firmware-security/cc-firmware-security-utils.c
+ panels/privacy/gnome-privacy-panel.desktop.in
+ panels/privacy/location/cc-location-page.blp
++panels/privacy/nfc/cc-nfc-page.blp
+ panels/privacy/screen/cc-screen-page.blp
+ panels/privacy/usage/cc-usage-page.blp
+ panels/search/cc-search-locations-page.blp
+-- 
+2.55.0
+

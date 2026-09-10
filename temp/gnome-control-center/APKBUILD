@@ -1,0 +1,116 @@
+# TEMPORARY FORK of community/gnome-control-center.
+#
+# Adds Privacy > NFC: a page whose switch is org.neard.Adapter Powered, and
+# which hides itself where neard reports no adapter. GNOME has no NFC control
+# of any kind -- gnome-control-center#2233 was opened and closed the same day
+# in 2022 with no discussion, and phosh has never had an issue about it -- so
+# the radio on this phone was reachable only from a terminal, or from the
+# taimen-nfc-toggle launcher this replaces.
+#
+# The per-app permission list is not here: it needs org.freedesktop.portal.NFC,
+# which does not exist yet. See
+# docs/superpowers/specs/2026-09-10-nfc-toggle-and-portal-design.md.
+#
+# pkgrel is 50 so this build outranks Alpine's 50.4-r0 from any repo, while an
+# upstream 50.5 still outranks it by design.
+#
+# SUBMITTED: gnome-control-center MR. Drop this fork when it lands.
+
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
+# Contributor: Rasmus Thomsen <oss@cogitri.dev>
+# Contributor: Pablo Correa Gomez <pabloyoyoista@postmarketos.org>
+pkgname=gnome-control-center
+pkgver=50.4
+pkgrel=50
+pkgdesc="GNOME control center"
+url="https://gitlab.gnome.org/GNOME/gnome-control-center"
+arch="all"
+license="GPL-2.0-or-later"
+depends="
+	accountsservice
+	colord
+	cups-pk-helper
+	dbus:org.freedesktop.Secrets
+	malcontent
+	openrc-settingsd
+	setxkbmap
+	"
+makedepends="
+	accountsservice-dev
+	blueprint-compiler
+	cairo-dev
+	colord-dev
+	colord-gtk-dev
+	cups-dev
+	docbook-xml
+	docbook-xsl
+	gcr4-dev
+	glib-dev
+	gmobile-dev
+	gnome-bluetooth-dev
+	gnome-desktop-dev
+	gnome-online-accounts-dev
+	gnome-settings-daemon-dev
+	gsettings-desktop-schemas-dev
+	gsound-dev
+	ibus-dev
+	itstool
+	krb5-dev
+	libadwaita-dev
+	libgtop-dev
+	libgudev-dev
+	libnma-dev
+	libpwquality-dev
+	libsecret-dev
+	libwacom-dev
+	libxml2-utils
+	libxslt
+	malcontent-dev
+	meson
+	modemmanager-dev
+	networkmanager-dev
+	polkit-dev
+	pulseaudio-dev
+	samba-dev
+	tecla-dev
+	udisks2-dev
+	upower-dev
+	"
+options="!check" # needs unpackaged py-dbusmock
+install="$pkgname.pre-install $pkgname.pre-upgrade"
+subpackages="$pkgname-dbg $pkgname-dev $pkgname-lang $pkgname-doc $pkgname-bash-completion"
+source="https://download.gnome.org/sources/gnome-control-center/${pkgver%%.*}/gnome-control-center-$pkgver.tar.xz
+	README.alpine
+	privacy-add-an-nfc-page.patch
+	"
+
+build() {
+	abuild-meson \
+		-Db_lto=true \
+		-Dibus=true \
+		-Dlocation-services=enabled \
+		-Dmalcontent=true \
+		. output
+
+	meson compile -C output
+}
+
+check() {
+	meson test --print-errorlogs -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+
+	mkdir -p "$pkgdir"/usr/lib/pkgconfig
+	mv "$pkgdir"/usr/share/pkgconfig/* "$pkgdir"/usr/lib/pkgconfig
+	rmdir "$pkgdir"/usr/share/pkgconfig
+
+	install -Dm0644 "$srcdir"/README.alpine -t "$pkgdir"/usr/share/doc/"$pkgname"
+}
+
+sha512sums="
+60e4bc9e6b31edf2765f786bcbd49bed683f21960f48eeb6bb87c44602fb7ae32d85b7d930e8cdcfcd8d0eb5a9c5a1d0c08e0a8ddd213f8c5a4c8d29c3359c95  gnome-control-center-50.4.tar.xz
+350aa443149c71851ad4de0976c7fc5cb626ba0c57a8d41e6ef80da1c65ed84a4dfa2483ae92630a3b611c4bfa9360ded82b55e8cd0e3907294c025e4f6b1671  README.alpine
+e6cd95ec6de6313c6b6ef2a33ec16450dcea3e7603e1fd8433b37625985c83322887c7958d7a2cfe4703b27cd17a9a5b6afe9fae6d1566e6c06651b7d400ebde  privacy-add-an-nfc-page.patch
+"

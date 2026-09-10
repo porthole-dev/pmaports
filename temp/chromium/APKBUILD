@@ -783,8 +783,22 @@ _configure() {
 	#   crossdirect -> /native/usr/lib/ccache/bin/clang (ccache, natively)
 	#               -> /native/usr/bin/clang            (host clang $_llvmver)
 	#
-	# llvm-ar and llvm-nm read and write any target's objects, so the host
-	# copies serve aarch64 output and skip qemu as well.
+	# AR AND NM STAY IN THE CHROOT, AND THIS IS NOT AN OVERSIGHT. llvm-ar and
+	# llvm-nm are format-agnostic, so the host copies would serve aarch64
+	# objects fine -- and pointing $AR at /native cost this build 123 ninja
+	# steps before it died:
+	#
+	#   ninja: job failed with status 127: ... "/native/usr/lib/llvm22/bin/llvm-ar" ...
+	#   Error relocating /lib/libLLVM.so.22.1: unsupported relocation type 1026
+	#
+	# ninja runs $AR DIRECTLY. Only crossdirect-wrapped commands get the
+	# environment that makes a native binary work in here -- it execve()s with
+	# a literal LD_LIBRARY_PATH=/native/lib:/native/usr/lib -- so an x86_64
+	# llvm-ar invoked on its own resolves libLLVM to the aarch64 copy in /lib
+	# and the musl loader rejects it. 1025/1026 are R_AARCH64 relocation
+	# types; that error always means an ELF of one arch met libraries of
+	# another. A wrapper script exporting the path would work; the archive
+	# steps are a small fraction of 56135, so it has not been worth one.
 	#
 	# Every arm of the condition is checked rather than assumed: PMB_CROSS is
 	# exported by pmbootstrap (pmb/build/backend.py), and a missing piece falls
@@ -804,8 +818,6 @@ _configure() {
 		_crossdirect=true
 		export CC="$_xdir/clang"
 		export CXX="$_xdir/clang++"
-		[ -x "/native$_llvm/bin/llvm-ar" ] && export AR="/native$_llvm/bin/llvm-ar"
-		[ -x "/native$_llvm/bin/llvm-nm" ] && export NM="/native$_llvm/bin/llvm-nm"
 		msg "crossdirect: compiling on the host ($CC)"
 	else
 		msg "crossdirect: NOT in use, compiling under emulation ($CC)"

@@ -1,0 +1,107 @@
+Let the GPU process open the V4L2 decoder it is about to enumerate.
+
+use_v4l2_codec=true compiles the V4L2 decoders in, and on mainline Linux
+media/gpu/v4l2 finds the decoder by walking /dev/video0..255 with
+QUERYCAP, plus /dev/media0..9 to match the media controller the stateless
+decoder needs for the request API. Both walks happen inside the GPU
+process, after the sandbox is up, so every open() goes through the
+syscall broker.
+
+The broker's permission list does not contain any of those paths.
+FilePermissionsForGpu() calls AddV4L2GpuPermissions() only under
+IsChromeOS() or the Chromecast allowlist -- a plain Linux build reaches
+AddStandardGpuPermissions() and nothing else -- and even that function
+authorizes only ChromeOS's /dev/video-dec[0-4] and /dev/media-dec[0-4]
+udev names, which no mainline kernel creates.
+
+So a correctly configured V4L2 build finds no decoder, reports no
+hardware decode, and falls back to software with nothing in the log to
+say a device was ever refused. Authorize the ranges the enumeration
+actually probes, on non-ChromeOS builds that compiled V4L2 in and were
+not asked to disable accelerated video.
+
+WHAT THIS WIDENS, SAID PLAINLY. ChromeOS restricts the broker to the
+video-dec* prefix precisely so that "we cannot authorize a non-decoder
+device by accident" -- its own comment. A number-blind range cannot make
+that promise: on this phone /dev/video0..5 are camss capture nodes, and
+after this patch the GPU process may open them. That is a real widening,
+and it is the narrower of the two options actually available, the other
+being --no-sandbox, which is what people reach for today and which gives
+up the entire policy rather than one device class.
+
+The narrow fix exists and is bigger than this. FilePermissionsForGpu()
+runs BEFORE the sandbox is engaged -- GpuPreSandboxHook() calls it on the
+way to StartBrokerProcess() -- so it may QUERYCAP the nodes itself and
+authorize only those that answer as a decoder, which is the same test
+V4L2Device::EnumerateDevicesForType() already implements a few
+translation units away and which this file can already reach (it
+includes media/gpu/v4l2/v4l2_device.h under the same buildflag). Doing
+it there would also warm that enumeration's static cache while opening
+is still unrestricted. Left for a follow-up rather than smuggled into a
+patch whose point is to make the feature work at all.
+
+--- a/content/common/gpu_pre_sandbox_hook_linux.cc
++++ b/content/common/gpu_pre_sandbox_hook_linux.cc
+@@ -191,6 +191,49 @@
+   }
+ }
+ 
++#if BUILDFLAG(USE_V4L2_CODEC) && !BUILDFLAG(IS_CHROMEOS)
++// Mainline Linux has none of the /dev/video-dec*, /dev/media-dec* or
++// /dev/jpeg-* symlinks that AddV4L2GpuPermissions() above authorizes: those
++// are a ChromeOS udev convention. On an ordinary kernel the decoder is just
++// some /dev/videoN, behind whatever else the SoC enumerates first -- on
++// msm8998 the venus decoder is /dev/video7, behind six camss capture nodes --
++// and it is identified by its capabilities, never by its number.
++//
++// That is exactly what media/gpu/v4l2 does on this platform:
++//
++//   V4L2Device::EnumerateDevicesForType() walks /dev/video0 .. /dev/video255
++//   and QUERYCAPs each one (kMaxDevices = 256, non-ChromeOS branch), and
++//   V4L2Device::GetRequestsQueue() walks /dev/media0 .. /dev/media9 to find
++//   the media controller matching the decoder by bus_info -- which is how the
++//   stateless decoder reaches the V4L2 request API at all.
++//
++// Neither walk can open anything the broker was not told about, so a build
++// with use_v4l2_codec=true silently finds no decoder and falls back to
++// software decoding. Authorize the ranges the code actually probes.
++void AddV4L2MainlineGpuPermissions(
++    std::vector<BrokerFilePermission>* permissions,
++    const sandbox::policy::SandboxSeccompBPF::Options& options) {
++  if (!options.accelerated_video_decode_enabled &&
++      !options.accelerated_video_encode_enabled) {
++    return;
++  }
++
++  // Keep in sync with kMaxDevices in V4L2Device::EnumerateDevicesForType().
++  static constexpr int kMaxV4L2VideoNodes = 256;
++  for (int i = 0; i < kMaxV4L2VideoNodes; ++i) {
++    permissions->push_back(
++        BrokerFilePermission::ReadWrite(base::StringPrintf("/dev/video%d", i)));
++  }
++
++  // Keep in sync with the loop in V4L2Device::GetRequestsQueue().
++  static constexpr int kMaxV4L2MediaNodes = 10;
++  for (int i = 0; i < kMaxV4L2MediaNodes; ++i) {
++    permissions->push_back(
++        BrokerFilePermission::ReadWrite(base::StringPrintf("/dev/media%d", i)));
++  }
++}
++#endif  // BUILDFLAG(USE_V4L2_CODEC) && !BUILDFLAG(IS_CHROMEOS)
++
+ void AddArmMaliGpuPermissions(std::vector<BrokerFilePermission>* permissions) {
+   // Device file needed by the ARM GPU userspace.
+   static const char kMali0Path[] = "/dev/mali0";
+@@ -668,6 +711,12 @@
+     }
+   }
+ 
++#if BUILDFLAG(USE_V4L2_CODEC) && !BUILDFLAG(IS_CHROMEOS)
++  if (UseV4L2Codec(options)) {
++    AddV4L2MainlineGpuPermissions(&permissions, options);
++  }
++#endif
++
+   AddStandardGpuPermissions(&permissions);
+   return permissions;
+ }

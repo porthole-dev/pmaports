@@ -1,0 +1,278 @@
+# Forked from Alpine to carry the v4l2m2m DRM PRIME series: upstream's
+# v4l2m2m is not zero-copy, so Firefox rejects every frame it decodes on
+# venus with "Got non-DRM-PRIME frame from FFmpeg V4L2" (moz bug 1852765).
+# Contributor: Achill Gilgenast <achill@achill.org>
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
+pkgname=ffmpeg7
+pkgver=7.1.3
+pkgrel=50
+pkgdesc="Complete and free Internet live audio and video broadcasting solution for Linux/Unix"
+url="https://ffmpeg.org/"
+arch="all"
+license="GPL-2.0-or-later AND LGPL-2.1-or-later"
+makedepends="
+	alsa-lib-dev
+	aom-dev
+	bzip2-dev
+	coreutils
+	dav1d-dev
+	fontconfig-dev
+	freetype-dev
+	fribidi-dev
+	harfbuzz-dev
+	imlib2-dev
+	ladspa-dev
+	lame-dev
+	libass-dev
+	libbluray-dev
+	libdrm-dev
+	libjxl-dev
+	libopenmpt-dev
+	libplacebo-dev
+	librist-dev
+	libsrt-dev
+	libssh-dev
+	libtheora-dev
+	libva-dev
+	libvdpau-dev
+	libvorbis-dev
+	libvpx-dev
+	libwebp-dev
+	libxfixes-dev
+	libxml2-dev
+	lilv-dev
+	nasm
+	openssl-dev
+	opus-dev
+	perl-dev
+	pulseaudio-dev
+	rav1e-dev
+	sdl2-dev
+	soxr-dev
+	svt-av1-dev
+	v4l-utils-dev
+	vidstab-dev
+	vulkan-loader-dev
+	x264-dev
+	x265-dev
+	xvidcore-dev
+	zeromq-dev
+	zimg-dev
+	zlib-dev
+	"
+checkdepends="rsync"
+subpackages="
+	$pkgname-dbg
+	$pkgname-dev
+	$pkgname-doc
+	$pkgname-libavcodec
+	$pkgname-libavdevice
+	$pkgname-libavfilter
+	$pkgname-libavformat
+	$pkgname-libavutil
+	$pkgname-libpostproc
+	$pkgname-libswresample
+	$pkgname-libswscale
+	$pkgname-libs
+	"
+source="https://ffmpeg.org/releases/ffmpeg-$pkgver.tar.xz
+	add-av_stream_get_first_dts-for-chromium.patch
+	handbrake-Expose-the-unmodified-Dolby-Vision-RPU-T35-buffers.patch
+	0001-posix-ioctl.patch
+	0002-posix-ioctl.patch
+	svt-av1-4.patch
+
+	v4l2-drmprime-0001-output-AVDRMFrameDescriptor.patch
+	v4l2-drmprime-0002-depends-on-libdrm.patch
+	v4l2-drmprime-0003-set-format_modifier-to-DRM_FORMAT.patch
+	v4l2-drmprime-0004-only-mmap-the-buffer-when-it-is-o.patch
+	v4l2-drmprime-0005-allow-using-software-pixel-format.patch
+	v4l2-drmprime-0006-implement-hwcontext.patch
+	v4l2-drmprime-0007-add-option-to-specify-pixel-forma.patch
+	v4l2-drmprime-0008-implement-flush.patch
+	"
+options="!check" # tests/data/hls-lists.append.m3u8 fails
+builddir="$srcdir/ffmpeg-$pkgver"
+
+case "$CARCH" in
+x86|armhf|armv7)
+	;;
+*)
+	makedepends="$makedepends svt-av1-dev"
+	_svt_av1="--enable-libsvtav1"
+	;;
+esac
+
+case "$CARCH" in
+x86_64)
+	makedepends="$makedepends libvpl-dev"
+	_libvpl="--enable-libvpl"
+	;;
+esac
+
+build() {
+	case "$CARCH" in
+	x86) local asm="--disable-asm" ;;
+	esac
+
+	./configure \
+		--prefix=/usr \
+		--disable-librtmp \
+		--disable-lzma \
+		--disable-static \
+		--disable-stripping \
+		--enable-avfilter \
+		--enable-gpl \
+		--enable-ladspa \
+		--enable-libaom \
+		--enable-libass \
+		--enable-libbluray \
+		--enable-libdav1d \
+		--enable-libdrm \
+		--enable-libfontconfig \
+		--enable-libfreetype \
+		--enable-libfribidi \
+		--enable-libharfbuzz \
+		--enable-libjxl \
+		--enable-libmp3lame \
+		--enable-libopenmpt \
+		--enable-libopus \
+		--enable-libplacebo \
+		--enable-libpulse \
+		--enable-librav1e \
+		--enable-librist \
+		--enable-libsoxr \
+		--enable-libsrt \
+		--enable-libssh \
+		--enable-libtheora \
+		--enable-libv4l2 \
+		--enable-libvidstab \
+		--enable-libvorbis \
+		--enable-libvpx \
+		--enable-libwebp \
+		--enable-libx264 \
+		--enable-libx265 \
+		--enable-libxcb \
+		--enable-libxml2 \
+		--enable-libxvid \
+		--enable-libzimg \
+		--enable-libzmq \
+		--enable-lto=auto \
+		--enable-lv2 \
+		--enable-openssl \
+		--enable-pic \
+		--enable-postproc \
+		--enable-pthreads \
+		--enable-shared \
+		--enable-vaapi \
+		--enable-vdpau \
+		--enable-version3 \
+		--enable-vulkan \
+		--optflags="-O3" \
+		$asm \
+		$_svt_av1 \
+		$_libvpl
+	make
+	${CC:-gcc} -o tools/qt-faststart $CFLAGS $LDFLAGS tools/qt-faststart.c
+}
+
+# https://ffmpeg.org/fate.html
+check() {
+	./configure \
+		--samples=fate-suite/
+	make fate-rsync
+	make fate-list
+	make fate
+}
+
+package() {
+	make DESTDIR="$pkgdir" install install-man
+	install -D -m755 tools/qt-faststart "$pkgdir/usr/bin/qt-faststart"
+}
+
+doc() {
+	default_doc
+
+	amove usr/share/ffmpeg/examples
+}
+
+libavcodec() {
+	pkgdesc="$pkgdesc (libavcodec library)"
+
+	amove usr/lib/libavcodec.so.*
+}
+
+libavdevice() {
+	pkgdesc="$pkgdesc (libavdevice library)"
+
+	amove usr/lib/libavdevice.so.*
+}
+
+libavfilter() {
+	pkgdesc="$pkgdesc (libavfilter library)"
+
+	amove usr/lib/libavfilter.so.*
+}
+
+libavformat() {
+	pkgdesc="$pkgdesc (libavformat library)"
+
+	amove usr/lib/libavformat.so.*
+}
+
+libavutil() {
+	pkgdesc="$pkgdesc (libavutil library)"
+
+	amove usr/lib/libavutil.so.*
+}
+
+libpostproc() {
+	pkgdesc="$pkgdesc (libpostproc library)"
+
+	amove usr/lib/libpostproc.so.*
+}
+
+libswresample() {
+	pkgdesc="$pkgdesc (libswresample library)"
+
+	amove usr/lib/libswresample.so.*
+}
+
+libswscale() {
+	pkgdesc="$pkgdesc (libswscale library)"
+
+	amove usr/lib/libswscale.so.*
+}
+
+libs() {
+	pkgdesc="compat hack for all ffmpeg libs"
+
+	mkdir -p "$subpkgdir"
+	depends="
+		$pkgname-libavcodec=$pkgver-r$pkgrel
+		$pkgname-libavdevice=$pkgver-r$pkgrel
+		$pkgname-libavfilter=$pkgver-r$pkgrel
+		$pkgname-libavformat=$pkgver-r$pkgrel
+		$pkgname-libavutil=$pkgver-r$pkgrel
+		$pkgname-libpostproc=$pkgver-r$pkgrel
+		$pkgname-libswresample=$pkgver-r$pkgrel
+		$pkgname-libswscale=$pkgver-r$pkgrel
+		"
+}
+
+sha512sums="
+1231cb6fe8305e040565d9c2a05228af6e90ded88b8548b24b1e7c46964ea25e43db44eb2b677837c0d68bc4e2a10ea5db101c2d2a24d2e3132cd20d599b0da0  ffmpeg-7.1.3.tar.xz
+0c2284bc053c92478ce6e3665e03273cb93926534c6f927eb60e060c7770c68dca12724853adbcac03c4a58df81f2de938d54e82f43c7e789d345bed872ffc69  add-av_stream_get_first_dts-for-chromium.patch
+83a69540889173eac71585a2b5eb64f5bea335d032c550dd6cfa5c8a31632d5c079ab2474ee4f45793535dfc9e34545898fbbaadc56315466ec428fc8e8211a9  handbrake-Expose-the-unmodified-Dolby-Vision-RPU-T35-buffers.patch
+790b3ea796855f0572531eec8bb436f8ae2b894e29ea7fa2bf7fcddbbc1a58da5c403b366bc116729b92da54ca6d74c82df3bb71c5069e41ae8540a38f7151ae  0001-posix-ioctl.patch
+bf8baafd7f8471e2c982c46191486645a6529de74dd543700c88561492c82af3c1d0f61d7c520697a55f3ff6d3e35e8c7e3150223d14834b61db1bbf8c115b72  0002-posix-ioctl.patch
+b5f1710eb1fed340192e84a43d72625e89aeb3f209a3458ee3638a454e14f4b5834a96db6c138e8667e1b12bf22c22997e4726d96f31d888dfde3fc130fbea39  svt-av1-4.patch
+9566b70d5d9db13831703cccfd7059b7d8369717238b53c16eb3347621bdf09f59adbaddd9b3e88c19f5062182901ff5c58f6ad991551c134f611fea590c7893  v4l2-drmprime-0001-output-AVDRMFrameDescriptor.patch
+ac2fde7f7382841bb6fcc69d967617c2efa5b397ba180edf226907a3950d75692789f2f6d71ec3733e0645a5a30a39cb4a963c700552fc7dab308c6762ba7ac8  v4l2-drmprime-0002-depends-on-libdrm.patch
+17efe84e0fe6d0397f124f51c0bb2da6b6983f8d3d8e13abf342dea6187b2d403611ea8c8a189129fbe23f5dbf77ade05837a75cbb6a0b2203cdcd5aab633b26  v4l2-drmprime-0003-set-format_modifier-to-DRM_FORMAT.patch
+eb322ffcd6baa9696dad9c7e27110c25efce21d38f9691b5dbb408d3e3813bf6b1419ed123bf0e6506fed139bb5dfd2c956c5418b0ace68695a496dfabda57ff  v4l2-drmprime-0004-only-mmap-the-buffer-when-it-is-o.patch
+0c5e8027b3e29d665b2fa39be17955651ab1fb74be7d93d9a0355a290846213154efc5709851225157fe903713906df39c665e5f4ac634536fe4b9e5f213c060  v4l2-drmprime-0005-allow-using-software-pixel-format.patch
+7c3b22245d2e3b2ffa9abc2d685041a4cc957c1045f12835305678185f0357abaf6b2d954dd2b29f9437b31e3824e3d4d4bb1d07f8bd7c12b4ef93d0079a2f74  v4l2-drmprime-0006-implement-hwcontext.patch
+526a76bd02d64a577e29c78da95b1590263df84f524be68cd67d08a1d5d9a9bb404fedc8a8156c3c8a8777b18319a646abf7a01fde1cdfc030a684296ea0af1c  v4l2-drmprime-0007-add-option-to-specify-pixel-forma.patch
+7cea773473a0aaf3e708b1b0c1e6a993c70198988ea1563702704c23c9750ea4be22059a2faf1ee5a253aac9170d0a20afee3e3d17cb0dcb0e4f4b5c94f04c24  v4l2-drmprime-0008-implement-flush.patch
+"

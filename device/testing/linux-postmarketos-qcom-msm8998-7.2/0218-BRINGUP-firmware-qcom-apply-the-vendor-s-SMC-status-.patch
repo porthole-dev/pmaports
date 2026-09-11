@@ -1,0 +1,158 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 17:55:54 +0200
+Subject: [PATCH] BRINGUP: firmware: qcom: apply the vendor's SMC status sign
+ test to QSEECom
+
+Not upstream material -- drop before this series is ever sent out.
+Kept as its own commit, on top of 592070d378b5 (app_region_notify) and
+below nothing app_load-related (0216) depends on, so it can be dropped
+cleanly and separately from both upstream-intended patches.
+
+Mainline's __scm_smc_call() treats ANY nonzero raw SMC status (a0) as
+a transport failure and remaps it to an errno via
+qcom_scm_remap_error(). The vendor's own scm_call2()
+(ref/downstream-wahoo/drivers/soc/qcom/scm.c:706-708) disagrees: only
+a NEGATIVE a0 is an error --
+
+    if (ret < 0)
+            return scm_remap_error(ret);
+    return 0;
+
+-- any a0 >= 0 is plain transport success, and the value itself carries
+no further meaning; the real answer is in x1 (mainline's
+res->result[0]).
+
+Confirmed live on this device with the raw-status logging this commit
+also adds: QSEOS_APP_REGION_NOTIFICATION returned a0 = 25, which
+mainline's stricter test remaps to -EINVAL. Under the vendor's own
+rule that is a successful call. Contrast QSEOS_APP_START, which
+returned a0 = -5 -- genuinely negative, a real QCOM_SCM_ENOMEM under
+either convention.
+
+Two changes:
+
+- __scm_smc_call() (qcom_scm-smc.c) now also stashes the raw a0 into
+  a new struct qcom_scm_res field (raw_status) before remapping it,
+  alongside the existing dev_err() logging it. Every other caller of
+  this shared function is unaffected: its return value and remap
+  behaviour are untouched, this is a purely additive out-value nobody
+  else reads.
+
+- __qcom_scm_qseecom_call() (qcom_scm.c) applies the vendor's sign
+  test using that new field, overriding the generic (and, for this
+  command, wrong) nonzero-is-error verdict from qcom_scm_call().
+
+Deliberately narrow: only the QSEECom call path is changed. Every
+other SCM caller in this tree is presumably already correct under
+mainline's stricter test -- nothing here has verified otherwise, and
+this is not the commit to find out in. If the vendor's looser sign
+test turns out to be the general rule and not a QSEECom-specific
+quirk, that is a separate, properly argued patch against
+__scm_smc_call() itself.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/firmware/qcom/qcom_scm-smc.c | 26 ++++++++++++++++++++++++++
+ drivers/firmware/qcom/qcom_scm.c     | 28 ++++++++++++++++++++++++++++
+ drivers/firmware/qcom/qcom_scm.h     |  6 ++++++
+ 3 files changed, 60 insertions(+)
+
+diff --git a/drivers/firmware/qcom/qcom_scm-smc.c b/drivers/firmware/qcom/qcom_scm-smc.c
+index 574930729ddd..aa85a97a80e2 100644
+--- a/drivers/firmware/qcom/qcom_scm-smc.c
++++ b/drivers/firmware/qcom/qcom_scm-smc.c
+@@ -208,8 +208,34 @@ int __scm_smc_call(struct device *dev, const struct qcom_scm_desc *desc,
+ 		res->result[0] = smc_res.a1;
+ 		res->result[1] = smc_res.a2;
+ 		res->result[2] = smc_res.a3;
++		/*
++		 * BRING-UP INSTRUMENTATION, not upstream material -- see the
++		 * commit this hunk landed in. Expose the raw a0 before
++		 * qcom_scm_remap_error() below folds it into one errno,
++		 * losing the sign: the vendor scm_call2() only treats a
++		 * NEGATIVE a0 as a transport error (ref/downstream-wahoo/
++		 * drivers/soc/qcom/scm.c:706-708), while this function
++		 * below treats ANY nonzero a0 as one. Populated here rather
++		 * than left to the qseecom path to re-derive, since this is
++		 * the only place the raw value still exists.
++		 */
++		res->raw_status = (long)smc_res.a0;
+ 	}
+ 
++	/*
++	 * BRING-UP INSTRUMENTATION, not upstream material -- see the commit
++	 * this hunk landed in. qcom_scm_remap_error() collapses distinct raw
++	 * TrustZone SMC statuses into one errno (QCOM_SCM_EINVAL_ADDR=-3 and
++	 * QCOM_SCM_EINVAL_ARG=-2 both become -EINVAL, for one), which is
++	 * exactly the ambiguity being diagnosed. Log the value TrustZone
++	 * actually returned before that happens. dev is NULL during SMC
++	 * calling-convention detection at boot, which is not a real failure
++	 * and has no device to log against -- skip it rather than fault.
++	 */
++	if (dev && smc_res.a0)
++		dev_err(dev, "qcom_scm: raw smc status %ld (owner=%#x svc=%#x cmd=%#x)\n",
++			(long)smc_res.a0, desc->owner, desc->svc, desc->cmd);
++
+ 	return (long)smc_res.a0 ? qcom_scm_remap_error(smc_res.a0) : 0;
+ 
+ }
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index ef0051814e09..fe82b54a5ada 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2172,6 +2172,34 @@ static int __qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
+ 	res->resp_type = scm_res.result[1];
+ 	res->data = scm_res.result[2];
+ 
++	/*
++	 * BRING-UP INSTRUMENTATION, not upstream material -- see the commit
++	 * this hunk landed in. `status` above comes from qcom_scm_call() ->
++	 * __scm_smc_call(), which treats ANY nonzero raw a0 -- positive
++	 * included -- as an error. The vendor's own scm_call2()
++	 * (ref/downstream-wahoo/drivers/soc/qcom/scm.c:706-708) disagrees:
++	 * only a NEGATIVE a0 is a transport failure, and any a0 >= 0 is
++	 * success, full stop -- the value itself carries no meaning and the
++	 * real answer is in x1 (mainline's res->result[0], read above).
++	 * Confirmed live on this device: QSEOS_APP_REGION_NOTIFICATION
++	 * returned a0 = 25, which mainline's stricter test remaps to
++	 * -EINVAL and the vendor's own test reads as plain success.
++	 *
++	 * Apply the vendor's sign test here, narrowly, rather than in
++	 * __scm_smc_call(): that function is shared by every SCM caller in
++	 * the tree, most already working under the stricter test, and nothing
++	 * here has verified they would still be correct under the looser one.
++	 * QSEECOM calls are the ones under test.
++	 *
++	 * scm_res.raw_status defaults to 0 (see its struct comment) on any
++	 * path that never reaches __scm_smc_call()'s raw_status assignment;
++	 * 0 >= 0 reads as success either way, which matches what the
++	 * pre-existing `status` check below would also have concluded for a
++	 * genuine a0 == 0, so this default does not change behaviour.
++	 */
++	if (scm_res.raw_status >= 0)
++		return 0;
++
+ 	if (status)
+ 		return status;
+ 
+diff --git a/drivers/firmware/qcom/qcom_scm.h b/drivers/firmware/qcom/qcom_scm.h
+index 52e2b1dd8831..b9ae7b820d45 100644
+--- a/drivers/firmware/qcom/qcom_scm.h
++++ b/drivers/firmware/qcom/qcom_scm.h
+@@ -61,9 +61,15 @@ struct qcom_scm_desc {
+ /**
+  * struct qcom_scm_res
+  * @result:	The values returned by the secure syscall
++ * @raw_status:	BRING-UP ONLY (see qcom_scm-smc.c). The raw a0 SMC status,
++ *		before qcom_scm_remap_error() folds it into an errno. A
++ *		caller that does not populate it gets it zero-initialized,
++ *		which reads as "a0 == 0", i.e. success under either sign
++ *		convention -- see __qcom_scm_qseecom_call()'s comment.
+  */
+ struct qcom_scm_res {
+ 	u64 result[MAX_QCOM_SCM_RETS];
++	long raw_status;
+ };
+ 
+ int qcom_scm_wait_for_wq_completion(u32 wq_ctx);

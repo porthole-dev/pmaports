@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=32
+pkgrel=33
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -303,6 +303,7 @@ source="
 	0212-media-venus-msm8998-vote-the-bus-for-a-4k60-decode-l.patch
 	0213-drm-msm-BRINGUP-gpu_opp_adjust-raise-GPU-OPP-voltage.patch
 	0214-firmware-qcom-allow-QSEECom-on-the-Pixel-2-XL.patch
+	0215-firmware-qcom-qseecom-add-a-bring-up-debugfs-app-loo.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -334,7 +335,7 @@ package() {
 }
 sha512sums="
 6ca338fd2f9d2224b9187ba1cad18c05417c0504771917203a023467a8ac3a34e346bd3bc5a3f5716aa9810381a28c730ea5fc3726773dca36d75a4677178b13  linux-7.2.2.tar.xz
-a23ce340a2fbe31ef88b62bf15c95b0ef09a6eec4cfc44008d1d9fe03a82e5bed9def0a29f750af34549479602b0a1970d19d06c891d73419060553ca4a59c2f  config-postmarketos-qcom-msm8998-7.2.aarch64
+dbcf193b06efbe98b63f2249670136268750b32a5e115f4f486552efd18045736def7c5566ccf6d11ecf9d48ad74baa91e9d7752f2e3eb4edb4d57be22afc3e6  config-postmarketos-qcom-msm8998-7.2.aarch64
 0858ed26e3c55bec0208b918e3438657e0b468b75b5d4f2a994dbe05cf1ff82bf3053dc5584fef7379dcbca0556eacbfd5675adacff1de63cc30fad8f6c17559  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 51dcee155f7b1912bd30da88f2f877c6601f2f856f9437aa6da93e1b8dc5dc2fde07b99234bcdb8f8f7a62deaede3563d0959e0e9f628910ae90ad069b6b3c51  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 47e2789a45183718612ce29f3ffd034a27c77b8d437f1c6e3a05e564e4b79b365546b79e8861b92b008f15cf8bba598c2e129a61b695e1cf55ce93a7bcdea7ea  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -549,4 +550,5 @@ eab811b5b5506f11bbd914d5ab5bb06c27c5e0b18709851fcca52562703c6439f2c90c270a797609
 d378e338e246ef0cce5c6e58225b3b80aaee0d4ae32c7003242d60118c263b10f117b95609e5d36fcd41752c70a5610306845652484a5e07073f3cbda17fd362  0212-media-venus-msm8998-vote-the-bus-for-a-4k60-decode-l.patch
 1fd7555debd9191e113402f99145896f1944ffc2c715c0d05c6bc9573ae624ebfeb640752d4a5e3acc089ec3bcd5d827c68f034efbeb98504d768b954cb204a0  0213-drm-msm-BRINGUP-gpu_opp_adjust-raise-GPU-OPP-voltage.patch
 b382adf46139b63947ef3e4f0a1d7dfe54f46b353eaae5354cc52cfa54bd10928882d0a7e3cca81b52b3335cb12d031f3c347e3c73ac8fec3d2b152baceceed4  0214-firmware-qcom-allow-QSEECom-on-the-Pixel-2-XL.patch
+3cd8c8745a8a95f405f993a9368486d0a7d94f2775cd51c6532183b292e48f162c1abee818f4c9d853a83efe2f01ee0b564b96b6b1e6387ad6c14c47f423ca76  0215-firmware-qcom-qseecom-add-a-bring-up-debugfs-app-loo.patch
 "

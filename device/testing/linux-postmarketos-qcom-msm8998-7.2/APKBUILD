@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=33
+pkgrel=34
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -335,7 +335,7 @@ package() {
 }
 sha512sums="
 6ca338fd2f9d2224b9187ba1cad18c05417c0504771917203a023467a8ac3a34e346bd3bc5a3f5716aa9810381a28c730ea5fc3726773dca36d75a4677178b13  linux-7.2.2.tar.xz
-dbcf193b06efbe98b63f2249670136268750b32a5e115f4f486552efd18045736def7c5566ccf6d11ecf9d48ad74baa91e9d7752f2e3eb4edb4d57be22afc3e6  config-postmarketos-qcom-msm8998-7.2.aarch64
+af296bb6046b650dbd3b330d21460ffca6eaa75570237bec7a0022c8acc5eae741178989f770a6b1f822b85a47e22e7978f4cb9a9a2fd1723f26b282161fbfe4  config-postmarketos-qcom-msm8998-7.2.aarch64
 0858ed26e3c55bec0208b918e3438657e0b468b75b5d4f2a994dbe05cf1ff82bf3053dc5584fef7379dcbca0556eacbfd5675adacff1de63cc30fad8f6c17559  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 51dcee155f7b1912bd30da88f2f877c6601f2f856f9437aa6da93e1b8dc5dc2fde07b99234bcdb8f8f7a62deaede3563d0959e0e9f628910ae90ad069b6b3c51  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 47e2789a45183718612ce29f3ffd034a27c77b8d437f1c6e3a05e564e4b79b365546b79e8861b92b008f15cf8bba598c2e129a61b695e1cf55ce93a7bcdea7ea  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch

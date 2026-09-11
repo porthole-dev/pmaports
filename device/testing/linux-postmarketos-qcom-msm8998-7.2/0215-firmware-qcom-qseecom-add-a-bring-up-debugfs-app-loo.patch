@@ -1,0 +1,135 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 14:26:35 +0200
+Subject: [PATCH] firmware: qcom: qseecom: add a bring-up debugfs app-lookup
+ hook
+
+Task 4 of the fingerprint trustlet transport work needs to ask the TZ
+for fpctzappfingerprint before any client driver for it exists, and
+read back what qcom_scm_qseecom_app_get_id() actually returned.
+
+Add CONFIG_QCOM_QSEECOM_BRINGUP (default n), gating a debugfs file at
+qseecom_ta/lookup: a write takes an app name and calls
+qcom_scm_qseecom_app_get_id(), a read reports "app_id=<n>" or
+"error=<errno>". Not for production -- it lets any process with
+debugfs access query TrustZone app IDs directly.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/firmware/qcom/Kconfig        | 15 ++++++
+ drivers/firmware/qcom/qcom_qseecom.c | 69 ++++++++++++++++++++++++++++
+ 2 files changed, 84 insertions(+)
+
+diff --git a/drivers/firmware/qcom/Kconfig b/drivers/firmware/qcom/Kconfig
+index b477d54b495a..53aaa762f59a 100644
+--- a/drivers/firmware/qcom/Kconfig
++++ b/drivers/firmware/qcom/Kconfig
+@@ -58,6 +58,21 @@ config QCOM_QSEECOM
+ 
+ 	  Select Y here to enable the QSEECOM interface driver.
+ 
++config QCOM_QSEECOM_BRINGUP
++	bool "Qualcomm QSEECOM bring-up debugfs hook"
++	depends on QCOM_QSEECOM
++	depends on DEBUG_FS
++	help
++	  Exposes a debugfs file, qseecom_ta/lookup, that takes an app name on
++	  write and reports the qcom_scm_qseecom_app_get_id() result ("app_id=<n>"
++	  or "error=<errno>") on read. For bringing up a new QSEE app's transport
++	  before a client driver for it exists.
++
++	  This is a bring-up aid only and must not be enabled in production: it
++	  lets any process with debugfs access query TrustZone app IDs directly.
++
++	  If unsure, say N.
++
+ config QCOM_QSEECOM_UEFISECAPP
+ 	bool "Qualcomm SEE UEFI Secure App client driver"
+ 	depends on QCOM_QSEECOM
+diff --git a/drivers/firmware/qcom/qcom_qseecom.c b/drivers/firmware/qcom/qcom_qseecom.c
+index 320ec2a77524..052a5af3a599 100644
+--- a/drivers/firmware/qcom/qcom_qseecom.c
++++ b/drivers/firmware/qcom/qcom_qseecom.c
+@@ -14,6 +14,73 @@
+ #include <linux/firmware/qcom/qcom_qseecom.h>
+ #include <linux/firmware/qcom/qcom_scm.h>
+ 
++#ifdef CONFIG_QCOM_QSEECOM_BRINGUP
++#include <linux/debugfs.h>
++#include <linux/string.h>
++
++/*
++ * Bring-up-only debugfs hook: write an app name to
++ * /sys/kernel/debug/qseecom_ta/lookup, then read it back for
++ * "app_id=<n>" or "error=<errno>". Exercises
++ * qcom_scm_qseecom_app_get_id() directly, without a client device
++ * having to already exist for the app. Not for production.
++ */
++
++static u32 qseecom_bringup_app_id;
++static int qseecom_bringup_ret = -ENODATA;
++
++static ssize_t qseecom_bringup_lookup_write(struct file *file, const char __user *ubuf,
++					     size_t count, loff_t *ppos)
++{
++	char name[128];
++	ssize_t len;
++
++	len = simple_write_to_buffer(name, sizeof(name) - 1, ppos, ubuf, count);
++	if (len < 0)
++		return len;
++
++	name[len] = '\0';
++	qseecom_bringup_ret = qcom_scm_qseecom_app_get_id(strim(name), &qseecom_bringup_app_id);
++
++	/* each write is a fresh lookup, not an append */
++	*ppos = 0;
++	return count;
++}
++
++static int qseecom_bringup_lookup_show(struct seq_file *s, void *unused)
++{
++	if (qseecom_bringup_ret)
++		seq_printf(s, "error=%d\n", qseecom_bringup_ret);
++	else
++		seq_printf(s, "app_id=%u\n", qseecom_bringup_app_id);
++
++	return 0;
++}
++
++static int qseecom_bringup_lookup_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, qseecom_bringup_lookup_show, NULL);
++}
++
++static const struct file_operations qseecom_bringup_lookup_fops = {
++	.open		= qseecom_bringup_lookup_open,
++	.read		= seq_read,
++	.write		= qseecom_bringup_lookup_write,
++	.llseek		= seq_lseek,
++	.release	= single_release,
++};
++
++static void qseecom_bringup_debugfs_init(void)
++{
++	struct dentry *dir;
++
++	dir = debugfs_create_dir("qseecom_ta", NULL);
++	debugfs_create_file("lookup", 0600, dir, NULL, &qseecom_bringup_lookup_fops);
++}
++#else
++static void qseecom_bringup_debugfs_init(void) { }
++#endif /* CONFIG_QCOM_QSEECOM_BRINGUP */
++
+ struct qseecom_app_desc {
+ 	const char *app_name;
+ 	const char *dev_name;
+@@ -111,6 +178,8 @@ static struct platform_driver qcom_qseecom_driver = {
+ 
+ static int __init qcom_qseecom_init(void)
+ {
++	qseecom_bringup_debugfs_init();
++
+ 	return platform_driver_register(&qcom_qseecom_driver);
+ }
+ subsys_initcall(qcom_qseecom_init);

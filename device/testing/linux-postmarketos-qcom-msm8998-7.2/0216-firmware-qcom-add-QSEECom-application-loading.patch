@@ -1,0 +1,201 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 15:32:10 +0200
+Subject: [PATCH] firmware: qcom: add QSEECom application loading
+
+QSEECom on mainline can look an app up and talk to one, but not load one --
+which is fine on the Windows-on-ARM laptops it was written for, where the
+only app of interest is already resident, and not fine on a phone, where
+under Android qseecomd loads the trustlet at runtime and under a mainline
+kernel nothing does.
+
+Add QSEOS_APP_START_COMMAND. The request layout is the vendor driver's
+64-bit form. Three things the vendor driver does around this are not needed
+on msm8998 as it is described in mainline DT: cmnlib is pre-marked loaded by
+qcom,appsbl-qseecom-support, the secure carveout is already inside the
+tz_mem reservation, and qcom,no-clock-support removes the CE clock handling.
+
+Trustlets here are ELFCLASS32, so every address handed to one is checked
+against the 4 GB line rather than assumed: the tzmem pool only sees our gfp
+on its grow path, so GFP_DMA32 alone does not make the guarantee.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/firmware/qcom/qcom_scm.c       | 121 +++++++++++++++++++++++++
+ include/linux/firmware/qcom/qcom_scm.h |  10 ++
+ 2 files changed, 131 insertions(+)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index fca851215737..535a12e252c0 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -114,6 +114,12 @@ enum qcom_scm_qseecom_tz_svc {
+ enum qcom_scm_qseecom_tz_cmd_app {
+ 	QSEECOM_TZ_CMD_APP_SEND			= 1,
+ 	QSEECOM_TZ_CMD_APP_LOOKUP		= 3,
++	/*
++	 * The command space is per (owner, svc): APP_SEND is
++	 * (TZ_APPS, APP_ID_PLACEHOLDER) and APP_START is (QSEE_OS, APP_MGR),
++	 * so both being 1 is not a collision.
++	 */
++	QSEECOM_TZ_CMD_APP_START		= 1,
+ };
+ 
+ enum qcom_scm_qseecom_tz_cmd_info {
+@@ -125,6 +131,15 @@ enum qcom_scm_qseecom_tz_cmd_info {
+ #define QSEECOM_MAX_APP_NAME_SIZE		64
+ #define SHMBRIDGE_RESULT_NOTSUPP		4
+ 
++/* Mirrors qseecom_load_app_64bit_ireq from the vendor driver. */
++struct qseecom_load_app_req {
++	u32 cmd_id;
++	u32 mdt_len;
++	u32 img_len;
++	u64 phys_addr;
++	char app_name[QSEECOM_MAX_APP_NAME_SIZE];
++} __packed;
++
+ /* Each bit configures cold/warm boot address for one of the 4 CPUs */
+ static const u8 qcom_scm_cpu_cold_bits[QCOM_SCM_BOOT_MAX_CPUS] = {
+ 	0, BIT(0), BIT(3), BIT(5)
+@@ -2297,6 +2312,112 @@ int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id)
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_get_id);
+ 
++/*
++ * The trustlets on this platform are ELFCLASS32, so every physical address
++ * handed to one must fit in 32 bits; the vendor driver enforces the same at
++ * qseecom.c:3158. This device has 4 GB of DDR based at 0x80000000, so a
++ * buffer can legitimately land above the line -- GFP_DMA32 asks for the right
++ * thing, but only the pool's *grow* path sees our gfp, and the pool's initial
++ * chunk is allocated elsewhere. Check the address, do not trust the flag.
++ */
++static int qcom_scm_qseecom_check_dma32(phys_addr_t phys, size_t size)
++{
++	if (phys + size > SZ_4G) {
++		WARN_ONCE(1, "qseecom: buffer at %pa (+%zu) is above 4 GB; a 32-bit trustlet cannot address it\n",
++			  &phys, size);
++		return -ENOMEM;
++	}
++	return 0;
++}
++
++/**
++ * qcom_scm_qseecom_app_load() - Load a QSEE app from its MDT image.
++ * @app_name: The name of the app, as the TZ knows it.
++ * @img_phys: The firmware image, already laid out in TZ memory.
++ * @mdt_len:  Length of the .mdt member.
++ * @img_len:  Combined length of .mdt and every .bNN member.
++ * @app_id:   The returned app ID.
++ *
++ * Return: Zero on success, nonzero on failure.
++ */
++int qcom_scm_qseecom_app_load(const char *app_name, phys_addr_t img_phys,
++			      size_t mdt_len, size_t img_len, u32 *app_id)
++{
++	unsigned long app_name_len = strlen(app_name);
++	struct qcom_scm_desc desc = {};
++	struct qcom_scm_qseecom_resp res = {};
++	int status;
++
++	if (app_name_len >= QSEECOM_MAX_APP_NAME_SIZE)
++		return -EINVAL;
++
++	status = qcom_scm_qseecom_check_dma32(img_phys, img_len);
++	if (status)
++		return status;
++
++	struct qseecom_load_app_req *req __free(qcom_tzmem) =
++		qcom_tzmem_alloc(__scm->mempool, sizeof(*req), GFP_DMA32);
++	if (!req)
++		return -ENOMEM;
++
++	/*
++	 * Zero the request first: app_name is a fixed-size field the TA reads
++	 * as a NUL-terminated string, and the tzmem chunk backing it is not
++	 * guaranteed zeroed, so anything past app_name_len would otherwise be
++	 * stale heap crossing into TrustZone.
++	 */
++	memset(req, 0, sizeof(*req));
++	req->cmd_id = QSEECOM_TZ_CMD_APP_START;
++	req->mdt_len = mdt_len;
++	req->img_len = img_len;
++	req->phys_addr = img_phys;
++	memcpy(req->app_name, app_name, app_name_len);
++
++	status = qcom_scm_qseecom_check_dma32(qcom_tzmem_to_phys(req),
++					      sizeof(*req));
++	if (status)
++		return status;
++
++	desc.owner = QSEECOM_TZ_OWNER_QSEE_OS;
++	desc.svc = QSEECOM_TZ_SVC_APP_MGR;
++	desc.cmd = QSEECOM_TZ_CMD_APP_START;
++	desc.arginfo = QCOM_SCM_ARGS(2, QCOM_SCM_RW, QCOM_SCM_VAL);
++	desc.args[0] = qcom_tzmem_to_phys(req);
++	desc.args[1] = sizeof(*req);
++
++	status = qcom_scm_qseecom_call(&desc, &res);
++	if (status)
++		return status;
++
++	/*
++	 * qcom_scm_qseecom_call() already WARNs when res.result is
++	 * INCOMPLETE or BLOCKED_ON_LISTENER; that WARN says the call
++	 * returned an unhandled intermediate state, but not what to do
++	 * about it. Here we turn the same two results into a return value
++	 * of their own instead of folding them into -EIO below: the vendor
++	 * driver handles QSEOS_RESULT_INCOMPLETE for APP_START with a
++	 * listener-callback loop we do not implement
++	 * (qseecom.c:4227-4230), so this is most likely a trustlet that
++	 * registered a listener and is waiting on it, not an SCM failure.
++	 */
++	if (res.result == QSEECOM_RESULT_INCOMPLETE ||
++	    res.result == QSEECOM_RESULT_BLOCKED_ON_LISTENER) {
++		dev_err(__scm->dev,
++			"qseecom: app '%s' load did not complete (result=%llu); likely needs a listener callback this driver does not implement\n",
++			app_name, res.result);
++		return -EOPNOTSUPP;
++	}
++
++	if (res.result != QSEECOM_RESULT_SUCCESS)
++		return -EIO;
++	if (res.resp_type != QSEECOM_SCM_RES_APP_ID)
++		return -EINVAL;
++
++	*app_id = res.data;
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_load);
++
+ /**
+  * qcom_scm_qseecom_app_send() - Send to and receive data from a given QSEE app.
+  * @app_id:   The ID of the target app.
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index 10f802c7cb8f..f0006a098c43 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -174,6 +174,8 @@ int qcom_scm_shm_bridge_delete(u64 handle);
+ #ifdef CONFIG_QCOM_QSEECOM
+ 
+ int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id);
++int qcom_scm_qseecom_app_load(const char *app_name, phys_addr_t img_phys,
++			      size_t mdt_len, size_t img_len, u32 *app_id);
+ int qcom_scm_qseecom_app_send(u32 app_id, void *req, size_t req_size,
+ 			      void *rsp, size_t rsp_size);
+ 
+@@ -184,6 +186,14 @@ static inline int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id)
+ 	return -EINVAL;
+ }
+ 
++static inline int qcom_scm_qseecom_app_load(const char *app_name,
++					    phys_addr_t img_phys,
++					    size_t mdt_len, size_t img_len,
++					    u32 *app_id)
++{
++	return -EINVAL;
++}
++
+ static inline int qcom_scm_qseecom_app_send(u32 app_id,
+ 					    void *req, size_t req_size,
+ 					    void *rsp, size_t rsp_size)

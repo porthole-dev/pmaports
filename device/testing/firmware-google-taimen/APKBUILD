@@ -43,6 +43,18 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # and ours win because the firmware loader tries the uncompressed name across
 # every search path before any .zst (drivers/base/firmware_loader/main.c).
 #
+# fpctzappfingerprint.mdt/.bNN (the FPC fingerprint sensor's TrustZone
+# trustlet) is not in TheMuppets' tree either, and unlike mba.mbn/modem.mbn
+# it isn't on the modem partition -- it lives at /firmware/ inside
+# vendor.img, which is an Android-sparse ext4 nested two zips deep in the
+# same factory zip already fetched for the radio image. unpack() streams
+# both zip layers, unsparses with simg2img, and reads the nine files out
+# with debugfs -- no mount, no root required. It ships as the
+# firmware-google-taimen-fingerprint subpackage, split .mdt + .bNN and
+# unsquashed (see that subpackage's function for why), and nothing depends
+# on it: see the WARNING below about what installing anything in this
+# APKBUILD does, which applies equally to the subpackage.
+#
 # adsp.mbn / slpi_v2.mbn / ipa_fws.mbn: TheMuppets ships these PIL-split as
 # foo.mdt + foo.b00..bNN; pil-squasher welds them back into the single .mbn
 # our DT asks for. a540_zap.elf and wlanmdsp.mbn ship already combined --
@@ -71,24 +83,28 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 
 pkgname=firmware-google-taimen
 pkgver=20250505
-pkgrel=4
+pkgrel=5
 pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
 license="proprietary"
 options="!check !archcheck !strip !tracedeps !spdx pmb:cross-native"
-makedepends="qca-swiss-army-knife pil-squasher 7zip unzip"
+makedepends="qca-swiss-army-knife pil-squasher 7zip unzip e2fsprogs-extra android-tools"
 depends="
 	firmware-qcom-adreno-a530
 	linux-firmware-ath10k
 	linux-firmware-qca
 "
+subpackages="$pkgname-fingerprint:_fingerprint"
 _commit="d1a4f0d0ea34157875751c812c9887550e216c5a"
 _repo="TheMuppets/proprietary_vendor_google_taimen"
 # The last taimen factory image (Android 11, October 2020 -- taimen reached
 # end-of-life on this build, so there is nothing newer). Its radio member is
 # the modem firmware; see the header.
 _factory="taimen-rp1a.201005.004.a1-factory-2f5c4987"
+# The inner image-*.zip (see unpack()) is named after the build id alone,
+# without the "-factory-<hash>" suffix the outer zip carries.
+_factory_short="taimen-rp1a.201005.004.a1"
 _baseband="g8998-00034-2006052136"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/$_repo/archive/$_commit.tar.gz
@@ -107,6 +123,28 @@ unpack() {
 	msg "Extracting radio-taimen-$_baseband.img from $_factory.zip"
 	unzip -p "$srcdir"/$_factory.zip \
 		"*/radio-taimen-$_baseband.img" > "$srcdir"/radio.img
+
+	msg "Extracting the fingerprint trustlet from vendor.img"
+	# The trustlet is not in TheMuppets' tree, and unlike the radio image
+	# it is inside vendor.img -- an Android-sparse ext4 -- nested in the
+	# factory zip's image-*.zip. Stream each layer instead of extracting:
+	# the outer zip is 1.8 GB and the inner one 1.7 GB.
+	unzip -p "$srcdir"/$_factory.zip "*/image-$_factory_short.zip" \
+		> "$srcdir"/image.zip
+	unzip -p "$srcdir"/image.zip vendor.img > "$srcdir"/vendor.sparse
+	simg2img "$srcdir"/vendor.sparse "$srcdir"/vendor.raw
+	rm -f "$srcdir"/image.zip "$srcdir"/vendor.sparse
+
+	# debugfs reads ext4 without mounting and without privileges.
+	mkdir -p "$srcdir"/fpc
+	for _s in mdt b00 b01 b02 b03 b04 b05 b06 b07; do
+		debugfs -R "dump /firmware/fpctzappfingerprint.$_s \
+			$srcdir/fpc/fpctzappfingerprint.$_s" \
+			"$srcdir"/vendor.raw 2>/dev/null
+	done
+	rm -f "$srcdir"/vendor.raw
+	[ -s "$srcdir"/fpc/fpctzappfingerprint.mdt ] || \
+		die "no fpctzappfingerprint.mdt in vendor.img -- image layout changed?"
 }
 
 build() {
@@ -190,6 +228,21 @@ package() {
 	install -Dm644 board-2.bin firmware-5.bin -t "$_fw"/ath10k/WCN3990/hw1.0/
 
 	find "$pkgdir"/lib/firmware -type f -exec chmod 644 {} +
+}
+
+_fingerprint() {
+	pkgdesc="FPC fingerprint trustlet for the Pixel 2 XL (opt-in)"
+	# Deliberately NOT a dependency of the device package. This is a
+	# proprietary TrustZone application; nothing on a default install
+	# should pull it in. It is useful only with the qseecom-ta transport.
+	depends=""
+	install -Dm644 "$srcdir"/fpc/fpctzappfingerprint.mdt \
+		"$subpkgdir"/lib/firmware/qcom/msm8998/taimen/fpctzappfingerprint.mdt
+	local _s
+	for _s in b00 b01 b02 b03 b04 b05 b06 b07; do
+		install -Dm644 "$srcdir"/fpc/fpctzappfingerprint.$_s \
+			"$subpkgdir"/lib/firmware/qcom/msm8998/taimen/fpctzappfingerprint.$_s
+	done
 }
 
 sha512sums="

@@ -1,0 +1,170 @@
+From 72fe1fd8917cb5d7344c3b3ff42b99b109ead4d5 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 09:48:58 +0200
+Subject: [PATCH 2/2] adapter: make the presence check period a setting
+
+CHECK_PRESENCE_PERIOD has been 2, in seconds, since the polling loop was
+written in 2012, and it is armed with g_timeout_add_seconds(), which also
+aligns the timer to a second boundary. A tag taken out of the field is
+therefore not noticed for up to two seconds, and nothing above neard can
+do better, because nothing is told until that check fails.
+
+On a phone that is the whole of "why does the card take a second to
+disappear from the screen". The value carries no stated rationale, and a
+device where a tag leaving promptly matters more than a few extra
+transactions has no way to say so.
+
+Make it CheckPresencePeriod in main.conf, in milliseconds, defaulting to
+the 2000 it has always effectively been, so existing behaviour is
+unchanged. The extra transactions only happen while a tag is present.
+---
+ include/setting.h |  1 +
+ src/adapter.c     | 24 +++++++++++++++++++-----
+ src/main.c        | 18 ++++++++++++++++++
+ src/main.conf     |  7 +++++++
+ 4 files changed, 45 insertions(+), 5 deletions(-)
+
+diff --git a/include/setting.h b/include/setting.h
+index 31a0426..26efe4d 100644
+--- a/include/setting.h
++++ b/include/setting.h
+@@ -29,6 +29,7 @@ extern "C" {
+ #endif
+ 
+ bool near_setting_get_bool(const char *key);
++unsigned int near_setting_get_uint(const char *key);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/adapter.c b/src/adapter.c
+index a0042b9..60318c3 100644
+--- a/src/adapter.c
++++ b/src/adapter.c
+@@ -36,7 +36,21 @@
+ #include "near.h"
+ 
+ /* We check for the tag being present every 2 seconds */
+-#define CHECK_PRESENCE_PERIOD 2
++/*
++ * How often neard asks a tag already in the field whether it is still there.
++ *
++ * This was 2, in seconds, armed with g_timeout_add_seconds(), which also
++ * aligns timers to second boundaries: a tag lifted off was noticed somewhere
++ * between 0 and 2 seconds later. No application can react faster than this,
++ * because nothing is told until the check fails. The value dates from the
++ * original polling loop in 2012 and carries no stated rationale.
++ *
++ * It is a setting now, in milliseconds, defaulting to the 2000 it has always
++ * effectively been. A device that wants a tag leaving the field to register
++ * promptly can shorten it; the cost is more transactions, and only while a
++ * tag is actually present.
++ */
++#define CHECK_PRESENCE_PERIOD near_setting_get_uint("CheckPresencePeriod")
+ 
+ static DBusConnection *connection = NULL;
+ 
+@@ -476,7 +490,7 @@ static void tag_present_cb(uint32_t adapter_idx, uint32_t target_idx,
+ 	}
+ 
+ 	adapter->presence_timeout =
+-		g_timeout_add_seconds(CHECK_PRESENCE_PERIOD,
++		g_timeout_add(CHECK_PRESENCE_PERIOD,
+ 					check_presence, adapter);
+ }
+ 
+@@ -493,7 +507,7 @@ void __near_adapter_start_check_presence(uint32_t adapter_idx,
+ 		return;
+ 
+ 	adapter->presence_timeout =
+-			g_timeout_add_seconds(CHECK_PRESENCE_PERIOD,
++			g_timeout_add(CHECK_PRESENCE_PERIOD,
+ 					check_presence, adapter);
+ }
+ 
+@@ -700,7 +714,7 @@ static void tag_read_cb(uint32_t adapter_idx, uint32_t target_idx, int status)
+ 	}
+ 
+ 	adapter->presence_timeout =
+-		g_timeout_add_seconds(CHECK_PRESENCE_PERIOD,
++		g_timeout_add(CHECK_PRESENCE_PERIOD,
+ 					check_presence, adapter);
+ }
+ 
+@@ -1014,7 +1028,7 @@ static gboolean adapter_recv_event(GIOChannel *channel, GIOCondition condition,
+ 		near_adapter_disconnect(adapter->idx);
+ 
+ 		adapter->presence_timeout =
+-			g_timeout_add_seconds(2 * CHECK_PRESENCE_PERIOD,
++			g_timeout_add(2 * CHECK_PRESENCE_PERIOD,
+ 					      check_presence, adapter);
+ 		return FALSE;
+ 	}
+diff --git a/src/main.c b/src/main.c
+index a2c3a84..fbc31c6 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -38,10 +38,12 @@ static struct {
+ 	bool constant_poll;
+ 	bool default_powered;
+ 	bool reset_on_error;
++	unsigned int check_presence_period;
+ } near_settings  = {
+ 	.constant_poll = FALSE,
+ 	.default_powered = FALSE,
+ 	.reset_on_error = TRUE,
++	.check_presence_period = 2000,
+ };
+ 
+ static GKeyFile *load_config(const char *file)
+@@ -71,6 +73,7 @@ static void parse_config(GKeyFile *config)
+ {
+ 	GError *error = NULL;
+ 	bool boolean;
++	int integer;
+ 
+ 	if (!config)
+ 		return;
+@@ -93,6 +96,13 @@ static void parse_config(GKeyFile *config)
+ 		near_settings.reset_on_error = boolean;
+ 
+ 	g_clear_error(&error);
++
++	integer = g_key_file_get_integer(config, "General",
++						"CheckPresencePeriod", &error);
++	if (!error && integer > 0)
++		near_settings.check_presence_period = integer;
++
++	g_clear_error(&error);
+ }
+ 
+ static GMainLoop *main_loop = NULL;
+@@ -221,6 +231,14 @@ bool near_setting_get_bool(const char *key)
+ 	return false;
+ }
+ 
++unsigned int near_setting_get_uint(const char *key)
++{
++	if (g_str_equal(key, "CheckPresencePeriod"))
++		return near_settings.check_presence_period;
++
++	return 0;
++}
++
+ int main(int argc, char *argv[])
+ {
+ 	GOptionContext *context;
+diff --git a/src/main.conf b/src/main.conf
+index 70c2697..6d4e9c9 100644
+--- a/src/main.conf
++++ b/src/main.conf
+@@ -14,3 +14,10 @@ DefaultPowered = true
+ # the kernel.
+ # Default value is true.
+ ResetOnError = true
++
++# How often, in milliseconds, to ask a tag that is in the field whether it is
++# still there. A tag that has been taken away is not noticed until the next
++# check, so this is the floor on how quickly its removal can be reported.
++# Shortening it costs more transactions while a tag is present.
++# Default value is 2000.
++CheckPresencePeriod = 2000

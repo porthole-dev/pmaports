@@ -25,7 +25,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: Rasmus Thomsen <oss@cogitri.dev>
 pkgname=xdg-desktop-portal
 pkgver=1.22.1
-pkgrel=50
+pkgrel=54
 # NOTE: Upgrade only to even-numbered versions (e.g. 1.18.x, 1.20.x)!
 pkgdesc="Desktop integration portal"
 url="https://github.com/flatpak/xdg-desktop-portal"
@@ -70,6 +70,7 @@ subpackages="
 	"
 source="https://github.com/flatpak/xdg-desktop-portal/releases/download/$pkgver/xdg-desktop-portal-$pkgver.tar.xz
 	add-an-nfc-portal.patch
+	nfc-symbolic.svg
 	xdg-desktop-portal.initd
 	xdg-document-portal.initd
 	xdg-permission-store.initd
@@ -102,6 +103,14 @@ package() {
 	mkdir -p usr/lib
 	mv usr/share/pkgconfig usr/lib/
 
+	# The NFC portal's permission dialog asks its backend for "nfc-symbolic",
+	# and nothing on the system has one -- adwaita-icon-theme ships no NFC
+	# icon at all, so the dialog drew a broken-image placeholder. Ship it from
+	# the package that names it. Upstream this belongs in adwaita-icon-theme,
+	# and this install goes away the day it lands there.
+	install -Dm644 "$srcdir"/nfc-symbolic.svg \
+		usr/share/icons/hicolor/symbolic/apps/nfc-symbolic.svg
+
 	install -Dm755 "$srcdir"/xdg-desktop-portal.initd etc/user/init.d/xdg-desktop-portal
 	install -Dm755 "$srcdir"/xdg-permission-store.initd etc/user/init.d/xdg-permission-store
 }
@@ -125,7 +134,8 @@ _document_portal_openrc() {
 
 sha512sums="
 c37319e84d8830e19e1fe4dd21d909c2fd9d7a9deb2720d3f83d33bbe00bac4c22e49018c1c8be0d0c4c038a9a236748ba03c73d2f1351de7bf9ad4fbffee4c8  xdg-desktop-portal-1.22.1.tar.xz
-62f8cf152e5541f213333c830e7766a629b7f694173d13a0c00090891f7485c2a82bd67550649cf989a74aee7e8d367b426d23c8f96e4b7d17aa0228a6546962  add-an-nfc-portal.patch
+dfeaf5d18f173fdd41c7158796e4ba284c1a35f440e7afef51635d7640ee930e0edcdc876c2d3a628dbbdde76e31c575a8b46347f82f9f986ecd140c3579b993  add-an-nfc-portal.patch
+c1c3f36d1537d4a69f03f19e9a7f789043eb4ccbe7df5f1442698da14294661b813ab293de140ba08b766bb41eec60aaaa49fcf1cc9b3e42feb071f7f100757e  nfc-symbolic.svg
 00f4710bbfb1af00fc163d40524a7181d6cdc1a2679e568f45a081c83facb609505c539c6ed647906dab54f187c0008ebb5695739049781c5a671b4455268742  xdg-desktop-portal.initd
 6fd2bfe0396ecbbb9092a7a204dd649985ce700539e679cd77442e1360a262953816b601e79b0c71192f4e1a9d91440c7173486549c8b751b91c8e8888c93c7b  xdg-document-portal.initd
 fb3e8e8a4367f013a84115d89657be4226e6981398ae7b9fc7ef4238d527f61d6c251d65b7c7e465b38719da8af5c0b57520db7dfaba77ea2fd93f5db412f956  xdg-permission-store.initd

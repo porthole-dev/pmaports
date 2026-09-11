@@ -1,0 +1,1794 @@
+diff --git a/libfprint/drivers/fpctee/fpc-tz.c b/libfprint/drivers/fpctee/fpc-tz.c
+new file mode 100644
+index 0000000..c6b1571
+--- /dev/null
++++ b/libfprint/drivers/fpctee/fpc-tz.c
+@@ -0,0 +1,572 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++/*
++ * FPC TrustZone application protocol — transport-independent core.
++ *
++ * Derived from https://github.com/sonyxperiadev/vendor-sony-oss-fingerprint
++ * Copyright (C) 2016 Shane Francis / Jens Andersen, Apache-2.0.
++ * Copyright (C) 2026 Giuseppe Maggio <jertlok@proton.me>
++ *
++ * See fpc-tz.h for the licence notice and what was changed.
++ */
++
++#include "fpc-tz.h"
++
++#include <string.h>
++
++/*
++ * Sony, tz_api_yoshino.h.  This is the generation taimen is expected to be
++ * on: FPC1270 + FPC2050 is contemporaneous with yoshino (msm8998, 2017).
++ * Expected, not confirmed — that is what fpc_tz_probe() is for.
++ */
++const fpc_tz_table fpc_tz_table_yoshino = {
++  .name             = "yoshino",
++
++  .grp_normal       = FPC_TZ_ABSENT,
++  .grp_db           = 0x02,
++  .grp_fpcdata      = 0x03,
++  .grp_qc           = 0x07,
++  .grp_info         = 0x09,
++  .grp_sensor       = 0x0a,
++  .grp_template     = 0x0b,
++
++  .load_db          = 0x0b,
++  .store_db         = 0x0c,
++
++  .get_fpc_info     = 0x02,
++
++  .wait_finger_lost = 0x00,
++  .wait_finger_down = 0x02,
++  .capture_image    = 0x03,
++  .deep_sleep       = 0x04,
++  .get_otp_info     = 0x06,
++
++  .begin_enrol      = 0x00,
++  .enrol_step       = 0x01,
++  .end_enrol        = 0x02,
++  .identify         = 0x03,
++  .update_template  = 0x04,
++  .load_empty_db    = 0x06,
++  .get_fingerprints = 0x07,
++  .delete_fingerprint = 0x08,
++  .set_gid          = 0x09,
++  .get_template_id  = 0x0a,
++};
++
++/*
++ * Sony, tz_api_loire_tone.h.  One flat FPC_GROUP_NORMAL = 0x1, no INFO group
++ * at all.  Present so that "the numbering is not yoshino" has somewhere to
++ * land — it is never selected automatically.
++ */
++const fpc_tz_table fpc_tz_table_loire = {
++  .name             = "loire",
++
++  .grp_normal       = 0x01,
++  .grp_db           = 0x02,
++  .grp_fpcdata      = 0x03,
++  .grp_qc           = 0x07,
++  .grp_info         = FPC_TZ_ABSENT,
++  .grp_sensor       = 0x01,
++  .grp_template     = 0x01,
++
++  .load_db          = 0x0b,
++  .store_db         = 0x0c,
++
++  .get_fpc_info     = FPC_TZ_ABSENT,
++
++  .wait_finger_lost = 0x05,
++  .wait_finger_down = 0x07,
++  .capture_image    = 0x0f,
++  .deep_sleep       = FPC_TZ_ABSENT,
++  .get_otp_info     = FPC_TZ_ABSENT,
++
++  .begin_enrol      = 0x00,
++  .enrol_step       = 0x01,
++  .end_enrol        = 0x02,
++  .identify         = 0x03,
++  .update_template  = 0x04,
++  .load_empty_db    = 0x0a,
++  .get_fingerprints = 0x0d,
++  .delete_fingerprint = 0x0e,
++  .set_gid          = 0x10,
++  .get_template_id  = 0x11,
++};
++
++const fpc_tz_table *
++fpc_tz_table_by_name (const char *name)
++{
++  if (name == NULL)
++    return NULL;
++  if (strcmp (name, fpc_tz_table_yoshino.name) == 0)
++    return &fpc_tz_table_yoshino;
++  if (strcmp (name, fpc_tz_table_loire.name) == 0)
++    return &fpc_tz_table_loire;
++  return NULL;
++}
++
++/*
++ * Wire helpers.  Every field on this protocol is a 32-bit little-endian word;
++ * spelling that out keeps the encoding checkable from the self-check instead
++ * of depending on struct layout.
++ */
++#define FPC_TZ_BUF_WORDS 16     /* BUFFER_SIZE 64 */
++#define FPC_TZ_HDR_WORDS 4      /* group, cmd, status, length */
++
++static void
++put32 (uint8_t *buf, unsigned word, uint32_t val)
++{
++  buf[word * 4 + 0] = (uint8_t) (val >> 0);
++  buf[word * 4 + 1] = (uint8_t) (val >> 8);
++  buf[word * 4 + 2] = (uint8_t) (val >> 16);
++  buf[word * 4 + 3] = (uint8_t) (val >> 24);
++}
++
++static uint32_t
++get32 (const uint8_t *buf, unsigned word)
++{
++  return (uint32_t) buf[word * 4 + 0] |
++         ((uint32_t) buf[word * 4 + 1] << 8) |
++         ((uint32_t) buf[word * 4 + 2] << 16) |
++         ((uint32_t) buf[word * 4 + 3] << 24);
++}
++
++static int32_t
++get_status (const uint8_t *buf, unsigned word)
++{
++  return (int32_t) get32 (buf, word);
++}
++
++static int
++xfer (fpc_tz *s, void *buf, size_t len)
++{
++  if (s == NULL || s->ops == NULL || s->ops->xfer == NULL)
++    return FPC_TZ_EINVAL;
++  if (s->ops->xfer (s->ctx, buf, len) < 0)
++    return FPC_TZ_ETRANSPORT;
++  return FPC_TZ_OK;
++}
++
++/*
++ * send_normal_command(): group/cmd/ret_val in 64 bytes, result read back out
++ * of ret_val.  Returns FPC_TZ_OK, FPC_TZ_ETRANSPORT, or FPC_TZ_ESTATUS with
++ * the TA's own code in *ret when ret is non-NULL.
++ */
++static int
++std_cmd (fpc_tz *s, uint32_t group, uint32_t cmd, int32_t *ret)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  int rc;
++
++  if (group == FPC_TZ_ABSENT || cmd == FPC_TZ_ABSENT)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, group);
++  put32 (buf, 1, cmd);
++  put32 (buf, 2, 0);
++
++  rc = xfer (s, buf, sizeof (buf));
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  if (ret != NULL)
++    *ret = get_status (buf, 2);
++
++  return get_status (buf, 2) == 0 ? FPC_TZ_OK : FPC_TZ_ESTATUS;
++}
++
++/*
++ * send_custom_cmd(): the request struct is longer than the three-word header
++ * and the TA answers in place.  words[] is the whole command, word 2 is the
++ * status on the way back.
++ */
++static int
++custom_cmd (fpc_tz *s, uint8_t *buf, size_t len)
++{
++  int rc = xfer (s, buf, len);
++
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  return get_status (buf, 2) == 0 ? FPC_TZ_OK : FPC_TZ_ESTATUS;
++}
++
++/*
++ * send_buffer_command(): header then payload at offset 16.  Used for the
++ * template database, whose payload is a *path* — see fpc_tz_load_db().
++ */
++static int
++buffer_cmd (fpc_tz *s, uint32_t group, uint32_t cmd,
++            const void *data, uint32_t len,
++            uint8_t *buf, size_t bufsz)
++{
++  if (group == FPC_TZ_ABSENT || cmd == FPC_TZ_ABSENT)
++    return FPC_TZ_EINVAL;
++  if (bufsz < (size_t) FPC_TZ_HDR_WORDS * 4 + len)
++    return FPC_TZ_EINVAL;
++
++  memset (buf, 0, bufsz);
++  put32 (buf, 0, group);
++  put32 (buf, 1, cmd);
++  put32 (buf, 2, 0);
++  put32 (buf, 3, len);
++  if (len != 0)
++    memcpy (buf + FPC_TZ_HDR_WORDS * 4, data, len);
++
++  return custom_cmd (s, buf, bufsz);
++}
++
++void
++fpc_tz_init (fpc_tz *s, const fpc_tz_ops *ops, void *ctx)
++{
++  memset (s, 0, sizeof (*s));
++  s->ops = ops;
++  s->ctx = ctx;
++}
++
++int
++fpc_tz_select_table (fpc_tz *s, const char *name)
++{
++  const fpc_tz_table *tab = fpc_tz_table_by_name (name);
++
++  if (tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  s->tab = tab;
++  return FPC_TZ_OK;
++}
++
++int
++fpc_tz_probe (fpc_tz *s, const char *db_path, int *transport_ok)
++{
++  const fpc_tz_table *y = &fpc_tz_table_yoshino;
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  int rc;
++
++  if (transport_ok != NULL)
++    *transport_ok = 0;
++
++  s->tab = NULL;
++
++  /* INFO 0x09 / GET_FPC_INFO 0x02 — absent from the loire table entirely. */
++  put32 (buf, 0, y->grp_info);
++  put32 (buf, 1, y->get_fpc_info);
++  put32 (buf, 2, 0);
++
++  rc = xfer (s, buf, sizeof (buf));
++  if (rc != FPC_TZ_OK)
++    return FPC_TZ_ETRANSPORT;
++
++  if (transport_ok != NULL)
++    *transport_ok = 1;
++
++  if (get_status (buf, 2) == 0)
++    {
++      s->info = get32 (buf, 3);
++      s->tab = y;
++      return FPC_TZ_OK;
++    }
++
++  /*
++   * The TA answered, but not to group 0x09.  Prove the transport with
++   * DB 0x2 / LOAD_DB 0x0B, which is stable across both Sony tables, before
++   * anyone blames the numbering.  Deliberately do NOT fall back to the loire
++   * table: recovering taimen's numbering is disassembly work, not a guess.
++   */
++  if (db_path != NULL)
++    {
++      uint8_t dbbuf[FPC_TZ_BUF_WORDS * 4 + 256];
++      uint32_t len = (uint32_t) strlen (db_path) + 1;
++
++      if (len <= sizeof (dbbuf) - FPC_TZ_HDR_WORDS * 4)
++        {
++          int drc = buffer_cmd (s, fpc_tz_table_loire.grp_db,
++                                fpc_tz_table_loire.load_db,
++                                db_path, len, dbbuf, sizeof (dbbuf));
++
++          if (transport_ok != NULL)
++            *transport_ok = (drc != FPC_TZ_ETRANSPORT);
++        }
++    }
++
++  return FPC_TZ_EGENERATION;
++}
++
++/*
++ * ponytail: LOAD_DB/STORE_DB take a *path*, not a blob — that is how Sony's
++ * HAL uses them, and it means the TA does its own file I/O over a QSEECom
++ * listener.  Mainline has no listener support at all, so this pair is the
++ * most likely thing to fail first on this port.  If it does, the fix is to
++ * add the listener (or a blob-carrying variant if the TA has one), not to
++ * change this encoding.
++ */
++int
++fpc_tz_load_db (fpc_tz *s, const char *path)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4 + 256];
++
++  if (s->tab == NULL || path == NULL)
++    return FPC_TZ_EINVAL;
++
++  return buffer_cmd (s, s->tab->grp_db, s->tab->load_db,
++                     path, (uint32_t) strlen (path) + 1, buf, sizeof (buf));
++}
++
++int
++fpc_tz_store_db (fpc_tz *s, const char *path)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4 + 256];
++
++  if (s->tab == NULL || path == NULL)
++    return FPC_TZ_EINVAL;
++
++  return buffer_cmd (s, s->tab->grp_db, s->tab->store_db,
++                     path, (uint32_t) strlen (path) + 1, buf, sizeof (buf));
++}
++
++int
++fpc_tz_load_empty_db (fpc_tz *s)
++{
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  return std_cmd (s, s->tab->grp_template, s->tab->load_empty_db, NULL);
++}
++
++int
++fpc_tz_set_gid (fpc_tz *s, uint32_t gid)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, s->tab->grp_template);
++  put32 (buf, 1, s->tab->set_gid);
++
++  /* The two generations disagree about field order here, not just numbering:
++   * yoshino is {group, cmd, status, gid}, loire is {group, cmd, gid, status}. */
++  if (s->tab == &fpc_tz_table_loire)
++    {
++      put32 (buf, 2, gid);
++      put32 (buf, 3, 0);
++      if (xfer (s, buf, sizeof (buf)) != FPC_TZ_OK)
++        return FPC_TZ_ETRANSPORT;
++      return get_status (buf, 3) == 0 ? FPC_TZ_OK : FPC_TZ_ESTATUS;
++    }
++
++  put32 (buf, 2, 0);
++  put32 (buf, 3, gid);
++  return custom_cmd (s, buf, sizeof (buf));
++}
++
++int
++fpc_tz_wait_finger_down (fpc_tz *s, int timeout_ms)
++{
++  int rc;
++
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  rc = std_cmd (s, s->tab->grp_sensor, s->tab->wait_finger_down, NULL);
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  /* The TA only arms the sensor; the finger event arrives as an IRQ. */
++  if (s->ops->wait_event == NULL)
++    return FPC_TZ_EINVAL;
++
++  return s->ops->wait_event (s->ctx, timeout_ms);
++}
++
++int
++fpc_tz_wait_finger_lost (fpc_tz *s, int timeout_ms)
++{
++  int rc;
++
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  rc = std_cmd (s, s->tab->grp_sensor, s->tab->wait_finger_lost, NULL);
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  if (s->ops->wait_event == NULL)
++    return FPC_TZ_EINVAL;
++
++  return s->ops->wait_event (s->ctx, timeout_ms);
++}
++
++/*
++ * Returns the TA's own acquisition code in *ret (0 = good image, 3 = keep
++ * collecting, others map to retry conditions).  No pixels ever reach us: the
++ * image stays inside the TA and feeds its matcher.
++ */
++int
++fpc_tz_capture_image (fpc_tz *s)
++{
++  int32_t ret = 0;
++  int rc;
++
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  rc = std_cmd (s, s->tab->grp_sensor, s->tab->capture_image, &ret);
++  if (rc == FPC_TZ_ETRANSPORT)
++    return rc;
++
++  return (int) ret;
++}
++
++int
++fpc_tz_deep_sleep (fpc_tz *s)
++{
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++  if (s->tab->deep_sleep == FPC_TZ_ABSENT)
++    return FPC_TZ_OK;           /* loire has no such command; nothing to do */
++
++  return std_cmd (s, s->tab->grp_sensor, s->tab->deep_sleep, NULL);
++}
++
++void
++fpc_tz_cancel (fpc_tz *s)
++{
++  if (s->ops != NULL && s->ops->cancel != NULL)
++    s->ops->cancel (s->ctx);
++}
++
++int
++fpc_tz_begin_enrol (fpc_tz *s)
++{
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  return std_cmd (s, s->tab->grp_template, s->tab->begin_enrol, NULL);
++}
++
++int
++fpc_tz_enrol_step (fpc_tz *s, uint32_t *remaining_touches)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  int rc;
++
++  if (s->tab == NULL || remaining_touches == NULL)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, s->tab->grp_template);
++  put32 (buf, 1, s->tab->enrol_step);
++
++  rc = custom_cmd (s, buf, sizeof (buf));
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  /* nr_enroll_stages comes from here, not from a constant. */
++  *remaining_touches = get32 (buf, 3);
++  return FPC_TZ_OK;
++}
++
++int
++fpc_tz_end_enrol (fpc_tz *s, uint32_t *print_id)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  int rc;
++
++  if (s->tab == NULL || print_id == NULL)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, s->tab->grp_template);
++  put32 (buf, 1, s->tab->end_enrol);
++
++  rc = custom_cmd (s, buf, sizeof (buf));
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  *print_id = get32 (buf, 3);
++  return FPC_TZ_OK;
++}
++
++int
++fpc_tz_identify (fpc_tz *s, uint32_t *print_id)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  int rc;
++
++  if (s->tab == NULL || print_id == NULL)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, s->tab->grp_template);
++  put32 (buf, 1, s->tab->identify);
++
++  rc = custom_cmd (s, buf, sizeof (buf));
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  /* Match on chip: an id, or 0 for no match.  Never an image. */
++  *print_id = get32 (buf, 3);
++  return FPC_TZ_OK;
++}
++
++int
++fpc_tz_update_template (fpc_tz *s, int *changed)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  int rc;
++
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, s->tab->grp_template);
++  put32 (buf, 1, s->tab->update_template);
++
++  rc = custom_cmd (s, buf, sizeof (buf));
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  if (changed != NULL)
++    *changed = (int) get32 (buf, 3);
++
++  return FPC_TZ_OK;
++}
++
++int
++fpc_tz_get_fingerprints (fpc_tz *s, uint32_t *ids, uint32_t *count)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  uint32_t n;
++  int rc;
++
++  if (s->tab == NULL || ids == NULL || count == NULL)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, s->tab->grp_template);
++  put32 (buf, 1, s->tab->get_fingerprints);
++  put32 (buf, 3, FPC_TZ_MAX_PRINTS);
++
++  rc = custom_cmd (s, buf, sizeof (buf));
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  n = get32 (buf, 3);
++  if (n > FPC_TZ_MAX_PRINTS)
++    return FPC_TZ_ESTATUS;
++
++  for (uint32_t i = 0; i < n; i++)
++    ids[i] = get32 (buf, 4 + i);
++
++  *count = n;
++  return FPC_TZ_OK;
++}
++
++int
++fpc_tz_delete_fingerprint (fpc_tz *s, uint32_t id)
++{
++  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++
++  if (s->tab == NULL)
++    return FPC_TZ_EINVAL;
++
++  put32 (buf, 0, s->tab->grp_template);
++  put32 (buf, 1, s->tab->delete_fingerprint);
++  put32 (buf, 3, id);
++
++  return custom_cmd (s, buf, sizeof (buf));
++}
+diff --git a/libfprint/drivers/fpctee/fpc-tz.h b/libfprint/drivers/fpctee/fpc-tz.h
+new file mode 100644
+index 0000000..be40ce4
+--- /dev/null
++++ b/libfprint/drivers/fpctee/fpc-tz.h
+@@ -0,0 +1,188 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++/*
++ * FPC TrustZone application protocol — transport-independent core.
++ *
++ * The command tables, the request/response layouts and the call sequences in
++ * this file are derived from
++ *
++ *     https://github.com/sonyxperiadev/vendor-sony-oss-fingerprint
++ *     Copyright (C) 2016 Shane Francis / Jens Andersen
++ *     Licensed under the Apache License, Version 2.0
++ *
++ * specifically tz_api_yoshino.h, tz_api_loire_tone.h and
++ * fpc_imp_yoshino_nile_tama.c.  This file stays under Apache-2.0 for that
++ * reason; do not relicense it.
++ *
++ * Copyright (C) 2026 Giuseppe Maggio <jertlok@proton.me>
++ *   - taimen (msm8998, FPC1270 + FPC2050) adaptation, generation probe,
++ *     table-as-data rework, stub-testable transport split.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ */
++
++#ifndef FPC_TZ_H
++#define FPC_TZ_H
++
++#include <stddef.h>
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/*
++ * Command numbering is NOT vendor-stable.  Sony needed two tables for their
++ * own devices (CAPTURE_IMAGE 0x0F -> 0x03, WAIT_FINGER_DOWN 0x07 -> 0x02,
++ * GET_FINGERPRINTS 0x0D -> 0x07), so the numbering lives here as data and is
++ * selected at runtime by fpc_tz_probe().  Never hardcode a command id.
++ */
++#define FPC_TZ_ABSENT 0xffu     /* command/group does not exist in this table */
++
++typedef struct
++{
++  const char *name;
++
++  /* groups */
++  uint8_t grp_normal;           /* loire only: everything lives here */
++  uint8_t grp_db;
++  uint8_t grp_fpcdata;
++  uint8_t grp_qc;
++  uint8_t grp_info;             /* absent on loire — this is the discriminator */
++  uint8_t grp_sensor;
++  uint8_t grp_template;
++
++  /* grp_db */
++  uint8_t load_db;
++  uint8_t store_db;
++
++  /* grp_info */
++  uint8_t get_fpc_info;
++
++  /* grp_sensor */
++  uint8_t wait_finger_lost;
++  uint8_t wait_finger_down;
++  uint8_t capture_image;
++  uint8_t deep_sleep;
++  uint8_t get_otp_info;
++
++  /* grp_template */
++  uint8_t begin_enrol;
++  uint8_t enrol_step;
++  uint8_t end_enrol;
++  uint8_t identify;
++  uint8_t update_template;
++  uint8_t load_empty_db;
++  uint8_t get_fingerprints;
++  uint8_t set_gid;
++  uint8_t delete_fingerprint;
++  uint8_t get_template_id;
++} fpc_tz_table;
++
++/* yoshino/nile/tama generation — the one taimen is expected to be on */
++extern const fpc_tz_table fpc_tz_table_yoshino;
++/* loire/tone generation — kept so a mismatch has somewhere to land */
++extern const fpc_tz_table fpc_tz_table_loire;
++
++/* Look a table up by name ("yoshino", "loire"); NULL if unknown. */
++const fpc_tz_table *fpc_tz_table_by_name (const char *name);
++
++/*
++ * Transport.
++ *
++ * xfer() is the "modified command": the caller hands over a buffer holding a
++ * request struct, the TA reads it, writes its response into the same buffer
++ * in place, and the call returns 0 on success or negative on a transport/TA
++ * fault (which is NOT the same thing as a command that ran and failed).
++ *
++ * wait_event() blocks until the sensor IRQ fires after WAIT_FINGER_DOWN /
++ * WAIT_FINGER_LOST have armed it.  Returns 1 on a finger event, 0 if
++ * cancelled or timed out, negative on error.  May be NULL only if the caller
++ * never uses the finger-detect helpers.
++ *
++ * cancel() unblocks a pending wait_event() from another thread.  Optional.
++ */
++typedef struct
++{
++  int (*xfer) (void *ctx, void *buf, size_t len);
++  int (*wait_event) (void *ctx, int timeout_ms);
++  void (*cancel) (void *ctx);
++} fpc_tz_ops;
++
++typedef struct
++{
++  const fpc_tz_ops   *ops;
++  void               *ctx;
++  const fpc_tz_table *tab;      /* NULL until fpc_tz_probe()/select() */
++  uint32_t            info;     /* whatever GET_FPC_INFO returned */
++} fpc_tz;
++
++/* Errors.  Kept distinct because they route to different humans. */
++#define FPC_TZ_OK            0
++#define FPC_TZ_ETRANSPORT  (-1) /* no answer at all: QSEECom/TA problem */
++#define FPC_TZ_EGENERATION (-2) /* answered, but not with this numbering */
++#define FPC_TZ_ESTATUS     (-3) /* command ran and reported failure */
++#define FPC_TZ_EINVAL      (-4)
++
++#define FPC_TZ_MAX_PRINTS  5    /* FINGERPRINT_MAX_COUNT */
++
++void fpc_tz_init (fpc_tz *s, const fpc_tz_ops *ops, void *ctx);
++
++/*
++ * The first command ever sent to the TA: INFO 0x09 / GET_FPC_INFO 0x02.
++ * Group 0x09 does not exist in the loire table, so the group id alone
++ * discriminates the generation, and the command is non-mutating.
++ *
++ *   FPC_TZ_OK          -> yoshino numbering, tab is set, proceed
++ *   FPC_TZ_EGENERATION -> the TA answered but not to group 0x09.  db_path is
++ *                         then used for a DB 0x2 / LOAD_DB 0x0B fallback,
++ *                         which is stable across both tables, purely to prove
++ *                         the transport before anyone blames the numbering.
++ *                         *transport_ok tells the two apart.  No table is
++ *                         guessed: recovering the numbering is RE work.
++ *   FPC_TZ_ETRANSPORT  -> nothing answered.  Debug QSEECom, not the protocol.
++ *
++ * db_path may be NULL to skip the fallback; transport_ok may be NULL.
++ */
++int fpc_tz_probe (fpc_tz *s, const char *db_path, int *transport_ok);
++
++/* Bring-up escape hatch for when probe says "not yoshino". */
++int fpc_tz_select_table (fpc_tz *s, const char *name);
++
++/* Template database (opaque, TA-encrypted; the normal world only stores it). */
++int fpc_tz_load_db (fpc_tz *s, const char *path);
++int fpc_tz_store_db (fpc_tz *s, const char *path);
++int fpc_tz_load_empty_db (fpc_tz *s);
++int fpc_tz_set_gid (fpc_tz *s, uint32_t gid);
++
++/* Sensor. */
++int fpc_tz_wait_finger_down (fpc_tz *s, int timeout_ms);
++int fpc_tz_wait_finger_lost (fpc_tz *s, int timeout_ms);
++int fpc_tz_capture_image (fpc_tz *s);
++int fpc_tz_deep_sleep (fpc_tz *s);
++void fpc_tz_cancel (fpc_tz *s);
++
++/* Enrol. */
++int fpc_tz_begin_enrol (fpc_tz *s);
++int fpc_tz_enrol_step (fpc_tz *s, uint32_t *remaining_touches);
++int fpc_tz_end_enrol (fpc_tz *s, uint32_t *print_id);
++
++/* Match on chip. */
++int fpc_tz_identify (fpc_tz *s, uint32_t *print_id);
++int fpc_tz_update_template (fpc_tz *s, int *changed);
++
++/* Storage. */
++int fpc_tz_get_fingerprints (fpc_tz *s, uint32_t *ids, uint32_t *count);
++int fpc_tz_delete_fingerprint (fpc_tz *s, uint32_t id);
++
++#ifdef __cplusplus
++}
++#endif
++#endif /* FPC_TZ_H */
+diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
+new file mode 100644
+index 0000000..783b4c7
+--- /dev/null
++++ b/libfprint/drivers/fpctee/fpctee.c
+@@ -0,0 +1,983 @@
++/*
++ * [BRINGUP] FPC match-on-chip fingerprint sensor behind a QSEE trustlet.
++ *
++ * Derived from libfprint's own FPC driver, drivers/fpcmoc/fpc.c:
++ *   Copyright (c) 2022 Fingerprint Cards AB <tech@fingerprints.com>
++ * The class wiring, the SSM shape, the enrol/identify/list/delete/clear flow
++ * and the print serialisation are theirs; what changed is the transport (USB
++ * bulk framing -> a synchronous trustlet call) and the command set, which now
++ * comes from fpc-tz.[ch].
++ *
++ * Copyright (C) 2026 Giuseppe Maggio <jertlok@proton.me>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ * NOTE (fpc-tz.c is Apache-2.0, from sonyxperiadev/vendor-sony-oss-fingerprint):
++ * combining it with this LGPL-2.1-or-later file is only allowed under the
++ * "or later" arm (LGPL-3.0).  Upstream libfprint has to accept that before
++ * this driver can be submitted; see the workstream report.
++ *
++ * To build inside libfprint, two lines are needed:
++ *   meson.build:          'fpctee': { 'helper': ['udev'] },
++ *   libfprint/meson.build:'fpctee': files('drivers/fpctee/fpctee.c',
++ *                                         'drivers/fpctee/fpc-tz.c'),
++ */
++
++#include "drivers_api.h"
++#include "fpc-tz.h"
++
++#include <glib-unix.h>
++
++#include <errno.h>
++#include <fcntl.h>
++#include <string.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
++
++#define FP_COMPONENT "fpctee"
++
++/* Where the TA-encrypted template database is kept.  The normal world can
++ * neither read nor forge it; from libfprint's side this is device storage. */
++#define FPC_TEE_DB_PATH "/var/lib/fprint/fpctee.db"
++#define FPC_TEE_GID 0
++#define FPC_TEE_FINGER_TIMEOUT_MS 10000
++#define FPC_TEE_MAX_ENROLL_STAGES 25
++
++/* Job return convention: negative is an error, 0 means "ask for the finger
++ * again", and an enrol touch returns remaining_touches + 1. */
++#define FPC_TEE_TOUCH_RETRY 0
++#define FPC_TEE_TOUCH_DONE 1
++
++/*
++ * [BRINGUP] Provisional kernel ABI.
++ *
++ * The kernel half (a QSEECom trusted-application loader plus the FPC IRQ
++ * source) does not exist yet, so this is the shape it is expected to take and
++ * nothing more: one char device, one ioctl carrying a buffer the TA rewrites
++ * in place, and a blocking read() that returns one byte per finger IRQ.
++ * Whatever the kernel side actually lands with, only this block changes.
++ */
++#define FPC_TEE_DEFAULT_NODE "/dev/fpc_tee"
++#define FPC_TEE_IOC_XFER _IOWR ('F', 0x01, struct fpc_tee_xfer)
++
++struct fpc_tee_xfer
++{
++  guint64 buf;
++  guint32 len;
++  guint32 pad;
++};
++
++typedef struct
++{
++  gint fd;
++  gint cancel_pipe[2];
++} FpcTeeTransport;
++
++static int
++fpc_tee_xfer (void *ctx, void *buf, size_t len)
++{
++  FpcTeeTransport *t = ctx;
++  struct fpc_tee_xfer arg = {
++    .buf = (guint64) (uintptr_t) buf,
++    .len = len,
++  };
++
++  if (t->fd < 0)
++    return -ENODEV;
++
++  if (ioctl (t->fd, FPC_TEE_IOC_XFER, &arg) < 0)
++    {
++      fp_err ("trustlet transfer failed: %s", g_strerror (errno));
++      return -errno;
++    }
++
++  return 0;
++}
++
++static int
++fpc_tee_wait_event (void *ctx, int timeout_ms)
++{
++  FpcTeeTransport *t = ctx;
++  GPollFD fds[2] = {
++    { .fd = t->fd, .events = G_IO_IN },
++    { .fd = t->cancel_pipe[0], .events = G_IO_IN },
++  };
++  guint8 evt;
++  gint rc;
++
++  if (t->fd < 0)
++    return -ENODEV;
++
++  rc = g_poll (fds, 2, timeout_ms);
++  if (rc < 0)
++    return -errno;
++  if (rc == 0 || (fds[1].revents & G_IO_IN))
++    return 0;                   /* timed out or cancelled */
++
++  if (read (t->fd, &evt, sizeof (evt)) < 0)
++    return -errno;
++
++  return 1;
++}
++
++static void
++fpc_tee_cancel_wait (void *ctx)
++{
++  FpcTeeTransport *t = ctx;
++  const guint8 byte = 1;
++
++  if (t->cancel_pipe[1] >= 0)
++    (void) !write (t->cancel_pipe[1], &byte, sizeof (byte));
++}
++
++static const fpc_tz_ops fpc_tee_ops = {
++  .xfer       = fpc_tee_xfer,
++  .wait_event = fpc_tee_wait_event,
++  .cancel     = fpc_tee_cancel_wait,
++};
++
++/* ------------------------------------------------------------------ */
++
++typedef enum {
++  FPC_TEE_ENROLL_BEGIN = 0,
++  FPC_TEE_ENROLL_TOUCH,
++  FPC_TEE_ENROLL_END,
++  FPC_TEE_ENROLL_STORE,
++  FPC_TEE_ENROLL_DISCARD,
++  FPC_TEE_ENROLL_NUM_STATES,
++} FpcTeeEnrollState;
++
++typedef enum {
++  FPC_TEE_IDENTIFY_TOUCH = 0,
++  FPC_TEE_IDENTIFY_UPDATE,
++  FPC_TEE_IDENTIFY_CANCEL,
++  FPC_TEE_IDENTIFY_NUM_STATES,
++} FpcTeeIdentifyState;
++
++G_DECLARE_FINAL_TYPE (FpiDeviceFpcTee, fpi_device_fpctee, FPI, DEVICE_FPCTEE, FpDevice)
++
++struct _FpiDeviceFpcTee
++{
++  FpDevice        parent;
++  FpcTeeTransport transport;
++  fpc_tz          tz;
++  FpiSsm         *task_ssm;
++
++  gint            enroll_stage;
++  guint32         enrolled_id;
++  guint32         matched_id;
++  gboolean        enrolling;
++
++  guint32         list_ids[FPC_TZ_MAX_PRINTS];
++  guint32         list_count;
++};
++
++G_DEFINE_TYPE (FpiDeviceFpcTee, fpi_device_fpctee, FP_TYPE_DEVICE)
++
++/*
++ * There is no udev subtype for a trustlet node: fp-context.c only enumerates
++ * spidev and hidraw.  Until one exists, the node is named by the environment
++ * (FPCTEE_DEVICE) and falls back to the spidev slot and then to a fixed path.
++ */
++static const FpIdEntry fpctee_id_table[] = {
++  { .udev_types = FPI_DEVICE_UDEV_SUBTYPE_SPIDEV, .spi_acpi_id = "fpc_tee" },
++  { .udev_types = 0 },
++};
++
++static const gchar *
++fpc_tee_node_path (FpDevice *device)
++{
++  const gchar *env = g_getenv ("FPCTEE_DEVICE");
++  const gchar *udev_path;
++
++  if (env != NULL)
++    return env;
++
++  udev_path = fpi_device_get_udev_data (device, FPI_DEVICE_UDEV_SUBTYPE_SPIDEV);
++  if (udev_path != NULL)
++    return udev_path;
++
++  return FPC_TEE_DEFAULT_NODE;
++}
++
++static gboolean
++fpc_tee_transport_open (FpiDeviceFpcTee *self, GError **error)
++{
++  const gchar *path = fpc_tee_node_path (FP_DEVICE (self));
++
++  self->transport.fd = open (path, O_RDWR | O_CLOEXEC);
++  if (self->transport.fd < 0)
++    {
++      g_set_error (error, FP_DEVICE_ERROR, FP_DEVICE_ERROR_REMOVED,
++                   "cannot open %s: %s", path, g_strerror (errno));
++      return FALSE;
++    }
++
++  if (!g_unix_open_pipe (self->transport.cancel_pipe, FD_CLOEXEC, error))
++    {
++      close (self->transport.fd);
++      self->transport.fd = -1;
++      return FALSE;
++    }
++
++  fpc_tz_init (&self->tz, &fpc_tee_ops, &self->transport);
++  return TRUE;
++}
++
++static void
++fpc_tee_close_fd (gint *fd)
++{
++  if (*fd >= 0)
++    close (*fd);
++  *fd = -1;
++}
++
++static void
++fpc_tee_transport_close (FpiDeviceFpcTee *self)
++{
++  fpc_tee_close_fd (&self->transport.fd);
++  fpc_tee_close_fd (&self->transport.cancel_pipe[0]);
++  fpc_tee_close_fd (&self->transport.cancel_pipe[1]);
++}
++
++static GError *
++fpc_tee_error (int rc, const gchar *what)
++{
++  switch (rc)
++    {
++    case FPC_TZ_ETRANSPORT:
++      return fpi_device_error_new_msg (FP_DEVICE_ERROR_PROTO,
++                                       "%s: the trustlet did not answer", what);
++
++    case FPC_TZ_EGENERATION:
++      return fpi_device_error_new_msg (FP_DEVICE_ERROR_NOT_SUPPORTED,
++                                       "%s: this trustlet does not use the "
++                                       "yoshino command numbering", what);
++
++    default:
++      return fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                       "%s failed: %d", what, rc);
++    }
++}
++
++/* ------------------------------------------------------------------ *
++ * Jobs.  Every trustlet call blocks (WAIT_FINGER_DOWN blocks until the
++ * finger arrives), so each one runs on a worker thread and the SSM is
++ * advanced from the main loop in the completion callback.
++ * ------------------------------------------------------------------ */
++
++typedef int (*FpcTeeJobFunc) (FpiDeviceFpcTee *self);
++
++static void
++fpc_tee_job_thread (GTask *task, gpointer source, gpointer data, GCancellable *cancellable)
++{
++  FpcTeeJobFunc job = data;
++
++  (void) cancellable;
++  g_task_return_int (task, job (FPI_DEVICE_FPCTEE (source)));
++}
++
++static void
++fpc_tee_job_run (FpiDeviceFpcTee *self, FpcTeeJobFunc job, GAsyncReadyCallback done)
++{
++  g_autoptr(GTask) task = g_task_new (self, NULL, done, NULL);
++
++  g_task_set_task_data (task, job, NULL);
++  g_task_run_in_thread (task, fpc_tee_job_thread);
++}
++
++static gboolean
++fpc_tee_job_finish (FpiDeviceFpcTee *self, GAsyncResult *res,
++                    const gchar *what, gint *out)
++{
++  GError *error = NULL;
++  gint rc = g_task_propagate_int (G_TASK (res), &error);
++
++  if (error != NULL)
++    {
++      fpi_ssm_mark_failed (self->task_ssm, error);
++      return FALSE;
++    }
++
++  if (rc < 0)
++    {
++      fpi_ssm_mark_failed (self->task_ssm, fpc_tee_error (rc, what));
++      return FALSE;
++    }
++
++  if (out != NULL)
++    *out = rc;
++
++  return TRUE;
++}
++
++/* ------------------------------------------------------------------ *
++ * Prints.  The trustlet stores a u32 id and nothing else, so that id is
++ * the whole of the print's device-side identity.
++ * ------------------------------------------------------------------ */
++
++static FpPrint *
++fpc_tee_print_from_id (FpiDeviceFpcTee *self, guint32 id)
++{
++  FpPrint *print = fp_print_new (FP_DEVICE (self));
++
++  fpi_print_set_type (print, FPI_PRINT_RAW);
++  fpi_print_set_device_stored (print, TRUE);
++  g_object_set (print, "fpi-data", g_variant_new ("u", id), NULL);
++
++  return print;
++}
++
++static gboolean
++fpc_tee_id_from_print (FpPrint *print, guint32 *id)
++{
++  g_autoptr(GVariant) data = NULL;
++
++  g_object_get (print, "fpi-data", &data, NULL);
++  if (data == NULL || !g_variant_check_format_string (data, "u", FALSE))
++    return FALSE;
++
++  g_variant_get (data, "u", id);
++  return TRUE;
++}
++
++/* ------------------------------------------------------------------ *
++ * open / close / probe
++ * ------------------------------------------------------------------ */
++
++static int
++job_open (FpiDeviceFpcTee *self)
++{
++  int rc;
++
++  /* fpc_tz_init() cleared the table, so re-run the discriminator: one
++   * non-mutating command, and nothing below it is valid without a table. */
++  rc = fpc_tz_probe (&self->tz, FPC_TEE_DB_PATH, NULL);
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  rc = fpc_tz_load_db (&self->tz, FPC_TEE_DB_PATH);
++
++  /* First boot, or a database the trustlet rejects: start an empty one. */
++  if (rc != FPC_TZ_OK)
++    {
++      fp_dbg ("LOAD_DB failed (%d), loading an empty database", rc);
++      rc = fpc_tz_load_empty_db (&self->tz);
++      if (rc != FPC_TZ_OK)
++        return rc;
++    }
++
++  return fpc_tz_set_gid (&self->tz, FPC_TEE_GID);
++}
++
++static void
++fpc_tee_open_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  GError *error = NULL;
++  gint rc = g_task_propagate_int (G_TASK (res), &error);
++
++  (void) user_data;
++  if (error == NULL && rc < 0)
++    error = fpc_tee_error (rc, "open");
++
++  if (error != NULL)
++    fpc_tee_transport_close (self);
++
++  fpi_device_open_complete (FP_DEVICE (self), error);
++}
++
++static void
++fpc_tee_dev_open (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++  GError *error = NULL;
++
++  if (!fpc_tee_transport_open (self, &error))
++    {
++      fpi_device_open_complete (device, error);
++      return;
++    }
++
++  fpc_tee_job_run (self, job_open, fpc_tee_open_done);
++}
++
++static void
++fpc_tee_dev_close (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  fpc_tz_deep_sleep (&self->tz);
++  fpc_tee_transport_close (self);
++  fpi_device_close_complete (device, NULL);
++}
++
++static void
++fpc_tee_dev_probe (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++  g_autofree gchar *serial = NULL;
++  GError *error = NULL;
++  int transport_ok = 0;
++  int rc;
++
++  if (!fpc_tee_transport_open (self, &error))
++    {
++      fpi_device_probe_complete (device, NULL, NULL, error);
++      return;
++    }
++
++  /*
++   * The first command ever sent to this trustlet: INFO 0x09 / GET_FPC_INFO
++   * 0x02.  Group 0x09 does not exist in the older FPC table, so the group id
++   * alone says which generation this is, and it mutates nothing.
++   */
++  rc = fpc_tz_probe (&self->tz, FPC_TEE_DB_PATH, &transport_ok);
++  fpc_tee_transport_close (self);
++
++  if (rc != FPC_TZ_OK)
++    {
++      fp_err ("trustlet probe failed (%d, transport %s)", rc,
++              transport_ok ? "alive" : "dead");
++      fpi_device_probe_complete (device, NULL, NULL, fpc_tee_error (rc, "probe"));
++      return;
++    }
++
++  serial = g_strdup_printf ("fpc-%04x", self->tz.info);
++  fpi_device_probe_complete (device, serial, NULL, NULL);
++}
++
++/* ------------------------------------------------------------------ *
++ * enroll
++ * ------------------------------------------------------------------ */
++
++static int
++job_begin_enrol (FpiDeviceFpcTee *self)
++{
++  return fpc_tz_begin_enrol (&self->tz);
++}
++
++/*
++ * One touch: arm the sensor, wait for the IRQ, let the trustlet capture and
++ * fold the image into the template.  Returns remaining_touches, which is
++ * where nr_enroll_stages comes from — never a constant.
++ */
++static int
++job_enrol_touch (FpiDeviceFpcTee *self)
++{
++  guint32 remaining = 0;
++  int rc;
++
++  rc = fpc_tz_wait_finger_down (&self->tz, FPC_TEE_FINGER_TIMEOUT_MS);
++  if (rc < 0)
++    return rc;
++  if (rc == 0)
++    return FPC_TEE_TOUCH_RETRY; /* cancelled or timed out */
++
++  /*
++   * A non-zero capture code is the trustlet saying "that image was not good
++   * enough", not a failure: ask for the finger again.
++   * ponytail: every non-zero code maps to one generic retry.  The real code
++   * table is only observable on hardware — split it there, not here.
++   */
++  rc = fpc_tz_capture_image (&self->tz);
++  if (rc < 0)
++    return rc;
++  if (rc != 0)
++    return FPC_TEE_TOUCH_RETRY;
++
++  rc = fpc_tz_enrol_step (&self->tz, &remaining);
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  return (int) remaining + 1;
++}
++
++static int
++job_end_enrol (FpiDeviceFpcTee *self)
++{
++  int rc = fpc_tz_end_enrol (&self->tz, &self->enrolled_id);
++
++  self->enrolling = FALSE;
++  return rc;
++}
++
++static int
++job_store_db (FpiDeviceFpcTee *self)
++{
++  return fpc_tz_store_db (&self->tz, FPC_TEE_DB_PATH);
++}
++
++static int
++job_discard_enrol (FpiDeviceFpcTee *self)
++{
++  guint32 unused_id = 0;
++
++  if (!self->enrolling)
++    return FPC_TZ_OK;
++
++  self->enrolling = FALSE;
++  fpc_tz_end_enrol (&self->tz, &unused_id);
++  if (unused_id != 0)
++    fpc_tz_delete_fingerprint (&self->tz, unused_id);
++
++  return FPC_TZ_OK;
++}
++
++static void
++fpc_tee_enroll_step_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  gint remaining = 0;
++  gint rc = 0;
++
++  (void) user_data;
++  if (!fpc_tee_job_finish (self, res, "enrol step", &rc))
++    return;
++
++  if (rc == FPC_TEE_TOUCH_RETRY)
++    {
++      fpi_device_enroll_progress (FP_DEVICE (self), self->enroll_stage, NULL,
++                                  fpi_device_retry_new (FP_DEVICE_RETRY_GENERAL));
++      fpi_ssm_jump_to_state (self->task_ssm, FPC_TEE_ENROLL_TOUCH);
++      return;
++    }
++
++  remaining = rc - 1;
++  self->enroll_stage++;
++
++  /* nr_enroll_stages is whatever the trustlet asks for, not a constant. */
++  fpi_device_set_nr_enroll_stages (FP_DEVICE (self), self->enroll_stage + remaining);
++  fpi_device_enroll_progress (FP_DEVICE (self), self->enroll_stage, NULL, NULL);
++
++  if (remaining > 0)
++    fpi_ssm_jump_to_state (self->task_ssm, FPC_TEE_ENROLL_TOUCH);
++  else
++    fpi_ssm_next_state (self->task_ssm);
++}
++
++static void
++fpc_tee_ssm_step_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++
++  if (fpc_tee_job_finish (self, res,
++                          user_data != NULL ? user_data : "trustlet command", NULL))
++    fpi_ssm_next_state (self->task_ssm);
++}
++
++static void
++fpc_tee_enroll_run_state (FpiSsm *ssm, FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  switch (fpi_ssm_get_cur_state (ssm))
++    {
++    case FPC_TEE_ENROLL_BEGIN:
++      self->enrolling = TRUE;
++      fpc_tee_job_run (self, job_begin_enrol, fpc_tee_ssm_step_done);
++      break;
++
++    case FPC_TEE_ENROLL_TOUCH:
++      fpi_device_report_finger_status_changes (device,
++                                               FP_FINGER_STATUS_NEEDED,
++                                               FP_FINGER_STATUS_NONE);
++      fpc_tee_job_run (self, job_enrol_touch, fpc_tee_enroll_step_done);
++      break;
++
++    case FPC_TEE_ENROLL_END:
++      fpc_tee_job_run (self, job_end_enrol, fpc_tee_ssm_step_done);
++      break;
++
++    case FPC_TEE_ENROLL_STORE:
++      fpc_tee_job_run (self, job_store_db, fpc_tee_ssm_step_done);
++      break;
++
++    case FPC_TEE_ENROLL_DISCARD:
++      fpc_tee_job_run (self, job_discard_enrol, fpc_tee_ssm_step_done);
++      break;
++    }
++}
++
++static void
++fpc_tee_enroll_ssm_done (FpiSsm *ssm, FpDevice *dev, GError *error)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (dev);
++  FpPrint *print = NULL;
++
++  (void) ssm;
++  self->task_ssm = NULL;
++
++  if (error != NULL)
++    {
++      fpi_device_enroll_complete (dev, NULL, error);
++      return;
++    }
++
++  fpi_device_get_enroll_data (dev, &print);
++  fpi_print_set_type (print, FPI_PRINT_RAW);
++  fpi_print_set_device_stored (print, TRUE);
++  g_object_set (print, "fpi-data", g_variant_new ("u", self->enrolled_id), NULL);
++
++  fpi_device_enroll_complete (dev, g_object_ref (print), NULL);
++}
++
++static void
++fpc_tee_dev_enroll (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  self->enroll_stage = 0;
++  self->enrolled_id = 0;
++  self->task_ssm = fpi_ssm_new_full (device, fpc_tee_enroll_run_state,
++                                     FPC_TEE_ENROLL_NUM_STATES,
++                                     FPC_TEE_ENROLL_DISCARD,
++                                     "enroll");
++  fpi_ssm_start (self->task_ssm, fpc_tee_enroll_ssm_done);
++}
++
++/* ------------------------------------------------------------------ *
++ * verify / identify — one path, as in fpcmoc
++ * ------------------------------------------------------------------ */
++
++static int
++job_identify (FpiDeviceFpcTee *self)
++{
++  int rc;
++
++  self->matched_id = 0;
++
++  rc = fpc_tz_wait_finger_down (&self->tz, FPC_TEE_FINGER_TIMEOUT_MS);
++  if (rc < 0)
++    return rc;
++  if (rc == 0)
++    return FPC_TEE_TOUCH_RETRY;
++
++  rc = fpc_tz_capture_image (&self->tz);
++  if (rc < 0)
++    return rc;
++  if (rc != 0)
++    return FPC_TEE_TOUCH_RETRY;
++
++  rc = fpc_tz_identify (&self->tz, &self->matched_id);
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  return FPC_TEE_TOUCH_DONE;
++}
++
++/* The trustlet may refine the stored template after a match; persist it. */
++static int
++job_update_template (FpiDeviceFpcTee *self)
++{
++  int changed = 0;
++  int rc = fpc_tz_update_template (&self->tz, &changed);
++
++  if (rc != FPC_TZ_OK || !changed)
++    return rc;
++
++  return fpc_tz_store_db (&self->tz, FPC_TEE_DB_PATH);
++}
++
++static void
++fpc_tee_identify_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  FpDevice *device = FP_DEVICE (self);
++
++  g_autoptr(GPtrArray) templates = NULL;
++  FpPrint *scanned = NULL;       /* (transfer floating) to identify_report */
++  guint index;
++  gint rc = 0;
++
++  (void) user_data;
++  if (!fpc_tee_job_finish (self, res, "identify", &rc))
++    return;
++
++  if (rc == FPC_TEE_TOUCH_RETRY)
++    {
++      fpi_device_identify_report (device, NULL, NULL,
++                                  fpi_device_retry_new (FP_DEVICE_RETRY_GENERAL));
++      fpi_ssm_jump_to_state (self->task_ssm, FPC_TEE_IDENTIFY_TOUCH);
++      return;
++    }
++
++  if (self->matched_id == 0)
++    {
++      fpi_device_identify_report (device, NULL, NULL, NULL);
++      fpi_ssm_mark_completed (self->task_ssm);
++      return;
++    }
++
++  scanned = fpc_tee_print_from_id (self, self->matched_id);
++
++  fpi_device_get_identify_data (device, &templates);
++  if (templates != NULL)
++    g_ptr_array_ref (templates);        /* the getter borrows */
++
++  if (templates != NULL &&
++      g_ptr_array_find_with_equal_func (templates, scanned,
++                                        (GEqualFunc) fp_print_equal, &index))
++    fpi_device_identify_report (device, g_ptr_array_index (templates, index),
++                                scanned, NULL);
++  else
++    fpi_device_identify_report (device, NULL, scanned, NULL);
++
++  fpi_ssm_next_state (self->task_ssm);
++}
++
++static void
++fpc_tee_identify_run_state (FpiSsm *ssm, FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  switch (fpi_ssm_get_cur_state (ssm))
++    {
++    case FPC_TEE_IDENTIFY_TOUCH:
++      fpi_device_report_finger_status_changes (device,
++                                               FP_FINGER_STATUS_NEEDED,
++                                               FP_FINGER_STATUS_NONE);
++      fpc_tee_job_run (self, job_identify, fpc_tee_identify_done);
++      break;
++
++    case FPC_TEE_IDENTIFY_UPDATE:
++      fpc_tee_job_run (self, job_update_template, fpc_tee_ssm_step_done);
++      break;
++
++    case FPC_TEE_IDENTIFY_CANCEL:
++      fpc_tz_cancel (&self->tz);
++      fpi_ssm_mark_completed (ssm);
++      break;
++    }
++}
++
++static void
++fpc_tee_identify_ssm_done (FpiSsm *ssm, FpDevice *dev, GError *error)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (dev);
++
++  (void) ssm;
++  self->task_ssm = NULL;
++
++  if (error != NULL && error->domain == FP_DEVICE_RETRY)
++    fpi_device_identify_report (dev, NULL, NULL, g_steal_pointer (&error));
++
++  fpi_device_identify_complete (dev, error);
++}
++
++static void
++fpc_tee_dev_identify (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  self->task_ssm = fpi_ssm_new_full (device, fpc_tee_identify_run_state,
++                                     FPC_TEE_IDENTIFY_NUM_STATES,
++                                     FPC_TEE_IDENTIFY_CANCEL,
++                                     "identify");
++  fpi_ssm_start (self->task_ssm, fpc_tee_identify_ssm_done);
++}
++
++/* ------------------------------------------------------------------ *
++ * storage: list / delete / clear
++ * ------------------------------------------------------------------ */
++
++static int
++job_list (FpiDeviceFpcTee *self)
++{
++  guint32 ids[FPC_TZ_MAX_PRINTS] = { 0 };
++  guint32 count = 0;
++  int rc = fpc_tz_get_fingerprints (&self->tz, ids, &count);
++
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  /* Stash the ids where the main-thread callback can build the prints. */
++  for (guint32 i = 0; i < count; i++)
++    self->list_ids[i] = ids[i];
++  self->list_count = count;
++
++  return FPC_TZ_OK;
++}
++
++static void
++fpc_tee_list_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  g_autoptr(GPtrArray) prints = NULL;
++  GError *error = NULL;
++  gint rc;
++
++  (void) user_data;
++  rc = g_task_propagate_int (G_TASK (res), &error);
++  if (error == NULL && rc < 0)
++    error = fpc_tee_error (rc, "list");
++
++  if (error != NULL)
++    {
++      fpi_device_list_complete (FP_DEVICE (self), NULL, error);
++      return;
++    }
++
++  prints = g_ptr_array_new_with_free_func (g_object_unref);
++  for (guint32 i = 0; i < self->list_count; i++)
++    g_ptr_array_add (prints, fpc_tee_print_from_id (self, self->list_ids[i]));
++
++  fpi_device_list_complete (FP_DEVICE (self), g_steal_pointer (&prints), NULL);
++}
++
++static void
++fpc_tee_dev_list (FpDevice *device)
++{
++  fpc_tee_job_run (FPI_DEVICE_FPCTEE (device), job_list, fpc_tee_list_done);
++}
++
++static int
++job_delete (FpiDeviceFpcTee *self)
++{
++  int rc = fpc_tz_delete_fingerprint (&self->tz, self->matched_id);
++
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  return fpc_tz_store_db (&self->tz, FPC_TEE_DB_PATH);
++}
++
++static void
++fpc_tee_delete_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  GError *error = NULL;
++  gint rc = g_task_propagate_int (G_TASK (res), &error);
++
++  (void) user_data;
++  if (error == NULL && rc < 0)
++    error = fpc_tee_error (rc, "delete");
++
++  fpi_device_delete_complete (FP_DEVICE (self), error);
++}
++
++static void
++fpc_tee_dev_delete (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++  FpPrint *print = NULL;
++
++  fpi_device_get_delete_data (device, &print);
++
++  if (!fpc_tee_id_from_print (print, &self->matched_id) || self->matched_id == 0)
++    {
++      fpi_device_delete_complete (device,
++                                  fpi_device_error_new (FP_DEVICE_ERROR_DATA_INVALID));
++      return;
++    }
++
++  fpc_tee_job_run (self, job_delete, fpc_tee_delete_done);
++}
++
++static int
++job_clear (FpiDeviceFpcTee *self)
++{
++  int rc = fpc_tz_load_empty_db (&self->tz);
++
++  if (rc != FPC_TZ_OK)
++    return rc;
++
++  return fpc_tz_store_db (&self->tz, FPC_TEE_DB_PATH);
++}
++
++static void
++fpc_tee_clear_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  GError *error = NULL;
++  gint rc = g_task_propagate_int (G_TASK (res), &error);
++
++  (void) user_data;
++  if (error == NULL && rc < 0)
++    error = fpc_tee_error (rc, "clear storage");
++
++  fpi_device_clear_storage_complete (FP_DEVICE (self), error);
++}
++
++static void
++fpc_tee_dev_clear_storage (FpDevice *device)
++{
++  fpc_tee_job_run (FPI_DEVICE_FPCTEE (device), job_clear, fpc_tee_clear_done);
++}
++
++/* ------------------------------------------------------------------ *
++ * suspend / resume / cancel
++ * ------------------------------------------------------------------ */
++
++static void
++fpc_tee_dev_suspend (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  fpc_tz_cancel (&self->tz);
++  fpc_tz_deep_sleep (&self->tz);
++  fpi_device_suspend_complete (device, NULL);
++}
++
++static void
++fpc_tee_dev_resume (FpDevice *device)
++{
++  fpi_device_resume_complete (device, NULL);
++}
++
++static void
++fpc_tee_dev_cancel (FpDevice *device)
++{
++  fpc_tz_cancel (&FPI_DEVICE_FPCTEE (device)->tz);
++}
++
++/* ------------------------------------------------------------------ */
++
++static void
++fpi_device_fpctee_init (FpiDeviceFpcTee *self)
++{
++  self->transport.fd = -1;
++  self->transport.cancel_pipe[0] = -1;
++  self->transport.cancel_pipe[1] = -1;
++}
++
++static void
++fpi_device_fpctee_class_init (FpiDeviceFpcTeeClass *klass)
++{
++  FpDeviceClass *dev_class = FP_DEVICE_CLASS (klass);
++
++  dev_class->id =               FP_COMPONENT;
++  dev_class->full_name =        "FPC MOC Fingerprint Sensor (TrustZone)";
++  dev_class->type =             FP_DEVICE_TYPE_UDEV;
++  dev_class->scan_type =        FP_SCAN_TYPE_PRESS;
++  dev_class->id_table =         fpctee_id_table;
++  dev_class->nr_enroll_stages = FPC_TEE_MAX_ENROLL_STAGES;
++  dev_class->temp_hot_seconds = -1;
++
++  dev_class->probe =            fpc_tee_dev_probe;
++  dev_class->open =             fpc_tee_dev_open;
++  dev_class->close =            fpc_tee_dev_close;
++  dev_class->enroll =           fpc_tee_dev_enroll;
++  dev_class->identify =         fpc_tee_dev_identify;
++  dev_class->list =             fpc_tee_dev_list;
++  dev_class->delete =           fpc_tee_dev_delete;
++  dev_class->clear_storage =    fpc_tee_dev_clear_storage;
++  dev_class->suspend =          fpc_tee_dev_suspend;
++  dev_class->resume =           fpc_tee_dev_resume;
++  dev_class->cancel =           fpc_tee_dev_cancel;
++
++  fpi_device_class_auto_initialize_features (dev_class);
++  dev_class->features |= FP_DEVICE_FEATURE_DUPLICATES_CHECK;
++}
+diff --git a/libfprint/meson.build b/libfprint/meson.build
+index 0ca1767..529f440 100644
+--- a/libfprint/meson.build
++++ b/libfprint/meson.build
+@@ -149,6 +149,8 @@ driver_sources = {
+         [ 'drivers/goodixmoc/goodix.c', 'drivers/goodixmoc/goodix_proto.c' ],
+     'fpcmoc' :
+         [ 'drivers/fpcmoc/fpc.c' ],
++    'fpctee' :
++        [ 'drivers/fpctee/fpctee.c', 'drivers/fpctee/fpc-tz.c' ],
+     'realtek' :
+         [ 'drivers/realtek/realtek.c' ],
+     'focaltech_moc' :
+diff --git a/meson.build b/meson.build
+index baafa19..d2db0a9 100644
+--- a/meson.build
++++ b/meson.build
+@@ -142,6 +142,7 @@ default_drivers = [
+     'goodixmoc',
+     'nb1010',
+     'fpcmoc',
++    'fpctee',
+     'realtek',
+     'focaltech_moc',
+ ]
+@@ -211,6 +212,7 @@ driver_helper_mapping = {
+     'aes4000' : [ 'aeslib', 'aes3k' ],
+     'uru4000' : [ 'openssl' ],
+     'elanspi' : [ 'udev' ],
++    'fpctee' : [ 'udev' ],
+     'virtual_image'          : [ 'virtual' ],
+     'virtual_device'         : [ 'virtual' ],
+     'virtual_device_storage' : [ 'virtual' ],

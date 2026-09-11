@@ -1,0 +1,52 @@
+From d9814552e37704927075c46d44efcc30ac052b74 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 11:17:33 +0200
+Subject: [PATCH 3/3] adapter: switching the radio off stops the poll loop
+ first
+
+The kernel will not disable an adapter that is still polling, and
+set_powered() passes that refusal straight back to the caller. What a
+user sees is a switch that will not switch: with any application
+scanning, the NFC toggle in GNOME Settings springs back on every time,
+and a quick settings tile only works if it stops the loop itself and
+then wins the race against the application restarting it.
+
+Turning a radio off is not a request to be refused because something is
+using it. Stop the loop in the one place every client goes through, so
+that off means off however the caller got there.
+---
+ src/adapter.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/adapter.c b/src/adapter.c
+index 60318c3..fd7af87 100644
+--- a/src/adapter.c
++++ b/src/adapter.c
+@@ -251,6 +251,27 @@ static void set_powered(GDBusPendingPropertySet id, dbus_bool_t powered,
+ 	struct near_adapter *adapter = data;
+ 	int err;
+ 
++	/*
++	 * The kernel refuses to disable an adapter that is still polling, and
++	 * that refusal reaches the user as a switch that springs back on: the
++	 * NFC toggle in GNOME Settings cannot turn the radio off at all while
++	 * any application is scanning, and a quick settings tile has to ask
++	 * twice. Every client would otherwise need to know to stop the loop
++	 * first, and to win the race against whichever application restarts it.
++	 *
++	 * Turning a radio off is not a request to be refused because something
++	 * is using it. Stop the loop here, so that switching off means
++	 * switching off however the caller got here.
++	 */
++	if (!powered && adapter->polling) {
++		DBG("stopping the poll loop so the adapter can be disabled");
++
++		if (__near_netlink_stop_poll(adapter->idx) == 0) {
++			adapter->polling = false;
++			polling_changed(adapter);
++		}
++	}
++
+ 	err = __near_netlink_adapter_enable(adapter->idx, powered);
+ 	if (err < 0) {
+ 		if (err == -EALREADY) {

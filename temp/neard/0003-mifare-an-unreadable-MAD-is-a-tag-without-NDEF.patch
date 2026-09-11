@@ -1,0 +1,57 @@
+From 3fcf3e7c8c40e57e9a56f50b5d4ef4384ed37e66 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 09:48:43 +0200
+Subject: [PATCH 1/2] mifare: an unreadable MAD is a tag without NDEF, not an
+ absent tag
+
+A MIFARE Classic that was never NDEF formatted, or whose sector keys are
+not the public ones, fails the MAD authentication every time it is read.
+mifare_release() turns that error into near_adapter_disconnect(), so the
+tag leaves D-Bus, and with ConstantPoll it is immediately found again,
+dropped again, and so on for as long as the card lies on the antenna.
+
+Measured on a Pixel 2 XL running mainline Linux: a Classic 1K badge
+cycled add and remove roughly every 3 seconds while lying still, the tag
+re-appearing 49 to 53ms after each removal. To an application this is
+indistinguishable from someone repeatedly tapping the card.
+
+Report a tag carrying no NDEF and leave it connected. Whether it is
+still in the field is the presence check's question, and that check is
+equipped to answer it.
+---
+ plugins/mifare.c | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/plugins/mifare.c b/plugins/mifare.c
+index f42007d..d749cc2 100644
+--- a/plugins/mifare.c
++++ b/plugins/mifare.c
+@@ -734,8 +734,26 @@ static int mifare_read_MAD1(uint8_t *resp, int length, void *data)
+ 	DBG("%p %d", data, length);
+ 
+ 	if (length < 0) {
+-		err = length;
+-		return err;
++		/*
++		 * The MAD authentication failed. That is not a tag leaving the
++		 * field: a MIFARE Classic that was never NDEF formatted, or
++		 * whose sector keys are not the public ones, answers exactly
++		 * like this every time it is read. Reporting an error here
++		 * makes mifare_release() disconnect the adapter, so the tag
++		 * disappears from D-Bus and, with ConstantPoll, is found and
++		 * dropped again every few seconds for as long as it sits on
++		 * the antenna.
++		 *
++		 * Report a tag with no NDEF instead and leave it connected.
++		 * Whether it is still there is the presence check's question,
++		 * and it is the one equipped to answer it.
++		 */
++		DBG("No readable MAD: tag carries no NDEF");
++
++		if (mf_ck->cb)
++			mf_ck->cb(mf_ck->adapter_idx, mf_ck->target_idx, 0);
++
++		return mifare_release(0, mf_ck);
+ 	}
+ 
+ 	/*

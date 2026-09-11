@@ -26,7 +26,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: Achill Gilgenast <achill@achill.org>
 pkgname=neard
 pkgver=0.20
-pkgrel=50
+pkgrel=52
 pkgdesc="Near Field Communication manager"
 url="https://01.org/linux-nfc/"
 arch="all"
@@ -50,6 +50,9 @@ source="
 	https://git.kernel.org/pub/scm/network/nfc/neard.git/snapshot/neard-$pkgver.tar.gz
 	0001-build-install-a-D-Bus-system-service-activation-file.patch
 	0002-build-enable-neard.service-by-default.patch
+	0003-mifare-an-unreadable-MAD-is-a-tag-without-NDEF.patch
+	0004-adapter-make-the-presence-check-period-a-setting.patch
+	0005-adapter-switching-the-radio-off-stops-the-poll-loop.patch
 	neard.initd
 	"
 
@@ -77,8 +80,33 @@ check() {
 	make check
 }
 
+# Upstream ships src/main.conf as dist_noinst_DATA, so `make install` never
+# puts it anywhere and neard runs on its built in defaults. This phone needs
+# exactly one value changed from those: a tag lifted off the antenna is not
+# noticed until the next presence check, so upstream's 2000ms puts a second of
+# lag on every removal. 300ms reads as immediate and costs a few more
+# transactions, and only while a tag is actually present.
+_check_presence_period=300
+
 package() {
 	make DESTDIR="$pkgdir" install
+
+	# Only this one key. Upstream's sample main.conf also carries
+	# DefaultPowered = true, which would switch the NFC radio on by itself
+	# at every boot -- the opposite of the design this device ships, where
+	# the radio is the user's switch and nothing else may touch it. Every
+	# other setting stays at neard's built in default by not being here.
+	mkdir -p "$pkgdir"/etc/neard
+	cat > "$pkgdir"/etc/neard/main.conf <<-EOF
+		[General]
+
+		# How often, in milliseconds, to ask a tag that is in the field
+		# whether it is still there. A tag taken away is not noticed
+		# until the next check, so this is the floor on how quickly a
+		# removal can be reported. Upstream's default is 2000, which
+		# puts a second of lag on every removal.
+		CheckPresencePeriod = $_check_presence_period
+	EOF
 
 	# Avoid conflicts with other packages
 	mv "$pkgdir"/usr/include/version.h "$pkgdir"/usr/include/near/version.h
@@ -93,5 +121,8 @@ sha512sums="
 5048a618be096753ef7f22b57770a7e1c0450878f0b75632668c72935f9e1b2945041cfd5733e824e8883cf9e4e2bc83c6c2597430cc356858f6de60947a47b9  neard-0.20.tar.gz
 932a78efcfebc95ce193d54ccc20927f72b74478dfdf5b7d925d569811db6340eae3b6cd2a03f61be4f4cc348334af7e282902c420832156bcfd0f87e04b4a13  0001-build-install-a-D-Bus-system-service-activation-file.patch
 cadc2eeaa4f641597d35b089d363595762eb1c4430687fa0917e37f6c699329fc21214fe9d15335f147afc921a8af9abbc1cdd8c7aa565a5c92889c826ec1691  0002-build-enable-neard.service-by-default.patch
+4cefb597d77fd7ff5a3512874d28ad69a9304468357f2bb407b26b11a6c5184e8205b99e0ff50d0e40a1b0e610fae93165fb6ca9aa89c5d745c383de398766bb  0003-mifare-an-unreadable-MAD-is-a-tag-without-NDEF.patch
+1b92b5ca82b7636d5b3470318d4c7d962d46ff088f214f4ab728397a27b52c1e0938713039acf4cd7df734c9d232193059937e9d739891228f35634727354679  0004-adapter-make-the-presence-check-period-a-setting.patch
+2e0a8523523c4d08c63a290b27f0159bbd9bdbf519575f715b0ee1bf619ffcc7a6f3363a5b97da2775c1e33feb646464bf11d81b19b7006ff74ccfcb5ab19e1c  0005-adapter-switching-the-radio-off-stops-the-poll-loop.patch
 6e28ffa74687cc409856d8966d9e794e523254781133e61adb81007ed00b7f057122ca8dfa967684312a613e9a3898865844320e4302990046d871a0a9b66eb5  neard.initd
 "

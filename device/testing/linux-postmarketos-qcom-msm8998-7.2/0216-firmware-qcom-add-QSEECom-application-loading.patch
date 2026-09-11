@@ -21,12 +21,12 @@ on its grow path, so GFP_DMA32 alone does not make the guarantee.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/firmware/qcom/qcom_scm.c       | 121 +++++++++++++++++++++++++
- include/linux/firmware/qcom/qcom_scm.h |  10 ++
- 2 files changed, 131 insertions(+)
+ drivers/firmware/qcom/qcom_scm.c       | 108 +++++++++++++++++++++++++
+ include/linux/firmware/qcom/qcom_scm.h |  10 +++
+ 2 files changed, 118 insertions(+)
 
 diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
-index fca851215737..535a12e252c0 100644
+index fca851215737..7c475a794ebe 100644
 --- a/drivers/firmware/qcom/qcom_scm.c
 +++ b/drivers/firmware/qcom/qcom_scm.c
 @@ -114,6 +114,12 @@ enum qcom_scm_qseecom_tz_svc {
@@ -42,23 +42,7 @@ index fca851215737..535a12e252c0 100644
  };
  
  enum qcom_scm_qseecom_tz_cmd_info {
-@@ -125,6 +131,15 @@ enum qcom_scm_qseecom_tz_cmd_info {
- #define QSEECOM_MAX_APP_NAME_SIZE		64
- #define SHMBRIDGE_RESULT_NOTSUPP		4
- 
-+/* Mirrors qseecom_load_app_64bit_ireq from the vendor driver. */
-+struct qseecom_load_app_req {
-+	u32 cmd_id;
-+	u32 mdt_len;
-+	u32 img_len;
-+	u64 phys_addr;
-+	char app_name[QSEECOM_MAX_APP_NAME_SIZE];
-+} __packed;
-+
- /* Each bit configures cold/warm boot address for one of the 4 CPUs */
- static const u8 qcom_scm_cpu_cold_bits[QCOM_SCM_BOOT_MAX_CPUS] = {
- 	0, BIT(0), BIT(3), BIT(5)
-@@ -2297,6 +2312,112 @@ int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id)
+@@ -2297,6 +2303,108 @@ int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id)
  }
  EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_get_id);
  
@@ -82,11 +66,29 @@ index fca851215737..535a12e252c0 100644
 +
 +/**
 + * qcom_scm_qseecom_app_load() - Load a QSEE app from its MDT image.
-+ * @app_name: The name of the app, as the TZ knows it.
++ * @app_name: The name of the app, as the TZ knows it. Not sent to TrustZone
++ *	      by this command -- see below -- but still validated and used
++ *	      in error messages, and required so this function's signature
++ *	      matches qcom_scm_qseecom_app_get_id()'s.
 + * @img_phys: The firmware image, already laid out in TZ memory.
 + * @mdt_len:  Length of the .mdt member.
 + * @img_len:  Combined length of .mdt and every .bNN member.
 + * @app_id:   The returned app ID.
++ *
++ * Unlike qcom_scm_qseecom_app_get_id() -- and like
++ * qcom_scm_qseecom_app_region_notify() and
++ * qcom_scm_qseecom_load_services_image() -- the vendor driver's own
++ * dispatch for this command (qseecom.c, the QSEOS_APP_START_COMMAND case)
++ * passes @mdt_len, @img_len and @img_phys to TrustZone as three plain
++ * scalar SMC arguments, not through a request buffer. Earlier revisions of
++ * this function modelled it on app_get_id() instead (a single BUF_RW
++ * argument), which does not match TZ_OS_APP_START_ID_PARAM_ID
++ * (qseecomi.h:459-462: three VAL, not BUF_RW+VAL) and caused every load to
++ * be rejected at the SMC dispatcher -- before the app-manager handler that
++ * would produce a real QSEOS_RESULT_* ever ran -- with a raw status
++ * mainline's qcom_scm_remap_error() flattens to -ENOMEM. @app_name is
++ * consequently never sent to TrustZone by this call at all; TZ reads the
++ * name out of the image itself.
 + *
 + * Return: Zero on success, nonzero on failure.
 + */
@@ -105,35 +107,13 @@ index fca851215737..535a12e252c0 100644
 +	if (status)
 +		return status;
 +
-+	struct qseecom_load_app_req *req __free(qcom_tzmem) =
-+		qcom_tzmem_alloc(__scm->mempool, sizeof(*req), GFP_DMA32);
-+	if (!req)
-+		return -ENOMEM;
-+
-+	/*
-+	 * Zero the request first: app_name is a fixed-size field the TA reads
-+	 * as a NUL-terminated string, and the tzmem chunk backing it is not
-+	 * guaranteed zeroed, so anything past app_name_len would otherwise be
-+	 * stale heap crossing into TrustZone.
-+	 */
-+	memset(req, 0, sizeof(*req));
-+	req->cmd_id = QSEECOM_TZ_CMD_APP_START;
-+	req->mdt_len = mdt_len;
-+	req->img_len = img_len;
-+	req->phys_addr = img_phys;
-+	memcpy(req->app_name, app_name, app_name_len);
-+
-+	status = qcom_scm_qseecom_check_dma32(qcom_tzmem_to_phys(req),
-+					      sizeof(*req));
-+	if (status)
-+		return status;
-+
 +	desc.owner = QSEECOM_TZ_OWNER_QSEE_OS;
 +	desc.svc = QSEECOM_TZ_SVC_APP_MGR;
 +	desc.cmd = QSEECOM_TZ_CMD_APP_START;
-+	desc.arginfo = QCOM_SCM_ARGS(2, QCOM_SCM_RW, QCOM_SCM_VAL);
-+	desc.args[0] = qcom_tzmem_to_phys(req);
-+	desc.args[1] = sizeof(*req);
++	desc.arginfo = QCOM_SCM_ARGS(3, QCOM_SCM_VAL, QCOM_SCM_VAL, QCOM_SCM_VAL);
++	desc.args[0] = mdt_len;
++	desc.args[1] = img_len;
++	desc.args[2] = img_phys;
 +
 +	status = qcom_scm_qseecom_call(&desc, &res);
 +	if (status)

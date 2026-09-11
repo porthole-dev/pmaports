@@ -98,10 +98,10 @@ index 574930729ddd..aa85a97a80e2 100644
  
  }
 diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
-index ef0051814e09..fe82b54a5ada 100644
+index ca03e3001319..85cc2926786a 100644
 --- a/drivers/firmware/qcom/qcom_scm.c
 +++ b/drivers/firmware/qcom/qcom_scm.c
-@@ -2172,6 +2172,34 @@ static int __qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
+@@ -2163,6 +2163,34 @@ static int __qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
  	res->resp_type = scm_res.result[1];
  	res->data = scm_res.result[2];
  

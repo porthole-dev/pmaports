@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=37
+pkgrel=39
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -306,6 +306,7 @@ source="
 	0215-firmware-qcom-qseecom-add-a-bring-up-debugfs-app-loo.patch
 	0216-firmware-qcom-add-QSEECom-application-loading.patch
 	0217-firmware-qcom-qseecom-notify-TrustZone-of-the-app-re.patch
+	0218-BRINGUP-firmware-qcom-apply-the-vendor-s-SMC-status-.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -555,4 +556,5 @@ b382adf46139b63947ef3e4f0a1d7dfe54f46b353eaae5354cc52cfa54bd10928882d0a7e3cca81b
 3cd8c8745a8a95f405f993a9368486d0a7d94f2775cd51c6532183b292e48f162c1abee818f4c9d853a83efe2f01ee0b564b96b6b1e6387ad6c14c47f423ca76  0215-firmware-qcom-qseecom-add-a-bring-up-debugfs-app-loo.patch
 491b01bfd9c172f129f7a35e2c80501bbd89217309c926f8b6c64f642de634729faefc2e07899e3b9fe853a837d49cdd6040c592ef8849ae5d735962886f9680  0216-firmware-qcom-add-QSEECom-application-loading.patch
 4d4dde7b0cdb7ec63ee7794a94046974bc4d35259d6ac8d478135a9e8af370229aee3b667fd8c7ba60af0917b66b7807d3c031f5bad7d9acbd15e791a2893188  0217-firmware-qcom-qseecom-notify-TrustZone-of-the-app-re.patch
+d46bca041d9810f47cbaf61a75d5699b3ae876c9857cce7bc5cae9ff7882226704ecb5eb04f81b97c7712ded8000a2a53116506573398d69243a9d048cd4b16c  0218-BRINGUP-firmware-qcom-apply-the-vendor-s-SMC-status-.patch
 "

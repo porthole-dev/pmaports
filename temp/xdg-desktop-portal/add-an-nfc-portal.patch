@@ -1,7 +1,7 @@
 From d7393f3678a9c39b5c1e181922f29e13b727fddf Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:27:53 +0200
-Subject: [PATCH 1/8] nfc: add an NFC portal
+Subject: [PATCH 1/9] nfc: add an NFC portal
 
 There is no sanctioned way for a sandboxed application to use NFC. neard is a
 system-bus service, so an application either gets the whole system bus or
@@ -522,14 +522,11 @@ index 0000000..71fac0a
 +
 +        method_calls = mock_intf.GetMethodCalls("AccessDialog")
 +        assert len(method_calls) == 1
--- 
-2.55.0
-
 
 From 3cd8bb619e1a2b35b4466f671a7a530831e67a12 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:40:03 +0200
-Subject: [PATCH 2/8] nfc: fix translation extraction, orphan docs, and doc
+Subject: [PATCH 2/9] nfc: fix translation extraction, orphan docs, and doc
  comment form
 
 Review of the previous commit found three registration/shape problems:
@@ -752,14 +749,11 @@ index 71fac0a..372fda1 100644
      def test_access_denied(self, portals, dbus_con, xdp_app_info):
          app_id = xdp_app_info.app_id
          nfc_intf = xdp.get_portal_iface(dbus_con, "NFC")
--- 
-2.55.0
-
 
 From 925b518d54854b4a679cf269e932d79507618ad8 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 16:52:34 +0200
-Subject: [PATCH 3/8] nfc: IsNFCPresent follows neard
+Subject: [PATCH 3/9] nfc: IsNFCPresent follows neard
 
 Nearly no machine has an NFC adapter, so an application needs to be able to
 hide its NFC UI rather than call into a portal that will fail. The property is
@@ -1008,14 +1002,11 @@ index 372fda1..f2500ec 100644
 +        # own its bus name, not for that round trip to land. Poll until it
 +        # does, rather than racing a single Get() against it.
 +        xdp.wait_for(is_present)
--- 
-2.55.0
-
 
 From e652c5a571fad36b8e09605aa0260c628bdeaa2a Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 17:33:36 +0200
-Subject: [PATCH 4/8] nfc: OpenNFCRemote hands out a filtered neard connection
+Subject: [PATCH 4/9] nfc: OpenNFCRemote hands out a filtered neard connection
 
 A permitted application gets a socket to an xdg-dbus-proxy filtered onto the
 system bus, on which it sees org.neard and can start and stop the poll loop,
@@ -1595,14 +1586,11 @@ index f2500ec..9b22149 100644
 +        # handed, so a read on it returns EOF rather than blocking forever.
 +        sock.settimeout(10)
 +        assert sock.recv(1) == b""
--- 
-2.55.0
-
 
 From da2e278c1117604793a4209eaa832b16834f9d7c Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 18:01:25 +0200
-Subject: [PATCH 5/8] nfc: do not wait forever for a proxy that never starts
+Subject: [PATCH 5/9] nfc: do not wait forever for a proxy that never starts
 
 g_subprocess_launcher_take_fd leaves the launcher holding its own copy of
 the fd until it is finalized, and the launcher here is a g_autoptr that
@@ -1994,14 +1982,11 @@ index 9b22149..762b07d 100644
 +        # And the portal is still answering, rather than wedged behind a read
 +        # that will never return.
 +        xdp.check_version(dbus_con, "NFC", 1)
--- 
-2.55.0
-
 
 From e328a1516df5f68e898db6bb300a7e0ffe39a25b Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 18:18:48 +0200
-Subject: [PATCH 6/8] nfc: free a proxy's slot when the proxy itself dies
+Subject: [PATCH 6/9] nfc: free a proxy's slot when the proxy itself dies
 
 The per-sender cap was a lifetime quota rather than a concurrency one. The
 only thing that freed a slot was the application leaving the bus: closing
@@ -2331,14 +2316,11 @@ index 762b07d..6c0f3e9 100644
  
      def test_open_remote_survives_a_proxy_that_never_starts(
          self, portals, dbus_con, xdp_app_info
--- 
-2.55.0
-
 
 From 64db92e39524612d8a271e2cb85e238ee510320c Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 21:36:25 +0200
-Subject: [PATCH 7/8] nfc: bound the readiness wait, and say what the interface
+Subject: [PATCH 7/9] nfc: bound the readiness wait, and say what the interface
  means
 
 The wait for xdg-dbus-proxy's readiness byte covered only half of what can
@@ -2729,14 +2711,11 @@ index 6c0f3e9..8c6f950 100644
 +
 +        # And the portal is still answering.
 +        xdp.check_version(dbus_con, "NFC", 1)
--- 
-2.55.0
-
 
 From 2a99fd83162e1073be4f9d0c02080c20ff1dc002 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Thu, 10 Sep 2026 21:56:59 +0200
-Subject: [PATCH 8/8] nfc: the proxy table is reached from two threads, so lock
+Subject: [PATCH 8/9] nfc: the proxy table is reached from two threads, so lock
  it
 
 nfc->proxies was an unlocked GHashTable mutated from more than one thread.
@@ -2992,6 +2971,181 @@ index 1d11c57..be97e6c 100644
    g_clear_pointer (&nfc->proxies, g_hash_table_unref);
  
    G_OBJECT_CLASS (nfc_parent_class)->finalize (object);
--- 
-2.55.0
 
+From 22e4ead291590ed348d9c9aa6099011c32b9ccb0 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 10:18:41 +0200
+Subject: [PATCH 9/9] nfc: revoking the permission closes connections already
+ open
+
+Turning an application off under Privacy > NFC only made its next
+OpenNFCRemote fail. A process that had asked before the switch was
+turned off kept the filtered connection it already held, and went on
+reading tags for as long as it liked -- which is not what someone
+turning that switch off means. Observed on a phone: the application
+showed the radio's state and read a card while its stored permission
+said no.
+
+Watch the permission store for changes to devices/nfc and close the
+proxies belonging to any application that no longer has a yes. Closing
+the proxy closes its socket, so the application sees its connection drop
+and can say so.
+
+The Changed signal carries the whole table, so no round trip is needed
+to decide, and an application with no entry at all has had its
+permission deleted, which is not a yes either.
+---
+ src/nfc.c | 98 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 98 insertions(+)
+
+diff --git a/src/nfc.c b/src/nfc.c
+index be97e6c..fc843bc 100644
+--- a/src/nfc.c
++++ b/src/nfc.c
+@@ -63,6 +63,11 @@ struct _Nfc
+    * from it -- a proxy exiting, and the caller leaving the bus -- run on a
+    * main context. */
+   GHashTable *proxies;
++
++  /* Watches the permission store, so that revoking NFC in Settings closes the
++   * connections an application already holds instead of only refusing its
++   * next request. */
++  guint permissions_changed_id;
+ };
+ 
+ /* The tree's convention for a table reached from more than one thread; see
+@@ -308,6 +313,7 @@ typedef struct
+   GSubprocess *subprocess;
+   int sync_fd;
+   char *sender;
++  char *app_id;
+ } NfcProxy;
+ 
+ /* Usually called as the proxies table's key-destroy function, which means
+@@ -329,6 +335,7 @@ nfc_proxy_free (gpointer data)
+     close (proxy->sync_fd);
+   g_clear_object (&proxy->subprocess);
+   g_free (proxy->sender);
++  g_free (proxy->app_id);
+   g_free (proxy);
+ }
+ 
+@@ -603,6 +610,77 @@ on_proxy_exited (GObject      *source,
+   G_UNLOCK (proxies);
+ }
+ 
++/* The Changed signal carries the table's whole contents, so the answer for
++ * every application is in hand and no round trip is needed. An application
++ * with no entry at all has had its permission deleted, which is not a yes. */
++static gboolean
++app_is_permitted (GVariant   *permissions,
++                  const char *app_id)
++{
++  g_autofree const char **values = NULL;
++
++  if (app_id == NULL || *app_id == '\0')
++    return FALSE;
++
++  if (!g_variant_lookup (permissions, app_id, "^a&s", &values))
++    return FALSE;
++
++  return values[0] != NULL && g_strcmp0 (values[0], "yes") == 0;
++}
++
++
++static gboolean
++proxy_is_revoked (gpointer key,
++                  gpointer value,
++                  gpointer user_data)
++{
++  NfcProxy *proxy = key;
++
++  if (app_is_permitted (user_data, proxy->app_id))
++    return FALSE;
++
++  g_debug ("NFC: permission withdrawn for %s, closing its connection",
++           proxy->app_id);
++
++  return TRUE;
++}
++
++
++/* Revoking a permission has to mean something to an application that is
++ * already using it. Refusing only the next OpenNFCRemote would leave a
++ * process that asked before the switch was turned off reading tags for as
++ * long as it cares to, which is not what someone turning it off means.
++ * Closing the proxy closes its socket, and the application sees its
++ * connection drop. */
++static void
++on_permissions_changed (GDBusConnection *connection,
++                        const char      *sender_name,
++                        const char      *object_path,
++                        const char      *interface_name,
++                        const char      *signal_name,
++                        GVariant        *parameters,
++                        gpointer         user_data)
++{
++  Nfc *nfc = user_data;
++  g_autoptr(GVariant) permissions = NULL;
++  g_autoptr(GVariant) data = NULL;
++  const char *table = NULL;
++  const char *id = NULL;
++  gboolean deleted;
++
++  g_variant_get (parameters, "(&s&sb@v@a{sas})",
++                 &table, &id, &deleted, &data, &permissions);
++
++  if (g_strcmp0 (table, NFC_PERMISSION_TABLE) != 0 ||
++      g_strcmp0 (id, NFC_PERMISSION_DEVICE_NFC) != 0)
++    return;
++
++  G_LOCK (proxies);
++  g_hash_table_foreach_remove (nfc->proxies, proxy_is_revoked, permissions);
++  G_UNLOCK (proxies);
++}
++
++
+ static gboolean
+ proxy_is_for_sender (gpointer key,
+                      gpointer value,
+@@ -691,6 +769,8 @@ handle_open_nfc_remote (XdpDbusNFC            *object,
+    * to NFC_PROXY_READY_TIMEOUT_MS for it. Holding a global lock across that
+    * would put every other caller behind the slowest spawn. */
+   proxy = nfc_proxy_new (sender, &fd, &error);
++  if (proxy != NULL)
++    proxy->app_id = g_strdup (xdp_app_info_get_id (app_info));
+   if (proxy == NULL)
+     {
+       g_dbus_method_invocation_return_error (invocation,
+@@ -760,6 +840,13 @@ nfc_finalize (GObject *object)
+ {
+   Nfc *nfc = (Nfc *) object;
+ 
++  if (nfc->permissions_changed_id != 0)
++    {
++      g_dbus_connection_signal_unsubscribe (g_dbus_proxy_get_connection (G_DBUS_PROXY (nfc->access_impl)),
++                                            nfc->permissions_changed_id);
++      nfc->permissions_changed_id = 0;
++    }
++
+   if (nfc->neard_cancellable)
+     g_cancellable_cancel (nfc->neard_cancellable);
+   g_clear_object (&nfc->neard_cancellable);
+@@ -863,6 +950,17 @@ nfc_new (XdpContext        *context,
+                            nfc,
+                            G_CONNECT_DEFAULT);
+ 
++  nfc->permissions_changed_id =
++    g_dbus_connection_signal_subscribe (g_dbus_proxy_get_connection (G_DBUS_PROXY (access_impl)),
++                                        "org.freedesktop.impl.portal.PermissionStore",
++                                        "org.freedesktop.impl.portal.PermissionStore",
++                                        "Changed",
++                                        "/org/freedesktop/impl/portal/PermissionStore",
++                                        NULL,
++                                        G_DBUS_SIGNAL_FLAGS_NONE,
++                                        on_permissions_changed,
++                                        nfc, NULL);
++
+   xdp_dbus_nfc_set_version (XDP_DBUS_NFC (nfc), 1);
+   /* False until the neard object manager is up, which is the safe default:
+    * a machine with no adapter is the common case. on_neard_manager_ready

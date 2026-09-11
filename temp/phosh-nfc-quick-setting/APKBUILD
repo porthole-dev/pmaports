@@ -1,0 +1,57 @@
+# A phosh quick setting that turns the NFC radio on and off.
+#
+# NOT a fork of phosh. phosh publishes a `phosh-plugins` pkg-config and a
+# public phosh-plugin.h precisely so plugins can be built out of tree, and
+# its own caffeine, dark mode and location tiles are the pattern this follows.
+# Nothing in phosh needs patching to add a tile; the plugin only has to be
+# listed in the `sm.puri.phosh.plugins quick-settings` gsetting.
+#
+# The tile writes org.neard.Adapter Powered directly. neard's bus policy has
+# `<policy at_console="true"><allow send_destination="org.neard"/>`, so the
+# logged in user may do that with no helper and no polkit agent -- verified on
+# device by writing the property from the session with plain busctl.
+#
+# Source is userspace/phosh-nfc-quick-setting in the taimen repo; run its
+# pack.sh to refresh the tarball and the checksum here.
+#
+# TRAP: `porthole pkg build` can report "UNCHANGED -- nothing was rebuilt" and
+# still hand you an apk built from the previous source. Check the artifact's
+# contents, not the exit code, and use --force when in doubt.
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
+pkgname=phosh-nfc-quick-setting
+pkgver=0.1.0
+pkgrel=4
+pkgdesc="Phosh quick setting to turn NFC on and off"
+url="https://github.com/Jertlok/phosh-nfc-quick-setting"
+arch="all"
+license="GPL-3.0-or-later"
+# neard is what the tile talks to; without it there is no adapter and the tile
+# hides itself, so this is a recommendation rather than a hard dependency.
+depends="phosh"
+makedepends="
+	glib-dev
+	gtk+3.0-dev
+	libphosh-dev
+	meson
+	phosh-dev
+	"
+options="!check" # no test suite: the thing under test is a shell plugin
+# The tarball next to this file is the source, committed because there is
+# nowhere to fetch it from yet: it lives in userspace/phosh-nfc-quick-setting in the
+# taimen repo, and that repo is private, so a github archive URL would not
+# resolve in a build chroot. Regenerate it with that directory's pack.sh,
+# which also refreshes the checksum below. When the source is published,
+# this becomes an ordinary URL in source= and the tarball leaves the tree.
+source="phosh-nfc-quick-setting-$pkgver.tar.gz"
+builddir="$srcdir/phosh-nfc-quick-setting-$pkgver"
+
+build() {
+	abuild-meson . output
+	meson compile -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+}
+
+sha512sums="81c1059cf82d776e50d42da1b315b75f62c40adf091aa680c9f01cfc8f24f9bd7479c923426864291a332f015911e5c84c6f45fbe32a39bd699c8d9d7a6bc936  phosh-nfc-quick-setting-0.1.0.tar.gz"

@@ -42,7 +42,7 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  2 files changed, 66 insertions(+)
 
 diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
-index 535a12e252c0..ef0051814e09 100644
+index 7c475a794ebe..ca03e3001319 100644
 --- a/drivers/firmware/qcom/qcom_scm.c
 +++ b/drivers/firmware/qcom/qcom_scm.c
 @@ -114,6 +114,7 @@ enum qcom_scm_qseecom_tz_svc {
@@ -53,7 +53,7 @@ index 535a12e252c0..ef0051814e09 100644
  	/*
  	 * The command space is per (owner, svc): APP_SEND is
  	 * (TZ_APPS, APP_ID_PLACEHOLDER) and APP_START is (QSEE_OS, APP_MGR),
-@@ -2330,6 +2331,65 @@ static int qcom_scm_qseecom_check_dma32(phys_addr_t phys, size_t size)
+@@ -2321,6 +2322,65 @@ static int qcom_scm_qseecom_check_dma32(phys_addr_t phys, size_t size)
  	return 0;
  }
  
@@ -118,7 +118,7 @@ index 535a12e252c0..ef0051814e09 100644
 +
  /**
   * qcom_scm_qseecom_app_load() - Load a QSEE app from its MDT image.
-  * @app_name: The name of the app, as the TZ knows it.
+  * @app_name: The name of the app, as the TZ knows it. Not sent to TrustZone
 diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
 index f0006a098c43..da3099bcbee6 100644
 --- a/include/linux/firmware/qcom/qcom_scm.h

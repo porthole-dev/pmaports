@@ -2,7 +2,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=soc-qcom-msm8998
 pkgdesc="Common package for Qualcomm MSM8998 devices"
 pkgver=1
-pkgrel=6
+pkgrel=7
 url="https://postmarketos.org"
 license="BSD-3-Clause"
 arch="aarch64"
@@ -11,11 +11,14 @@ options="!check !archcheck !tracedeps"
 # subpackage; pmaports policy since the 2024 default-nonfree-firmware
 # change is that nonfree firmware belongs in the package's own depends=,
 # not a separate subpackage (see docs/packaging/firmware-packages.md).
+# soc-qcom-pd-mapper is not listed here: upstream removed the userspace
+# package (pmaports 30897a48d5, "soc-qcom: remove -pd-mapper"), because
+# the PD mapper is now a kernel driver (CONFIG_QCOM_PD_MAPPER) instead of
+# a userspace daemon. Do not re-add it.
 depends="
 	qcom-diag
 	soc-qcom
 	soc-qcom-modem
-	soc-qcom-pd-mapper
 "
 source="iwd-main.conf"
 subpackages="

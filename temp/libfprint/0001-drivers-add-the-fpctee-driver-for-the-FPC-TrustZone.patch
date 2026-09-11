@@ -772,10 +772,10 @@ index 0000000..be40ce4
 +#endif /* FPC_TZ_H */
 diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
 new file mode 100644
-index 0000000..783b4c7
+index 0000000..f95dde1
 --- /dev/null
 +++ b/libfprint/drivers/fpctee/fpctee.c
-@@ -0,0 +1,983 @@
+@@ -0,0 +1,1011 @@
 +/*
 + * [BRINGUP] FPC match-on-chip fingerprint sensor behind a QSEE trustlet.
 + *
@@ -808,7 +808,9 @@ index 0000000..783b4c7
 + * this driver can be submitted; see the workstream report.
 + *
 + * To build inside libfprint, two lines are needed:
-+ *   meson.build:          'fpctee': { 'helper': ['udev'] },
++ *   meson.build:          'fpctee' added to default_drivers (no udev
++ *                         helper -- see the FP_DEVICE_TYPE_VIRTUAL note
++ *                         below; this driver does not call into GUdev),
 + *   libfprint/meson.build:'fpctee': files('drivers/fpctee/fpctee.c',
 + *                                         'drivers/fpctee/fpc-tz.c'),
 + */
@@ -965,27 +967,53 @@ index 0000000..783b4c7
 +G_DEFINE_TYPE (FpiDeviceFpcTee, fpi_device_fpctee, FP_TYPE_DEVICE)
 +
 +/*
-+ * There is no udev subtype for a trustlet node: fp-context.c only enumerates
-+ * spidev and hidraw.  Until one exists, the node is named by the environment
-+ * (FPCTEE_DEVICE) and falls back to the spidev slot and then to a fixed path.
++ * [BRINGUP->FIXED, 2026-09-12] This was FP_DEVICE_TYPE_UDEV with a
++ * FPI_DEVICE_UDEV_SUBTYPE_SPIDEV id_table entry, copied from fpcmoc without
++ * checking whether the assumption travels. It does not, on two independent
++ * counts:
++ *
++ *  1. fp-context.c's udev discovery enumerates exactly two kernel
++ *     subsystems, "spidev" and "hidraw" (g_udev_client_query_by_subsystem),
++ *     and matches an FPI_DEVICE_UDEV_SUBTYPE_SPIDEV entry's spi_acpi_id as a
++ *     substring of an ALREADY-ENUMERATED spidev device's sysfs path. No
++ *     amount of id_table or udev-rule tuning reaches a device that was
++ *     never in that list to begin with.
++ *  2. On taimen the SPI bus this sensor sits on is architecturally
++ *     invisible to Linux: msm8998-google-taimen.dts's fingerprint@0 comment
++ *     is explicit that "the SPI pads ... are fenced by a signed devcfg and
++ *     are not described here or touched by fpc1020.c". There is no
++ *     /sys/.../spiN.M node for spidev to enumerate, ever, on this hardware
++ *     -- TrustZone owns that bus exclusively. fpc1020.c only exposes a
++ *     platform_device (compatible = "fpc,fpc1020") with a sysfs "irq"
++ *     latch attribute, no spidev, no hidraw, no chardev at all yet.
++ *
++ * So FP_DEVICE_TYPE_UDEV is the wrong model here, not just the wrong
++ * modalias: this driver's real transport is a kernel-mediated SCM call
++ * (qcom_scm_qseecom_app_send(), exported to kernel callers only -- there is
++ * no syscall a udev-visible device node could stand in for) plus an
++ * interrupt latch, not a bus libfprint's udev path already knows how to
++ * discover. taimen has exactly one such sensor, always at a fixed path
++ * once a real kernel-side chardev exists to create it; there is nothing to
++ * dynamically discover. FP_DEVICE_TYPE_VIRTUAL's environment-gated
++ * instantiation is the closest fit libfprint has for "always-present,
++ * fixed path, no bus to enumerate" -- production wires FPCTEE_DEVICE into
++ * fprintd's own unit (see userspace/fprintd-fpctee/ in the taimen repo),
++ * not a human's shell. The real gap this papers over: libfprint has no
++ * first-class "fixed platform device" discovery type, and this ought to be
++ * raised upstream rather than left as a permanent env-var workaround.
 + */
 +static const FpIdEntry fpctee_id_table[] = {
-+  { .udev_types = FPI_DEVICE_UDEV_SUBTYPE_SPIDEV, .spi_acpi_id = "fpc_tee" },
-+  { .udev_types = 0 },
++  { .virtual_envvar = "FPCTEE_DEVICE" },
++  { .virtual_envvar = NULL },
 +};
 +
 +static const gchar *
 +fpc_tee_node_path (FpDevice *device)
 +{
 +  const gchar *env = g_getenv ("FPCTEE_DEVICE");
-+  const gchar *udev_path;
 +
 +  if (env != NULL)
 +    return env;
-+
-+  udev_path = fpi_device_get_udev_data (device, FPI_DEVICE_UDEV_SUBTYPE_SPIDEV);
-+  if (udev_path != NULL)
-+    return udev_path;
 +
 +  return FPC_TEE_DEFAULT_NODE;
 +}
@@ -1738,7 +1766,7 @@ index 0000000..783b4c7
 +
 +  dev_class->id =               FP_COMPONENT;
 +  dev_class->full_name =        "FPC MOC Fingerprint Sensor (TrustZone)";
-+  dev_class->type =             FP_DEVICE_TYPE_UDEV;
++  dev_class->type =             FP_DEVICE_TYPE_VIRTUAL;
 +  dev_class->scan_type =        FP_SCAN_TYPE_PRESS;
 +  dev_class->id_table =         fpctee_id_table;
 +  dev_class->nr_enroll_stages = FPC_TEE_MAX_ENROLL_STAGES;
@@ -1773,7 +1801,7 @@ index 0ca1767..529f440 100644
          [ 'drivers/realtek/realtek.c' ],
      'focaltech_moc' :
 diff --git a/meson.build b/meson.build
-index baafa19..d2db0a9 100644
+index baafa19..3d09b25 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -142,6 +142,7 @@ default_drivers = [
@@ -1784,11 +1812,13 @@ index baafa19..d2db0a9 100644
      'realtek',
      'focaltech_moc',
  ]
-@@ -211,6 +212,7 @@ driver_helper_mapping = {
+@@ -211,6 +212,9 @@ driver_helper_mapping = {
      'aes4000' : [ 'aeslib', 'aes3k' ],
      'uru4000' : [ 'openssl' ],
      'elanspi' : [ 'udev' ],
-+    'fpctee' : [ 'udev' ],
++    # fpctee is FP_DEVICE_TYPE_VIRTUAL (env-gated, fixed path -- see the
++    # comment in drivers/fpctee/fpctee.c), not udev-discovered: it never
++    # calls fpi_device_get_udev_data() and needs no GUdev helper.
      'virtual_image'          : [ 'virtual' ],
      'virtual_device'         : [ 'virtual' ],
      'virtual_device_storage' : [ 'virtual' ],

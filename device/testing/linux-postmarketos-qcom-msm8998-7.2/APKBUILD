@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=34
+pkgrel=35
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -304,6 +304,7 @@ source="
 	0213-drm-msm-BRINGUP-gpu_opp_adjust-raise-GPU-OPP-voltage.patch
 	0214-firmware-qcom-allow-QSEECom-on-the-Pixel-2-XL.patch
 	0215-firmware-qcom-qseecom-add-a-bring-up-debugfs-app-loo.patch
+	0216-firmware-qcom-add-QSEECom-application-loading.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -551,4 +552,5 @@ d378e338e246ef0cce5c6e58225b3b80aaee0d4ae32c7003242d60118c263b10f117b95609e5d36f
 1fd7555debd9191e113402f99145896f1944ffc2c715c0d05c6bc9573ae624ebfeb640752d4a5e3acc089ec3bcd5d827c68f034efbeb98504d768b954cb204a0  0213-drm-msm-BRINGUP-gpu_opp_adjust-raise-GPU-OPP-voltage.patch
 b382adf46139b63947ef3e4f0a1d7dfe54f46b353eaae5354cc52cfa54bd10928882d0a7e3cca81b52b3335cb12d031f3c347e3c73ac8fec3d2b152baceceed4  0214-firmware-qcom-allow-QSEECom-on-the-Pixel-2-XL.patch
 3cd8c8745a8a95f405f993a9368486d0a7d94f2775cd51c6532183b292e48f162c1abee818f4c9d853a83efe2f01ee0b564b96b6b1e6387ad6c14c47f423ca76  0215-firmware-qcom-qseecom-add-a-bring-up-debugfs-app-loo.patch
+491b01bfd9c172f129f7a35e2c80501bbd89217309c926f8b6c64f642de634729faefc2e07899e3b9fe853a837d49cdd6040c592ef8849ae5d735962886f9680  0216-firmware-qcom-add-QSEECom-application-loading.patch
 "

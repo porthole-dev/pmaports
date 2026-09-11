@@ -772,12 +772,22 @@ index 0000000..be40ce4
 +#endif /* FPC_TZ_H */
 diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
 new file mode 100644
-index 0000000..f95dde1
+index 0000000..c2146ce
 --- /dev/null
 +++ b/libfprint/drivers/fpctee/fpctee.c
-@@ -0,0 +1,1011 @@
+@@ -0,0 +1,1022 @@
 +/*
-+ * [BRINGUP] FPC match-on-chip fingerprint sensor behind a QSEE trustlet.
++ * FPC match-on-chip fingerprint sensor behind a QSEE trustlet.
++ *
++ * Transport targets /dev/fpc_tee, implemented in taimen's kernel tree at
++ * linux-ws/drivers/misc/fpc1020.c: a misc chardev that loads the trustlet
++ * (and the 32-bit cmnlib it requires) on first open, sends the one-time
++ * taimen-specific INIT step, then carries every ioctl below as a dumb
++ * pipe. Built and verified to compile/link (2026-09-12); not yet flashed
++ * or exercised against real hardware -- finger detection itself is still
++ * being chased separately. [BRINGUP] refers to that: the wire protocol
++ * and the kernel ABI are both real and fixed now, only end-to-end
++ * verification on the device is still outstanding.
 + *
 + * Derived from libfprint's own FPC driver, drivers/fpcmoc/fpc.c:
 + *   Copyright (c) 2022 Fingerprint Cards AB <tech@fingerprints.com>
@@ -841,13 +851,14 @@ index 0000000..f95dde1
 +#define FPC_TEE_TOUCH_DONE 1
 +
 +/*
-+ * [BRINGUP] Provisional kernel ABI.
-+ *
-+ * The kernel half (a QSEECom trusted-application loader plus the FPC IRQ
-+ * source) does not exist yet, so this is the shape it is expected to take and
-+ * nothing more: one char device, one ioctl carrying a buffer the TA rewrites
-+ * in place, and a blocking read() that returns one byte per finger IRQ.
-+ * Whatever the kernel side actually lands with, only this block changes.
++ * Kernel ABI, implemented in linux-ws/drivers/misc/fpc1020.c
++ * (fpc1020_chardev_fops): one char device, FPC_TEE_IOC_XFER carrying a
++ * buffer the TA rewrites in place (the kernel builds the envelope and
++ * calls qcom_scm_qseecom_app_send() -- this side never sees a physical
++ * address), and poll()+read() of one byte per finger IRQ, sharing the
++ * same latch the sysfs "irq" attribute exposes. This struct's layout is
++ * mirrored by hand on the kernel side as `struct fpc1020_tee_xfer` --
++ * keep the two in sync.
 + */
 +#define FPC_TEE_DEFAULT_NODE "/dev/fpc_tee"
 +#define FPC_TEE_IOC_XFER _IOWR ('F', 0x01, struct fpc_tee_xfer)

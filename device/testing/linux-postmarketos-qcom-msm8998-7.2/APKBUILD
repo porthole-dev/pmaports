@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=31
+pkgrel=32
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -302,6 +302,7 @@ source="
 	0211-arm64-dts-qcom-msm8998-give-the-a540-GPU-OPPs-the-ve.patch
 	0212-media-venus-msm8998-vote-the-bus-for-a-4k60-decode-l.patch
 	0213-drm-msm-BRINGUP-gpu_opp_adjust-raise-GPU-OPP-voltage.patch
+	0214-firmware-qcom-allow-QSEECom-on-the-Pixel-2-XL.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -547,4 +548,5 @@ eab811b5b5506f11bbd914d5ab5bb06c27c5e0b18709851fcca52562703c6439f2c90c270a797609
 8c6579278dccc445381bb6e3d33a0c5d4c22199806fb171284a3251174342ad3ac94f80767c3a3e1fd8e8e56f5224818fedc40cf16ba086223f7753ea7724f9f  0211-arm64-dts-qcom-msm8998-give-the-a540-GPU-OPPs-the-ve.patch
 d378e338e246ef0cce5c6e58225b3b80aaee0d4ae32c7003242d60118c263b10f117b95609e5d36fcd41752c70a5610306845652484a5e07073f3cbda17fd362  0212-media-venus-msm8998-vote-the-bus-for-a-4k60-decode-l.patch
 1fd7555debd9191e113402f99145896f1944ffc2c715c0d05c6bc9573ae624ebfeb640752d4a5e3acc089ec3bcd5d827c68f034efbeb98504d768b954cb204a0  0213-drm-msm-BRINGUP-gpu_opp_adjust-raise-GPU-OPP-voltage.patch
+b382adf46139b63947ef3e4f0a1d7dfe54f46b353eaae5354cc52cfa54bd10928882d0a7e3cca81b52b3335cb12d031f3c347e3c73ac8fec3d2b152baceceed4  0214-firmware-qcom-allow-QSEECom-on-the-Pixel-2-XL.patch
 "

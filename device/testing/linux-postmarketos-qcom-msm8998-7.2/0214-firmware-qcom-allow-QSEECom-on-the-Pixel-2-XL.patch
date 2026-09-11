@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 11 Sep 2026 13:30:32 +0200
+Subject: [PATCH] firmware: qcom: allow QSEECom on the Pixel 2 XL
+
+taimen's QSEE answers the QSEECom interface: the version query, which runs
+before the machine allowlist, logged
+
+    qseecom: found qseecom with version 0x1001000
+
+on 2026-08-19. Allowlist the machine so the auxiliary device is created and
+qcom_scm_qseecom_app_get_id() becomes reachable.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/firmware/qcom/qcom_scm.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index ff73c51be6bf..fca851215737 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -2362,6 +2362,7 @@ static const struct of_device_id qcom_scm_qseecom_allowlist[] __maybe_unused = {
+ 	{ .compatible = "dell,latitude-7455" },
+ 	{ .compatible = "dell,xps13-9345" },
+ 	{ .compatible = "ecs,liva-qc710" },
++	{ .compatible = "google,taimen" },
+ 	{ .compatible = "hp,elitebook-ultra-g1q" },
+ 	{ .compatible = "hp,omnibook-x14" },
+ 	{ .compatible = "huawei,gaokun3" },

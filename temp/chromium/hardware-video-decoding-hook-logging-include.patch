@@ -1,0 +1,30 @@
+Include base/logging.h in the file that calls LOG(ERROR).
+
+The presandbox hook has exactly one LOG() call -- the radeonsi dlopen
+failure path -- and has never included the header that declares it. It
+builds anyway everywhere upstream compiles it, because every such
+configuration is ash-chrome, where base/logging.h arrives transitively
+through the VA-API includes guarded by BUILDFLAG(USE_VAAPI).
+
+This fork is the configuration upstream's own TODO at the top of the
+file describes and does not test: hardware video decoding with V4L2 and
+without VA-API. USE_VAAPI is off, that include block is skipped, and
+the transitive path to base/logging.h disappears with it:
+
+  error: use of undeclared identifier 'ERROR'
+
+So add the include the file's own code requires, rather than making it
+depend on a buildflag that has nothing to do with logging. Ordered
+alphabetically among the base/ includes, which is where IWYU and the
+style guide both put it.
+
+--- a/media/gpu/sandbox/hardware_video_decoding_sandbox_hook_linux.cc
++++ b/media/gpu/sandbox/hardware_video_decoding_sandbox_hook_linux.cc
+@@ -7,6 +7,7 @@
+ #include <dlfcn.h>
+ #include <sys/stat.h>
+ 
++#include "base/logging.h"
+ #include "base/process/process_metrics.h"
+ #include "base/strings/stringprintf.h"
+ #include "build/build_config.h"

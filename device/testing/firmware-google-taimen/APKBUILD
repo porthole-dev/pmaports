@@ -83,7 +83,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 
 pkgname=firmware-google-taimen
 pkgver=20250505
-pkgrel=5
+pkgrel=6
 pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -145,6 +145,17 @@ unpack() {
 	rm -f "$srcdir"/vendor.raw
 	[ -s "$srcdir"/fpc/fpctzappfingerprint.mdt ] || \
 		die "no fpctzappfingerprint.mdt in vendor.img -- image layout changed?"
+
+	# debugfs is not told to fail on a short dump (stderr above is
+	# discarded per-file), so a truncated or missing .bNN would otherwise
+	# build clean and ship a broken trustlet -- only to surface much later
+	# as TrustZone rejecting the image, which reads like a loader bug and
+	# would be debugged as one. The whole-image size is known exactly, so
+	# assert it instead of trusting each dump silently.
+	local _total
+	_total=$(cat "$srcdir"/fpc/fpctzappfingerprint.* | wc -c)
+	[ "$_total" = 603649 ] || \
+		die "fingerprint trustlet extraction is short: got $_total bytes, want 603649"
 }
 
 build() {
@@ -236,6 +247,12 @@ _fingerprint() {
 	# proprietary TrustZone application; nothing on a default install
 	# should pull it in. It is useful only with the qseecom-ta transport.
 	depends=""
+	# Unlike adsp/slpi/ipa_fws/venus above, this .mdt + .bNN set is
+	# installed as-is, NOT pil-squasher'd into one .mbn. The loader for
+	# this blob (Task 5 in the fingerprint-trustlet-transport campaign)
+	# uses qcom_mdt_load(), which opens the .mdt and then requests each
+	# .bNN segment itself by name -- that split *is* the layout it wants,
+	# so squashing them here would only have to be undone there.
 	install -Dm644 "$srcdir"/fpc/fpctzappfingerprint.mdt \
 		"$subpkgdir"/lib/firmware/qcom/msm8998/taimen/fpctzappfingerprint.mdt
 	local _s

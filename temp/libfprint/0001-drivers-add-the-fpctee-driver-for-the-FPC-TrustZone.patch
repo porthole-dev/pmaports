@@ -1,9 +1,9 @@
 diff --git a/libfprint/drivers/fpctee/fpc-tz.c b/libfprint/drivers/fpctee/fpc-tz.c
 new file mode 100644
-index 0000000..c6b1571
+index 0000000..a0eb59e
 --- /dev/null
 +++ b/libfprint/drivers/fpctee/fpc-tz.c
-@@ -0,0 +1,572 @@
+@@ -0,0 +1,583 @@
 +/* SPDX-License-Identifier: Apache-2.0 */
 +/*
 + * FPC TrustZone application protocol — transport-independent core.
@@ -244,7 +244,17 @@ index 0000000..c6b1571
 +fpc_tz_probe (fpc_tz *s, const char *db_path, int *transport_ok)
 +{
 +  const fpc_tz_table *y = &fpc_tz_table_yoshino;
-+  uint8_t buf[FPC_TZ_BUF_WORDS * 4] = { 0 };
++  /*
++   * GET_FPC_INFO's response is the build manifest -- ~900 bytes measured
++   * on taimen -- and word 3 of the REQUEST is the size of the response
++   * buffer the TA is allowed to write, a real field the TA checks: too
++   * small (including 0, what a plain {0} initializer sends) gets
++   * FPC_ERROR_-205 with no text at all, which used to be misread here as
++   * "this trustlet does not use the yoshino command numbering". 1024
++   * covers the measured manifest with headroom; found by direct A/B, see
++   * bringup/fpc-tee-chardev-test/probe_length_field.py.
++   */
++  uint8_t buf[1024] = { 0 };
 +  int rc;
 +
 +  if (transport_ok != NULL)
@@ -256,6 +266,7 @@ index 0000000..c6b1571
 +  put32 (buf, 0, y->grp_info);
 +  put32 (buf, 1, y->get_fpc_info);
 +  put32 (buf, 2, 0);
++  put32 (buf, 3, sizeof (buf));
 +
 +  rc = xfer (s, buf, sizeof (buf));
 +  if (rc != FPC_TZ_OK)

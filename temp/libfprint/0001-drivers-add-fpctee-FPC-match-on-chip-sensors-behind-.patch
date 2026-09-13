@@ -1,0 +1,1657 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 21:56:58 +0200
+Subject: [PATCH] drivers: add fpctee, FPC match-on-chip sensors behind a QSEE
+ trustlet
+
+Some Qualcomm phones -- the Google Pixel 2 XL is the one this was written
+on -- wire an FPC match-on-chip sensor to an SPI bus TrustZone owns.
+Enrolment, matching and template storage all happen inside the vendor's
+trustlet; the kernel's fpc1020 driver provides /dev/fpc_tee to reach it,
+report the sensor's interrupt level, and hand over the trustlet's file
+requests.
+
+The command protocol and its sequences follow the vendor's own HAL: the
+capture loop of fpc_tee_capture_image(), the enrolment and match loops
+of do_enroll() and do_authenticate() (without Android's auth tokens),
+and the database handling of fpc_set_active_group() and
+fpc_tee_store_template_db(). The trustlet keeps its templates in a file
+it reads and writes itself through two QSEE listener services, which the
+driver serves from a thread the way the vendor's qseecomd does, confined
+to /var/lib/fpctee.
+
+The sensor has no bus libfprint can enumerate, so the device is
+instantiated from the FPCTEE_DEVICE environment variable, naming the
+node.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ libfprint/drivers/fpctee/fpctee.c | 1584 +++++++++++++++++++++++++++++
+ libfprint/meson.build             |    2 +
+ meson.build                       |    2 +
+ 3 files changed, 1588 insertions(+)
+ create mode 100644 libfprint/drivers/fpctee/fpctee.c
+
+diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
+new file mode 100644
+index 0000000..76ecde2
+--- /dev/null
++++ b/libfprint/drivers/fpctee/fpctee.c
+@@ -0,0 +1,1584 @@
++/*
++ * FPC match-on-chip fingerprint sensor behind a QSEE trustlet
++ *
++ * The sensor (an FPC1270 with an FPC2050 companion on the Google Pixel 2 XL)
++ * is owned by TrustZone. Enrolment, matching and template storage all happen
++ * inside the vendor's trustlet, fpctzappfingerprint; this driver drives it
++ * through the kernel's /dev/fpc_tee (drivers/misc/fpc1020.c), which carries
++ * command buffers to the trustlet, reports the sensor's interrupt level
++ * through poll(), and hands over the trustlet's file-service requests.
++ *
++ * The command protocol, its sequences and the meaning of its status codes
++ * are taken from the vendor's own HAL
++ * (android.hardware.biometrics.fingerprint@2.1-service.fpc, decompiled):
++ * fpc_tee_capture_image(), do_enroll(), do_authenticate(),
++ * fpc_set_active_group() and the fpc_tee_* command wrappers. The trustlet
++ * keeps its template database in a file it opens, sizes, reads and writes
++ * itself, through two QSEE listener services -- the POSIX-style file service
++ * (0xa) and the GP file service (0x7000). This driver serves both the way
++ * the vendor's qseecomd does (libdrmfs.so, dispatch() and gpdispatch()),
++ * confined to the database directory.
++ *
++ * Copyright (C) 2026 Giuseppe Maggio <jertlok@proton.me>
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++#define FP_COMPONENT "fpctee"
++
++#include "drivers_api.h"
++
++#include <glib-unix.h>
++#include <glib/gstdio.h>
++
++#include <errno.h>
++#include <fcntl.h>
++#include <poll.h>
++#include <string.h>
++#include <sys/ioctl.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#define FPC_TEE_DEFAULT_NODE        "/dev/fpc_tee"
++#define FPC_TEE_DB_DIR              "/var/lib/fpctee"
++#define FPC_TEE_DB_FILE             FPC_TEE_DB_DIR "/user.db"
++#define FPC_TEE_GID                 0
++#define FPC_TEE_MAX_PRINTS          5
++#define FPC_TEE_DEFAULT_STAGES      12
++
++/* ---------------------------------------------------------------------- *
++ * Kernel ABI, from drivers/misc/fpc1020.c
++ * ---------------------------------------------------------------------- */
++
++struct fpc_tee_xfer
++{
++  guint64 buf;
++  guint32 len;
++  guint32 pad;
++};
++
++struct fpc_tee_listener
++{
++  guint32 id;
++  gint32  status;
++  guint64 buf;
++  guint32 len;
++  guint32 timeout_ms;
++};
++
++#define FPC_TEE_IOC_XFER          _IOWR ('F', 0x01, struct fpc_tee_xfer)
++#define FPC_TEE_IOC_LISTENER_RECV _IOWR ('F', 0x02, struct fpc_tee_listener)
++#define FPC_TEE_IOC_LISTENER_SEND _IOW ('F', 0x03, struct fpc_tee_listener)
++
++#define FPC_TEE_CMDBUF_SIZE       4096
++#define FPC_TEE_LISTENER_FS       0x000a
++#define FPC_TEE_LISTENER_GPFS     0x7000
++#define FPC_TEE_LISTENER_BUF_SIZE 0x7e000  /* the larger of the two */
++#define FPC_TEE_GPFS_MAX_READ     0x7d000
++
++/* ---------------------------------------------------------------------- *
++ * Trustlet protocol
++ *
++ * Every command buffer starts {group, cmd, status}; word 3 and on carry the
++ * command's arguments and results.
++ * ---------------------------------------------------------------------- */
++
++#define GRP_DB                    0x02
++#define GRP_SENSOR                0x0a
++#define GRP_BIO                   0x0b
++
++#define DB_LOAD                   0x0b
++#define DB_STORE                  0x0c
++
++/* Names are what the HAL's call sites show, not the trustlet's own. */
++#define SENSOR_INIT               0x00
++#define SENSOR_WAKE_DONE          0x01  /* after the wake wait; answers 1 */
++#define SENSOR_WAKE               0x02  /* the line rises once it is up */
++#define SENSOR_QUALIFY            0x03  /* HAL trace: wait_finger_down_setup */
++#define SENSOR_CAPTURE            0x04
++#define SENSOR_SLEEP              0x05
++
++#define BIO_BEGIN_ENROL           0x00
++#define BIO_ENROL                 0x01
++#define BIO_END_ENROL             0x02
++#define BIO_IDENTIFY              0x03
++#define BIO_UPDATE_TEMPLATE       0x04
++#define BIO_LOAD_EMPTY_DB         0x06
++#define BIO_GET_FINGER_IDS        0x07
++#define BIO_DELETE_TEMPLATE       0x08
++#define BIO_SET_GID               0x09
++#define BIO_GET_TEMPLATE_DB_ID    0x0a
++
++/* Trustlet statuses. Negative values are FPC_ERROR_*. */
++#define FPC_ERROR_IO              -206
++#define FPC_ERROR_NOT_FOUND       -208
++#define FPC_ERROR_CANCELLED       -207
++
++#define CAPTURE_NO_IMAGE_YET      0x105  /* capture again, nothing to report */
++#define IDENTIFY_LOW_QUALITY      0x106
++#define CAPTURE_INSUFFICIENT      0x107  /* retried inside capture, 3 times */
++#define CAPTURE_INSUFFICIENT_2    0x108  /* enrol captures again */
++#define ENROL_MORE                0x10f
++#define ENROL_FAILED              0x110
++#define ENROL_FAILED_2            0x111
++#define ENROL_PARTIAL             0x112
++#define ENROL_MORE_IMMOBILE       0x113
++#define ENROL_DIRTY               0x114
++
++/* ---------------------------------------------------------------------- */
++
++struct _FpiDeviceFpcTee
++{
++  FpDevice   parent;
++
++  gint       fd;
++  gint       cancel_pipe[2];
++  gint       cancelled;         /* atomic */
++
++  GThread   *listener;
++  gint       listener_stop;     /* atomic */
++  gchar     *db_root;
++  GHashTable *fs_fds;           /* listener thread only */
++  gint       fs_errno;          /* listener thread only */
++
++  guint32    enrolled_id;
++  guint32    matched_id;
++  gint       enroll_done;
++};
++
++G_DECLARE_FINAL_TYPE (FpiDeviceFpcTee, fpi_device_fpctee, FPI, DEVICE_FPCTEE, FpDevice)
++G_DEFINE_TYPE (FpiDeviceFpcTee, fpi_device_fpctee, FP_TYPE_DEVICE)
++
++/*
++ * One sensor on one board, at a fixed node, with no bus libfprint can
++ * enumerate: the SPI device is TrustZone's. The environment variable names
++ * the node; the fprintd unit sets it.
++ */
++static const FpIdEntry id_table[] = {
++  { .virtual_envvar = "FPCTEE_DEVICE" },
++  { .virtual_envvar = NULL },
++};
++
++static void
++put32 (guint8 *buf, guint off, guint32 val)
++{
++  memcpy (buf + off, &(guint32) { GUINT32_TO_LE (val) }, 4);
++}
++
++static guint32
++get32 (const guint8 *buf, guint off)
++{
++  guint32 val;
++
++  memcpy (&val, buf + off, 4);
++  return GUINT32_FROM_LE (val);
++}
++
++/* ---------------------------------------------------------------------- *
++ * File-service listener, 0xa (libdrmfs.so dispatch())
++ *
++ * POSIX calls, one per request: u32 command then the call's arguments, paths
++ * as char[256]. Most answers are {command, i32 return}; the return is the
++ * call's own, -1 with errno kept for FS_GET_ERRNO. Only paths under the
++ * database directory, and only descriptors opened here, are served.
++ * ---------------------------------------------------------------------- */
++
++#define FS_OPEN        0x202
++#define FS_READ        0x207
++#define FS_WRITE       0x208
++#define FS_CLOSE       0x209
++#define FS_LSEEK       0x20a
++#define FS_UNLINK      0x20c
++#define FS_RMDIR       0x20d
++#define FS_FSTAT       0x20e
++#define FS_LSTAT       0x20f
++#define FS_MKDIR       0x210
++#define FS_TESTDIR     0x211
++#define FS_REMOVE      0x213
++#define FS_CHOWN_CHMOD 0x214
++#define FS_SYNC        0x216
++#define FS_RENAME      0x217
++#define FS_GET_ERRNO   0x21c
++
++#define FS_DATA_LEN    20000
++
++static gboolean gpfs_path_allowed (FpiDeviceFpcTee *self, const gchar *path);
++
++static gsize
++fs_answer (FpiDeviceFpcTee *self, guint8 *req, gint ret)
++{
++  if (ret < 0)
++    self->fs_errno = errno;
++  put32 (req, 4, (guint32) ret);
++  return 8;
++}
++
++static void
++fs_put_stat (guint8 *out, const struct stat *st)
++{
++  /* struct tz_stat, packed */
++  guint8 *p = out;
++
++  memset (p, 0, 96);
++  memcpy (p, &(guint64) { GUINT64_TO_LE (st->st_dev) }, 8);
++  put32 (p, 12, (guint32) st->st_ino);
++  put32 (p, 16, st->st_mode);
++  put32 (p, 20, st->st_nlink);
++  put32 (p, 24, st->st_uid);
++  put32 (p, 28, st->st_gid);
++  memcpy (p + 32, &(guint64) { GUINT64_TO_LE (st->st_rdev) }, 8);
++  memcpy (p + 44, &(gint64) { GINT64_TO_LE (st->st_size) }, 8);
++  put32 (p, 52, st->st_blksize);
++  memcpy (p + 56, &(guint64) { GUINT64_TO_LE (st->st_blocks) }, 8);
++  put32 (p, 64, st->st_atime);
++  put32 (p, 72, st->st_mtime);
++  put32 (p, 80, st->st_ctime);
++  memcpy (p + 88, &(guint64) { GUINT64_TO_LE (st->st_ino) }, 8);
++}
++
++static gsize
++fs_serve (FpiDeviceFpcTee *self, guint8 *req, gsize len)
++{
++  guint32 cmd = get32 (req, 0);
++  g_autofree gchar *path = g_strndup ((const gchar *) req + 4, 256);
++  gint fd = (gint) get32 (req, 4);
++  gboolean by_fd = cmd == FS_READ || cmd == FS_WRITE || cmd == FS_CLOSE ||
++                   cmd == FS_LSEEK || cmd == FS_FSTAT || cmd == FS_SYNC;
++  gboolean by_path = cmd == FS_OPEN || cmd == FS_UNLINK || cmd == FS_RMDIR ||
++                     cmd == FS_LSTAT || cmd == FS_MKDIR || cmd == FS_TESTDIR ||
++                     cmd == FS_REMOVE || cmd == FS_RENAME;
++  gint ret;
++
++  if (len < 8 ||
++      (by_fd && !g_hash_table_contains (self->fs_fds, GINT_TO_POINTER (fd))) ||
++      (by_path && !gpfs_path_allowed (self, path)))
++    {
++      fp_warn ("refusing file request 0x%x", cmd);
++      errno = by_fd ? EBADF : EACCES;
++      return fs_answer (self, req, -1);
++    }
++
++  switch (cmd)
++    {
++    case FS_OPEN:
++      {
++        gint flags = (gint) get32 (req, 0x104);
++
++        if (flags & O_CREAT)
++          {
++            g_autofree gchar *dir = g_path_get_dirname (path);
++            g_mkdir_with_parents (dir, 0700);
++          }
++        ret = open (path, flags | O_CLOEXEC, 0600);
++        if (ret >= 0)
++          g_hash_table_add (self->fs_fds, GINT_TO_POINTER (ret));
++        fp_dbg ("fs open %s 0x%x -> %d", path, flags, ret);
++        return fs_answer (self, req, ret);
++      }
++
++    case FS_READ:
++      {
++        gsize count = MIN (get32 (req, 8), FS_DATA_LEN);
++        gssize n;
++
++        do
++          n = read (fd, req + 4, count);
++        while (n < 0 && errno == EINTR);
++        if (n < 0)
++          self->fs_errno = errno;
++        put32 (req, 4 + FS_DATA_LEN, (guint32) n);
++        return 8 + FS_DATA_LEN;
++      }
++
++    case FS_WRITE:
++      {
++        gsize count = MIN (get32 (req, 8 + FS_DATA_LEN), FS_DATA_LEN);
++        gssize n;
++
++        do
++          n = write (fd, req + 8, count);
++        while (n < 0 && errno == EINTR);
++        return fs_answer (self, req, n);
++      }
++
++    case FS_CLOSE:
++      g_hash_table_remove (self->fs_fds, GINT_TO_POINTER (fd));
++      return fs_answer (self, req, close (fd));
++
++    case FS_LSEEK:
++      return fs_answer (self, req,
++                        (gint) lseek (fd, (gint32) get32 (req, 8), (gint) get32 (req, 12)));
++
++    case FS_FSTAT:
++    case FS_LSTAT:
++      {
++        struct stat st;
++
++        ret = cmd == FS_FSTAT ? fstat (fd, &st) : lstat (path, &st);
++        if (ret < 0)
++          self->fs_errno = errno;
++        else
++          fs_put_stat (req + 4, &st);
++        put32 (req, 100, (guint32) ret);
++        return 104;
++      }
++
++    case FS_UNLINK:
++      return fs_answer (self, req, unlink (path));
++
++    case FS_RMDIR:
++    case FS_REMOVE:
++      return fs_answer (self, req, g_remove (path));
++
++    case FS_MKDIR:
++      return fs_answer (self, req, g_mkdir_with_parents (path, 0700));
++
++    case FS_TESTDIR:
++      put32 (req, 4, g_file_test (path, G_FILE_TEST_IS_DIR) ? 0 : (guint32) -1);
++      return 8;
++
++    case FS_CHOWN_CHMOD:
++      put32 (req, 4, 0);
++      return 8;
++
++    case FS_SYNC:
++      return fs_answer (self, req, fsync (fd));
++
++    case FS_RENAME:
++      {
++        g_autofree gchar *to = g_strndup ((const gchar *) req + 0x104, 256);
++
++        if (!gpfs_path_allowed (self, to))
++          {
++            errno = EACCES;
++            return fs_answer (self, req, -1);
++          }
++        return fs_answer (self, req, g_rename (path, to));
++      }
++
++    case FS_GET_ERRNO:
++      put32 (req, 4, self->fs_errno);
++      return 8;
++
++    default:
++      fp_warn ("unsupported file request 0x%x", cmd);
++      errno = ENOSYS;
++      return fs_answer (self, req, -1);
++    }
++}
++
++/* ---------------------------------------------------------------------- *
++ * GP file-service listener, 0x7000 (libdrmfs.so gpdispatch())
++ *
++ * Request layout (qseecomd's libdrmfs.so): u32 cmd, char path[256] at 4,
++ * i32 offset at 0x104, u32 count at 0x108, u32 backup at 0x10c, data at
++ * 0x110. The answer goes back in place: errno at 4, byte count at 8, read
++ * data at 0xc.
++ * ---------------------------------------------------------------------- */
++
++#define GPFS_READ   0
++#define GPFS_WRITE  1
++#define GPFS_REMOVE 2
++#define GPFS_RENAME 3
++
++static gboolean
++gpfs_path_allowed (FpiDeviceFpcTee *self, const gchar *path)
++{
++  gsize root_len = strlen (self->db_root);
++
++  return g_str_has_prefix (path, self->db_root) &&
++         path[root_len] == '/' &&
++         strstr (path, "/..") == NULL;
++}
++
++static gchar *
++gpfs_path (const guint8 *req, guint off)
++{
++  return g_strndup ((const gchar *) req + off, 256);
++}
++
++static gsize
++gpfs_serve (FpiDeviceFpcTee *self, guint8 *req, gsize len)
++{
++  guint32 cmd = get32 (req, 0);
++  g_autofree gchar *path = gpfs_path (req, 4);
++  gint err = 0;
++
++  if (len < 0x110 || (cmd <= GPFS_RENAME && !gpfs_path_allowed (self, path)))
++    {
++      fp_warn ("refusing file request %u for %s", cmd, path);
++      put32 (req, 4, EACCES);
++      put32 (req, 8, 0);
++      return 0xc;
++    }
++
++  switch (cmd)
++    {
++    case GPFS_READ:
++      {
++        gint32 offset = (gint32) get32 (req, 0x104);
++        gsize count = MIN (get32 (req, 0x108), FPC_TEE_GPFS_MAX_READ);
++        gssize total = 0;
++        gint fd = open (path, O_RDONLY | O_CLOEXEC);
++
++        if (fd < 0 || lseek (fd, offset, SEEK_SET) != offset)
++          {
++            err = errno;
++          }
++        else
++          {
++            while ((gsize) total < count)
++              {
++                gssize n = read (fd, req + 0xc + total, count - total);
++
++                if (n < 0 && errno == EINTR)
++                  continue;
++                if (n < 0)
++                  {
++                    err = errno;
++                    break;
++                  }
++                if (n == 0)
++                  break;
++                total += n;
++              }
++          }
++        if (fd >= 0)
++          close (fd);
++
++        fp_dbg ("file read %s @%d: %zd of %zu, errno %d", path, offset, total, count, err);
++        put32 (req, 4, err);
++        put32 (req, 8, err ? 0 : total);
++        return 0xc + (err ? 0 : total);
++      }
++
++    case GPFS_WRITE:
++      {
++        gint32 offset = (gint32) get32 (req, 0x104);
++        gsize count = get32 (req, 0x108);
++        gboolean backup = get32 (req, 0x10c) != 0;
++        g_autofree gchar *dir = g_path_get_dirname (path);
++        gssize total = 0;
++        gint fd;
++
++        if (count > len - 0x110)
++          {
++            err = EINVAL;
++            goto write_done;
++          }
++
++        if (g_mkdir_with_parents (dir, 0700) != 0)
++          {
++            err = errno;
++            goto write_done;
++          }
++
++        fd = open (path, O_RDWR | O_CREAT | O_SYNC | O_CLOEXEC, 0600);
++        if (fd < 0)
++          {
++            err = errno;
++            goto write_done;
++          }
++
++        if (backup)
++          {
++            g_autofree gchar *bak = g_strconcat (path, ".bak", NULL);
++            g_autofree gchar *contents = NULL;
++            gsize size = 0;
++
++            if (g_file_get_contents (path, &contents, &size, NULL) && size > 0)
++              (void) g_file_set_contents (bak, contents, size, NULL);
++          }
++
++        if (lseek (fd, offset, SEEK_SET) != offset)
++          err = errno;
++
++        while (!err && (gsize) total < count)
++          {
++            gssize n = write (fd, req + 0x110 + total, count - total);
++
++            if (n < 0 && errno == EINTR)
++              continue;
++            if (n <= 0)
++              {
++                err = n < 0 ? errno : EIO;
++                break;
++              }
++            total += n;
++          }
++        close (fd);
++
++write_done:
++        fp_dbg ("file write %s @%d: %zd of %zu, errno %d", path, offset, total, count, err);
++        put32 (req, 4, err);
++        put32 (req, 8, err ? 0 : total);
++        return 0xc;
++      }
++
++    case GPFS_REMOVE:
++      if (g_remove (path) != 0)
++        err = errno;
++      fp_dbg ("file remove %s: errno %d", path, err);
++      put32 (req, 4, err);
++      return 8;
++
++    case GPFS_RENAME:
++      {
++        g_autofree gchar *to = gpfs_path (req, 0x104);
++
++        if (!gpfs_path_allowed (self, to))
++          err = EACCES;
++        else if (g_rename (path, to) != 0)
++          err = errno;
++        fp_dbg ("file rename %s -> %s: errno %d", path, to, err);
++        put32 (req, 4, err);
++        return 8;
++      }
++
++    default:
++      fp_warn ("unknown file request %u", cmd);
++      put32 (req, 4, (guint32) -1);
++      return 8;
++    }
++}
++
++static gpointer
++listener_thread (gpointer data)
++{
++  FpiDeviceFpcTee *self = data;
++  g_autofree guint8 *sb = g_malloc0 (FPC_TEE_LISTENER_BUF_SIZE);
++
++  while (!g_atomic_int_get (&self->listener_stop))
++    {
++      struct fpc_tee_listener l = {
++        .buf = (guint64) (uintptr_t) sb,
++        .len = FPC_TEE_LISTENER_BUF_SIZE,
++        .timeout_ms = 250,
++      };
++      gsize rsp_len;
++
++      if (ioctl (self->fd, FPC_TEE_IOC_LISTENER_RECV, &l) < 0)
++        {
++          if (errno == ETIMEDOUT || errno == EINTR || errno == EAGAIN)
++            continue;
++          fp_warn ("listener receive failed: %s", g_strerror (errno));
++          g_usleep (G_USEC_PER_SEC / 10);
++          continue;
++        }
++
++      if (l.id == FPC_TEE_LISTENER_FS)
++        rsp_len = fs_serve (self, sb, l.len);
++      else
++        rsp_len = gpfs_serve (self, sb, l.len);
++
++      l.status = 0;
++      l.len = rsp_len;
++      if (ioctl (self->fd, FPC_TEE_IOC_LISTENER_SEND, &l) < 0)
++        fp_warn ("listener send failed: %s", g_strerror (errno));
++    }
++
++  return NULL;
++}
++
++/* ---------------------------------------------------------------------- *
++ * Trustlet calls. These block, so they only ever run on a GTask thread.
++ * ---------------------------------------------------------------------- */
++
++static gint
++tee_xfer (FpiDeviceFpcTee *self, guint8 *buf)
++{
++  struct fpc_tee_xfer x = {
++    .buf = (guint64) (uintptr_t) buf,
++    .len = FPC_TEE_CMDBUF_SIZE,
++  };
++
++  if (ioctl (self->fd, FPC_TEE_IOC_XFER, &x) < 0)
++    return -errno;
++
++  return 0;
++}
++
++/* Returns the trustlet's status, or a negative errno from the transport
++ * shifted below the trustlet's own range. */
++#define TRANSPORT_ERROR(e) (-10000 + (e))
++
++static gint32
++tee_cmd (FpiDeviceFpcTee *self, guint32 group, guint32 cmd, guint8 *buf)
++{
++  gint rc;
++
++  put32 (buf, 0, group);
++  put32 (buf, 4, cmd);
++  put32 (buf, 8, 0);
++
++  rc = tee_xfer (self, buf);
++  if (rc < 0)
++    return TRANSPORT_ERROR (rc);
++
++  return (gint32) get32 (buf, 8);
++}
++
++static gint32
++tee_simple (FpiDeviceFpcTee *self, guint32 group, guint32 cmd, guint32 arg, guint32 *out)
++{
++  guint8 buf[FPC_TEE_CMDBUF_SIZE] = { 0 };
++  gint32 st;
++
++  put32 (buf, 12, arg);
++  st = tee_cmd (self, group, cmd, buf);
++  if (out)
++    *out = get32 (buf, 12);
++
++  return st;
++}
++
++/* sensor_command(): a hardware error is retried once, as the HAL does. */
++static gint32
++sensor_cmd (FpiDeviceFpcTee *self, guint32 cmd)
++{
++  gint32 st = tee_simple (self, GRP_SENSOR, cmd, 0, NULL);
++
++  if (st == -212 || st == -209 || st == -206 || st == -204)
++    {
++      fp_dbg ("sensor command %u: hardware error %d, retrying", cmd, st);
++      g_usleep (10000);
++      st = tee_simple (self, GRP_SENSOR, cmd, 0, NULL);
++      if (st == -212 || st == -209 || st == -206 || st == -204)
++        {
++          g_usleep (20000);
++          st = -209;
++        }
++    }
++
++  if (st != 0)
++    fp_dbg ("sensor command %u: status %d", cmd, st);
++
++  return st;
++}
++
++static gint32
++db_cmd (FpiDeviceFpcTee *self, guint32 cmd, const gchar *path)
++{
++  guint8 buf[FPC_TEE_CMDBUF_SIZE] = { 0 };
++  gsize len = strlen (path) + 1;
++
++  if (len > FPC_TEE_CMDBUF_SIZE - 16)
++    return -201;
++
++  put32 (buf, 12, len);
++  memcpy (buf + 16, path, len);
++
++  return tee_cmd (self, GRP_DB, cmd, buf);
++}
++
++/* fpc_tee_load_template_db(): an absent, empty or unreadable database
++ * means an empty one. */
++static gint32
++load_db (FpiDeviceFpcTee *self)
++{
++  GStatBuf st;
++  gint32 rc;
++
++  if (g_stat (FPC_TEE_DB_FILE, &st) == 0 && st.st_size > 0)
++    {
++      rc = db_cmd (self, DB_LOAD, FPC_TEE_DB_FILE);
++      if (rc != FPC_ERROR_IO)
++        return rc;
++      fp_warn ("template database unreadable, starting from an empty one");
++    }
++
++  return tee_simple (self, GRP_BIO, BIO_LOAD_EMPTY_DB, 0, NULL);
++}
++
++/* fpc_tee_store_template_db(): the trustlet writes without truncating, so
++ * it always writes a fresh file, which then replaces the old one. */
++static gint32
++store_db (FpiDeviceFpcTee *self)
++{
++  const gchar *tmp = FPC_TEE_DB_FILE ".tmp";
++  gint32 rc;
++
++  g_remove (tmp);
++  rc = db_cmd (self, DB_STORE, tmp);
++  if (rc == 0 && g_rename (tmp, FPC_TEE_DB_FILE) != 0)
++    {
++      fp_warn ("cannot replace the template database: %s", g_strerror (errno));
++      rc = FPC_ERROR_IO;
++    }
++  g_remove (tmp);
++
++  return rc;
++}
++
++/* ---------------------------------------------------------------------- *
++ * Finger wait and capture
++ * ---------------------------------------------------------------------- */
++
++static void
++cancel_drain (FpiDeviceFpcTee *self)
++{
++  guint8 junk[16];
++
++  g_atomic_int_set (&self->cancelled, 0);
++  while (read (self->cancel_pipe[0], junk, sizeof (junk)) > 0)
++    ;
++}
++
++/* fpc_irq_wait(ctx, 1): until the interrupt line reads high. */
++static gint32
++wait_irq_high (FpiDeviceFpcTee *self)
++{
++  while (TRUE)
++    {
++      struct pollfd fds[2] = {
++        { .fd = self->fd, .events = POLLIN },
++        { .fd = self->cancel_pipe[0], .events = POLLIN },
++      };
++
++      if (g_atomic_int_get (&self->cancelled))
++        return FPC_ERROR_CANCELLED;
++
++      if (poll (fds, 2, -1) < 0)
++        {
++          if (errno == EINTR)
++            continue;
++          return FPC_ERROR_IO;
++        }
++
++      if (fds[1].revents || g_atomic_int_get (&self->cancelled))
++        return FPC_ERROR_CANCELLED;
++      if (fds[0].revents & POLLIN)
++        return 0;
++      if (fds[0].revents & (POLLERR | POLLHUP))
++        return FPC_ERROR_IO;
++    }
++}
++
++typedef struct
++{
++  FpiDeviceFpcTee    *self;
++  FpFingerStatusFlags status;
++} FingerStatusReport;
++
++static gboolean
++finger_status_idle (gpointer data)
++{
++  FingerStatusReport *r = data;
++
++  fpi_device_report_finger_status (FP_DEVICE (r->self), r->status);
++  return G_SOURCE_REMOVE;
++}
++
++static void
++report_finger_status (FpiDeviceFpcTee *self, FpFingerStatusFlags status)
++{
++  FingerStatusReport *r = g_new0 (FingerStatusReport, 1);
++
++  r->self = self;
++  r->status = status;
++  g_main_context_invoke_full (NULL, G_PRIORITY_DEFAULT, finger_status_idle, r, g_free);
++}
++
++/* fpc_tee_capture_image(), step for step. 0 means an image is ready. */
++static gint32
++capture_image (FpiDeviceFpcTee *self)
++{
++  gint32 st;
++  gint retries = 0;
++
++  st = sensor_cmd (self, SENSOR_WAKE);
++  if (st != 0)
++    goto sleep;
++
++  /* On this sensor the line rises straight after arming: it is the sensor
++   * waking, not a finger. The finger-down wait is the one after QUALIFY. */
++  st = wait_irq_high (self);
++  sensor_cmd (self, SENSOR_WAKE_DONE);
++  if (st != 0)
++    goto sleep;
++
++  while (TRUE)
++    {
++      gint64 start = g_get_monotonic_time ();
++      gint attempt;
++
++      st = sensor_cmd (self, SENSOR_QUALIFY);
++      if (st == 0)
++        {
++          report_finger_status (self, FP_FINGER_STATUS_NEEDED);
++          st = wait_irq_high (self);
++        }
++      if (st != 0)
++        goto sleep;
++
++      report_finger_status (self, FP_FINGER_STATUS_PRESENT);
++
++      /* A slow qualification starts the retry count over. */
++      attempt = (g_get_monotonic_time () - start) / 1000 <= 500 ? retries : 0;
++
++      st = sensor_cmd (self, SENSOR_CAPTURE);
++      report_finger_status (self, FP_FINGER_STATUS_NONE);
++      if (st == 0)
++        return 0;
++      if (st != CAPTURE_INSUFFICIENT || attempt >= 3)
++        goto sleep;
++
++      retries = attempt + 1;
++    }
++
++sleep:
++  sensor_cmd (self, SENSOR_SLEEP);
++  return st;
++}
++
++/* The loop both do_enroll() and do_authenticate() wrap around capture. */
++static gint32
++capture_until_image (FpiDeviceFpcTee *self, gboolean retry_insufficient_2)
++{
++  gint32 st;
++
++  do
++    st = capture_image (self);
++  while (st == CAPTURE_NO_IMAGE_YET ||
++         (retry_insufficient_2 && st == CAPTURE_INSUFFICIENT_2));
++
++  return st;
++}
++
++/* ---------------------------------------------------------------------- *
++ * Prints: the trustlet identifies a template by a u32 finger id.
++ * ---------------------------------------------------------------------- */
++
++static void
++print_set_id (FpPrint *print, guint32 id)
++{
++  fpi_print_set_type (print, FPI_PRINT_RAW);
++  fpi_print_set_device_stored (print, TRUE);
++  g_object_set (print, "fpi-data", g_variant_new ("(u)", id), NULL);
++}
++
++static gboolean
++print_get_id (FpPrint *print, guint32 *id)
++{
++  g_autoptr(GVariant) data = NULL;
++
++  g_object_get (print, "fpi-data", &data, NULL);
++  if (data == NULL || !g_variant_check_format_string (data, "(u)", FALSE))
++    return FALSE;
++
++  g_variant_get (data, "(u)", id);
++  return TRUE;
++}
++
++static FpPrint *
++print_new_from_id (FpiDeviceFpcTee *self, guint32 id)
++{
++  FpPrint *print = fp_print_new (FP_DEVICE (self));
++  g_autofree gchar *desc = g_strdup_printf ("FPC trustlet template %08x", id);
++
++  print_set_id (print, id);
++  fp_print_set_description (print, desc);
++
++  return print;
++}
++
++/* ---------------------------------------------------------------------- *
++ * Errors
++ * ---------------------------------------------------------------------- */
++
++static GError *
++status_error (gint32 st, const gchar *what)
++{
++  if (st == FPC_ERROR_CANCELLED)
++    return g_error_new (G_IO_ERROR, G_IO_ERROR_CANCELLED, "%s cancelled", what);
++
++  if (st <= TRANSPORT_ERROR (0))
++    return fpi_device_error_new_msg (FP_DEVICE_ERROR_PROTO,
++                                     "%s: trustlet transport failed: %s",
++                                     what, g_strerror (-(st - TRANSPORT_ERROR (0))));
++
++  return fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                   "%s: trustlet status %d", what, st);
++}
++
++/* ---------------------------------------------------------------------- *
++ * Work runs on a GTask thread; results come back on the device's context.
++ * ---------------------------------------------------------------------- */
++
++typedef gpointer (*FpcTeeWork) (FpiDeviceFpcTee *self, GError **error);
++
++static void
++work_thread (GTask *task, gpointer source, gpointer data, GCancellable *cancellable)
++{
++  FpcTeeWork work = data;
++  GError *error = NULL;
++  gpointer result = work (FPI_DEVICE_FPCTEE (source), &error);
++
++  if (error)
++    g_task_return_error (task, error);
++  else
++    g_task_return_pointer (task, result, NULL);
++}
++
++static void
++work_run (FpiDeviceFpcTee *self, FpcTeeWork work, GAsyncReadyCallback done)
++{
++  g_autoptr(GTask) task = g_task_new (self, NULL, done, NULL);
++
++  g_task_set_task_data (task, work, NULL);
++  g_task_run_in_thread (task, work_thread);
++}
++
++/* A progress report from the worker thread, delivered in order. */
++typedef struct
++{
++  FpiDeviceFpcTee *self;
++  gint             stages;
++  gint             done;
++  FpDeviceRetry    retry;
++  gboolean         is_retry;
++} EnrollReport;
++
++static gboolean
++enroll_report_idle (gpointer data)
++{
++  EnrollReport *r = data;
++  FpDevice *device = FP_DEVICE (r->self);
++
++  if (r->stages > 0 && r->stages != fp_device_get_nr_enroll_stages (device))
++    fpi_device_set_nr_enroll_stages (device, r->stages);
++
++  fpi_device_enroll_progress (device, r->done, NULL,
++                              r->is_retry ? fpi_device_retry_new (r->retry) : NULL);
++  return G_SOURCE_REMOVE;
++}
++
++static void
++enroll_report (FpiDeviceFpcTee *self, gint stages, gint done, gboolean is_retry, FpDeviceRetry retry)
++{
++  EnrollReport *r = g_new0 (EnrollReport, 1);
++
++  r->self = self;
++  r->stages = stages;
++  r->done = done;
++  r->is_retry = is_retry;
++  r->retry = retry;
++  g_main_context_invoke_full (NULL, G_PRIORITY_DEFAULT, enroll_report_idle, r, g_free);
++}
++
++/* ---------------------------------------------------------------------- *
++ * open / close
++ * ---------------------------------------------------------------------- */
++
++static gpointer
++open_work (FpiDeviceFpcTee *self, GError **error)
++{
++  gint32 st;
++
++  /* fpc_tee_sensor_init() */
++  st = sensor_cmd (self, SENSOR_INIT);
++  if (st == 0)
++    st = sensor_cmd (self, SENSOR_SLEEP);
++  if (st != 0)
++    {
++      *error = status_error (st, "sensor init");
++      return NULL;
++    }
++
++  /* fpc_set_active_group() */
++  if (g_mkdir_with_parents (self->db_root, 0700) != 0)
++    {
++      *error = fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                         "cannot create %s: %s",
++                                         self->db_root, g_strerror (errno));
++      return NULL;
++    }
++
++  st = load_db (self);
++  if (st == 0)
++    st = tee_simple (self, GRP_BIO, BIO_SET_GID, FPC_TEE_GID, NULL);
++  if (st != 0)
++    {
++      *error = status_error (st, "loading the template database");
++      return NULL;
++    }
++
++  return NULL;
++}
++
++static void
++open_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  GError *error = NULL;
++
++  g_task_propagate_pointer (G_TASK (res), &error);
++  fpi_device_open_complete (FP_DEVICE (source), error);
++}
++
++static void
++stop_listener (FpiDeviceFpcTee *self)
++{
++  if (self->listener)
++    {
++      g_atomic_int_set (&self->listener_stop, 1);
++      g_thread_join (self->listener);
++      self->listener = NULL;
++    }
++}
++
++static void
++close_fds (FpiDeviceFpcTee *self)
++{
++  GHashTableIter iter;
++  gpointer fd;
++
++  stop_listener (self);
++
++  g_hash_table_iter_init (&iter, self->fs_fds);
++  while (g_hash_table_iter_next (&iter, &fd, NULL))
++    close (GPOINTER_TO_INT (fd));
++  g_hash_table_remove_all (self->fs_fds);
++
++  g_clear_fd (&self->fd, NULL);
++  g_clear_fd (&self->cancel_pipe[0], NULL);
++  g_clear_fd (&self->cancel_pipe[1], NULL);
++}
++
++static void
++fpc_tee_open (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++  const gchar *node = fpi_device_get_virtual_env (device);
++  GError *error = NULL;
++
++  if (node == NULL || *node == '\0')
++    node = FPC_TEE_DEFAULT_NODE;
++
++  self->fd = open (node, O_RDWR | O_CLOEXEC);
++  if (self->fd < 0)
++    {
++      fpi_device_open_complete (device,
++                                fpi_device_error_new_msg (FP_DEVICE_ERROR_REMOVED,
++                                                          "cannot open %s: %s",
++                                                          node, g_strerror (errno)));
++      return;
++    }
++
++  if (!g_unix_open_pipe (self->cancel_pipe, FD_CLOEXEC, &error) ||
++      !g_unix_set_fd_nonblocking (self->cancel_pipe[0], TRUE, &error))
++    {
++      close_fds (self);
++      fpi_device_open_complete (device, error);
++      return;
++    }
++
++  g_atomic_int_set (&self->listener_stop, 0);
++  self->listener = g_thread_new ("fpctee-listener", listener_thread, self);
++
++  work_run (self, open_work, open_done);
++}
++
++static gpointer
++close_work (FpiDeviceFpcTee *self, GError **error)
++{
++  sensor_cmd (self, SENSOR_SLEEP);
++  return NULL;
++}
++
++static void
++close_done (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++
++  g_task_propagate_pointer (G_TASK (res), NULL);
++  close_fds (self);
++  fpi_device_close_complete (FP_DEVICE (self), NULL);
++}
++
++static void
++fpc_tee_close (FpDevice *device)
++{
++  work_run (FPI_DEVICE_FPCTEE (device), close_work, close_done);
++}
++
++/* ---------------------------------------------------------------------- *
++ * enroll (do_enroll(), without the Android auth token)
++ * ---------------------------------------------------------------------- */
++
++static gpointer
++enroll_work (FpiDeviceFpcTee *self, GError **error)
++{
++  gint stages = 0;
++  gint32 st;
++
++  self->enroll_done = 0;
++
++  st = tee_simple (self, GRP_BIO, BIO_BEGIN_ENROL, 0, NULL);
++  if (st != 0)
++    {
++      *error = status_error (st, "begin enrol");
++      return NULL;
++    }
++
++  while (TRUE)
++    {
++      guint32 remaining = 0;
++
++      st = capture_until_image (self, TRUE);
++      if (st == CAPTURE_INSUFFICIENT)
++        {
++          enroll_report (self, 0, self->enroll_done, TRUE, FP_DEVICE_RETRY_CENTER_FINGER);
++          continue;
++        }
++      if (st != 0)
++        {
++          *error = status_error (st, "capture");
++          return NULL;
++        }
++
++      st = tee_simple (self, GRP_BIO, BIO_ENROL, 0, &remaining);
++      if (st < 0)
++        {
++          *error = status_error (st, "enrol");
++          return NULL;
++        }
++
++      fp_dbg ("enrol step: status 0x%x, %u remaining", st, remaining);
++
++      switch (st)
++        {
++        case 0:
++          break;
++
++        case ENROL_MORE:
++        case ENROL_MORE_IMMOBILE:
++          self->enroll_done++;
++          stages = self->enroll_done + remaining;
++          enroll_report (self, stages, self->enroll_done, FALSE, 0);
++          continue;
++
++        case ENROL_FAILED:
++        case ENROL_FAILED_2:
++          *error = status_error (st, "enrol");
++          return NULL;
++
++        case ENROL_PARTIAL:
++          enroll_report (self, 0, self->enroll_done, TRUE, FP_DEVICE_RETRY_CENTER_FINGER);
++          continue;
++
++        case ENROL_DIRTY:
++          enroll_report (self, 0, self->enroll_done, TRUE, FP_DEVICE_RETRY_REMOVE_FINGER);
++          continue;
++
++        default:
++          enroll_report (self, 0, self->enroll_done, TRUE, FP_DEVICE_RETRY_GENERAL);
++          continue;
++        }
++
++      break;
++    }
++
++  st = tee_simple (self, GRP_BIO, BIO_END_ENROL, 0, &self->enrolled_id);
++  if (st != 0)
++    {
++      *error = status_error (st, "end enrol");
++      return NULL;
++    }
++
++  st = store_db (self);
++  if (st != 0)
++    {
++      /* Keep the trustlet's view in step with the file on disk. */
++      tee_simple (self, GRP_BIO, BIO_DELETE_TEMPLATE, self->enrolled_id, NULL);
++      load_db (self);
++      tee_simple (self, GRP_BIO, BIO_SET_GID, FPC_TEE_GID, NULL);
++      *error = status_error (st, "storing the template database");
++      return NULL;
++    }
++
++  self->enroll_done++;
++  if (stages > 0 && self->enroll_done < stages)
++    self->enroll_done = stages;
++
++  return NULL;
++}
++
++static void
++enroll_done_cb (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  FpDevice *device = FP_DEVICE (self);
++  GError *error = NULL;
++  FpPrint *print;
++
++  g_task_propagate_pointer (G_TASK (res), &error);
++  if (error)
++    {
++      fpi_device_enroll_complete (device, NULL, error);
++      return;
++    }
++
++  fpi_device_get_enroll_data (device, &print);
++  print_set_id (print, self->enrolled_id);
++
++  if (self->enroll_done != fp_device_get_nr_enroll_stages (device))
++    fpi_device_set_nr_enroll_stages (device, self->enroll_done);
++  fpi_device_enroll_progress (device, self->enroll_done, NULL, NULL);
++
++  fp_info ("enrolled template %08x", self->enrolled_id);
++  fpi_device_enroll_complete (device, g_object_ref (print), NULL);
++}
++
++static void
++fpc_tee_enroll (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  cancel_drain (self);
++  work_run (self, enroll_work, enroll_done_cb);
++}
++
++/* ---------------------------------------------------------------------- *
++ * verify / identify (one match attempt of do_authenticate())
++ * ---------------------------------------------------------------------- */
++
++#define IDENTIFY_RETRY GINT_TO_POINTER (1)
++
++static gpointer
++identify_work (FpiDeviceFpcTee *self, GError **error)
++{
++  guint32 changed = 0;
++  gint32 st;
++
++  st = capture_until_image (self, FALSE);
++  if (st == CAPTURE_INSUFFICIENT || st == CAPTURE_INSUFFICIENT_2)
++    return IDENTIFY_RETRY;
++  if (st != 0)
++    {
++      *error = status_error (st, "capture");
++      return NULL;
++    }
++
++  self->matched_id = 0;
++  st = tee_simple (self, GRP_BIO, BIO_IDENTIFY, 0, &self->matched_id);
++  if (st == IDENTIFY_LOW_QUALITY)
++    return IDENTIFY_RETRY;
++  if (st != 0)
++    {
++      *error = status_error (st, "identify");
++      return NULL;
++    }
++
++  fp_dbg ("identify: finger id %08x", self->matched_id);
++
++  if (self->matched_id != 0 &&
++      tee_simple (self, GRP_BIO, BIO_UPDATE_TEMPLATE, 0, &changed) == 0 &&
++      changed != 0 && store_db (self) != 0)
++    fp_warn ("updated template could not be stored");
++
++  return NULL;
++}
++
++static void
++identify_done_cb (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (source);
++  FpDevice *device = FP_DEVICE (self);
++  gboolean verify = fpi_device_get_current_action (device) == FPI_DEVICE_ACTION_VERIFY;
++  GError *error = NULL;
++  gpointer result;
++  FpPrint *match = NULL;
++  g_autoptr(FpPrint) scanned = NULL;
++
++  result = g_task_propagate_pointer (G_TASK (res), &error);
++
++  if (error)
++    {
++      if (verify)
++        fpi_device_verify_complete (device, error);
++      else
++        fpi_device_identify_complete (device, error);
++      return;
++    }
++
++  if (result == IDENTIFY_RETRY)
++    {
++      if (verify)
++        fpi_device_verify_report (device, FPI_MATCH_ERROR, NULL,
++                                  fpi_device_retry_new (FP_DEVICE_RETRY_CENTER_FINGER));
++      else
++        fpi_device_identify_report (device, NULL, NULL,
++                                    fpi_device_retry_new (FP_DEVICE_RETRY_CENTER_FINGER));
++    }
++  else if (verify)
++    {
++      FpPrint *expected;
++      guint32 id;
++
++      fpi_device_get_verify_data (device, &expected);
++      if (self->matched_id != 0)
++        scanned = print_new_from_id (self, self->matched_id);
++
++      fpi_device_verify_report (device,
++                                (self->matched_id != 0 && print_get_id (expected, &id) &&
++                                 id == self->matched_id) ? FPI_MATCH_SUCCESS : FPI_MATCH_FAIL,
++                                g_steal_pointer (&scanned), NULL);
++    }
++  else
++    {
++      GPtrArray *prints;
++      guint i;
++
++      fpi_device_get_identify_data (device, &prints);
++      for (i = 0; self->matched_id != 0 && i < prints->len; i++)
++        {
++          FpPrint *candidate = g_ptr_array_index (prints, i);
++          guint32 id;
++
++          if (print_get_id (candidate, &id) && id == self->matched_id)
++            {
++              match = candidate;
++              break;
++            }
++        }
++
++      /* Report the trustlet's template even when it is not one of the
++       * candidates, so fprintd can recognise and remove templates it does
++       * not own before enrolling over them. */
++      if (self->matched_id != 0)
++        scanned = print_new_from_id (self, self->matched_id);
++
++      fpi_device_identify_report (device, match, g_steal_pointer (&scanned), NULL);
++    }
++
++  if (verify)
++    fpi_device_verify_complete (device, NULL);
++  else
++    fpi_device_identify_complete (device, NULL);
++}
++
++static void
++fpc_tee_identify (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++
++  cancel_drain (self);
++  work_run (self, identify_work, identify_done_cb);
++}
++
++/* ---------------------------------------------------------------------- *
++ * storage
++ * ---------------------------------------------------------------------- */
++
++static gpointer
++list_work (FpiDeviceFpcTee *self, GError **error)
++{
++  guint8 buf[FPC_TEE_CMDBUF_SIZE] = { 0 };
++  GPtrArray *prints;
++  guint32 count, i;
++  gint32 st;
++
++  put32 (buf, 12, FPC_TEE_MAX_PRINTS);
++  st = tee_cmd (self, GRP_BIO, BIO_GET_FINGER_IDS, buf);
++  if (st != 0)
++    {
++      *error = status_error (st, "listing templates");
++      return NULL;
++    }
++
++  count = MIN (get32 (buf, 12), FPC_TEE_MAX_PRINTS);
++  prints = g_ptr_array_new_with_free_func (g_object_unref);
++  for (i = 0; i < count; i++)
++    g_ptr_array_add (prints, g_object_ref_sink (print_new_from_id (self, get32 (buf, 16 + 4 * i))));
++
++  return prints;
++}
++
++static void
++list_done_cb (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  GError *error = NULL;
++  GPtrArray *prints = g_task_propagate_pointer (G_TASK (res), &error);
++
++  fpi_device_list_complete (FP_DEVICE (source), prints, error);
++}
++
++static void
++fpc_tee_list (FpDevice *device)
++{
++  work_run (FPI_DEVICE_FPCTEE (device), list_work, list_done_cb);
++}
++
++static gpointer
++delete_work (FpiDeviceFpcTee *self, GError **error)
++{
++  FpPrint *print;
++  guint32 id;
++  gint32 st;
++
++  fpi_device_get_delete_data (FP_DEVICE (self), &print);
++  if (!print_get_id (print, &id))
++    {
++      *error = fpi_device_error_new (FP_DEVICE_ERROR_DATA_INVALID);
++      return NULL;
++    }
++
++  st = tee_simple (self, GRP_BIO, BIO_DELETE_TEMPLATE, id, NULL);
++  if (st == FPC_ERROR_NOT_FOUND)
++    {
++      *error = fpi_device_error_new (FP_DEVICE_ERROR_DATA_NOT_FOUND);
++      return NULL;
++    }
++  if (st == 0)
++    st = store_db (self);
++  if (st != 0)
++    *error = status_error (st, "deleting a template");
++
++  return NULL;
++}
++
++static gpointer
++clear_work (FpiDeviceFpcTee *self, GError **error)
++{
++  guint8 buf[FPC_TEE_CMDBUF_SIZE] = { 0 };
++  guint32 count, i;
++  gint32 st;
++
++  put32 (buf, 12, FPC_TEE_MAX_PRINTS);
++  st = tee_cmd (self, GRP_BIO, BIO_GET_FINGER_IDS, buf);
++  count = MIN (get32 (buf, 12), FPC_TEE_MAX_PRINTS);
++
++  for (i = 0; st == 0 && i < count; i++)
++    {
++      st = tee_simple (self, GRP_BIO, BIO_DELETE_TEMPLATE, get32 (buf, 16 + 4 * i), NULL);
++      if (st == FPC_ERROR_NOT_FOUND)
++        st = 0;
++    }
++
++  if (st == 0)
++    st = store_db (self);
++  if (st != 0)
++    *error = status_error (st, "clearing templates");
++
++  return NULL;
++}
++
++static void
++delete_done_cb (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  GError *error = NULL;
++
++  g_task_propagate_pointer (G_TASK (res), &error);
++  if (fpi_device_get_current_action (FP_DEVICE (source)) == FPI_DEVICE_ACTION_CLEAR_STORAGE)
++    fpi_device_clear_storage_complete (FP_DEVICE (source), error);
++  else
++    fpi_device_delete_complete (FP_DEVICE (source), error);
++}
++
++static void
++fpc_tee_delete (FpDevice *device)
++{
++  work_run (FPI_DEVICE_FPCTEE (device), delete_work, delete_done_cb);
++}
++
++static void
++fpc_tee_clear_storage (FpDevice *device)
++{
++  work_run (FPI_DEVICE_FPCTEE (device), clear_work, delete_done_cb);
++}
++
++/* ---------------------------------------------------------------------- *
++ * cancel, suspend, resume
++ * ---------------------------------------------------------------------- */
++
++static void
++fpc_tee_cancel (FpDevice *device)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (device);
++  const guint8 byte = 1;
++
++  g_atomic_int_set (&self->cancelled, 1);
++  if (self->cancel_pipe[1] >= 0)
++    (void) !write (self->cancel_pipe[1], &byte, 1);
++}
++
++/* The interrupt is a wakeup source, so a finger-down wait simply continues
++ * across a suspend. */
++static void
++fpc_tee_suspend (FpDevice *device)
++{
++  fpi_device_suspend_complete (device, NULL);
++}
++
++static void
++fpc_tee_resume (FpDevice *device)
++{
++  fpi_device_resume_complete (device, NULL);
++}
++
++/* ---------------------------------------------------------------------- */
++
++static void
++fpi_device_fpctee_init (FpiDeviceFpcTee *self)
++{
++  self->fd = -1;
++  self->cancel_pipe[0] = -1;
++  self->cancel_pipe[1] = -1;
++  self->db_root = g_strdup (FPC_TEE_DB_DIR);
++  self->fs_fds = g_hash_table_new (NULL, NULL);
++}
++
++static void
++fpi_device_fpctee_finalize (GObject *object)
++{
++  FpiDeviceFpcTee *self = FPI_DEVICE_FPCTEE (object);
++
++  close_fds (self);
++  g_free (self->db_root);
++  g_hash_table_destroy (self->fs_fds);
++
++  G_OBJECT_CLASS (fpi_device_fpctee_parent_class)->finalize (object);
++}
++
++static void
++fpi_device_fpctee_class_init (FpiDeviceFpcTeeClass *klass)
++{
++  FpDeviceClass *dev_class = FP_DEVICE_CLASS (klass);
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++
++  object_class->finalize = fpi_device_fpctee_finalize;
++
++  dev_class->id = FP_COMPONENT;
++  dev_class->full_name = "FPC Fingerprint Sensor (TrustZone)";
++  dev_class->type = FP_DEVICE_TYPE_VIRTUAL;
++  dev_class->id_table = id_table;
++  dev_class->scan_type = FP_SCAN_TYPE_PRESS;
++  dev_class->nr_enroll_stages = FPC_TEE_DEFAULT_STAGES;
++  dev_class->temp_hot_seconds = -1;
++
++  dev_class->open = fpc_tee_open;
++  dev_class->close = fpc_tee_close;
++  dev_class->enroll = fpc_tee_enroll;
++  dev_class->verify = fpc_tee_identify;
++  dev_class->identify = fpc_tee_identify;
++  dev_class->list = fpc_tee_list;
++  dev_class->delete = fpc_tee_delete;
++  dev_class->clear_storage = fpc_tee_clear_storage;
++  dev_class->cancel = fpc_tee_cancel;
++  dev_class->suspend = fpc_tee_suspend;
++  dev_class->resume = fpc_tee_resume;
++
++  fpi_device_class_auto_initialize_features (dev_class);
++}
+diff --git a/libfprint/meson.build b/libfprint/meson.build
+index 0ca1767..d7aa9aa 100644
+--- a/libfprint/meson.build
++++ b/libfprint/meson.build
+@@ -149,6 +149,8 @@ driver_sources = {
+         [ 'drivers/goodixmoc/goodix.c', 'drivers/goodixmoc/goodix_proto.c' ],
+     'fpcmoc' :
+         [ 'drivers/fpcmoc/fpc.c' ],
++    'fpctee' :
++        [ 'drivers/fpctee/fpctee.c' ],
+     'realtek' :
+         [ 'drivers/realtek/realtek.c' ],
+     'focaltech_moc' :
+diff --git a/meson.build b/meson.build
+index baafa19..56384af 100644
+--- a/meson.build
++++ b/meson.build
+@@ -142,6 +142,7 @@ default_drivers = [
+     'goodixmoc',
+     'nb1010',
+     'fpcmoc',
++    'fpctee',
+     'realtek',
+     'focaltech_moc',
+ ]
+@@ -157,6 +158,7 @@ endif
+ # FIXME: All the drivers should be fixed by adjusting the byte order.
+ # See https://gitlab.freedesktop.org/libfprint/libfprint/-/issues/236
+ endian_independent_drivers = virtual_drivers + [
++    'fpctee',
+     'aes1610',
+     'aes1660',
+     'aes2550',

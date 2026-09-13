@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 2843ba7a646733977521c5ed43f81a6bff1f8f61 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 13 Sep 2026 22:11:04 +0200
 Subject: [PATCH] lockscreen: Unlock with a fingerprint
@@ -9,9 +9,10 @@ them; a match unlocks the session exactly like a correct passcode.
 While a finger would unlock, the lock screen says so ("Touch the sensor
 or slide up to unlock"). Hints fprintd reports while scanning (finger
 not centered, too short, lift and retry) and unrecognised fingers show
-up on both pages and wake the display, so a touch on the sensor with the
-screen off either unlocks or explains why not. After five unrecognised fingers only
-the passcode is accepted until the lock screen is shown again.
+up on both pages and wake the display, so a touch on the sensor with
+the screen off either unlocks or explains why not. After five
+unrecognised fingers only the passcode is accepted until the lock
+screen is shown again.
 
 The device is released when the lock screen goes away, however it
 unlocks. Lock screens derived from PhoshLockscreen -- a greeter, say --
@@ -34,17 +35,17 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  create mode 100644 src/fingerprint-unlock.h
 
 diff --git a/po/POTFILES.in b/po/POTFILES.in
-index 9f5c72d..8f9171c 100644
+index 9f5c72d..39dccf4 100644
 --- a/po/POTFILES.in
 +++ b/po/POTFILES.in
-@@ -45,6 +45,7 @@ src/home.c
+@@ -41,6 +41,7 @@ src/fader.c
+ src/favorite-list-model.c
+ src/feedbackinfo.c
+ src/feedback-manager.c
++src/fingerprint-unlock.c
+ src/home.c
  src/idle-manager.c
  src/layersurface.c
- src/location-manager.c
-+src/fingerprint-unlock.c
- src/lockscreen.c
- src/lockscreen-manager.c
- src/screenshot-manager.c
 diff --git a/src/fingerprint-unlock.c b/src/fingerprint-unlock.c
 new file mode 100644
 index 0000000..072f025
@@ -574,17 +575,17 @@ index 0000000..8e7fe6d
 +
 +G_END_DECLS
 diff --git a/src/lockscreen.c b/src/lockscreen.c
-index c991cb0..bcdd1a2 100644
+index c991cb0..fb98d9f 100644
 --- a/src/lockscreen.c
 +++ b/src/lockscreen.c
-@@ -10,6 +10,7 @@
- #define G_LOG_DOMAIN "phosh-lockscreen"
- 
+@@ -12,6 +12,7 @@
  #include "auth.h"
-+#include "fingerprint-unlock.h"
  #include "call-notification.h"
  #include "calls-manager.h"
++#include "fingerprint-unlock.h"
  #include "keypad.h"
+ #include "layersurface-priv.h"
+ #include "lockscreen-bg.h"
 @@ -98,12 +99,15 @@ typedef struct {
    GtkWidget          *entry_pin;
    GtkGesture         *long_press_del_gesture;
@@ -714,17 +715,17 @@ index c991cb0..bcdd1a2 100644
                                                  long_press_del_gesture);
    gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, btn_submit);
 diff --git a/src/meson.build b/src/meson.build
-index c42c21d..e1ab5b9 100644
+index c42c21d..67db532 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -391,6 +391,7 @@ phosh_sources = files(
-   'app-tracker.c',
-   'arrow.c',
-   'auth.c',
+@@ -403,6 +403,7 @@ phosh_sources = files(
+   'thumbnail-overlay.c',
+   'fake-clock.c',
+   'feedbackinfo.c',
 +  'fingerprint-unlock.c',
-   'background-manager.c',
-   'battery-info.c',
-   'bt-device-row.c',
+   'home.c',
+   'idle-manager.c',
+   'keyboard-events.c',
 diff --git a/src/ui/lockscreen.ui b/src/ui/lockscreen.ui
 index 0a6852c..a44f121 100644
 --- a/src/ui/lockscreen.ui
@@ -738,3 +739,6 @@ index 0a6852c..a44f121 100644
                          <property name="visible">1</property>
                          <property name="valign">end</property>
                          <property name="margin-top">6</property>
+-- 
+2.55.0
+

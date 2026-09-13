@@ -11,7 +11,7 @@ maintainer="Stefan Hansson <newbyte@postmarketos.org>"
 pkgname=phosh
 _pkgver=0.57.0
 pkgver=9999$_pkgver
-pkgrel=21
+pkgrel=22
 pkgdesc="Wayland shell for GNOME on mobile devices"
 # armhf: blocked by gnome-shell-schemas
 arch="all !armhf"
@@ -134,5 +134,5 @@ schemas() {
 sha512sums="
 51219a3295b061047765368a0f65a02b131c4b229ec03713f547595b73a98c51b99086769bf0584dd7d44b8426b21d50162e76e955fb7a37a5136cefa253fea8  phosh-0.57.0.tar.xz
 cb4bad612e5d2dff156c6b97b460c16ab7fd48067935b616fe0b65d11c3d255f1ecd06b800c654ac9ea93bc53e823eb47134836dfdf61bb338588dab78d3b9e9  splash-timeout-flatpak-dbus.patch
-373a3474b41ebb8bad008cf7385dc2602cd32651879ab4bc7a4c2ef7022f25e07fbe670e328396b4d6a37a78a1d6e3fb20f5fa09e35feaf912961c112f95a40f  0001-lockscreen-Unlock-with-a-fingerprint.patch
+457b09067e172d3b9354581f4fedacdfe4f11fbd3f92402c5b04e9d732964efff5b0d32e38659d235201fe60c12e683ec1b2f0a8b9ee31badb3ecab4b5a773d3  0001-lockscreen-Unlock-with-a-fingerprint.patch
 "

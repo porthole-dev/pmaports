@@ -1,0 +1,1049 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 21:29:42 +0200
+Subject: [PATCH] misc: fpc1020: serve the trustlet's file listener and report
+ the irq level
+
+Taimen's vendor HAL, decompiled, settles two things this driver got
+wrong.
+
+The capture sequence waits on the interrupt line's level, not an edge:
+fpc_irq_wait() re-reads the sysfs "irq" attribute (a GPIO level in the
+vendor driver) until it reads 1, and fpc_tee_capture_image() arms the
+sensor, waits for the level, sends a command, and waits for it again.
+The latch this driver exposed cannot express that, and the trustlet's
+own commands pulse the line, which a latch turns into false touches.
+The interrupt is now requested from an "irq" GPIO, poll() reports
+EPOLLIN while that GPIO reads high, and the sysfs attribute reports the
+level as the vendor one does. The chardev read() and the latch go.
+
+The template database lives in the normal world's filesystem, reached
+from inside the trustlet through QSEE's GP file-service listener, 0x7000
+-- the only listener the trustlet uses, at three call sites (read, write,
+remove). Register it with the shared buffer size qseecomd gives it
+(0x7e000) when the trustlet is loaded, send app calls through
+qcom_scm_qseecom_app_send_listener(), and hand each request to userspace:
+FPC1020_TEE_IOC_LISTENER_RECV waits for one and copies the shared buffer
+out, FPC1020_TEE_IOC_LISTENER_SEND copies the answer back and resumes the
+blocked call. What a request means -- which path, and whether it is
+allowed -- is decided in userspace, where the filesystem policy belongs;
+the layout is QSEE's own, as served by qseecomd's libdrmfs.so. A request
+nobody answers within 30 s is failed back to the trustlet.
+
+The kernel no longer sends the sensor INIT command. The vendor HAL sends
+it, followed by a sleep command, every time it opens the sensor, and the
+command protocol is entirely userspace's otherwise. The skip_init
+bring-up parameter goes with it.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/misc/Kconfig   |  18 +-
+ drivers/misc/fpc1020.c | 711 +++++++++++++++++++----------------------
+ 2 files changed, 339 insertions(+), 390 deletions(-)
+
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 89c30b48091c..9f509912c4af 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -662,18 +662,18 @@ source "drivers/misc/amd-sbi/Kconfig"
+ source "drivers/misc/rp1/Kconfig"
+ 
+ config FPC1020
+-	tristate "FPC1020/FPC1270 fingerprint sensor power/reset/irq driver"
++	tristate "FPC1020/FPC1270 fingerprint sensor behind a QSEE trustlet"
+ 	depends on OF && GPIOLIB
+ 	depends on QCOM_QSEECOM
+ 	help
+-	  Say Y here to support the power, reset and interrupt handling for
+-	  an FPC1020 or FPC1270 match-on-chip fingerprint sensor wired to a
+-	  TrustZone trustlet over SPI. This driver does not talk to the
+-	  sensor itself over SPI -- it owns the IO supply, the reset line
+-	  and the interrupt only -- but it does provide /dev/fpc_tee, a
+-	  chardev that loads the trustlet and carries libfprint's fpctee
+-	  driver's commands to it via qcom_scm_qseecom_app_send(), plus a
+-	  latched sysfs "irq" attribute mirroring the same interrupt.
++	  Say Y here to support an FPC1020 or FPC1270 match-on-chip
++	  fingerprint sensor whose SPI bus belongs to a TrustZone trustlet,
++	  as on the Google Pixel 2 XL. The driver owns the sensor's supply,
++	  reset and interrupt lines, loads the trustlet, and provides
++	  /dev/fpc_tee: a transport for commands to the trustlet, a poll()able
++	  interrupt level, and the file-service listener the trustlet stores
++	  its template database through. libfprint's fpctee driver speaks the
++	  command protocol on top of it.
+ 
+ 	  This driver can also be built as a module. If so, the module
+ 	  will be called fpc1020.
+diff --git a/drivers/misc/fpc1020.c b/drivers/misc/fpc1020.c
+index 329558629375..f7412dc54d00 100644
+--- a/drivers/misc/fpc1020.c
++++ b/drivers/misc/fpc1020.c
+@@ -1,85 +1,39 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * FPC1020/FPC1270 fingerprint sensor -- power, reset, interrupt, and the
+- * /dev/fpc_tee chardev that carries commands to the TrustZone trustlet.
++ * FPC1020/FPC1270 fingerprint sensor behind a QSEE trustlet.
+  *
+- * This driver owns the sensor's IO supply, its reset line, and its
+- * interrupt -- and, as of the /dev/fpc_tee addition below, the one thing
+- * that can actually reach TrustZone: qcom_scm_qseecom_app_send() is a
+- * kernel-exported symbol, not a syscall, so nothing in userspace could ever
+- * call it directly no matter what node existed. This driver still sends the
+- * SENSOR no commands over SPI -- it cannot, the SPI pads are fenced by a
+- * signed devcfg and are not described in this file or touched by it -- but
+- * it does now speak the QSEECom protocol to the trustlet that owns that
+- * bus, on userspace's behalf. Matches the discipline stated outright in the
+- * vendor driver this was modelled on, drivers/misc/fpc1020_platform_tee.c
+- * (FPC AB, GPL-2.0): "This driver will NOT send any commands to the sensor
+- * it only controls the electrical parts" -- the SENSOR, not the trustlet.
++ * The sensor's SPI bus belongs to TrustZone; the trustlet
++ * (fpctzappfingerprint) is the only thing that talks to the part. What
++ * Linux owns is the electrical side -- the IO supply, the reset line and
++ * the interrupt line -- plus the one path into the trustlet, which is a
++ * kernel-only SCM call. This driver provides exactly those, and /dev/fpc_tee
++ * to reach them from userspace:
+  *
+- * The interrupt line (FP_INT_N) is active-low in name but the vendor arms
+- * it IRQF_TRIGGER_RISING, once, for the device's whole lifetime -- not
+- * re-armed per touch -- and taimen's own shipped HAL (decompiled, see the
+- * port's bring-up notes) waits on a *latched* status through a sysfs "irq"
+- * attribute: reading it returns the latch, not a raw GPIO level, and any
+- * write clears the latch so the next edge can set it again. A stateless
+- * level mirror does not fit that protocol -- it would report "already
+- * true" forever on a line that idles high and the sensor's own HAL would
+- * never block. So the latch is the point of this driver, not an incidental
+- * detail: it is the one thing a bare GPIO read from outside the kernel
+- * cannot reproduce. /dev/fpc_tee's read() exposes the SAME latch to
+- * fprintd; the sysfs attribute stays, unmodified, for the vendor HAL and
+- * this port's own bring-up tooling (tools/qfp-*) that already reads it.
+- *
+- * libfprint's fpctee driver (userspace/libfprint-fpctee, upstreamed into
+- * pmaports' libfprint fork as drivers/fpctee/) is the reference for
+- * everything below the ioctl boundary: the envelope/cmdbuf split, the
+- * buffer sizes, and the poll()+read()-one-byte event contract all come
+- * from what that code actually does, not from a spec written here first.
+- *
+- * Two decisions this file makes, both real interface choices rather than
+- * defaults:
+- *
+- * 1. WHO LOADS THE TRUSTLET. qcom_scm_qseecom_app_load()'s own ABI
+- *    (TZ_OS_APP_START_ID_PARAM_ID) never transmits the app's name -- only
+- *    the assembled image -- so app_get_id() cannot find it again by name
+- *    afterwards (confirmed on hardware: it returns -ENOENT even
+- *    immediately after a load that itself reported success). The id is
+- *    therefore a value that exists exactly once, at load time, and nowhere
+- *    else -- userspace has no channel to it that does not go through this
+- *    same kernel-only SCM call. So this driver loads cmnlib (the 32-bit
+- *    common library QSEE requires resident before any ELFCLASS32 app,
+- *    fpctzappfingerprint included) and the trustlet itself, lazily, on the
+- *    first /dev/fpc_tee open(), and keeps the returned app_id for the
+- *    lifetime of the binding. A second load attempt within the same boot
+- *    (module reload, or a second concurrent open racing the first) is
+- *    refused by TrustZone's app-manager (QSEOS_APP_START does not restart
+- *    an already-running app) -- there is no recovery for that case, by
+- *    construction: the id was never discoverable except at the moment of
+- *    that first, already-gone, load. open() fails with whatever
+- *    qcom_scm_qseecom_app_load() returns rather than pretending to find
+- *    the old id.
+- *
+- * 2. WHO SENDS INIT. Group 0x0a (SENSOR) cmd 0x00 is a one-time hardware
+- *    bring-up step (~761 ms, measured tonight) that every real capture
+- *    needs and that fpc-tz.c's transport-independent protocol core has no
+- *    concept of -- it is specific to taimen's recovered command table, not
+- *    part of the yoshino/nile/loire tables fpc-tz.c already knows. Adding
+- *    it there would break that file's whole reason for existing (one
+- *    protocol core, several trustlet generations as data). It is scoped to
+- *    LOAD, not to any individual request -- an ioctl-level "dumb pipe"
+- *    would need userspace to somehow know to send it exactly once ever,
+- *    which is the identical retention problem as (1) and has no better
+- *    answer in userspace than it does here. So this driver sends INIT
+- *    itself, once, immediately after a successful app_load(), as the last
+- *    step of the same first-open bring-up sequence that decision (1)
+- *    already owns. Every ordinary ioctl(FPC1020_TEE_IOC_XFER) after that
+- *    is a dumb pipe: this file does not interpret group/cmd/status,
+- *    fpc-tz.c does.
++ *  - open() loads cmnlib and the trustlet on first use and registers the
++ *    trustlet's file-service listener. Loading is once per boot: QSEE refuses
++ *    to start an app that is already running and cannot name its id again.
++ *  - FPC1020_TEE_IOC_XFER carries one command buffer to the trustlet and back,
++ *    uninterpreted. The command protocol (sensor init, capture, enrol,
++ *    identify, template database) lives in userspace, as it does in the
++ *    vendor HAL.
++ *  - poll() reports EPOLLIN while the interrupt line is high. The vendor HAL
++ *    waits for the line's *level* (fpc_irq_wait() re-reads the sysfs "irq"
++ *    attribute until it reads "1"), and so does its capture sequence: arm,
++ *    wait for the level, command, wait again. An edge latch does not fit it --
++ *    the commands themselves pulse the line.
++ *  - The trustlet keeps its template database in the normal world's
++ *    filesystem through QSEE's GP file-service listener (id 0x7000): a
++ *    database command is answered by QSEE with a request in the listener's
++ *    shared buffer, which must be served before the command can finish.
++ *    Filesystem policy belongs in userspace, so the request is handed to
++ *    whoever waits in FPC1020_TEE_IOC_LISTENER_RECV and the answer taken back
++ *    through FPC1020_TEE_IOC_LISTENER_SEND, while the XFER that triggered it
++ *    blocks. The request layout is QSEE's, not this driver's; see
++ *    fpc1020_listener_handle().
+  *
+  * Copyright (C) 2026 Giuseppe Maggio <jertlok@proton.me>
+  */
+ 
+-#include <linux/atomic.h>
+ #include <linux/delay.h>
+ #include <linux/device.h>
+ #include <linux/dma-mapping.h>
+@@ -93,24 +47,21 @@
+ #include <linux/mutex.h>
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
++#include <linux/pm_wakeup.h>
+ #include <linux/poll.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/sizes.h>
+ #include <linux/slab.h>
++#include <linux/spinlock.h>
+ #include <linux/sysfs.h>
+ #include <linux/uaccess.h>
++#include <linux/unaligned.h>
+ #include <linux/wait.h>
+ 
+ #include <linux/firmware/qcom/qcom_scm.h>
+ #include <linux/firmware/qcom/qcom_tzmem.h>
+ 
+-/* hw_reset() timings, from the vendor driver, unchanged: reset ACTIVE
+- * (high), a short settle, RESET (low), a longer settle, ACTIVE again.
+- * The vendor's own comment applies here too: chip select cannot be
+- * driven from a platform driver, so the trustlet still needs to do its
+- * own soft reset over SPI after this pulse brings the part out of
+- * electrical reset -- this driver only does the electrical part.
+- */
++/* hw_reset() timings, from the vendor driver. */
+ #define FPC1020_RESET_HIGH1_US_MIN	100
+ #define FPC1020_RESET_HIGH1_US_MAX	200
+ #define FPC1020_RESET_LOW_US_MIN	5000
+@@ -119,126 +70,106 @@
+ #define FPC1020_RESET_HIGH2_US_MAX	5100
+ 
+ /*
+- * TrustZone wire shape, reproduced from userspace/libfprint-fpctee's
+- * fpc-tz.c and bringup/qseecom-app-load/qseecom_app_load.c (both already
+- * proven on hardware) -- do not re-derive these numbers.
+- *
+- * ENVELOPE: fpc_send_mod_cmd_t (tz_api_yoshino.h, sonyxperiadev), exactly
+- * two u32 words -- length of the SEPARATE command buffer, and that
+- * buffer's physical address -- inside a 64-byte allocation (the vendor's
+- * own buffer size for it; the extra bytes are unused padding, kept to
+- * match the proven shape rather than trim it to 8). Sent as BOTH req and
+- * rsp to qcom_scm_qseecom_app_send(): the TA's top-level dispatch result
+- * lands back in the envelope's own word 0, which this driver does not
+- * otherwise inspect.
+- *
+- * CMDBUF: {group, cmd, status, ...}, rewritten in place by the TA -- what
+- * fpc-tz.c calls buf[]. Its largest user (the DB/template commands) is
+- * FPC_TZ_BUF_WORDS*4 + 256 = 320 bytes; one page is generous headroom for
+- * that plus room to grow, matching the size qseecom_app_load.c already
+- * proved this works at.
++ * The request the trustlet sees is a two-word envelope -- the command
++ * buffer's length and physical address -- in a 64-byte allocation, sent as
++ * both request and response (QSEECom_send_modified_cmd() in the vendor HAL).
++ * The length is the command buffer's size, and the trustlet reads it: a
++ * short one is accepted and silently does nothing.
+  */
+ #define FPC1020_TZ_ENV_SIZE		64u
+ #define FPC1020_TZ_CMDBUF_SIZE		PAGE_SIZE
+ 
+-#define FPC1020_TZ_GRP_SENSOR		0x0au
+-#define FPC1020_TZ_CMD_INIT		0x00u
+-
+ #define FPC1020_TZ_FW_DIR		"qcom/msm8998/taimen/"
+ #define FPC1020_TZ_CMNLIB_NAME		"cmnlib"
+ #define FPC1020_TZ_APP_NAME		"fpctzappfingerprint"
+ 
+-/* qseecom@86600000 { reg = <0x86600000 0x2200000>; }, the vendor DT's
+- * secapp-region, verified inside mainline's existing tz_mem reservation.
+- */
++/* The vendor DT's secapp-region, inside mainline's tz_mem reservation. */
+ #define FPC1020_TZ_REGION_ADDR		0x86600000UL
+ #define FPC1020_TZ_REGION_SIZE		0x2200000UL
+ 
+-struct fpc1020_image {
+-	struct device *dev;
+-	void *virt;
+-	dma_addr_t phys;
+-	size_t mdt_len;
+-	size_t total_len;
++/* QSEE's GP file service, and the shared buffer size qseecomd gives it. */
++#define FPC1020_GPFS_LISTENER_ID	0x7000
++#define FPC1020_GPFS_SB_SIZE		0x7e000
++
++/* How long a blocked trustlet call waits for userspace to serve its file. */
++#define FPC1020_LISTENER_TIMEOUT_MS	30000
++
++/* Userspace ABI, mirrored by libfprint's fpctee driver. */
++struct fpc1020_tee_xfer {
++	__u64 buf;
++	__u32 len;
++	__u32 pad;
+ };
+ 
++struct fpc1020_tee_listener {
++	__u32 id;		/* RECV: out. SEND: in, must match. */
++	__s32 status;		/* SEND: 0 served, nonzero failed. */
++	__u64 buf;
++	__u32 len;
++	__u32 timeout_ms;	/* RECV only. */
++};
++
++#define FPC1020_TEE_IOC_XFER		_IOWR('F', 0x01, struct fpc1020_tee_xfer)
++#define FPC1020_TEE_IOC_LISTENER_RECV	_IOWR('F', 0x02, struct fpc1020_tee_listener)
++#define FPC1020_TEE_IOC_LISTENER_SEND	_IOW('F', 0x03, struct fpc1020_tee_listener)
++
+ /*
+- * BRING-UP ONLY, not a production interface: request_firmware() for
+- * FPC1020_TZ_APP_NAME reproducibly fails with -ELOOP on the device this
+- * was first tested on, root cause not yet found (the same inode opens
+- * fine through every userspace path tried, including a fresh hardlink and
+- * /proc/1/root -- see bringup/fpc-tee-chardev-test/ for the diagnostic
+- * trail). Since the trustlet was already loaded resident by an earlier
+- * probe this boot, this parameter lets bring-up skip straight to that
+- * known app id -- INIT is still sent -- so the chardev, GET_FPC_INFO and
+- * fprintd can be exercised without waiting on the firmware-loading bug.
+- * A production boot has no way to know this id in advance (see decision
+- * 1 in this file's header comment) and must go through the real load.
++ * BRING-UP ONLY: the trustlet survives a module reload but its id does not,
++ * and QSEE will not start it twice. Reusing the id from the first load's log
++ * line is the only way to reach it again without a reboot.
+  */
+ static unsigned int app_id_override;
+ module_param_named(app_id, app_id_override, uint, 0444);
+-MODULE_PARM_DESC(app_id, "BRING-UP ONLY: skip the trustlet/cmnlib load and use this already-resident app id instead (0 = load normally)");
++MODULE_PARM_DESC(app_id, "BRING-UP ONLY: use this already-resident trustlet id instead of loading (0 = load)");
+ 
+-/*
+- * BRING-UP ONLY: isolate INIT's effect on other commands (e.g. GET_FPC_INFO
+- * returning a non-zero status where an earlier, INIT-less probe got the
+- * manifest) using the SAME chardev transport on both sides of the A/B,
+- * rather than comparing against a different implementation. A caller can
+- * still send {0x0a,0x00} through the ordinary ioctl at any time -- this
+- * only controls whether THIS driver sends it automatically during bring-up.
+- */
+-static bool skip_init;
+-module_param_named(skip_init, skip_init, bool, 0444);
+-MODULE_PARM_DESC(skip_init, "BRING-UP ONLY: do not send INIT during bring-up");
++enum fpc1020_listener_state {
++	FPC1020_LISTENER_IDLE,
++	FPC1020_LISTENER_PENDING,	/* request in sb, nobody has taken it */
++	FPC1020_LISTENER_SERVING,	/* copied out, waiting for the answer */
++	FPC1020_LISTENER_DONE,		/* answer in sb */
++};
++
++struct fpc1020_image {
++	void *virt;
++	dma_addr_t phys;
++	size_t mdt_len;
++	size_t total_len;
++};
+ 
+ struct fpc1020 {
+ 	struct device *dev;
+ 	struct gpio_desc *reset_gpio;
++	struct gpio_desc *irq_gpio;
+ 	struct regulator *vdd_io;
+ 	int irq;
+-	/*
+-	 * The latch: set by the ISR, cleared by any write to the "irq"
+-	 * sysfs attribute OR by a read() of /dev/fpc_tee -- see the file
+-	 * header. irq_wq wakes both the sysfs poll(2) path (via
+-	 * sysfs_notify(), independent of this waitqueue) and the chardev's
+-	 * own poll()/read().
+-	 */
+-	atomic_t latched;
+ 	wait_queue_head_t irq_wq;
+ 
+ 	struct miscdevice miscdev;
+-	/*
+-	 * Serializes ALL TrustZone traffic through this device: the
+-	 * one-time load+INIT bring-up AND every later ioctl xfer. Taken
+-	 * for the whole bring-up sequence in fpc1020_bring_up_locked(), so
+-	 * a second opener blocks behind the first rather than racing it
+-	 * into a second, refused, app_load().
+-	 */
++
++	/* Serializes bring-up and all trustlet traffic. */
+ 	struct mutex lock;
+ 	struct qcom_tzmem_pool *tzpool;
+ 	bool ready;
+ 	u32 app_id;
+-};
+ 
+-/* Userspace's ioctl struct, mirrored byte-for-byte from
+- * userspace/libfprint-fpctee/fpctee.c's `struct fpc_tee_xfer` -- keep
+- * these two definitions in sync by hand, the same discipline fpc-tz.c
+- * already asks of its own callers.
+- */
+-struct fpc1020_tee_xfer {
+-	__u64 buf;
+-	__u32 len;
+-	__u32 pad;
++	void *sb;
++	dma_addr_t sb_phys;
++	bool listener_registered;
++
++	spinlock_t listener_lock;
++	enum fpc1020_listener_state listener_state;
++	int listener_status;
++	wait_queue_head_t listener_req_wq;
++	wait_queue_head_t listener_rsp_wq;
+ };
+-#define FPC1020_TEE_IOC_XFER _IOWR('F', 0x01, struct fpc1020_tee_xfer)
+ 
+ static irqreturn_t fpc1020_irq_handler(int irq, void *data)
+ {
+ 	struct fpc1020 *fpc1020 = data;
+ 
+-	atomic_set(&fpc1020->latched, 1);
+-	sysfs_notify(&fpc1020->dev->kobj, NULL, "irq");
++	pm_wakeup_event(fpc1020->dev, 1000);
+ 	wake_up_interruptible(&fpc1020->irq_wq);
++	sysfs_notify(&fpc1020->dev->kobj, NULL, "irq");
+ 
+ 	return IRQ_HANDLED;
+ }
+@@ -248,22 +179,10 @@ static ssize_t irq_show(struct device *dev, struct device_attribute *attr,
+ {
+ 	struct fpc1020 *fpc1020 = dev_get_drvdata(dev);
+ 
+-	return sysfs_emit(buf, "%d\n", atomic_read(&fpc1020->latched));
++	return sysfs_emit(buf, "%d\n",
++			  gpiod_get_value_cansleep(fpc1020->irq_gpio));
+ }
+-
+-/* Any write clears/re-arms the latch. The value written is not
+- * inspected -- only the act of writing matters, matching what the
+- * sensor's own HAL protocol does after every wakeup. */
+-static ssize_t irq_store(struct device *dev, struct device_attribute *attr,
+-			 const char *buf, size_t count)
+-{
+-	struct fpc1020 *fpc1020 = dev_get_drvdata(dev);
+-
+-	atomic_set(&fpc1020->latched, 0);
+-
+-	return count;
+-}
+-static DEVICE_ATTR_RW(irq);
++static DEVICE_ATTR_RO(irq);
+ 
+ static struct attribute *fpc1020_attrs[] = {
+ 	&dev_attr_irq.attr,
+@@ -288,37 +207,139 @@ static void fpc1020_disable_regulator(void *data)
+ 	regulator_disable(data);
+ }
+ 
+-/* ------------------------------------------------------------------
+- * TrustZone transport: envelope/cmdbuf construction and the one-time
+- * load+INIT bring-up. Everything here runs with fpc1020->lock held.
++/* ------------------------------------------------------------------ *
++ * Listener rendezvous
+  * ------------------------------------------------------------------ */
+ 
+-static void fpc1020_put32(void *buf, unsigned int word, u32 val)
++/*
++ * Called by qcom_scm_qseecom_app_send_listener() with the QSEECOM call lock
++ * and fpc1020->lock held, when the trustlet asks for listener @listener_id.
++ * The request is already in fpc1020->sb; hand it to userspace and wait for
++ * the answer to be written back into the same buffer. For 0x7000 the layout
++ * is qseecomd's GP file service (libdrmfs.so, gpdispatch()): u32 command
++ * (0 read, 1 write, 2 remove, 3 rename), then a 256-byte path, offset,
++ * count, backup flag and data, answered in place.
++ */
++static int fpc1020_listener_handle(void *priv, u32 listener_id)
+ {
+-	u8 *b = buf;
++	struct fpc1020 *fpc1020 = priv;
++	unsigned long flags;
++	long left;
++	int ret;
++
++	if (listener_id != FPC1020_GPFS_LISTENER_ID) {
++		dev_warn_ratelimited(fpc1020->dev,
++				     "trustlet asked for unknown listener 0x%x\n",
++				     listener_id);
++		return -ENOENT;
++	}
++
++	spin_lock_irqsave(&fpc1020->listener_lock, flags);
++	fpc1020->listener_state = FPC1020_LISTENER_PENDING;
++	spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++	wake_up_interruptible(&fpc1020->listener_req_wq);
++
++	left = wait_event_killable_timeout(fpc1020->listener_rsp_wq,
++			fpc1020->listener_state == FPC1020_LISTENER_DONE,
++			msecs_to_jiffies(FPC1020_LISTENER_TIMEOUT_MS));
+ 
+-	b[word * 4 + 0] = (u8)(val >> 0);
+-	b[word * 4 + 1] = (u8)(val >> 8);
+-	b[word * 4 + 2] = (u8)(val >> 16);
+-	b[word * 4 + 3] = (u8)(val >> 24);
++	spin_lock_irqsave(&fpc1020->listener_lock, flags);
++	if (fpc1020->listener_state == FPC1020_LISTENER_DONE)
++		ret = fpc1020->listener_status;
++	else
++		ret = left < 0 ? left : -ETIMEDOUT;
++	fpc1020->listener_state = FPC1020_LISTENER_IDLE;
++	spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++
++	if (ret)
++		dev_warn_ratelimited(fpc1020->dev,
++				     "listener 0x%x request not served: %d\n",
++				     listener_id, ret);
++	return ret;
++}
++
++static int fpc1020_listener_recv(struct fpc1020 *fpc1020, unsigned long arg)
++{
++	struct fpc1020_tee_listener l;
++	unsigned long flags;
++	size_t len;
++	long left;
++
++	if (copy_from_user(&l, (void __user *)arg, sizeof(l)))
++		return -EFAULT;
++	if (!fpc1020->listener_registered)
++		return -ENODEV;
++
++	left = wait_event_interruptible_timeout(fpc1020->listener_req_wq,
++			fpc1020->listener_state == FPC1020_LISTENER_PENDING,
++			msecs_to_jiffies(l.timeout_ms));
++	if (left < 0)
++		return left;
++	if (left == 0)
++		return -ETIMEDOUT;
++
++	spin_lock_irqsave(&fpc1020->listener_lock, flags);
++	if (fpc1020->listener_state != FPC1020_LISTENER_PENDING) {
++		spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++		return -EAGAIN;
++	}
++	fpc1020->listener_state = FPC1020_LISTENER_SERVING;
++	spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++
++	len = min_t(size_t, l.len, FPC1020_GPFS_SB_SIZE);
++	l.id = FPC1020_GPFS_LISTENER_ID;
++	l.len = len;
++	if (copy_to_user((void __user *)(uintptr_t)l.buf, fpc1020->sb, len) ||
++	    copy_to_user((void __user *)arg, &l, sizeof(l))) {
++		spin_lock_irqsave(&fpc1020->listener_lock, flags);
++		fpc1020->listener_status = -EFAULT;
++		fpc1020->listener_state = FPC1020_LISTENER_DONE;
++		spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++		wake_up(&fpc1020->listener_rsp_wq);
++		return -EFAULT;
++	}
++
++	return 0;
+ }
+ 
+-static u32 fpc1020_get32(const void *buf, unsigned int word)
++static int fpc1020_listener_send(struct fpc1020 *fpc1020, unsigned long arg)
+ {
+-	const u8 *b = buf;
++	struct fpc1020_tee_listener l;
++	unsigned long flags;
++	int status;
++
++	if (copy_from_user(&l, (void __user *)arg, sizeof(l)))
++		return -EFAULT;
++	if (l.id != FPC1020_GPFS_LISTENER_ID || l.len > FPC1020_GPFS_SB_SIZE)
++		return -EINVAL;
++
++	spin_lock_irqsave(&fpc1020->listener_lock, flags);
++	if (fpc1020->listener_state != FPC1020_LISTENER_SERVING) {
++		spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++		return -EINVAL;
++	}
++	spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++
++	/* Only the servicer writes sb while SERVING. */
++	status = l.status ? -EIO : 0;
++	if (copy_from_user(fpc1020->sb, (void __user *)(uintptr_t)l.buf, l.len))
++		status = -EFAULT;
+ 
+-	return (u32)b[word * 4 + 0] |
+-	       ((u32)b[word * 4 + 1] << 8) |
+-	       ((u32)b[word * 4 + 2] << 16) |
+-	       ((u32)b[word * 4 + 3] << 24);
++	spin_lock_irqsave(&fpc1020->listener_lock, flags);
++	if (fpc1020->listener_state == FPC1020_LISTENER_SERVING) {
++		fpc1020->listener_status = status;
++		fpc1020->listener_state = FPC1020_LISTENER_DONE;
++	}
++	spin_unlock_irqrestore(&fpc1020->listener_lock, flags);
++	wake_up(&fpc1020->listener_rsp_wq);
++
++	return status == -EFAULT ? -EFAULT : 0;
+ }
+ 
++/* ------------------------------------------------------------------ *
++ * Trustlet transport and bring-up, all under fpc1020->lock
++ * ------------------------------------------------------------------ */
+ 
+-/* Builds the envelope around an already-filled cmdbuf and sends it.
+- * cmdbuf is IN/OUT: on entry it holds the request at bytes [0, len); on
+- * return (transport success) it holds the TA's response in the same
+- * range. Returns qcom_scm_qseecom_app_send()'s result -- a transport
+- * error, not the TA's own status word (cmdbuf word 2, fpc-tz.c's job). */
+ static int fpc1020_tz_xfer_locked(struct fpc1020 *fpc1020, void *cmdbuf,
+ 				  size_t len)
+ {
+@@ -336,63 +357,22 @@ static int fpc1020_tz_xfer_locked(struct fpc1020 *fpc1020, void *cmdbuf,
+ 			       GFP_KERNEL | GFP_DMA32);
+ 	if (!env)
+ 		return -ENOMEM;
+-	if (qcom_tzmem_to_phys(env) + FPC1020_TZ_ENV_SIZE > SZ_4G) {
+-		qcom_tzmem_free(env);
+-		return -EFBIG;
+-	}
+ 
+ 	memset(env, 0, FPC1020_TZ_ENV_SIZE);
+-	fpc1020_put32(env, 0, (u32)len);
+-	fpc1020_put32(env, 1, (u32)cmdbuf_phys);
++	put_unaligned_le32(len, env);
++	put_unaligned_le32(cmdbuf_phys, env + 4);
+ 
+-	ret = qcom_scm_qseecom_app_send(fpc1020->app_id, env,
+-					FPC1020_TZ_ENV_SIZE,
+-					env, FPC1020_TZ_ENV_SIZE);
++	ret = qcom_scm_qseecom_app_send_listener(fpc1020->app_id,
++						 env, FPC1020_TZ_ENV_SIZE,
++						 env, FPC1020_TZ_ENV_SIZE,
++						 fpc1020->listener_registered ?
++						 fpc1020_listener_handle : NULL,
++						 fpc1020);
+ 
+ 	qcom_tzmem_free(env);
+ 	return ret;
+ }
+ 
+-/* Sends {group, cmd} with an otherwise-zeroed cmdbuf and no interest in
+- * the response beyond the transport result -- used only for INIT.
+- *
+- * The length passed to fpc1020_tz_xfer_locked() is the CMDBUF's size, not
+- * the envelope's, and getting it wrong is silent: an INIT declaring 64
+- * bytes is accepted by the trustlet, returns status 0, and skips the
+- * sensor bring-up altogether -- 4ms instead of the ~750ms a real INIT
+- * takes, with nothing logged and nothing to grep for. The sensor then
+- * never leaves reset: FP_INT_N stays asserted from probe's hw_reset, and
+- * since the line is armed IRQ_TYPE_EDGE_RISING no touch can ever produce
+- * an edge, while open() succeeds and the whole stack up to fprintd looks
+- * healthy. Measured on taimen 2026-09-12 by varying this one field. */
+-static int fpc1020_tz_send_locked(struct fpc1020 *fpc1020, u32 group, u32 cmd)
+-{
+-	void *cmdbuf;
+-	int ret;
+-
+-	cmdbuf = qcom_tzmem_alloc(fpc1020->tzpool, FPC1020_TZ_CMDBUF_SIZE,
+-				  GFP_KERNEL | GFP_DMA32);
+-	if (!cmdbuf)
+-		return -ENOMEM;
+-
+-	memset(cmdbuf, 0, FPC1020_TZ_CMDBUF_SIZE);
+-	fpc1020_put32(cmdbuf, 0, group);
+-	fpc1020_put32(cmdbuf, 1, cmd);
+-
+-	ret = fpc1020_tz_xfer_locked(fpc1020, cmdbuf, FPC1020_TZ_CMDBUF_SIZE);
+-	if (!ret) {
+-		s32 status = (s32)fpc1020_get32(cmdbuf, 2);
+-
+-		if (status)
+-			dev_warn(fpc1020->dev,
+-				 "group 0x%02x cmd 0x%02x: TA status %d\n",
+-				 group, cmd, status);
+-	}
+-
+-	qcom_tzmem_free(cmdbuf);
+-	return ret;
+-}
+-
+ static int fpc1020_request_and_assemble(struct device *dev, const char *name,
+ 					struct fpc1020_image *img)
+ {
+@@ -444,13 +424,6 @@ static int fpc1020_request_and_assemble(struct device *dev, const char *name,
+ 		total_len += segs[i]->size;
+ 	}
+ 
+-	if (total_len > SZ_4G) {
+-		dev_err(dev, "%s: assembled image (%zu bytes) will not fit below 4 GB\n",
+-			name, total_len);
+-		ret = -EFBIG;
+-		goto out_release_segs;
+-	}
+-
+ 	img->virt = dma_alloc_coherent(dev, total_len, &img->phys, GFP_KERNEL);
+ 	if (!img->virt) {
+ 		ret = -ENOMEM;
+@@ -464,7 +437,6 @@ static int fpc1020_request_and_assemble(struct device *dev, const char *name,
+ 		off += segs[i]->size;
+ 	}
+ 
+-	img->dev = dev;
+ 	img->mdt_len = mdt->size;
+ 	img->total_len = total_len;
+ 	ret = 0;
+@@ -478,109 +450,94 @@ static int fpc1020_request_and_assemble(struct device *dev, const char *name,
+ 	return ret;
+ }
+ 
+-static void fpc1020_free_image(struct fpc1020_image *img)
++static void fpc1020_free_image(struct device *dev, struct fpc1020_image *img)
+ {
+-	dma_free_coherent(img->dev, img->total_len, img->virt, img->phys);
++	if (img->virt)
++		dma_free_coherent(dev, img->total_len, img->virt, img->phys);
++	img->virt = NULL;
+ }
+ 
+-/*
+- * The one-time sequence: notify TrustZone of its app-loadable region,
+- * load cmnlib (required before any ELFCLASS32 app, fpctzappfingerprint
+- * included), load the trustlet itself, then send INIT. See the file
+- * header for why both "load" and "INIT belong here" are real decisions,
+- * not defaults. Runs at most once per binding -- see fpc1020->ready.
+- */
+-static int fpc1020_bring_up_locked(struct fpc1020 *fpc1020)
++static int fpc1020_load_trustlet_locked(struct fpc1020 *fpc1020)
+ {
+-	struct fpc1020_image cmnlib_img = {}, fp_img = {};
++	struct device *dev = fpc1020->dev;
++	struct fpc1020_image img = {};
+ 	int ret;
+ 
+-	lockdep_assert_held(&fpc1020->lock);
+-
+ 	if (app_id_override) {
+-		dev_warn(fpc1020->dev,
+-			"app_id=%u module param set -- skipping trustlet/cmnlib "
+-			"load, sending straight to that already-resident id "
+-			"(BRING-UP ONLY, see the param's own comment)\n",
+-			app_id_override);
++		dev_warn(dev, "app_id=%u given, not loading the trustlet (BRING-UP ONLY)\n",
++			 app_id_override);
+ 		fpc1020->app_id = app_id_override;
+-		goto send_init;
++		return 0;
+ 	}
+ 
+ 	ret = qcom_scm_qseecom_app_region_notify(FPC1020_TZ_REGION_ADDR,
+ 						 FPC1020_TZ_REGION_SIZE);
+ 	if (ret)
+-		return dev_err_probe(fpc1020->dev, ret,
+-				     "app_region_notify failed\n");
++		return dev_err_probe(dev, ret, "app_region_notify failed\n");
+ 
+-	ret = fpc1020_request_and_assemble(fpc1020->dev, FPC1020_TZ_CMNLIB_NAME,
+-					   &cmnlib_img);
++	ret = fpc1020_request_and_assemble(dev, FPC1020_TZ_CMNLIB_NAME, &img);
+ 	if (ret)
+ 		return ret;
+-
+-	ret = qcom_scm_qseecom_load_services_image(cmnlib_img.phys,
+-						   cmnlib_img.mdt_len,
+-						   cmnlib_img.total_len);
+-	fpc1020_free_image(&cmnlib_img);
++	ret = qcom_scm_qseecom_load_services_image(img.phys, img.mdt_len,
++						   img.total_len);
++	fpc1020_free_image(dev, &img);
+ 	if (ret)
+-		return dev_err_probe(fpc1020->dev, ret,
+-				     "cmnlib load_services_image failed\n");
++		return dev_err_probe(dev, ret, "cmnlib load failed\n");
+ 
+-	ret = fpc1020_request_and_assemble(fpc1020->dev, FPC1020_TZ_APP_NAME,
+-					   &fp_img);
++	ret = fpc1020_request_and_assemble(dev, FPC1020_TZ_APP_NAME, &img);
+ 	if (ret)
+ 		return ret;
+-
+-	ret = qcom_scm_qseecom_app_load(FPC1020_TZ_APP_NAME, fp_img.phys,
+-					fp_img.mdt_len, fp_img.total_len,
++	ret = qcom_scm_qseecom_app_load(FPC1020_TZ_APP_NAME, img.phys,
++					img.mdt_len, img.total_len,
+ 					&fpc1020->app_id);
+-	fpc1020_free_image(&fp_img);
+-	if (ret) {
+-		/*
+-		 * The one failure mode with no recovery: TrustZone's
+-		 * app-manager state does not survive a reboot, but it DOES
+-		 * survive this module unloading and reloading. If the
+-		 * trustlet is already resident from an earlier bind this
+-		 * boot, QSEOS_APP_START refuses to start it again -- and
+-		 * there is no way to recover that earlier id (see the file
+-		 * header, decision 1). Only a reboot clears this -- or, for
+-		 * bring-up, the app_id= module param above.
+-		 */
+-		return dev_err_probe(fpc1020->dev, ret,
+-				     "app_load(%s) failed -- if this trustlet "
+-				     "was already loaded earlier this boot, "
+-				     "only a reboot recovers it\n",
++	fpc1020_free_image(dev, &img);
++	if (ret)
++		return dev_err_probe(dev, ret,
++				     "%s load failed -- already running since an earlier load this boot?\n",
+ 				     FPC1020_TZ_APP_NAME);
+-	}
+ 
+-send_init:
+-	if (skip_init) {
+-		dev_warn(fpc1020->dev,
+-			"skip_init module param set -- NOT sending INIT "
+-			"(BRING-UP ONLY)\n");
+-	} else {
+-		ret = fpc1020_tz_send_locked(fpc1020, FPC1020_TZ_GRP_SENSOR,
+-					     FPC1020_TZ_CMD_INIT);
+-		if (ret)
+-			return dev_err_probe(fpc1020->dev, ret,
+-					     "INIT transport failed\n");
+-	}
++	dev_info(dev, "%s loaded, app_id=%u\n", FPC1020_TZ_APP_NAME,
++		 fpc1020->app_id);
++	return 0;
++}
++
++static int fpc1020_bring_up_locked(struct fpc1020 *fpc1020)
++{
++	int ret;
++
++	lockdep_assert_held(&fpc1020->lock);
++
++	ret = fpc1020_load_trustlet_locked(fpc1020);
++	if (ret)
++		return ret;
++
++	/*
++	 * A failed registration is not fatal: every command except the
++	 * template database ones works without it, and those fail cleanly.
++	 */
++	ret = qcom_scm_qseecom_listener_register(FPC1020_GPFS_LISTENER_ID,
++						 fpc1020->sb_phys,
++						 FPC1020_GPFS_SB_SIZE);
++	if (ret)
++		dev_err(fpc1020->dev,
++			"GP file listener registration failed: %d -- template storage will not work\n",
++			ret);
++	else
++		fpc1020->listener_registered = true;
+ 
+ 	fpc1020->ready = true;
+ 	return 0;
+ }
+ 
+-/* ------------------------------------------------------------------
+- * /dev/fpc_tee: open() drives the one-time bring-up; the ioctl is a
+- * dumb pipe after that; poll()/read() expose the same interrupt latch
+- * the sysfs "irq" attribute already does.
++/* ------------------------------------------------------------------ *
++ * /dev/fpc_tee
+  * ------------------------------------------------------------------ */
+ 
+ static int fpc1020_chardev_open(struct inode *inode, struct file *filp)
+ {
+ 	struct miscdevice *miscdev = filp->private_data;
+ 	struct fpc1020 *fpc1020 = container_of(miscdev, struct fpc1020, miscdev);
+-	int ret = 0;
++	int ret;
+ 
+ 	filp->private_data = fpc1020;
+ 
+@@ -594,16 +551,12 @@ static int fpc1020_chardev_open(struct inode *inode, struct file *filp)
+ 	return ret;
+ }
+ 
+-static long fpc1020_chardev_ioctl(struct file *filp, unsigned int cmd,
+-				  unsigned long arg)
++static int fpc1020_xfer(struct fpc1020 *fpc1020, unsigned long arg)
+ {
+-	struct fpc1020 *fpc1020 = filp->private_data;
+ 	struct fpc1020_tee_xfer x;
+ 	void *cmdbuf;
+ 	int ret;
+ 
+-	if (cmd != FPC1020_TEE_IOC_XFER)
+-		return -ENOTTY;
+ 	if (copy_from_user(&x, (void __user *)arg, sizeof(x)))
+ 		return -EFAULT;
+ 	if (x.len == 0 || x.len > FPC1020_TZ_CMDBUF_SIZE)
+@@ -640,49 +593,45 @@ static long fpc1020_chardev_ioctl(struct file *filp, unsigned int cmd,
+ 	return ret;
+ }
+ 
+-static __poll_t fpc1020_chardev_poll(struct file *filp, poll_table *wait)
++static long fpc1020_chardev_ioctl(struct file *filp, unsigned int cmd,
++				  unsigned long arg)
+ {
+ 	struct fpc1020 *fpc1020 = filp->private_data;
+ 
+-	poll_wait(filp, &fpc1020->irq_wq, wait);
+-	return atomic_read(&fpc1020->latched) ? (EPOLLIN | EPOLLRDNORM) : 0;
++	switch (cmd) {
++	case FPC1020_TEE_IOC_XFER:
++		return fpc1020_xfer(fpc1020, arg);
++	case FPC1020_TEE_IOC_LISTENER_RECV:
++		return fpc1020_listener_recv(fpc1020, arg);
++	case FPC1020_TEE_IOC_LISTENER_SEND:
++		return fpc1020_listener_send(fpc1020, arg);
++	default:
++		return -ENOTTY;
++	}
+ }
+ 
+-/* One byte per finger IRQ, matching fpctee.c's fpc_tee_wait_event(): a
+- * successful read means "the latch was set" and, unlike the sysfs
+- * attribute (cleared only by a write), clears it as part of the read --
+- * the single-fd poll()+read() contract libfprint's transport expects. */
+-static ssize_t fpc1020_chardev_read(struct file *filp, char __user *buf,
+-				    size_t count, loff_t *ppos)
++static __poll_t fpc1020_chardev_poll(struct file *filp, poll_table *wait)
+ {
+ 	struct fpc1020 *fpc1020 = filp->private_data;
+-	u8 val;
+-
+-	if (count < 1)
+-		return -EINVAL;
++	__poll_t mask = 0;
+ 
+-	if (!atomic_read(&fpc1020->latched)) {
+-		if (filp->f_flags & O_NONBLOCK)
+-			return -EAGAIN;
+-		if (wait_event_interruptible(fpc1020->irq_wq,
+-					     atomic_read(&fpc1020->latched)))
+-			return -EINTR;
+-	}
++	poll_wait(filp, &fpc1020->irq_wq, wait);
++	poll_wait(filp, &fpc1020->listener_req_wq, wait);
+ 
+-	val = (u8)atomic_xchg(&fpc1020->latched, 0);
+-	if (put_user(val, buf))
+-		return -EFAULT;
++	if (gpiod_get_value_cansleep(fpc1020->irq_gpio) > 0)
++		mask |= EPOLLIN | EPOLLRDNORM;
++	if (fpc1020->listener_state == FPC1020_LISTENER_PENDING)
++		mask |= EPOLLPRI;
+ 
+-	return 1;
++	return mask;
+ }
+ 
+ static const struct file_operations fpc1020_chardev_fops = {
+ 	.owner = THIS_MODULE,
+ 	.open = fpc1020_chardev_open,
+ 	.unlocked_ioctl = fpc1020_chardev_ioctl,
+-	.compat_ioctl = fpc1020_chardev_ioctl,
++	.compat_ioctl = compat_ptr_ioctl,
+ 	.poll = fpc1020_chardev_poll,
+-	.read = fpc1020_chardev_read,
+ 	.llseek = noop_llseek,
+ };
+ 
+@@ -701,10 +650,12 @@ static int fpc1020_probe(struct platform_device *pdev)
+ 		return -ENOMEM;
+ 
+ 	fpc1020->dev = dev;
+-	platform_set_drvdata(pdev, fpc1020);
+-	atomic_set(&fpc1020->latched, 0);
+-	init_waitqueue_head(&fpc1020->irq_wq);
+ 	mutex_init(&fpc1020->lock);
++	init_waitqueue_head(&fpc1020->irq_wq);
++	spin_lock_init(&fpc1020->listener_lock);
++	init_waitqueue_head(&fpc1020->listener_req_wq);
++	init_waitqueue_head(&fpc1020->listener_rsp_wq);
++	platform_set_drvdata(pdev, fpc1020);
+ 
+ 	fpc1020->vdd_io = devm_regulator_get(dev, "vdd-io");
+ 	if (IS_ERR(fpc1020->vdd_io))
+@@ -720,16 +671,19 @@ static int fpc1020_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 
+-	/* GPIOD_OUT_HIGH: the sensor's normal operating state (out of
+-	 * reset) is where probe should leave it if it does nothing else. */
+ 	fpc1020->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
+ 	if (IS_ERR(fpc1020->reset_gpio))
+ 		return dev_err_probe(dev, PTR_ERR(fpc1020->reset_gpio),
+ 				     "failed to get reset gpio\n");
+ 
+-	fpc1020->irq = platform_get_irq(pdev, 0);
++	fpc1020->irq_gpio = devm_gpiod_get(dev, "irq", GPIOD_IN);
++	if (IS_ERR(fpc1020->irq_gpio))
++		return dev_err_probe(dev, PTR_ERR(fpc1020->irq_gpio),
++				     "failed to get irq gpio\n");
++
++	fpc1020->irq = gpiod_to_irq(fpc1020->irq_gpio);
+ 	if (fpc1020->irq < 0)
+-		return fpc1020->irq;
++		return dev_err_probe(dev, fpc1020->irq, "irq gpio has no irq\n");
+ 
+ 	fpc1020_hw_reset(fpc1020);
+ 
+@@ -745,27 +699,17 @@ static int fpc1020_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		dev_warn(dev, "failed to enable irq wake: %d\n", ret);
+ 
+-	/*
+-	 * TrustZone image loading (fpc1020_bring_up_locked(), on first
+-	 * open) needs a 32-bit-clean DMA mask for the assembled cmnlib/
+-	 * trustlet images -- qcom_scm_qseecom_app_load() itself refuses
+-	 * (WARN) an image above 4 GB, and this SoC has 4 GB of DDR at
+-	 * 0x80000000 with no per-device IOMMU in this DT, so the direct
+-	 * mapping dma_alloc_coherent() gives back is already a real
+-	 * physical address once masked to 32 bits.
+-	 */
++	/* The trustlet and every buffer QSEE sees must sit below 4 GB. */
+ 	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
+ 	if (ret)
+ 		return dev_err_probe(dev, ret, "failed to set DMA mask\n");
+ 
+-	/*
+-	 * qcom_tzmem_alloc() PAGE_ALIGNs every request internally, so two
+-	 * concurrent allocations (one cmdbuf, one envelope -- the most
+-	 * fpc1020_tz_xfer_locked()/fpc1020_tz_send_locked() ever need at
+-	 * once, since fpc1020->lock serializes all traffic) need two full
+-	 * pages of pool, not their nominal byte sizes. Proven sizing, from
+-	 * bringup/qseecom-app-load/qseecom_app_load.c round 13.
+-	 */
++	fpc1020->sb = dmam_alloc_coherent(dev, FPC1020_GPFS_SB_SIZE,
++					  &fpc1020->sb_phys, GFP_KERNEL);
++	if (!fpc1020->sb)
++		return -ENOMEM;
++
++	/* One command buffer and one envelope at a time, each page-aligned. */
+ 	fpc1020->tzpool = devm_qcom_tzmem_pool_new(dev, &pool_cfg);
+ 	if (IS_ERR(fpc1020->tzpool))
+ 		return dev_err_probe(dev, PTR_ERR(fpc1020->tzpool),
+@@ -777,8 +721,7 @@ static int fpc1020_probe(struct platform_device *pdev)
+ 	fpc1020->miscdev.parent = dev;
+ 	ret = misc_register(&fpc1020->miscdev);
+ 	if (ret)
+-		return dev_err_probe(dev, ret,
+-				     "failed to register /dev/fpc_tee\n");
++		return dev_err_probe(dev, ret, "failed to register /dev/fpc_tee\n");
+ 
+ 	return 0;
+ }
+@@ -788,6 +731,12 @@ static void fpc1020_remove(struct platform_device *pdev)
+ 	struct fpc1020 *fpc1020 = platform_get_drvdata(pdev);
+ 
+ 	misc_deregister(&fpc1020->miscdev);
++
++	/* QSEE would otherwise keep writing into a buffer devres frees. */
++	if (fpc1020->listener_registered &&
++	    qcom_scm_qseecom_listener_unregister(FPC1020_GPFS_LISTENER_ID))
++		dev_err(&pdev->dev, "GP file listener unregistration failed\n");
++
+ 	disable_irq_wake(fpc1020->irq);
+ 	device_init_wakeup(&pdev->dev, false);
+ }
+@@ -810,5 +759,5 @@ static struct platform_driver fpc1020_driver = {
+ module_platform_driver(fpc1020_driver);
+ 
+ MODULE_AUTHOR("Giuseppe Maggio <jertlok@proton.me>");
+-MODULE_DESCRIPTION("FPC1020/FPC1270 fingerprint sensor power/reset/irq driver and /dev/fpc_tee trustlet transport");
++MODULE_DESCRIPTION("FPC1020/FPC1270 fingerprint sensor behind a QSEE trustlet");
+ MODULE_LICENSE("GPL");

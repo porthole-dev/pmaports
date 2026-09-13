@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 12 Sep 2026 02:13:10 +0200
+Subject: [PATCH] misc: fpc1020: add a bring-up-only skip_init override
+
+Isolates INIT's effect on other commands using the SAME chardev
+transport on both sides of the comparison, rather than a different
+implementation: a caller can still send {0x0a,0x00} through the
+ordinary ioctl at any time, this only controls whether bring-up sends
+it automatically. Used tonight to prove GET_FPC_INFO's -205 status is
+identical, byte for byte, before and after INIT -- INIT does not
+explain it (see bringup/fpc-tee-chardev-test/probe_init_ab.py).
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/misc/fpc1020.c | 29 ++++++++++++++++++++++++-----
+ 1 file changed, 24 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/misc/fpc1020.c b/drivers/misc/fpc1020.c
+index a05ffba676f4..0b4e14394bfe 100644
+--- a/drivers/misc/fpc1020.c
++++ b/drivers/misc/fpc1020.c
+@@ -179,6 +179,18 @@ static unsigned int app_id_override;
+ module_param_named(app_id, app_id_override, uint, 0444);
+ MODULE_PARM_DESC(app_id, "BRING-UP ONLY: skip the trustlet/cmnlib load and use this already-resident app id instead (0 = load normally)");
+ 
++/*
++ * BRING-UP ONLY: isolate INIT's effect on other commands (e.g. GET_FPC_INFO
++ * returning a non-zero status where an earlier, INIT-less probe got the
++ * manifest) using the SAME chardev transport on both sides of the A/B,
++ * rather than comparing against a different implementation. A caller can
++ * still send {0x0a,0x00} through the ordinary ioctl at any time -- this
++ * only controls whether THIS driver sends it automatically during bring-up.
++ */
++static bool skip_init;
++module_param_named(skip_init, skip_init, bool, 0444);
++MODULE_PARM_DESC(skip_init, "BRING-UP ONLY: do not send INIT during bring-up");
++
+ struct fpc1020 {
+ 	struct device *dev;
+ 	struct gpio_desc *reset_gpio;
+@@ -301,6 +313,7 @@ static u32 fpc1020_get32(const void *buf, unsigned int word)
+ 	       ((u32)b[word * 4 + 3] << 24);
+ }
+ 
++
+ /* Builds the envelope around an already-filled cmdbuf and sends it.
+  * cmdbuf is IN/OUT: on entry it holds the request at bytes [0, len); on
+  * return (transport success) it holds the TA's response in the same
+@@ -531,11 +544,17 @@ static int fpc1020_bring_up_locked(struct fpc1020 *fpc1020)
+ 	}
+ 
+ send_init:
+-	ret = fpc1020_tz_send_locked(fpc1020, FPC1020_TZ_GRP_SENSOR,
+-				     FPC1020_TZ_CMD_INIT);
+-	if (ret)
+-		return dev_err_probe(fpc1020->dev, ret,
+-				     "INIT transport failed\n");
++	if (skip_init) {
++		dev_warn(fpc1020->dev,
++			"skip_init module param set -- NOT sending INIT "
++			"(BRING-UP ONLY)\n");
++	} else {
++		ret = fpc1020_tz_send_locked(fpc1020, FPC1020_TZ_GRP_SENSOR,
++					     FPC1020_TZ_CMD_INIT);
++		if (ret)
++			return dev_err_probe(fpc1020->dev, ret,
++					     "INIT transport failed\n");
++	}
+ 
+ 	fpc1020->ready = true;
+ 	return 0;

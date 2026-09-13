@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 22:16:15 +0200
+Subject: [PATCH] users: Offer fingerprint login when GDM is not installed
+
+The Fingerprint Login row only appeared when GDM's org.gnome.login-screen
+schema was installed and enable-fingerprint-authentication was set. On a
+system without GDM -- Phosh on a phone, whose lock screen unlocks with a
+fingerprint through fprintd -- the schema does not exist, so a user with
+a working reader had no way to enrol a finger at all.
+
+Keep deferring to GDM's setting when it exists, and treat its absence as
+no policy against it.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ panels/system/users/cc-user-page.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/panels/system/users/cc-user-page.c b/panels/system/users/cc-user-page.c
+index df33bd1..5a12ba1 100644
+--- a/panels/system/users/cc-user-page.c
++++ b/panels/system/users/cc-user-page.c
+@@ -346,9 +346,11 @@ update_fingerprint_row_state (CcUserPage           *self,
+     CcFingerprintState state = cc_fingerprint_manager_get_state (manager);
+     gboolean visible = FALSE;
+ 
++    /* Without GDM there is no login-screen policy to defer to; the lock
++     * screen (Phosh's, for one) can still take a fingerprint. */
+     visible = (act_user_get_uid (self->user) == getuid () &&
+                act_user_is_local_account (self->user) &&
+-               (self->login_screen_settings &&
++               (!self->login_screen_settings ||
+                 g_settings_get_boolean (self->login_screen_settings,
+                                         "enable-fingerprint-authentication")));
+     gtk_widget_set_visible (GTK_WIDGET (self->fingerprint_row), visible);

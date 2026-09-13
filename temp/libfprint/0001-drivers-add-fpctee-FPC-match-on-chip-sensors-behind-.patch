@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 0c2fc656ad24dc7d63219a8213aeecee25bc1c5f Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 13 Sep 2026 21:56:58 +0200
 Subject: [PATCH] drivers: add fpctee, FPC match-on-chip sensors behind a QSEE
@@ -26,18 +26,18 @@ node.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- libfprint/drivers/fpctee/fpctee.c | 1584 +++++++++++++++++++++++++++++
+ libfprint/drivers/fpctee/fpctee.c | 1593 +++++++++++++++++++++++++++++
  libfprint/meson.build             |    2 +
  meson.build                       |    2 +
- 3 files changed, 1588 insertions(+)
+ 3 files changed, 1597 insertions(+)
  create mode 100644 libfprint/drivers/fpctee/fpctee.c
 
 diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
 new file mode 100644
-index 0000000..76ecde2
+index 0000000..71a5429
 --- /dev/null
 +++ b/libfprint/drivers/fpctee/fpctee.c
-@@ -0,0 +1,1584 @@
+@@ -0,0 +1,1593 @@
 +/*
 + * FPC match-on-chip fingerprint sensor behind a QSEE trustlet
 + *
@@ -99,7 +99,7 @@ index 0000000..76ecde2
 +#define FPC_TEE_DEFAULT_STAGES      12
 +
 +/* ---------------------------------------------------------------------- *
-+ * Kernel ABI, from drivers/misc/fpc1020.c
++ * Kernel ABI, from the kernel's include/uapi/misc/fpc1020.h
 + * ---------------------------------------------------------------------- */
 +
 +struct fpc_tee_xfer
@@ -723,15 +723,24 @@ index 0000000..76ecde2
 +  return tee_cmd (self, GRP_DB, cmd, buf);
 +}
 +
-+/* fpc_tee_load_template_db(): an absent, empty or unreadable database
-+ * means an empty one. */
++/* fpc_tee_load_template_db(): an absent, empty or corrupt database means an
++ * empty one. One that cannot even be looked at is an error, rather than
++ * something to store over. */
 +static gint32
 +load_db (FpiDeviceFpcTee *self)
 +{
 +  GStatBuf st;
 +  gint32 rc;
 +
-+  if (g_stat (FPC_TEE_DB_FILE, &st) == 0 && st.st_size > 0)
++  if (g_stat (FPC_TEE_DB_FILE, &st) != 0)
++    {
++      if (errno != ENOENT)
++        {
++          fp_warn ("cannot stat %s: %s", FPC_TEE_DB_FILE, g_strerror (errno));
++          return FPC_ERROR_IO;
++        }
++    }
++  else if (st.st_size > 0)
 +    {
 +      rc = db_cmd (self, DB_LOAD, FPC_TEE_DB_FILE);
 +      if (rc != FPC_ERROR_IO)
@@ -1655,3 +1664,6 @@ index baafa19..56384af 100644
      'aes1610',
      'aes1660',
      'aes2550',
+-- 
+2.55.0
+

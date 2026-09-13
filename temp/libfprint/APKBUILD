@@ -6,7 +6,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Maintainer: Timo Teräs <timo.teras@iki.fi>
 pkgname=libfprint
 pkgver=1.94.9
-pkgrel=3
+pkgrel=4
 pkgdesc="Library for fingerprint readers"
 url="https://fprint.freedesktop.org/"
 arch="all"
@@ -64,5 +64,5 @@ package() {
 sha512sums="
 f8debcc1277e6112ed450c04a40cf6113afd7b38377b3fd259bedb1f553b29db758f3519491940bf9cd4ade0f8e70b68040d5bef4c8dbf5f7c2afc1802086397  libfprint-v1.94.9.tar.gz
 5997cb0e3bfc0f625a0803d2d59fa55ce34baf7aee7c4fb3d82c74ea680d916a4e1294bbaf97a4567053672f1115d51f2a8b887927af063e2750e6a0e40d8d64  hack-generate-rules-instead-of-hwdb.patch
-8132dfd3539482172f51dd2abbbf35ba7712b3874002632fcecf72f95d8ca9957c5ba83776f1e35b606812b465f3f2fa4c69fb3484009ae6a6f4538484148f3d  0001-drivers-add-fpctee-FPC-match-on-chip-sensors-behind-.patch
+4c8c9d3dae165a86bcdb00c6b0e8413765d0bf1fe9399e391a9f86222619ee7bb1b5fd2b7ce36ffe8829688af484b47dcde94760725e070842e06a765dc0d337  0001-drivers-add-fpctee-FPC-match-on-chip-sensors-behind-.patch
 "

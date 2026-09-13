@@ -6,7 +6,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Maintainer: Timo Teräs <timo.teras@iki.fi>
 pkgname=libfprint
 pkgver=1.94.9
-pkgrel=1
+pkgrel=3
 pkgdesc="Library for fingerprint readers"
 url="https://fprint.freedesktop.org/"
 arch="all"
@@ -29,7 +29,7 @@ checkdepends="
 subpackages="$pkgname-dev $pkgname-udev"
 source="https://gitlab.freedesktop.org/libfprint/libfprint/-/archive/v$pkgver/libfprint-v$pkgver.tar.gz
 	hack-generate-rules-instead-of-hwdb.patch
-	0001-drivers-add-the-fpctee-driver-for-the-FPC-TrustZone.patch
+	0001-drivers-add-fpctee-FPC-match-on-chip-sensors-behind-.patch
 	"
 builddir="$srcdir/$pkgname-v$pkgver"
 options="!check"  # meson test's metainfo-validate needs outbound network
@@ -64,5 +64,5 @@ package() {
 sha512sums="
 f8debcc1277e6112ed450c04a40cf6113afd7b38377b3fd259bedb1f553b29db758f3519491940bf9cd4ade0f8e70b68040d5bef4c8dbf5f7c2afc1802086397  libfprint-v1.94.9.tar.gz
 5997cb0e3bfc0f625a0803d2d59fa55ce34baf7aee7c4fb3d82c74ea680d916a4e1294bbaf97a4567053672f1115d51f2a8b887927af063e2750e6a0e40d8d64  hack-generate-rules-instead-of-hwdb.patch
-d9a962542983156798f0bead72d97cd1177f23011f71da8a2f922dc61d6d0d21d7740aafaee6931cf9271cdc572279435ea7833fe531dfcef754038fda7fa40f  0001-drivers-add-the-fpctee-driver-for-the-FPC-TrustZone.patch
+8132dfd3539482172f51dd2abbbf35ba7712b3874002632fcecf72f95d8ca9957c5ba83776f1e35b606812b465f3f2fa4c69fb3484009ae6a6f4538484148f3d  0001-drivers-add-fpctee-FPC-match-on-chip-sensors-behind-.patch
 "

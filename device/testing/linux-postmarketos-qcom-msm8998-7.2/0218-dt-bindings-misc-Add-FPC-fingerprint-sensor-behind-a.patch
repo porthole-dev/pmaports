@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 23:36:49 +0200
+Subject: [PATCH] dt-bindings: misc: Add FPC fingerprint sensor behind a QSEE
+ trustlet
+
+Some Qualcomm phones -- the Google Pixel 2 XL among them -- wire an
+FPC1020-family match-on-chip fingerprint sensor to an SPI bus TrustZone
+owns. Enrolment and matching run inside a vendor trustlet, so the
+operating system does not see a SPI device: it owns the sensor's supply,
+reset and interrupt lines, loads the trustlet and carries commands to it.
+
+Describe that: the trustlet image, the interrupt as a GPIO (its level is
+what the capture sequence waits on, which an interrupt specifier cannot
+report), the reset line and the IO supply.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../devicetree/bindings/misc/fpc,fpc1020.yaml | 59 +++++++++++++++++++
+ 1 file changed, 59 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/misc/fpc,fpc1020.yaml
+
+diff --git a/Documentation/devicetree/bindings/misc/fpc,fpc1020.yaml b/Documentation/devicetree/bindings/misc/fpc,fpc1020.yaml
+new file mode 100644
+index 000000000000..41501f41c5cf
+--- /dev/null
++++ b/Documentation/devicetree/bindings/misc/fpc,fpc1020.yaml
+@@ -0,0 +1,59 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/misc/fpc,fpc1020.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: FPC fingerprint sensor behind a Qualcomm QSEE trustlet
++
++maintainers:
++  - Giuseppe Maggio <jertlok@proton.me>
++
++description:
++  An FPC1020-family match-on-chip fingerprint sensor whose SPI bus belongs to
++  TrustZone, as on the Google Pixel 2 XL. Enrolment and matching run inside a
++  vendor trustlet; the operating system owns the sensor's supply, reset and
++  interrupt lines, loads the trustlet, and carries commands to it.
++
++properties:
++  compatible:
++    const: fpc,fpc1020
++
++  firmware-name:
++    maxItems: 1
++    description:
++      The trustlet's .mdt image, relative to the firmware search path. Its
++      .bNN segments are expected beside it.
++
++  irq-gpios:
++    maxItems: 1
++    description:
++      The sensor's interrupt line. Its level, not only its edges, is what the
++      trustlet's capture sequence waits on.
++
++  reset-gpios:
++    maxItems: 1
++
++  vdd-io-supply:
++    description: Supply of the sensor's IO.
++
++required:
++  - compatible
++  - firmware-name
++  - irq-gpios
++  - reset-gpios
++  - vdd-io-supply
++
++additionalProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/gpio/gpio.h>
++
++    fingerprint {
++        compatible = "fpc,fpc1020";
++        firmware-name = "qcom/msm8998/taimen/fpctzappfingerprint.mdt";
++        irq-gpios = <&tlmm 86 GPIO_ACTIVE_HIGH>;
++        reset-gpios = <&tlmm 128 GPIO_ACTIVE_LOW>;
++        vdd-io-supply = <&vreg_s4a_1p8>;
++    };

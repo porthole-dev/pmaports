@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 23:48:55 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: Add the fingerprint
+ sensor
+
+The Pixel 2 XL has an FPC1270 match-on-chip fingerprint sensor on an
+SPI bus that TrustZone owns. Describe what the normal world drives: the
+interrupt and reset lines, the IO supply, and the trustlet that talks
+to the sensor. Lines, pin configuration and supply are the vendor's.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 32 +++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index 78b35ca9053a..b9949248aff2 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -24,6 +24,23 @@ wahoo_batt: battery {
+ 		operating-range-celsius = <0 45>;
+ 	};
+ 
++	/*
++	 * An FPC1270 match-on-chip sensor on an SPI bus TrustZone owns. Lines
++	 * and supply are the vendor's (msm8998-taimen-fingerprint.dtsi), which
++	 * leaves its vcc_spi and vdd_ana supplies commented out.
++	 */
++	fingerprint {
++		compatible = "fpc,fpc1020";
++		firmware-name = "qcom/msm8998/taimen/fpctzappfingerprint.mdt";
++
++		irq-gpios = <&tlmm 86 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&tlmm 128 GPIO_ACTIVE_LOW>;
++		vdd-io-supply = <&vreg_s4a_1p8>;
++
++		pinctrl-0 = <&fingerprint_irq &fingerprint_reset>;
++		pinctrl-names = "default";
++	};
++
+ 	/*
+ 	 * Volume up only. Volume down is not a GPIO on this board -- it is
+ 	 * wired to the PMIC's RESIN pin, which is also why Power+VolDown is the
+@@ -556,6 +573,21 @@ ts_i2c_switch: ts-i2c-switch {
+ 		bias-disable;
+ 	};
+ 
++	/* The vendor's; the pull-down keeps the line low until the sensor drives it. */
++	fingerprint_irq: fingerprint-irq-state {
++		pins = "gpio86";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-pull-down;
++	};
++
++	fingerprint_reset: fingerprint-reset-state {
++		pins = "gpio128";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	/*
+ 	 * NFC. Values are the vendor's (msm8998-pinctrl.dtsi, nfc_int_active /
+ 	 * nfc_enable_active). The vendor groups gpio116 -- the eSE enable --

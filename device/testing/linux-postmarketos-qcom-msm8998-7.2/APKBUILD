@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=41
+pkgrel=45
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -308,6 +308,15 @@ source="
 	0217-firmware-qcom-qseecom-notify-TrustZone-of-the-app-re.patch
 	0218-BRINGUP-firmware-qcom-apply-the-vendor-s-SMC-status-.patch
 	0219-firmware-qcom-qseecom-add-qcom_scm_qseecom_load_serv.patch
+	0220-misc-add-fpc1020-driver-for-the-FPC1020-FPC1270-fing.patch
+	0221-misc-fpc1020-add-dev-fpc_tee-the-trustlet-transport-.patch
+	0222-misc-fpc1020-add-a-bring-up-only-app_id-override.patch
+	0223-misc-fpc1020-add-a-bring-up-only-skip_init-override.patch
+	0224-misc-fpc1020-send-INIT-with-the-cmdbuf-s-length-not-.patch
+	0225-firmware-qcom-scm-add-QSEECom-listener-support.patch
+	0226-misc-fpc1020-serve-the-trustlet-s-file-listener-and-.patch
+	0227-arm64-dts-qcom-msm8998-google-taimen-describe-the-fi.patch
+	0228-misc-fpc1020-also-serve-the-trustlet-s-POSIX-file-li.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -339,7 +348,7 @@ package() {
 }
 sha512sums="
 6ca338fd2f9d2224b9187ba1cad18c05417c0504771917203a023467a8ac3a34e346bd3bc5a3f5716aa9810381a28c730ea5fc3726773dca36d75a4677178b13  linux-7.2.2.tar.xz
-af296bb6046b650dbd3b330d21460ffca6eaa75570237bec7a0022c8acc5eae741178989f770a6b1f822b85a47e22e7978f4cb9a9a2fd1723f26b282161fbfe4  config-postmarketos-qcom-msm8998-7.2.aarch64
+9b0bb3dc4ded378fffae86cda9a9a2dacc300876269892a4b0d38049427fae6fe706a60cf3337e005d8fdb76e1a69e7d2c1e3003286ca22e4b9f7770174b41ce  config-postmarketos-qcom-msm8998-7.2.aarch64
 0858ed26e3c55bec0208b918e3438657e0b468b75b5d4f2a994dbe05cf1ff82bf3053dc5584fef7379dcbca0556eacbfd5675adacff1de63cc30fad8f6c17559  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 51dcee155f7b1912bd30da88f2f877c6601f2f856f9437aa6da93e1b8dc5dc2fde07b99234bcdb8f8f7a62deaede3563d0959e0e9f628910ae90ad069b6b3c51  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 47e2789a45183718612ce29f3ffd034a27c77b8d437f1c6e3a05e564e4b79b365546b79e8861b92b008f15cf8bba598c2e129a61b695e1cf55ce93a7bcdea7ea  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -559,4 +568,13 @@ a2b0c498e96d259f6b9d0fff2b17dfb94355a9181004b230f94e344070bf11c3b7ec3969a0af29f4
 c9bed15e87dd564a2234e1a66b32587e2510602c7cadc9cc079aa28e786bb2d479afcf77959ec778d3f9af841cf06bd23782f15c52eec4e6361ed8abe320cb3c  0217-firmware-qcom-qseecom-notify-TrustZone-of-the-app-re.patch
 606683aa414b9536383470b2f6294c24349c22b11942db27118f14e44f871d0732b98e812cf15fad76a794960a3af4de20a2581e57a2005cb6874366ae470e55  0218-BRINGUP-firmware-qcom-apply-the-vendor-s-SMC-status-.patch
 a5fb762903f54525dc887b377905b3491ed9e3512afa139600fa57131230d56ba9a1dfc3ed22058076d9b0b493bbaaf6dc4e363bb2fbc6e2caabbcab759855a7  0219-firmware-qcom-qseecom-add-qcom_scm_qseecom_load_serv.patch
+e75001044fb28f0137862ae9c04a9081011987d147796f7e9582782f1543502ce6dfa2d1a0f81117fa202b9bd177429dcfd0150b87dd1022978a11c1ad8334df  0220-misc-add-fpc1020-driver-for-the-FPC1020-FPC1270-fing.patch
+994c0f4a7a8f258dad1285746320113d2709c36edb57a235c47e0a603c580b0a3152b5ca03f8ad0d92f3bcc07c29b649fde13584cf13a9f01aa7670eb4062a45  0221-misc-fpc1020-add-dev-fpc_tee-the-trustlet-transport-.patch
+ac791cbc1eebef5eb871d881d47401eddbd017c61f1f75ea66f33d60b624365f9ec8f5261d9ecfe46ec97f40f64156305db0f7d6d17897774b592977ca77a885  0222-misc-fpc1020-add-a-bring-up-only-app_id-override.patch
+e2dfa744807a2a248fe649e7a86575d537680ca1dcaaae56493cdc297dd8aba12c28e1afc754b6224ccddbe7f9d834435e32cd2eb19d5bcbbc05c713e6e3d066  0223-misc-fpc1020-add-a-bring-up-only-skip_init-override.patch
+04e20a591db6574d7d4b342064f7ecdb6fcff5babf6e5b4b374166285ab737f1564a9c28eed1d16693c15a5aeb4d68fe7c647f2817097c5e85e29ae044f50305  0224-misc-fpc1020-send-INIT-with-the-cmdbuf-s-length-not-.patch
+22b31bd4ae7a222820bd09a32af165c84707602609c6c7c7b229459c059728658f13e512b88d63da97a3af2401029ad0ea5230103f24ffd4fdddabf6f894c32f  0225-firmware-qcom-scm-add-QSEECom-listener-support.patch
+2def4dc8b5070e88ee6b7dd161e6ac08fd04aefe8bf92fa27609b2bef700bdcbbe6447ae07e6044a723da7387c604941d0a181f104d122bff4a09b34987a41b3  0226-misc-fpc1020-serve-the-trustlet-s-file-listener-and-.patch
+150993d6eb291c0824ebe6e9b196c4334f327c3ff5848fa60b30f79e75f2be352544b16907ce34dff35af0ca96c4ecdc3c24cd5995ac4466ee1eccdced815ece  0227-arm64-dts-qcom-msm8998-google-taimen-describe-the-fi.patch
+b462060ee454bc8763657bd9cad130b67a4f2f676ddb84f1c977a21bdb5c40146de71c8d8fbc543cc16a69cb1276cedb13a32e51a31cce1820972bf1cda92eac  0228-misc-fpc1020-also-serve-the-trustlet-s-POSIX-file-li.patch
 "

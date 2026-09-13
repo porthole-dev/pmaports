@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=47
+pkgrel=48
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -151,7 +151,7 @@ source="
 	taimen-ambient-nudge.desktop
 	taimen-uclamp-session.desktop
 	taimen-fprintd.conf
-	taimen-fingerprint-firmware.conf
+	taimen-fingerprint.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -503,8 +503,8 @@ fingerprint() {
 
 	install -Dm644 "$srcdir"/taimen-fprintd.conf \
 		"$subpkgdir"/usr/lib/systemd/system/fprintd.service.d/50-taimen-fpctee.conf
-	install -Dm644 "$srcdir"/taimen-fingerprint-firmware.conf \
-		"$subpkgdir"/usr/lib/tmpfiles.d/taimen-fingerprint-firmware.conf
+	install -Dm644 "$srcdir"/taimen-fingerprint.conf \
+		"$subpkgdir"/usr/lib/tmpfiles.d/taimen-fingerprint.conf
 }
 
 kernel_mainline() {
@@ -585,5 +585,5 @@ a4346603886f434ab15a614b8ed454601e810ca60b458491eed8e0548efc7772af722bf8f626d330
 e2c9528ccfb6a79226af530990bc5ca603ad63fa9a36439fdf344a04bc8af1b085659270d4d5e90682403524723796839c492ee2d87734b297800dbc5a913304  taimen-ambient-nudge.desktop
 2abb5206a413bc786aad46a9608ce41793fbcb561dce8f1ec050775733f04fe634e292187eaf7d9048f56197109cf2e00c261f89440c9c6eebab0f0446241c0f  taimen-uclamp-session.desktop
 98108586a445cc84fc347f8833cf54ea3cddb80bd07ef2803da922ae7037460016c746f34f7b65f38d31937c7aad064d9fabe452c8e7b9794e02be35f15e0ead  taimen-fprintd.conf
-2214accdceb2626205b9773a29d02e2f8d50a0fefff4567fe9b23bff0722feded525068d5e0c6cabbde21ab8f154a9dcc36f910f1df10754f0ef9b11a9e0fcd9  taimen-fingerprint-firmware.conf
+d3399d04af107c4295dd5d39abea1a447e747ad0b092652d0ec4e26c00ad5ff938fb35dfb11cb8d02604203b5e7056071e0ad4721dfe3a1f296b65f0238d00e6  taimen-fingerprint.conf
 "

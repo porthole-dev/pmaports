@@ -1,0 +1,740 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 22:11:04 +0200
+Subject: [PATCH] lockscreen: Unlock with a fingerprint
+
+When fprintd has a device and the user has enrolled fingers, keep the
+device claimed while the lock screen is up and verify against any of
+them; a match unlocks the session exactly like a correct passcode.
+While a finger would unlock, the lock screen says so ("Touch the sensor
+or slide up to unlock"). Hints fprintd reports while scanning (finger
+not centered, too short, lift and retry) and unrecognised fingers show
+up on both pages and wake the display, so a touch on the sensor with the
+screen off either unlocks or explains why not. After five unrecognised fingers only
+the passcode is accepted until the lock screen is shown again.
+
+The device is released when the lock screen goes away, however it
+unlocks. Lock screens derived from PhoshLockscreen -- a greeter, say --
+use their passcode for something else and don't get this.
+
+This talks to fprintd over D-Bus rather than running pam_fprintd in a
+second PAM transaction, as pam_fprintd cannot be cancelled once the
+passcode wins, and it would keep the device claimed until it timed out.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ po/POTFILES.in           |   1 +
+ src/fingerprint-unlock.c | 493 +++++++++++++++++++++++++++++++++++++++
+ src/fingerprint-unlock.h |  23 ++
+ src/lockscreen.c         |  88 +++++++
+ src/meson.build          |   1 +
+ src/ui/lockscreen.ui     |   2 +-
+ 6 files changed, 607 insertions(+), 1 deletion(-)
+ create mode 100644 src/fingerprint-unlock.c
+ create mode 100644 src/fingerprint-unlock.h
+
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index 9f5c72d..8f9171c 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -45,6 +45,7 @@ src/home.c
+ src/idle-manager.c
+ src/layersurface.c
+ src/location-manager.c
++src/fingerprint-unlock.c
+ src/lockscreen.c
+ src/lockscreen-manager.c
+ src/screenshot-manager.c
+diff --git a/src/fingerprint-unlock.c b/src/fingerprint-unlock.c
+new file mode 100644
+index 0000000..072f025
+--- /dev/null
++++ b/src/fingerprint-unlock.c
+@@ -0,0 +1,493 @@
++/*
++ * Copyright (C) 2026 Giuseppe Maggio
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * Author: Giuseppe Maggio <jertlok@proton.me>
++ */
++
++#define G_LOG_DOMAIN "phosh-fingerprint-unlock"
++
++#include "phosh-config.h"
++#include "fingerprint-unlock.h"
++
++#include <glib/gi18n.h>
++#include <gio/gio.h>
++
++#define FPRINT_BUS_NAME         "net.reactivated.Fprint"
++#define FPRINT_MANAGER_PATH     "/net/reactivated/Fprint/Manager"
++#define FPRINT_MANAGER_IFACE    "net.reactivated.Fprint.Manager"
++#define FPRINT_DEVICE_IFACE     "net.reactivated.Fprint.Device"
++
++/* Like a phone: after this many unrecognised fingers, only the passcode. */
++#define MAX_FAILURES            5
++#define RESTART_DELAY_MS        500
++
++/**
++ * PhoshFingerprintUnlock:
++ *
++ * Unlock with a fingerprint through fprintd
++ *
++ * While started, keeps fprintd's default device claimed for the current user
++ * and verifying against any of their enrolled fingers, and emits
++ * [signal@FingerprintUnlock::matched] once one matches. Hints and failures
++ * are reported through [signal@FingerprintUnlock::status]. Does nothing when
++ * there is no fprintd, no device, or no enrolled finger.
++ */
++
++enum {
++  PROP_0,
++  PROP_ACTIVE,
++  PROP_LAST_PROP
++};
++static GParamSpec *props[PROP_LAST_PROP];
++
++enum {
++  MATCHED,
++  STATUS,
++  N_SIGNALS
++};
++static guint signals[N_SIGNALS];
++
++struct _PhoshFingerprintUnlock {
++  GObject       parent;
++
++  GCancellable *cancel;
++  GDBusProxy   *device;
++  gboolean      claim_sent;
++  gboolean      verify_sent;
++  guint         failures;
++  guint         restart_id;
++  gboolean      active;
++};
++
++G_DEFINE_TYPE (PhoshFingerprintUnlock, phosh_fingerprint_unlock, G_TYPE_OBJECT)
++
++
++static void
++set_active (PhoshFingerprintUnlock *self, gboolean active)
++{
++  if (self->active == active)
++    return;
++
++  self->active = active;
++  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_ACTIVE]);
++}
++
++
++static gboolean
++check_error (GError *error, const char *what)
++{
++  if (error == NULL)
++    return FALSE;
++
++  if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    g_debug ("%s failed: %s", what, error->message);
++
++  return TRUE;
++}
++
++
++static void on_verify_start_ready (GObject *source, GAsyncResult *res, gpointer user_data);
++
++static void
++verify_start (PhoshFingerprintUnlock *self)
++{
++  self->verify_sent = TRUE;
++  g_dbus_proxy_call (self->device, "VerifyStart", g_variant_new ("(s)", "any"),
++                     G_DBUS_CALL_FLAGS_NONE, -1, self->cancel,
++                     on_verify_start_ready, self);
++}
++
++
++static gboolean
++on_restart_timeout (gpointer user_data)
++{
++  PhoshFingerprintUnlock *self = PHOSH_FINGERPRINT_UNLOCK (user_data);
++
++  self->restart_id = 0;
++  verify_start (self);
++
++  return G_SOURCE_REMOVE;
++}
++
++
++static void
++on_verify_stop_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GVariant) ret = NULL;
++  g_autoptr (GError) err = NULL;
++  PhoshFingerprintUnlock *self;
++
++  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &err);
++  if (err && g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++    return;
++
++  self = PHOSH_FINGERPRINT_UNLOCK (user_data);
++  self->verify_sent = FALSE;
++  self->restart_id = g_timeout_add (RESTART_DELAY_MS, on_restart_timeout, self);
++  g_source_set_name_by_id (self->restart_id, "[phosh-fingerprint-unlock] restart");
++}
++
++
++static const char *
++hint_for_result (const char *result)
++{
++  if (g_str_equal (result, "verify-swipe-too-short") || g_str_equal (result, "verify-too-fast"))
++    return _("Keep your finger on the sensor");
++  if (g_str_equal (result, "verify-finger-not-centered"))
++    return _("Center your finger on the sensor");
++  if (g_str_equal (result, "verify-remove-and-retry"))
++    return _("Lift your finger and try again");
++  if (g_str_equal (result, "verify-retry-scan"))
++    return _("Try again");
++
++  return NULL;
++}
++
++
++static void
++on_device_signal (GDBusProxy *proxy,
++                  const char *sender,
++                  const char *signal_name,
++                  GVariant   *params,
++                  gpointer    user_data)
++{
++  PhoshFingerprintUnlock *self = PHOSH_FINGERPRINT_UNLOCK (user_data);
++  const char *result;
++  gboolean done;
++
++  if (!g_str_equal (signal_name, "VerifyStatus"))
++    return;
++
++  g_variant_get (params, "(&sb)", &result, &done);
++  g_debug ("VerifyStatus %s, done %d", result, done);
++
++  if (!done) {
++    const char *hint = hint_for_result (result);
++
++    if (hint)
++      g_signal_emit (self, signals[STATUS], 0, hint);
++    return;
++  }
++
++  if (g_str_equal (result, "verify-match")) {
++    phosh_fingerprint_unlock_stop (self);
++    g_signal_emit (self, signals[MATCHED], 0);
++    return;
++  }
++
++  if (!g_str_equal (result, "verify-no-match")) {
++    g_debug ("Fingerprint verification ended: %s", result);
++    phosh_fingerprint_unlock_stop (self);
++    return;
++  }
++
++  self->failures++;
++  if (self->failures >= MAX_FAILURES) {
++    phosh_fingerprint_unlock_stop (self);
++    g_signal_emit (self, signals[STATUS], 0, _("Too many attempts, use your passcode"));
++    return;
++  }
++
++  g_signal_emit (self, signals[STATUS], 0, _("Fingerprint not recognized"));
++  g_dbus_proxy_call (self->device, "VerifyStop", NULL, G_DBUS_CALL_FLAGS_NONE, -1,
++                     self->cancel, on_verify_stop_ready, self);
++}
++
++
++static void
++on_verify_start_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GVariant) ret = NULL;
++  g_autoptr (GError) err = NULL;
++
++  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &err);
++  if (check_error (err, "VerifyStart")) {
++    if (!g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++      phosh_fingerprint_unlock_stop (PHOSH_FINGERPRINT_UNLOCK (user_data));
++    return;
++  }
++
++  g_debug ("Waiting for a finger");
++  set_active (PHOSH_FINGERPRINT_UNLOCK (user_data), TRUE);
++}
++
++
++static void
++on_claim_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GVariant) ret = NULL;
++  g_autoptr (GError) err = NULL;
++
++  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &err);
++  if (check_error (err, "Claim")) {
++    if (!g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++      phosh_fingerprint_unlock_stop (PHOSH_FINGERPRINT_UNLOCK (user_data));
++    return;
++  }
++
++  verify_start (PHOSH_FINGERPRINT_UNLOCK (user_data));
++}
++
++
++static void
++on_list_fingers_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GVariant) ret = NULL;
++  g_autoptr (GError) err = NULL;
++  PhoshFingerprintUnlock *self;
++
++  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &err);
++  if (check_error (err, "ListEnrolledFingers")) {
++    if (!g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++      phosh_fingerprint_unlock_stop (PHOSH_FINGERPRINT_UNLOCK (user_data));
++    return;
++  }
++
++  self = PHOSH_FINGERPRINT_UNLOCK (user_data);
++  self->claim_sent = TRUE;
++  g_dbus_proxy_call (self->device, "Claim", g_variant_new ("(s)", g_get_user_name ()),
++                     G_DBUS_CALL_FLAGS_NONE, -1, self->cancel, on_claim_ready, self);
++}
++
++
++static void
++on_device_proxy_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GError) err = NULL;
++  PhoshFingerprintUnlock *self;
++  GDBusProxy *device;
++
++  device = g_dbus_proxy_new_for_bus_finish (res, &err);
++  if (check_error (err, "Device proxy")) {
++    if (!g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++      phosh_fingerprint_unlock_stop (PHOSH_FINGERPRINT_UNLOCK (user_data));
++    return;
++  }
++
++  self = PHOSH_FINGERPRINT_UNLOCK (user_data);
++  self->device = device;
++  g_signal_connect_object (self->device, "g-signal", G_CALLBACK (on_device_signal), self, 0);
++
++  g_dbus_proxy_call (self->device, "ListEnrolledFingers",
++                     g_variant_new ("(s)", g_get_user_name ()),
++                     G_DBUS_CALL_FLAGS_NONE, -1, self->cancel, on_list_fingers_ready, self);
++}
++
++
++static void
++on_default_device_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GVariant) ret = NULL;
++  g_autoptr (GError) err = NULL;
++  PhoshFingerprintUnlock *self;
++  const char *path;
++
++  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &err);
++  if (check_error (err, "GetDefaultDevice")) {
++    if (!g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++      phosh_fingerprint_unlock_stop (PHOSH_FINGERPRINT_UNLOCK (user_data));
++    return;
++  }
++
++  self = PHOSH_FINGERPRINT_UNLOCK (user_data);
++  g_variant_get (ret, "(&o)", &path);
++  g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
++                            NULL, FPRINT_BUS_NAME, path, FPRINT_DEVICE_IFACE,
++                            self->cancel, on_device_proxy_ready, self);
++}
++
++
++static void
++on_manager_proxy_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GDBusProxy) manager = NULL;
++  g_autoptr (GError) err = NULL;
++  PhoshFingerprintUnlock *self;
++
++  manager = g_dbus_proxy_new_for_bus_finish (res, &err);
++  if (check_error (err, "Manager proxy")) {
++    if (!g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++      phosh_fingerprint_unlock_stop (PHOSH_FINGERPRINT_UNLOCK (user_data));
++    return;
++  }
++
++  self = PHOSH_FINGERPRINT_UNLOCK (user_data);
++  g_dbus_proxy_call (manager, "GetDefaultDevice", NULL, G_DBUS_CALL_FLAGS_NONE, -1,
++                     self->cancel, on_default_device_ready, self);
++}
++
++
++/* Teardown outlives the object: it only holds the proxy. */
++static void
++on_release_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GVariant) ret = NULL;
++  g_autoptr (GError) err = NULL;
++
++  /* Releasing a device whose claim never completed fails; that is fine. */
++  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &err);
++}
++
++
++static void
++on_teardown_stop_ready (GObject *source, GAsyncResult *res, gpointer user_data)
++{
++  g_autoptr (GVariant) ret = NULL;
++  g_autoptr (GError) err = NULL;
++
++  ret = g_dbus_proxy_call_finish (G_DBUS_PROXY (source), res, &err);
++  if (GPOINTER_TO_INT (user_data))
++    g_dbus_proxy_call (G_DBUS_PROXY (source), "Release", NULL, G_DBUS_CALL_FLAGS_NONE, -1,
++                       NULL, on_release_ready, NULL);
++}
++
++
++/**
++ * phosh_fingerprint_unlock_start:
++ * @self: The fingerprint unlock
++ *
++ * Start waiting for an enrolled finger. Does nothing if already started.
++ */
++void
++phosh_fingerprint_unlock_start (PhoshFingerprintUnlock *self)
++{
++  g_return_if_fail (PHOSH_IS_FINGERPRINT_UNLOCK (self));
++
++  if (self->cancel)
++    return;
++
++  self->cancel = g_cancellable_new ();
++  self->failures = 0;
++  g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM, G_DBUS_PROXY_FLAGS_DO_NOT_LOAD_PROPERTIES,
++                            NULL, FPRINT_BUS_NAME, FPRINT_MANAGER_PATH, FPRINT_MANAGER_IFACE,
++                            self->cancel, on_manager_proxy_ready, self);
++}
++
++
++/**
++ * phosh_fingerprint_unlock_stop:
++ * @self: The fingerprint unlock
++ *
++ * Stop waiting and give the device back to fprintd.
++ */
++void
++phosh_fingerprint_unlock_stop (PhoshFingerprintUnlock *self)
++{
++  g_return_if_fail (PHOSH_IS_FINGERPRINT_UNLOCK (self));
++
++  g_clear_handle_id (&self->restart_id, g_source_remove);
++
++  if (self->cancel) {
++    g_cancellable_cancel (self->cancel);
++    g_clear_object (&self->cancel);
++  }
++
++  if (self->device) {
++    g_signal_handlers_disconnect_by_data (self->device, self);
++
++    if (self->verify_sent)
++      g_dbus_proxy_call (self->device, "VerifyStop", NULL, G_DBUS_CALL_FLAGS_NONE, -1,
++                         NULL, on_teardown_stop_ready, GINT_TO_POINTER (self->claim_sent));
++    else if (self->claim_sent)
++      g_dbus_proxy_call (self->device, "Release", NULL, G_DBUS_CALL_FLAGS_NONE, -1,
++                         NULL, on_release_ready, NULL);
++
++    g_clear_object (&self->device);
++  }
++
++  self->verify_sent = FALSE;
++  self->claim_sent = FALSE;
++  set_active (self, FALSE);
++}
++
++
++static void
++phosh_fingerprint_unlock_get_property (GObject    *object,
++                                      guint       property_id,
++                                      GValue     *value,
++                                      GParamSpec *pspec)
++{
++  PhoshFingerprintUnlock *self = PHOSH_FINGERPRINT_UNLOCK (object);
++
++  switch (property_id) {
++  case PROP_ACTIVE:
++    g_value_set_boolean (value, self->active);
++    break;
++  default:
++    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
++    break;
++  }
++}
++
++
++static void
++phosh_fingerprint_unlock_dispose (GObject *object)
++{
++  phosh_fingerprint_unlock_stop (PHOSH_FINGERPRINT_UNLOCK (object));
++
++  G_OBJECT_CLASS (phosh_fingerprint_unlock_parent_class)->dispose (object);
++}
++
++
++static void
++phosh_fingerprint_unlock_class_init (PhoshFingerprintUnlockClass *klass)
++{
++  GObjectClass *object_class = G_OBJECT_CLASS (klass);
++
++  object_class->dispose = phosh_fingerprint_unlock_dispose;
++  object_class->get_property = phosh_fingerprint_unlock_get_property;
++
++  /**
++   * PhoshFingerprintUnlock:active:
++   *
++   * Whether an enrolled finger on the sensor would unlock right now.
++   */
++  props[PROP_ACTIVE] = g_param_spec_boolean ("active", "", "", FALSE,
++                                             G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY |
++                                             G_PARAM_STATIC_STRINGS);
++  g_object_class_install_properties (object_class, PROP_LAST_PROP, props);
++
++  /**
++   * PhoshFingerprintUnlock::matched:
++   *
++   * An enrolled finger of the current user was recognized.
++   */
++  signals[MATCHED] = g_signal_new ("matched",
++                                   G_TYPE_FROM_CLASS (klass),
++                                   G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
++                                   G_TYPE_NONE, 0);
++  /**
++   * PhoshFingerprintUnlock::status:
++   * @message: A translated message for the user
++   *
++   * Something the user should know about the scan: a hint or a failure.
++   */
++  signals[STATUS] = g_signal_new ("status",
++                                  G_TYPE_FROM_CLASS (klass),
++                                  G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
++                                  G_TYPE_NONE, 1, G_TYPE_STRING);
++}
++
++
++static void
++phosh_fingerprint_unlock_init (PhoshFingerprintUnlock *self)
++{
++}
++
++
++gboolean
++phosh_fingerprint_unlock_get_active (PhoshFingerprintUnlock *self)
++{
++  g_return_val_if_fail (PHOSH_IS_FINGERPRINT_UNLOCK (self), FALSE);
++
++  return self->active;
++}
++
++
++PhoshFingerprintUnlock *
++phosh_fingerprint_unlock_new (void)
++{
++  return g_object_new (PHOSH_TYPE_FINGERPRINT_UNLOCK, NULL);
++}
+diff --git a/src/fingerprint-unlock.h b/src/fingerprint-unlock.h
+new file mode 100644
+index 0000000..8e7fe6d
+--- /dev/null
++++ b/src/fingerprint-unlock.h
+@@ -0,0 +1,23 @@
++/*
++ * Copyright (C) 2026 Giuseppe Maggio
++ *
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * Author: Giuseppe Maggio <jertlok@proton.me>
++ */
++#pragma once
++
++#include <glib-object.h>
++
++G_BEGIN_DECLS
++
++#define PHOSH_TYPE_FINGERPRINT_UNLOCK (phosh_fingerprint_unlock_get_type ())
++
++G_DECLARE_FINAL_TYPE (PhoshFingerprintUnlock, phosh_fingerprint_unlock, PHOSH, FINGERPRINT_UNLOCK, GObject)
++
++PhoshFingerprintUnlock *phosh_fingerprint_unlock_new   (void);
++void                    phosh_fingerprint_unlock_start (PhoshFingerprintUnlock *self);
++void                    phosh_fingerprint_unlock_stop  (PhoshFingerprintUnlock *self);
++gboolean                phosh_fingerprint_unlock_get_active (PhoshFingerprintUnlock *self);
++
++G_END_DECLS
+diff --git a/src/lockscreen.c b/src/lockscreen.c
+index c991cb0..bcdd1a2 100644
+--- a/src/lockscreen.c
++++ b/src/lockscreen.c
+@@ -10,6 +10,7 @@
+ #define G_LOG_DOMAIN "phosh-lockscreen"
+ 
+ #include "auth.h"
++#include "fingerprint-unlock.h"
+ #include "call-notification.h"
+ #include "calls-manager.h"
+ #include "keypad.h"
+@@ -98,12 +99,15 @@ typedef struct {
+   GtkWidget          *entry_pin;
+   GtkGesture         *long_press_del_gesture;
+   GtkWidget          *lbl_unlock_status;
++  GtkWidget          *lbl_unlock_hint;
+   GtkWidget          *btn_submit;
+   GtkWidget          *btn_keyboard;
+   guint idle_timer;
+   gint64 last_input;
+   PhoshAuth          *auth;
+   GSettings          *lockscreen_settings;
++  PhoshFingerprintUnlock *fingerprint;
++  guint               fingerprint_status_id;
+ 
+   struct {
+     GtkGesture *swipe_gesture;
+@@ -373,6 +377,69 @@ focus_pin_entry (PhoshLockscreen *self, gboolean enable_osk)
+ }
+ 
+ 
++static void
++update_unlock_hint (PhoshLockscreen *self)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++  gboolean fingerprint = priv->fingerprint &&
++                         phosh_fingerprint_unlock_get_active (priv->fingerprint);
++
++  gtk_label_set_label (GTK_LABEL (priv->lbl_unlock_hint),
++                       fingerprint ? _("Touch the sensor or slide up to unlock") :
++                                     _("Slide up to unlock"));
++}
++
++
++static gboolean
++on_fingerprint_status_timeout (gpointer user_data)
++{
++  PhoshLockscreen *self = PHOSH_LOCKSCREEN (user_data);
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++
++  priv->fingerprint_status_id = 0;
++  phosh_lockscreen_set_unlock_status (self, _("Enter Passcode"));
++  update_unlock_hint (self);
++
++  return G_SOURCE_REMOVE;
++}
++
++
++static void
++on_fingerprint_status (PhoshLockscreen        *self,
++                       const char             *message,
++                       PhoshFingerprintUnlock *fingerprint)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++
++  if (priv->auth)
++    return;
++
++  /* Show it where the finger was: on either page. */
++  phosh_lockscreen_set_unlock_status (self, message);
++  gtk_label_set_label (GTK_LABEL (priv->lbl_unlock_hint), message);
++  g_signal_emit (self, signals[WAKEUP_OUTPUT], 0);
++
++  g_clear_handle_id (&priv->fingerprint_status_id, g_source_remove);
++  priv->fingerprint_status_id = g_timeout_add_seconds (3, on_fingerprint_status_timeout, self);
++  g_source_set_name_by_id (priv->fingerprint_status_id, "[PhoshLockscreen] fingerprint status");
++}
++
++
++static void
++on_fingerprint_matched (PhoshLockscreen *self, PhoshFingerprintUnlock *fingerprint)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++
++  /* A passcode check already under way decides. */
++  if (priv->auth)
++    return;
++
++  g_debug ("Unlocking with a fingerprint");
++  g_signal_emit (self, signals[WAKEUP_OUTPUT], 0);
++  g_signal_emit (self, signals[LOCKSCREEN_UNLOCK], 0);
++}
++
++
+ static void
+ on_auth_authenticate_ready (GObject *source_object, GAsyncResult *result, gpointer user_data)
+ {
+@@ -953,6 +1020,22 @@ phosh_lockscreen_constructed (GObject *object)
+   on_info_reveal_child_changed (self);
+ 
+   phosh_lockscreen_add_background (self);
++
++  /* Fingerprints unlock the session; a derived lock screen (a greeter, say)
++   * has a different job for its passcode, so it gets none. */
++  if (G_OBJECT_TYPE (self) == PHOSH_TYPE_LOCKSCREEN && priv->require_unlock) {
++    priv->fingerprint = phosh_fingerprint_unlock_new ();
++    g_signal_connect_object (priv->fingerprint, "matched",
++                             G_CALLBACK (on_fingerprint_matched), self,
++                             G_CONNECT_SWAPPED);
++    g_signal_connect_object (priv->fingerprint, "status",
++                             G_CALLBACK (on_fingerprint_status), self,
++                             G_CONNECT_SWAPPED);
++    g_signal_connect_object (priv->fingerprint, "notify::active",
++                             G_CALLBACK (update_unlock_hint), self,
++                             G_CONNECT_SWAPPED);
++    phosh_fingerprint_unlock_start (priv->fingerprint);
++  }
+ }
+ 
+ static void
+@@ -981,6 +1064,10 @@ phosh_lockscreen_dispose (GObject *object)
+   PhoshLockscreen *self = PHOSH_LOCKSCREEN (object);
+   PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
+ 
++  if (priv->fingerprint)
++    g_signal_handlers_disconnect_by_data (priv->fingerprint, self);
++  g_clear_object (&priv->fingerprint);
++  g_clear_handle_id (&priv->fingerprint_status_id, g_source_remove);
+   g_clear_object (&priv->notification_settings);
+   g_clear_handle_id (&priv->idle_timer, g_source_remove);
+   g_clear_object (&priv->calls_manager);
+@@ -1158,6 +1245,7 @@ phosh_lockscreen_class_init (PhoshLockscreenClass *klass)
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, keypad_revealer);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, entry_pin);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, lbl_unlock_status);
++  gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, lbl_unlock_hint);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen,
+                                                 long_press_del_gesture);
+   gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, btn_submit);
+diff --git a/src/meson.build b/src/meson.build
+index c42c21d..e1ab5b9 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -391,6 +391,7 @@ phosh_sources = files(
+   'app-tracker.c',
+   'arrow.c',
+   'auth.c',
++  'fingerprint-unlock.c',
+   'background-manager.c',
+   'battery-info.c',
+   'bt-device-row.c',
+diff --git a/src/ui/lockscreen.ui b/src/ui/lockscreen.ui
+index 0a6852c..a44f121 100644
+--- a/src/ui/lockscreen.ui
++++ b/src/ui/lockscreen.ui
+@@ -87,7 +87,7 @@
+                       </object>
+                     </child>
+                     <child>
+-                      <object class="GtkLabel">
++                      <object class="GtkLabel" id="lbl_unlock_hint">
+                         <property name="visible">1</property>
+                         <property name="valign">end</property>
+                         <property name="margin-top">6</property>

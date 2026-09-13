@@ -1,3 +1,7 @@
+# taimen: carries 0001-lockscreen-Unlock-with-a-fingerprint.patch on top of
+# pmaports main's 0.57.0 recipe, at a pkgrel well above upstream's so a stock
+# rebuild of the same version cannot replace it. Tracked in porthole's
+# aports.conf.
 # Forked from Alpine to build against polkit with systemd session tracking
 # Otherwise polkit auth agent will be broken to some mismatch for elogind/systemd session tracking
 # See https://gitlab.postmarketos.org/postmarketOS/pmaports/-/work_items/4344
@@ -5,9 +9,9 @@
 # Co-Maintainer: Achill Gilgenast <achill@achill.org>
 maintainer="Stefan Hansson <newbyte@postmarketos.org>"
 pkgname=phosh
-_pkgver=0.56.0
+_pkgver=0.57.0
 pkgver=9999$_pkgver
-pkgrel=0
+pkgrel=21
 pkgdesc="Wayland shell for GNOME on mobile devices"
 # armhf: blocked by gnome-shell-schemas
 arch="all !armhf"
@@ -76,7 +80,10 @@ subpackages="
 	$pkgname-schemas::noarch
 	$pkgname-systemd
 	"
-source="https://sources.phosh.mobi/releases/phosh/phosh-${_pkgver/_/.}.tar.xz"
+source="https://sources.phosh.mobi/releases/phosh/phosh-${_pkgver/_/.}.tar.xz
+	splash-timeout-flatpak-dbus.patch
+	0001-lockscreen-Unlock-with-a-fingerprint.patch
+	"
 builddir="$srcdir/$pkgname-${_pkgver/_/.}"
 somask="libphoshsearch.so"
 # crossdirect disabled because the ARMv7 cross compiler crashes internally with LTO
@@ -125,5 +132,7 @@ schemas() {
 }
 
 sha512sums="
-45fe05595f38f005d6f3d5635a95d55c6d1b5586a39774cf18b233f2a3ba99e36019cbce7506314a68de559abc49254c073b41bfd3e6fe66ba9020eade0e367b  phosh-0.56.0.tar.xz
+51219a3295b061047765368a0f65a02b131c4b229ec03713f547595b73a98c51b99086769bf0584dd7d44b8426b21d50162e76e955fb7a37a5136cefa253fea8  phosh-0.57.0.tar.xz
+cb4bad612e5d2dff156c6b97b460c16ab7fd48067935b616fe0b65d11c3d255f1ecd06b800c654ac9ea93bc53e823eb47134836dfdf61bb338588dab78d3b9e9  splash-timeout-flatpak-dbus.patch
+373a3474b41ebb8bad008cf7385dc2602cd32651879ab4bc7a4c2ef7022f25e07fbe670e328396b4d6a37a78a1d6e3fb20f5fa09e35feaf912961c112f95a40f  0001-lockscreen-Unlock-with-a-fingerprint.patch
 "

@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 23:35:18 +0200
+Subject: [PATCH] dt-bindings: vendor-prefixes: Add Fingerprint Cards AB
+
+Fingerprint Cards AB (FPC) is a Swedish maker of fingerprint sensors,
+used in many phones, among them the Google Pixel 2 XL.
+
+Link: https://www.fingerprints.com/
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ Documentation/devicetree/bindings/vendor-prefixes.yaml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/vendor-prefixes.yaml b/Documentation/devicetree/bindings/vendor-prefixes.yaml
+index 396044f368e7..ce393cad58a6 100644
+--- a/Documentation/devicetree/bindings/vendor-prefixes.yaml
++++ b/Documentation/devicetree/bindings/vendor-prefixes.yaml
+@@ -610,6 +610,8 @@ patternProperties:
+     description: Shanghai FourSemi Semiconductor Co.,Ltd.
+   "^foxlink,.*":
+     description: Foxlink Group
++  "^fpc,.*":
++    description: Fingerprint Cards AB
+   "^freebox,.*":
+     description: Freebox SAS
+   "^freecom,.*":

@@ -1,43 +1,42 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 13 Sep 2026 21:29:42 +0200
-Subject: [PATCH] firmware: qcom: scm: add QSEECom listener support
+Subject: [PATCH] firmware: qcom: scm: Add QSEECOM listener support
 
 A QSEE app that needs a normal-world service -- file storage is the
 common one -- does not get an answer from its app call. QSEE suspends the
-call and returns QSEECOM_RESULT_INCOMPLETE with the id of the listener
-service it wants; the request is waiting in a shared buffer the normal
-world registered for that id, and the call only completes once the
-normal world has served it and resumed QSEE with the listener response
-command. Until now qcom_scm WARNed on that result and gave up, which
-leaves any app that stores data unusable.
+call and returns QSEECOM_RESULT_INCOMPLETE with the ID of the listener
+service it wants; the request waits in a shared buffer the normal world
+registered for that ID, and the call only completes once the normal world
+has served it and resumed QSEE with the listener response command. Until
+now qcom_scm WARNed on that result and gave up, which leaves any app that
+stores data unusable.
 
-Add the three pieces the downstream qseecom driver uses for this, with
-the same SMC calls:
+Add the three pieces downstream's qseecom driver uses for this, with the
+same SMC calls:
 
-- qcom_scm_qseecom_listener_register() / _unregister() (QSEE_OS,
-  LISTENER, 1 and 2), which hand QSEE a listener's shared buffer and take
-  it back.
+- qcom_scm_qseecom_listener_register() and _unregister(), which hand QSEE
+  a listener's shared buffer and take it back.
 - qcom_scm_qseecom_app_send_listener(), an app send that, while QSEE keeps
   answering INCOMPLETE, calls back into its caller to serve the named
-  listener and resumes the app with LISTENER_RESPONSE (QSEE_OS, LISTENER,
-  3), passing on success or failure. The QSEECOM call lock is held across
-  the whole exchange, so no other QSEECOM call can interleave with a
-  suspended one.
+  listener and resumes the app with the listener response, reporting
+  success or failure. The QSEECOM call lock is held across the whole
+  exchange, so no other QSEECOM call can interleave with a suspended one.
 
 qcom_scm_qseecom_app_send() and the other existing calls are unchanged.
 
-Used on the Google Pixel 2 XL, whose fingerprint trustlet stores its
-template database through QSEE's GP file service (listener 0x7000).
+Used on the Google Pixel 2 XL, whose fingerprint trustlet reaches its
+template database through two listeners, QSEE's file service (0xa) and
+GP file service (0x7000).
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- drivers/firmware/qcom/qcom_scm.c       | 199 +++++++++++++++++++++++--
- include/linux/firmware/qcom/qcom_scm.h |  26 ++++
- 2 files changed, 215 insertions(+), 10 deletions(-)
+ drivers/firmware/qcom/qcom_scm.c       | 198 +++++++++++++++++++++++--
+ include/linux/firmware/qcom/qcom_scm.h |  28 ++++
+ 2 files changed, 216 insertions(+), 10 deletions(-)
 
 diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
-index 3b3772f6db39..e2f74a15b412 100644
+index 13426563cbf3..73d7f0b565c1 100644
 --- a/drivers/firmware/qcom/qcom_scm.c
 +++ b/drivers/firmware/qcom/qcom_scm.c
 @@ -108,9 +108,16 @@ enum qcom_scm_qseecom_tz_owner {
@@ -56,8 +55,8 @@ index 3b3772f6db39..e2f74a15b412 100644
 +
  enum qcom_scm_qseecom_tz_cmd_app {
  	QSEECOM_TZ_CMD_APP_SEND			= 1,
- 	QSEECOM_TZ_CMD_APP_LOOKUP		= 3,
-@@ -2198,6 +2205,24 @@ static int __qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
+ 	QSEECOM_TZ_CMD_APP_START		= 1,	/* (QSEE_OS, APP_MGR) */
+@@ -2163,6 +2170,24 @@ static int __qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
  	return 0;
  }
  
@@ -82,7 +81,7 @@ index 3b3772f6db39..e2f74a15b412 100644
  /**
   * qcom_scm_qseecom_call() - Perform a QSEECOM SCM call.
   * @desc: SCM call descriptor.
-@@ -2215,22 +2240,17 @@ static int qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
+@@ -2180,22 +2205,17 @@ static int qcom_scm_qseecom_call(const struct qcom_scm_desc *desc,
  
  	/*
  	 * Note: Multiple QSEECOM SCM calls should not be executed same time,
@@ -110,7 +109,7 @@ index 3b3772f6db39..e2f74a15b412 100644
  
  	/*
  	 * TODO: Handle incomplete and blocked calls:
-@@ -2611,6 +2631,165 @@ int qcom_scm_qseecom_app_send(u32 app_id, void *req, size_t req_size,
+@@ -2396,6 +2416,164 @@ int qcom_scm_qseecom_app_send(u32 app_id, void *req, size_t req_size,
  }
  EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_send);
  
@@ -129,7 +128,7 @@ index 3b3772f6db39..e2f74a15b412 100644
 + *
 + * The registration outlives the caller: QSEE keeps @sb_phys until
 + * qcom_scm_qseecom_listener_unregister(), so the buffer must stay allocated
-+ * until then.
++ * until then. QSEE apps are 32-bit, so it must also lie below 4 GB.
 + *
 + * Return: Zero on success, nonzero on failure.
 + */
@@ -140,9 +139,8 @@ index 3b3772f6db39..e2f74a15b412 100644
 +	struct qcom_scm_desc desc = {};
 +	int status;
 +
-+	status = qcom_scm_qseecom_check_dma32(sb_phys, sb_size);
-+	if (status)
-+		return status;
++	if (sb_phys + sb_size > SZ_4G)
++		return -EINVAL;
 +
 +	desc.owner = QSEECOM_TZ_OWNER_QSEE_OS;
 +	desc.svc = QSEECOM_TZ_SVC_LISTENER;
@@ -277,11 +275,11 @@ index 3b3772f6db39..e2f74a15b412 100644
   * We do not yet support re-entrant calls via the qseecom interface. To prevent
   + any potential issues with this, only allow validated machines for now.
 diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
-index fc31d032d512..e956e604a4c8 100644
+index 98c878589fbc..0f511d1cbf58 100644
 --- a/include/linux/firmware/qcom/qcom_scm.h
 +++ b/include/linux/firmware/qcom/qcom_scm.h
-@@ -181,6 +181,13 @@ int qcom_scm_qseecom_load_services_image(phys_addr_t img_phys,
- 					 size_t mdt_len, size_t img_len);
+@@ -178,6 +178,13 @@ int qcom_scm_qseecom_app_load(phys_addr_t img_phys, size_t mdt_len,
+ 			      size_t img_len, u32 *app_id);
  int qcom_scm_qseecom_app_send(u32 app_id, void *req, size_t req_size,
  			      void *rsp, size_t rsp_size);
 +int qcom_scm_qseecom_listener_register(u32 listener_id, phys_addr_t sb_phys,
@@ -294,7 +292,7 @@ index fc31d032d512..e956e604a4c8 100644
  
  #else /* CONFIG_QCOM_QSEECOM */
  
-@@ -216,6 +223,25 @@ static inline int qcom_scm_qseecom_app_send(u32 app_id,
+@@ -200,6 +207,27 @@ static inline int qcom_scm_qseecom_app_send(u32 app_id,
  	return -EINVAL;
  }
  
@@ -311,8 +309,10 @@ index fc31d032d512..e956e604a4c8 100644
 +}
 +
 +static inline int qcom_scm_qseecom_app_send_listener(u32 app_id,
-+		void *req, size_t req_size, void *rsp, size_t rsp_size,
-+		int (*handle)(void *priv, u32 listener_id), void *priv)
++						     void *req, size_t req_size,
++						     void *rsp, size_t rsp_size,
++						     int (*handle)(void *priv, u32 listener_id),
++						     void *priv)
 +{
 +	return -EINVAL;
 +}

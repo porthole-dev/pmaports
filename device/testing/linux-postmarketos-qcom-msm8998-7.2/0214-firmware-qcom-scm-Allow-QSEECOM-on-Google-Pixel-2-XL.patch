@@ -1,15 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Fri, 11 Sep 2026 13:30:32 +0200
-Subject: [PATCH] firmware: qcom: allow QSEECom on the Pixel 2 XL
+Subject: [PATCH] firmware: qcom: scm: Allow QSEECOM on Google Pixel 2 XL
 
-taimen's QSEE answers the QSEECom interface: the version query, which runs
-before the machine allowlist, logged
-
-    qseecom: found qseecom with version 0x1001000
-
-on 2026-08-19. Allowlist the machine so the auxiliary device is created and
-qcom_scm_qseecom_app_get_id() becomes reachable.
+The Pixel 2 XL (taimen) answers the QSEECOM version query with
+0x1001000, and its fingerprint sensor is only reachable through a QSEE
+trustlet. Allow QSEECOM on it.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---

@@ -1,0 +1,113 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 13 Sep 2026 23:34:29 +0200
+Subject: [PATCH] firmware: qcom: scm: Add QSEECOM app loading
+
+QSEECOM can look an app up and send it commands, but not load one. That
+is enough on the laptops it was written for, whose apps are already
+running, but not on a phone, where Android's qseecomd loads trustlets at
+runtime and under mainline nothing does.
+
+Add qcom_scm_qseecom_app_load(), which starts an app from its image (the
+.mdt followed by its .bNN segments) with QSEOS_APP_START, the three
+scalar arguments downstream's qseecom driver passes, and returns its ID.
+QSEE apps are 32-bit, so an image above 4 GB is refused.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/firmware/qcom/qcom_scm.c       | 47 ++++++++++++++++++++++++++
+ include/linux/firmware/qcom/qcom_scm.h |  9 +++++
+ 2 files changed, 56 insertions(+)
+
+diff --git a/drivers/firmware/qcom/qcom_scm.c b/drivers/firmware/qcom/qcom_scm.c
+index fca851215737..13426563cbf3 100644
+--- a/drivers/firmware/qcom/qcom_scm.c
++++ b/drivers/firmware/qcom/qcom_scm.c
+@@ -113,6 +113,7 @@ enum qcom_scm_qseecom_tz_svc {
+ 
+ enum qcom_scm_qseecom_tz_cmd_app {
+ 	QSEECOM_TZ_CMD_APP_SEND			= 1,
++	QSEECOM_TZ_CMD_APP_START		= 1,	/* (QSEE_OS, APP_MGR) */
+ 	QSEECOM_TZ_CMD_APP_LOOKUP		= 3,
+ };
+ 
+@@ -2297,6 +2298,52 @@ int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id)
+ }
+ EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_get_id);
+ 
++/**
++ * qcom_scm_qseecom_app_load() - Load a QSEE app.
++ * @img_phys: The app image in TZ memory: its .mdt followed by each of its
++ *            .bNN segments, in order.
++ * @mdt_len:  Length of the .mdt part of the image.
++ * @img_len:  Length of the whole image.
++ * @app_id:   The ID of the loaded app.
++ *
++ * QSEE apps are 32-bit, so the image must lie below 4 GB. QSEE refuses to
++ * start an app that is already running, and on some firmware cannot look a
++ * running app up by name afterwards, so the returned ID may be the only
++ * handle there ever is to it.
++ *
++ * Return: Zero on success, nonzero on failure.
++ */
++int qcom_scm_qseecom_app_load(phys_addr_t img_phys, size_t mdt_len,
++			      size_t img_len, u32 *app_id)
++{
++	struct qcom_scm_qseecom_resp res = {};
++	struct qcom_scm_desc desc = {};
++	int status;
++
++	if (img_phys + img_len > SZ_4G)
++		return -EINVAL;
++
++	desc.owner = QSEECOM_TZ_OWNER_QSEE_OS;
++	desc.svc = QSEECOM_TZ_SVC_APP_MGR;
++	desc.cmd = QSEECOM_TZ_CMD_APP_START;
++	desc.arginfo = QCOM_SCM_ARGS(3, QCOM_SCM_VAL, QCOM_SCM_VAL, QCOM_SCM_VAL);
++	desc.args[0] = mdt_len;
++	desc.args[1] = img_len;
++	desc.args[2] = img_phys;
++
++	status = qcom_scm_qseecom_call(&desc, &res);
++	if (status)
++		return status;
++
++	if (res.result != QSEECOM_RESULT_SUCCESS ||
++	    res.resp_type != QSEECOM_SCM_RES_APP_ID)
++		return -EIO;
++
++	*app_id = res.data;
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_scm_qseecom_app_load);
++
+ /**
+  * qcom_scm_qseecom_app_send() - Send to and receive data from a given QSEE app.
+  * @app_id:   The ID of the target app.
+diff --git a/include/linux/firmware/qcom/qcom_scm.h b/include/linux/firmware/qcom/qcom_scm.h
+index 10f802c7cb8f..98c878589fbc 100644
+--- a/include/linux/firmware/qcom/qcom_scm.h
++++ b/include/linux/firmware/qcom/qcom_scm.h
+@@ -174,6 +174,8 @@ int qcom_scm_shm_bridge_delete(u64 handle);
+ #ifdef CONFIG_QCOM_QSEECOM
+ 
+ int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id);
++int qcom_scm_qseecom_app_load(phys_addr_t img_phys, size_t mdt_len,
++			      size_t img_len, u32 *app_id);
+ int qcom_scm_qseecom_app_send(u32 app_id, void *req, size_t req_size,
+ 			      void *rsp, size_t rsp_size);
+ 
+@@ -184,6 +186,13 @@ static inline int qcom_scm_qseecom_app_get_id(const char *app_name, u32 *app_id)
+ 	return -EINVAL;
+ }
+ 
++static inline int qcom_scm_qseecom_app_load(phys_addr_t img_phys,
++					    size_t mdt_len, size_t img_len,
++					    u32 *app_id)
++{
++	return -EINVAL;
++}
++
+ static inline int qcom_scm_qseecom_app_send(u32 app_id,
+ 					    void *req, size_t req_size,
+ 					    void *rsp, size_t rsp_size)

@@ -11,6 +11,39 @@ algorithms:
   - BlackLevel:
       blackLevel: 4096
   - Awb:
+      # Bayesian AWB searches along the colour temperature locus below (and
+      # at most transversePos/Neg off it), which is what projecting the grey
+      # world estimate onto the curve used to do by hand. Priors are flat:
+      # no lux estimate exists in the software ISP.
+      algorithm: bayes
+      priors:
+        - lux: 0
+          ct: [ 2000, 13000 ]
+          probability: [ 1.0, 1.0 ]
+      transversePos: 0.01
+      transverseNeg: 0.01
+      AwbMode:
+        AwbAuto:
+          lo: 2500
+          hi: 8000
+        AwbIncandescent:
+          lo: 2500
+          hi: 3000
+        AwbTungsten:
+          lo: 3000
+          hi: 3500
+        AwbFluorescent:
+          lo: 4000
+          hi: 4700
+        AwbIndoor:
+          lo: 3000
+          hi: 5000
+        AwbDaylight:
+          lo: 5500
+          hi: 6500
+        AwbCloudy:
+          lo: 7000
+          hi: 8000
       # Colour-temperature locus, extracted from the vendor chromatix
       # (libchromatix_imx362_pixel_res0_snapshot_3a.so, .data 0x30..0xb0: 16
       # (R/G, B/G) reference points, of which 10 are distinct). The gains are
@@ -62,5 +95,48 @@ algorithms:
                  0.0516, -0.5695,  1.5179 ]
   - Adjust:
   - Agc:
+      AeConstraintMode:
+        ConstraintNormal:
+          # The default: the brightest 2% of the scene at least mid grey.
+          lower:
+            qLo: 0.98
+            qHi: 1.0
+            yTarget: 0.5
+          # Highlight protection, as the vendor AE does: back off once the
+          # brightest 2% saturate, instead of exposing for the mean alone.
+          upper:
+            qLo: 0.98
+            qHi: 1.0
+            yTarget: 0.98
+        ConstraintHighlight:
+          lower:
+            qLo: 0.98
+            qHi: 1.0
+            yTarget: 0.5
+          upper:
+            qLo: 0.98
+            qHi: 1.0
+            yTarget: 0.8
+      # Exposure time (us) and analogue gain stages. Normal fills a 1/15 s
+      # frame before the gain passes 4x; Short keeps motion sharp; Long
+      # trades frame rate for noise.
+      AeExposureMode:
+        ExposureNormal:
+          exposureTime: [ 100, 10000, 33000, 66000 ]
+          gain: [ 1.0, 2.0, 4.0, 8.0 ]
+        ExposureShort:
+          exposureTime: [ 100, 5000, 10000, 20000 ]
+          gain: [ 1.0, 2.0, 4.0, 8.0 ]
+        ExposureLong:
+          exposureTime: [ 1000, 33000, 66000, 125000 ]
+          gain: [ 1.0, 1.0, 2.0, 8.0 ]
   - Af:
+      # Lens position in dioptres to lc898214xd focus_absolute code. Measured,
+      # not taken from the driver's comment: with the VL53L0 laser reading
+      # 155 mm to a book page, a sweep of the whole code range was sharpest
+      # at codes 0-50 and fell steadily to 581, so low codes focus near.
+      # Linear in dioptres (VCM travel is); the 581 = infinity end is assumed
+      # and wants a far scene to confirm.
+      map: [ 0.0, 581, 7.0, 0 ]
+      default: 0.5
 ...

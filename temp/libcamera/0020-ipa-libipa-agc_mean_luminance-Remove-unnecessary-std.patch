@@ -1,0 +1,119 @@
+From ef8666b90506691c192a899ff89c55d7c2ba6cb8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Tue, 21 Jul 2026 15:39:12 +0200
+Subject: [PATCH 20/68] ipa: libipa: agc_mean_luminance: Remove unnecessary
+ `std::shared_ptr`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The `ExposureModeHelper` object can be directly in the map, so do that.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit e9fa13dffa389b97cd30e5f55d0286bf8c31e231)
+---
+ src/ipa/libipa/agc_mean_luminance.cpp | 23 ++++++++---------------
+ src/ipa/libipa/agc_mean_luminance.h   |  4 ++--
+ 2 files changed, 10 insertions(+), 17 deletions(-)
+
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index 1b0c43feb..c1ec5a3dd 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -331,10 +331,7 @@ int AgcMeanLuminance::parseExposureModes(const ValueNode &tuningData)
+ 				});
+ 			}
+ 
+-			std::shared_ptr<ExposureModeHelper> helper =
+-				std::make_shared<ExposureModeHelper>(stages);
+-
+-			exposureModeHelpers_.try_emplace(it->second, std::move(helper));
++			exposureModeHelpers_.try_emplace(it->second, stages);
+ 			availableExposureModes.push_back(it->second);
+ 		}
+ 	}
+@@ -346,12 +343,8 @@ int AgcMeanLuminance::parseExposureModes(const ValueNode &tuningData)
+ 	 * possible before touching gain.
+ 	 */
+ 	if (availableExposureModes.empty()) {
+-		std::vector<std::pair<utils::Duration, double>> stages = { };
+-
+-		std::shared_ptr<ExposureModeHelper> helper =
+-			std::make_shared<ExposureModeHelper>(stages);
+-
+-		exposureModeHelpers_.try_emplace(controls::ExposureNormal, std::move(helper));
++		exposureModeHelpers_.try_emplace(controls::ExposureNormal,
++						 Span<std::pair<utils::Duration, double>>{});
+ 		availableExposureModes.push_back(controls::ExposureNormal);
+ 	}
+ 
+@@ -372,7 +365,7 @@ void AgcMeanLuminance::configure(utils::Duration lineDuration,
+ 				 const CameraSensorHelper *sensorHelper)
+ {
+ 	for (auto &[id, helper] : exposureModeHelpers_)
+-		helper->configure(lineDuration, sensorHelper);
++		helper.configure(lineDuration, sensorHelper);
+ 
+ 	luxWarningEnabled_ = true;
+ }
+@@ -483,7 +476,7 @@ void AgcMeanLuminance::setLimits(utils::Duration minExposureTime,
+ 				 std::vector<AgcMeanLuminance::AgcConstraint> constraints)
+ {
+ 	for (auto &[id, helper] : exposureModeHelpers_)
+-		helper->setLimits(minExposureTime, maxExposureTime, minGain, maxGain);
++		helper.setLimits(minExposureTime, maxExposureTime, minGain, maxGain);
+ 
+ 	additionalConstraints_ = std::move(constraints);
+ }
+@@ -683,7 +676,7 @@ AgcMeanLuminance::calculateNewEv(uint32_t constraintModeIndex,
+ 	 * The pipeline handler should validate that we have received an allowed
+ 	 * value for AeExposureMode.
+ 	 */
+-	std::shared_ptr<ExposureModeHelper> exposureModeHelper =
++	ExposureModeHelper &exposureModeHelper =
+ 		exposureModeHelpers_.at(exposureModeIndex);
+ 
+ 	if (effectiveExposureValue == 0s) {
+@@ -695,7 +688,7 @@ AgcMeanLuminance::calculateNewEv(uint32_t constraintModeIndex,
+ 		 * doesn't get stuck with 0 in case the sensor driver allows a
+ 		 * min exposure of 0.
+ 		 */
+-		return exposureModeHelper->splitExposure(10ms);
++		return exposureModeHelper.splitExposure(10ms);
+ 	}
+ 
+ 	double gain = estimateInitialGain(traits);
+@@ -717,7 +710,7 @@ AgcMeanLuminance::calculateNewEv(uint32_t constraintModeIndex,
+ 	newExposureValue = filterExposure(newExposureValue);
+ 
+ 	frameCount_++;
+-	return exposureModeHelper->splitExposure(newExposureValue);
++	return exposureModeHelper.splitExposure(newExposureValue);
+ }
+ 
+ /**
+diff --git a/src/ipa/libipa/agc_mean_luminance.h b/src/ipa/libipa/agc_mean_luminance.h
+index f4e1680ab..d5425cd20 100644
+--- a/src/ipa/libipa/agc_mean_luminance.h
++++ b/src/ipa/libipa/agc_mean_luminance.h
+@@ -69,7 +69,7 @@ public:
+ 		return constraintModes_;
+ 	}
+ 
+-	const std::map<int32_t, std::shared_ptr<ExposureModeHelper>> &exposureModeHelpers() const
++	const std::map<int32_t, ExposureModeHelper> &exposureModeHelpers() const
+ 	{
+ 		return exposureModeHelpers_;
+ 	}
+@@ -111,7 +111,7 @@ private:
+ 
+ 	std::vector<AgcConstraint> additionalConstraints_;
+ 	std::map<int32_t, std::vector<AgcConstraint>> constraintModes_;
+-	std::map<int32_t, std::shared_ptr<ExposureModeHelper>> exposureModeHelpers_;
++	std::map<int32_t, ExposureModeHelper> exposureModeHelpers_;
+ 	ControlInfoMap::Map controls_;
+ };
+ 

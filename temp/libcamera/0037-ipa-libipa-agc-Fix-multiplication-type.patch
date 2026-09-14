@@ -1,0 +1,40 @@
+From 9ac9815ccd6bd493504d8d647379c26a56ee852c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Fri, 31 Jul 2026 16:55:36 +0200
+Subject: [PATCH 37/68] ipa: libipa: agc: Fix multiplication type
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The type of `frameSize` is `uint64_t`, but it is assigned the result
+of a 32-bit multiplication. So make one of the terms a 64-bit integer
+so that the result will be actually 64-bit.
+
+Furthermore, also adjust the calculation to do the multiplication first
+just to be as accurate as possible. No wraparound will happen as long
+as the frame size is less than about 16.7 TiB.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 8272c82eb6f85108768aae34c57f0cfec5ebcf64)
+---
+ src/ipa/libipa/agc.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+index 6bff549a6..1e037780e 100644
+--- a/src/ipa/libipa/agc.cpp
++++ b/src/ipa/libipa/agc.cpp
+@@ -389,8 +389,8 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 
+ 	std::array<int64_t, 3> frameDurations;
+ 	for (unsigned int i = 0; i < frameHeights.size(); ++i) {
+-		uint64_t frameSize = lineLength * frameHeights[i];
+-		frameDurations[i] = frameSize / (config.sensorInfo.pixelRate / 1000000U);
++		uint64_t frameSize = static_cast<uint64_t>(lineLength) * frameHeights[i];
++		frameDurations[i] = frameSize * 1000000U / config.sensorInfo.pixelRate;
+ 	}
+ 
+ 	/*

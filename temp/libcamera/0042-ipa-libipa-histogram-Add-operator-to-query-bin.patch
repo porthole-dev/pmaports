@@ -1,0 +1,54 @@
+From d2bf9233132612995fefe1b05b31d9a9495ca9c1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Fri, 17 Jul 2026 17:07:16 +0200
+Subject: [PATCH 42/68] ipa: libipa: histogram: Add `operator[]` to query bin
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add an `operator[]` that takes an integral bin number and returns
+the count pertaining to that specific bin.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit dd379d9a98716e0ccb3a91810b93a140a9bcc79c)
+---
+ src/ipa/libipa/histogram.cpp | 6 ++++++
+ src/ipa/libipa/histogram.h   | 5 +++++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/src/ipa/libipa/histogram.cpp b/src/ipa/libipa/histogram.cpp
+index bcf263908..0a80a783c 100644
+--- a/src/ipa/libipa/histogram.cpp
++++ b/src/ipa/libipa/histogram.cpp
+@@ -74,6 +74,12 @@ Histogram::Histogram(Span<const uint32_t> data)
+  * \return Number of values
+  */
+ 
++/**
++ * \fn Histogram::operator[](size_t bin) const
++ * \brief Retrieve the value for \a bin
++ * \return The value in \a bin
++ */
++
+ /**
+  * \brief Cumulative frequency up to a (fractional) point in a bin
+  * \param[in] bin The bin up to which to cumulate
+diff --git a/src/ipa/libipa/histogram.h b/src/ipa/libipa/histogram.h
+index 0c02dda2b..619264176 100644
+--- a/src/ipa/libipa/histogram.h
++++ b/src/ipa/libipa/histogram.h
+@@ -42,6 +42,11 @@ public:
+ 	double quantile(double q, uint32_t first = 0, uint32_t last = UINT_MAX) const;
+ 	double interQuantileMean(double lowQuantile, double hiQuantile) const;
+ 
++	uint32_t operator[](size_t bin) const
++	{
++		return cumulative_[bin + 1] - cumulative_[bin];
++	}
++
+ private:
+ 	std::vector<uint64_t> cumulative_;
+ };

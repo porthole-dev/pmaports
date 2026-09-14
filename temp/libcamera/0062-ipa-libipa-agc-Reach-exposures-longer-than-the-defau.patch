@@ -1,0 +1,134 @@
+From babcda3aec5e57bc7a3fdc8ea51d088ecb1dec63 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:40:08 +0200
+Subject: [PATCH 62/68] ipa: libipa: agc: Reach exposures longer than the
+ default frame
+
+The exposure limit came from the V4L2_CID_EXPOSURE maximum, which a
+sensor driver sizes for the frame length it is at: the default one. An
+exposure longer than the default frame was therefore unreachable in
+manual mode and for the AGC, whatever FrameDurationLimits allowed.
+
+Recover the driver's exposure margin from the default frame length and
+the exposure maximum, extend the exposure limit to the longest frame
+VBLANK allows, and lengthen the frame to fit the exposure plus that
+margin. So that a dark scene does not drop the preview to one frame a
+second, the AGC's default frame duration ceiling becomes the mode's own
+frame duration or 1/15 s, whichever is longer; FrameDurationLimits still
+reaches the full range.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ src/ipa/libipa/agc.cpp | 44 +++++++++++++++++++++++++++++++++++++-----
+ src/ipa/libipa/agc.h   |  1 +
+ 2 files changed, 40 insertions(+), 5 deletions(-)
+
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+index 2c1d2169f..a8038a075 100644
+--- a/src/ipa/libipa/agc.cpp
++++ b/src/ipa/libipa/agc.cpp
+@@ -416,6 +416,20 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 	 *
+ 	 * \todo take VBLANK into account for maximum exposure time
+ 	 */
++	/*
++	 * A sensor driver sizes V4L2_CID_EXPOSURE for the frame length it is
++	 * currently at, so its maximum is the default frame length less the
++	 * driver's exposure margin, and it grows as VBLANK does. Recover the
++	 * margin from that relation and extend the exposure limit to the
++	 * longest frame VBLANK allows, so that exposures longer than the
++	 * default frame are reachable. The frame is lengthened to fit them in
++	 * processFrameDuration(), and the pipeline writes VBLANK before
++	 * EXPOSURE.
++	 */
++	session.exposureMargin = std::max<int32_t>(frameHeights[2] - maxExposure, 0);
++	maxExposure = std::max<int32_t>(maxExposure,
++					frameHeights[1] - session.exposureMargin);
++
+ 	session.minExposureTime = minExposure * session.lineDuration;
+ 	session.maxExposureTime = maxExposure * session.lineDuration;
+ 	session.minAnalogueGain = minGain;
+@@ -436,7 +450,17 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 	state.autoGainEnabled = session.autoAllowed;
+ 	state.exposureValue = 0;
+ 	state.minFrameDuration = session.minFrameDuration;
+-	state.maxFrameDuration = session.maxFrameDuration;
++	/*
++	 * Now that exposures may lengthen the frame, the full VBLANK range as
++	 * the default ceiling would let the AGC drop a dark preview to one
++	 * frame a second. Default to the mode's own frame rate, or 15 fps if
++	 * that is faster; an application asks for more with
++	 * FrameDurationLimits.
++	 */
++	state.maxFrameDuration = std::clamp<utils::Duration>(
++		std::max<utils::Duration>(std::chrono::microseconds(frameDurations[2]),
++					  std::chrono::microseconds(66667)),
++		session.minFrameDuration, session.maxFrameDuration);
+ 
+ 	/*
+ 	 * The IPA control maps keep their states, so the removal is necessary.
+@@ -462,7 +486,8 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 	};
+ 	config.ctrlMap[&controls::FrameDurationLimits] = ControlInfo{
+ 		frameDurations[0], frameDurations[1],
+-		Span<const int64_t, 2>{ { frameDurations[0], frameDurations[1] } },
++		Span<const int64_t, 2>{ { frameDurations[0],
++					  static_cast<int64_t>(state.maxFrameDuration.get<std::micro>()) } },
+ 	};
+ 
+ 	const auto add = [&](const ControlId &cid, const auto &automatic, const auto &manual) {
+@@ -724,7 +749,11 @@ void AgcAlgorithm::process(const agc::Session &session, agc::ActiveState &state,
+ 			   ControlList &metadata)
+ {
+ 	if (!params) {
+-		processFrameDuration(session, frameContext, frameContext.minFrameDuration);
++		processFrameDuration(session, frameContext,
++				     std::max(frameContext.minFrameDuration,
++					      utils::Duration((frameContext.exposure +
++							       session.exposureMargin) *
++							      session.lineDuration)));
+ 		fillMetadata(session, frameContext, metadata);
+ 		return;
+ 	}
+@@ -746,7 +775,8 @@ void AgcAlgorithm::process(const agc::Session &session, agc::ActiveState &state,
+ 
+ 	if (frameContext.autoExposureEnabled) {
+ 		minExposureTime = session.minExposureTime;
+-		maxExposureTime = std::clamp(frameContext.maxFrameDuration,
++		maxExposureTime = std::clamp(utils::Duration(frameContext.maxFrameDuration -
++							     session.exposureMargin * lineDuration),
+ 					     session.minExposureTime,
+ 					     session.maxExposureTime);
+ 	} else {
+@@ -833,7 +863,9 @@ void AgcAlgorithm::process(const agc::Session &session, agc::ActiveState &state,
+ 	 * the minimum frame duration when we have short exposures.
+ 	 */
+ 	processFrameDuration(session, frameContext,
+-			     std::max(frameContext.minFrameDuration, newExposureTime));
++			     std::max(frameContext.minFrameDuration,
++				      utils::Duration(newExposureTime +
++						      session.exposureMargin * lineDuration)));
+ 
+ 	fillMetadata(session, frameContext, metadata);
+ }
+@@ -852,6 +884,8 @@ void AgcAlgorithm::processFrameDuration(const agc::Session &session,
+ {
+ 	const utils::Duration &lineDuration = session.lineDuration;
+ 
++	frameDuration = std::clamp(frameDuration, session.minFrameDuration,
++				   session.maxFrameDuration);
+ 	frameContext.vblank =
+ 		(frameDuration / lineDuration) - session.sensor.outputSize.height;
+ 
+diff --git a/src/ipa/libipa/agc.h b/src/ipa/libipa/agc.h
+index a5700d262..99ad898ea 100644
+--- a/src/ipa/libipa/agc.h
++++ b/src/ipa/libipa/agc.h
+@@ -44,6 +44,7 @@ struct Session {
+ 	utils::Duration minFrameDuration;
+ 	utils::Duration maxFrameDuration;
+ 	utils::Duration lineDuration;
++	uint32_t exposureMargin;
+ 
+ 	struct {
+ 		Size outputSize;

@@ -1,0 +1,41 @@
+From 4ee930ef5d8c6669e72fe32ca3570641c0f66b00 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Fri, 22 May 2026 16:29:33 +0200
+Subject: [PATCH 10/68] ipa: softisp: Remove control presence sanity check
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The check is useless because `DelayedControls::get()` always populates
+the result even if the value is "none", so the presence check will
+always succeed. And furthermore the check also has the issue of being
+later than the actual access.
+
+Link: https://gitlab.freedesktop.org/camera/libcamera/-/work_items/241
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 9f70874322d23fc5a5ea56fbc1bed1bfbb40d886)
+---
+ src/ipa/simple/soft_simple.cpp | 7 -------
+ 1 file changed, 7 deletions(-)
+
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 629e1a32d..e99df1986 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -311,13 +311,6 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 		algo->process(context_, frame, frameContext, stats_, metadata);
+ 	metadataReady.emit(frame, metadata);
+ 
+-	/* Sanity check */
+-	if (!sensorControls.contains(V4L2_CID_EXPOSURE) ||
+-	    !sensorControls.contains(V4L2_CID_ANALOGUE_GAIN)) {
+-		LOG(IPASoft, Error) << "Control(s) missing";
+-		return;
+-	}
+-
+ 	ControlList ctrls(sensorInfoMap_);
+ 
+ 	auto &againNew = frameContext.sensor.gain;

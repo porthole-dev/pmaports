@@ -1,0 +1,149 @@
+From 15059474048833cbb1308f89aaa873b1f6e5bce1 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:45:17 +0200
+Subject: [PATCH 63/68] software_isp: swstats_cpu: Add a sharpness statistic
+
+Accumulate, for packed 10-bit Bayer input, the squared difference between
+the green sums of adjacent runs of four samples (16 pixels) along each
+sampled line, as a contrast autofocus measure.
+
+Averaging before differencing matters: in a dim room at high analogue
+gain, sample-to-sample differences are dominated by sensor noise. Frames
+of a book page with the lens at 0, 3 and 10 dioptres gave absolute
+sample gradients within 1% of each other, the blurriest highest, while
+block differences separated them 2.7x.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../internal/software_isp/swisp_stats.h       |  5 ++
+ src/libcamera/software_isp/swstats_cpu.cpp    | 49 +++++++++++++++++++
+ 2 files changed, 54 insertions(+)
+
+diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
+index d9d0d9be8..f823510ed 100644
+--- a/include/libcamera/internal/software_isp/swisp_stats.h
++++ b/include/libcamera/internal/software_isp/swisp_stats.h
+@@ -43,6 +43,11 @@ struct SwIspStats {
+ 	 * \brief A histogram of luminance values of all the sampled pixels
+ 	 */
+ 	Histogram yHistogram;
++	/**
++	 * \brief Sum of squared horizontal differences between block averages
++	 *        of the sampled green values, a contrast autofocus measure
++	 */
++	uint64_t sharpness;
+ };
+ 
+ } /* namespace libcamera */
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 7fb77ce7d..599ff24de 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -168,6 +168,8 @@ SwStatsCpu::SwStatsCpu(const CameraManager &cm)
+ }
+ 
+ static constexpr unsigned int kRedYMul = 77; /* 0.299 * 256 */
++/* Samples per block of the sharpness statistic: 16 pixels, 4 samples. */
++static constexpr unsigned int kSharpnessBlock = 4;
+ static constexpr unsigned int kGreenYMul = 150; /* 0.587 * 256 */
+ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 
+@@ -276,6 +278,10 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
+ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
+ 	const unsigned int widthInBytes = window_.width * 5 / 4;
++	uint64_t sharp = 0;
++	unsigned int block = 0;
++	unsigned int blockSamples = 0;
++	int prevBlock = -1;
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -290,10 +296,28 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 		g2 = src1[x];
+ 		r = src1[x + 1];
+ 		g = (g + g2) / 2;
++		/*
++		 * Contrast autofocus: squared difference between the green sums
++		 * of adjacent runs of kSharpnessBlock samples. Averaging first
++		 * keeps sensor noise, which dominates sample-to-sample
++		 * differences in a dim scene, out of the measure.
++		 */
++		block += g;
++		if (++blockSamples == kSharpnessBlock) {
++			if (prevBlock >= 0) {
++				const int d = static_cast<int>(block) - prevBlock;
++				sharp += d * d;
++			}
++			prevBlock = block;
++			block = 0;
++			blockSamples = 0;
++		}
+ 		/* Data is already 8 bits, divide by 1 */
+ 		SWSTATS_ACCUMULATE_LINE_STATS(1)
+ 	}
+ 
++	stats.sharpness += sharp;
++
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+@@ -302,6 +326,10 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
+ 	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
+ 	const unsigned int widthInBytes = window_.width * 5 / 4;
++	uint64_t sharp = 0;
++	unsigned int block = 0;
++	unsigned int blockSamples = 0;
++	int prevBlock = -1;
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -316,10 +344,28 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 		r = src1[x];
+ 		g2 = src1[x + 1];
+ 		g = (g + g2) / 2;
++		/*
++		 * Contrast autofocus: squared difference between the green sums
++		 * of adjacent runs of kSharpnessBlock samples. Averaging first
++		 * keeps sensor noise, which dominates sample-to-sample
++		 * differences in a dim scene, out of the measure.
++		 */
++		block += g;
++		if (++blockSamples == kSharpnessBlock) {
++			if (prevBlock >= 0) {
++				const int d = static_cast<int>(block) - prevBlock;
++				sharp += d * d;
++			}
++			prevBlock = block;
++			block = 0;
++			blockSamples = 0;
++		}
+ 		/* Data is already 8 bits, divide by 1 */
+ 		SWSTATS_ACCUMULATE_LINE_STATS(1)
+ 	}
+ 
++	stats.sharpness += sharp;
++
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
+@@ -392,6 +438,7 @@ void SwStatsCpu::startFrame(uint32_t frame)
+ 	for (auto &s : stats_) {
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		s.yHistogram.fill(0);
++		s.sharpness = 0;
+ 	}
+ }
+ 
+@@ -409,8 +456,10 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
+ 	if (valid) {
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		sharedStats_->yHistogram.fill(0);
++		sharedStats_->sharpness = 0;
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sum_ += s.sum_;
++			sharedStats_->sharpness += s.sharpness;
+ 			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
+ 		}

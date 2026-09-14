@@ -1,0 +1,257 @@
+From 93715284db42395b889ab0df5dceebcfb8ca7458 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 16 Jul 2026 11:37:52 +0200
+Subject: [PATCH 26/68] ipa: libipa: agc_mean_luminance: Remove persistent
+ params
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Remove `set{Lux,ExposureCompensation}()` and pass them via `Params`.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit a7bfb81608c8b4012db3c232e43570bc500f7a32)
+---
+ src/ipa/libipa/agc_mean_luminance.cpp | 62 +++++++++++----------------
+ src/ipa/libipa/agc_mean_luminance.h   | 20 ++-------
+ src/ipa/rkisp1/algorithms/agc.cpp     |  7 ++-
+ 3 files changed, 31 insertions(+), 58 deletions(-)
+
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index fbb5df847..e6373b52e 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -177,8 +177,7 @@ static constexpr unsigned int kDefaultLuxLevel = 500;
+  */
+ 
+ AgcMeanLuminance::AgcMeanLuminance()
+-	: filteredExposure_(0s), luxWarningEnabled_(true),
+-	  exposureCompensation_(1.0), frameCount_(0), lux_(0)
++	: filteredExposure_(0s), luxWarningEnabled_(true), frameCount_(0)
+ {
+ }
+ 
+@@ -440,25 +439,6 @@ int AgcMeanLuminance::parseTuningData(const ValueNode &tuningData)
+ 	return parseExposureModes(tuningData);
+ }
+ 
+-/**
+- * \fn AgcMeanLuminance::setExposureCompensation()
+- * \brief Set the exposure compensation value
+- * \param[in] gain The exposure compensation gain
+- *
+- * This function sets the exposure compensation value to be used in the
+- * AGC calculations. It is expressed as gain instead of EV.
+- */
+-
+-/**
+- * \fn AgcMeanLuminance::setLux(int lux)
+- * \brief Set the lux level
+- * \param[in] lux The lux level
+- *
+- * This function sets the lux level to be used in the AGC calculations. A value
+- * of 0 means no measurement and a default value of \a kDefaultLuxLevel is used
+- * if necessary.
+- */
+-
+ /**
+  * \brief Set the ExposureModeHelper limits for this class
+  * \param[in] minExposureTime Minimum exposure time to allow
+@@ -529,26 +509,23 @@ double AgcMeanLuminance::estimateInitialGain(const Traits &traits, double yTarge
+ 
+ /**
+  * \brief Clamp gain within the bounds of a defined constraint
+- * \param[in] constraintModeIndex The index of the constraint to adhere to
+- * \param[in] hist A histogram over which to calculate inter-quantile means
++ * \param[in] params The set of parameters for the calculation
+  * \param[in] gain The gain to clamp
+  *
+  * \return The gain clamped within the constraint bounds
+  */
+-double AgcMeanLuminance::constraintClampGain(uint32_t constraintModeIndex,
+-					     const Histogram &hist,
+-					     double gain) const
++double AgcMeanLuminance::constraintClampGain(const Params &params, double gain) const
+ {
+-	auto applyConstraint = [this, &gain, &hist](const AgcConstraint &constraint) {
+-		double lux = lux_;
++	auto applyConstraint = [&](const AgcConstraint &constraint) {
++		double lux = params.lux;
+ 
+-		if (relativeLuminanceTarget_.size() > 1 && lux_ == 0)
++		if (relativeLuminanceTarget_.size() > 1 && lux == 0)
+ 			lux = kDefaultLuxLevel;
+ 
+ 		double target = constraint.yTarget.eval(
+ 			constraint.yTarget.domain().clamp(lux));
+-		double newGain = target * hist.bins() /
+-				 hist.interQuantileMean(constraint.qLo, constraint.qHi);
++		double newGain = target * params.yHist.bins() /
++				 params.yHist.interQuantileMean(constraint.qLo, constraint.qHi);
+ 
+ 		if (constraint.bound == AgcConstraint::Bound::Lower &&
+ 		    newGain > gain) {
+@@ -567,7 +544,7 @@ double AgcMeanLuminance::constraintClampGain(uint32_t constraintModeIndex,
+ 		}
+ 	};
+ 
+-	const std::vector<AgcConstraint> &constraints = constraintModes_.at(constraintModeIndex);
++	const std::vector<AgcConstraint> &constraints = constraintModes_.at(params.constraintModeIndex);
+ 	std::for_each(constraints.begin(), constraints.end(), applyConstraint);
+ 
+ 	std::for_each(additionalConstraints_.begin(), additionalConstraints_.end(), applyConstraint);
+@@ -577,15 +554,16 @@ double AgcMeanLuminance::constraintClampGain(uint32_t constraintModeIndex,
+ 
+ /**
+  * \brief Get the currently effective y target
++ * \param[in] lux The effective lux value
++ * \param[in] exposureCompensation The exposure compensation value
+  *
+  * This function returns the current y target including exposure compensation.
+  *
+  * \return The y target value
+  */
+-double AgcMeanLuminance::effectiveYTarget() const
++double AgcMeanLuminance::effectiveYTarget(double lux, double exposureCompensation) const
+ {
+-	double lux = lux_;
+-	if (relativeLuminanceTarget_.size() > 1 && lux_ == 0) {
++	if (relativeLuminanceTarget_.size() > 1 && lux == 0) {
+ 		/*
+ 		 * Warn after a few frames if there is still no lux measurement
+ 		 * available. The number of 10 is chosen a bit arbitrarily. It
+@@ -609,7 +587,7 @@ double AgcMeanLuminance::effectiveYTarget() const
+ 	double luminanceTarget = relativeLuminanceTarget_.eval(
+ 		relativeLuminanceTarget_.domain().clamp(lux));
+ 
+-	return std::min(luminanceTarget * exposureCompensation_,
++	return std::min(luminanceTarget * exposureCompensation,
+ 			kMaxRelativeLuminanceTarget);
+ }
+ 
+@@ -664,6 +642,14 @@ utils::Duration AgcMeanLuminance::filterExposure(utils::Duration exposureValue)
+  *
+  * \var AgcMeanLuminance::Params::exposureModeIndex
+  * \brief The index of the exposure mode to use
++ *
++ * \var AgcMeanLuminance::Params::lux
++ * \brief The lux level to be used in the AGC calculations. A value of 0 means no
++ * measurement and a default value of \a kDefaultLuxLevel is used if necessary.
++ *
++ * \var AgcMeanLuminance::Params::exposureCompensation
++ * \brief The exposure compensation value to be used in the AGC calculations
++ * It is expressed as gain instead of EV.
+  */
+ 
+ /**
+@@ -695,7 +681,7 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 	 */
+ 	ExposureModeHelper &exposureModeHelper =
+ 		exposureModeHelpers_.at(params.exposureModeIndex);
+-	double yTarget = effectiveYTarget();
++	double yTarget = effectiveYTarget(params.lux, params.exposureCompensation);
+ 
+ 	if (params.effectiveExposureValue == 0s) {
+ 		LOG(AgcMeanLuminance, Error)
+@@ -710,7 +696,7 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 	}
+ 
+ 	double gain = estimateInitialGain(params.traits, yTarget);
+-	gain = constraintClampGain(params.constraintModeIndex, params.yHist, gain);
++	gain = constraintClampGain(params, gain);
+ 
+ 	/*
+ 	 * We don't check whether we're already close to the target, because
+diff --git a/src/ipa/libipa/agc_mean_luminance.h b/src/ipa/libipa/agc_mean_luminance.h
+index 6418fe2e6..5e986be00 100644
+--- a/src/ipa/libipa/agc_mean_luminance.h
++++ b/src/ipa/libipa/agc_mean_luminance.h
+@@ -50,16 +50,6 @@ public:
+ 	void configure(utils::Duration lineDuration, const CameraSensorHelper *sensorHelper);
+ 	int parseTuningData(const ValueNode &tuningData);
+ 
+-	void setExposureCompensation(double gain)
+-	{
+-		exposureCompensation_ = gain;
+-	}
+-
+-	void setLux(unsigned int lux)
+-	{
+-		lux_ = lux;
+-	}
+-
+ 	void setLimits(utils::Duration minExposureTime, utils::Duration maxExposureTime,
+ 		       double minGain, double maxGain, std::vector<AgcConstraint> constraints);
+ 
+@@ -84,6 +74,8 @@ public:
+ 		utils::Duration effectiveExposureValue;
+ 		uint32_t constraintModeIndex;
+ 		uint32_t exposureModeIndex;
++		double lux = 0;
++		double exposureCompensation = 1;
+ 	};
+ 
+ 	struct Result : ExposureModeHelper::Result {
+@@ -92,7 +84,7 @@ public:
+ 
+ 	[[nodiscard]] Result calculateNewEv(const Params &params);
+ 
+-	double effectiveYTarget() const;
++	double effectiveYTarget(double lux, double exposureCompensation) const;
+ 
+ 	void resetFrameCount()
+ 	{
+@@ -105,17 +97,13 @@ private:
+ 	int parseConstraintModes(const ValueNode &tuningData);
+ 	int parseExposureModes(const ValueNode &tuningData);
+ 	double estimateInitialGain(const Traits &traits, double yTarget) const;
+-	double constraintClampGain(uint32_t constraintModeIndex,
+-				   const Histogram &hist,
+-				   double gain) const;
++	double constraintClampGain(const Params &params, double gain) const;
+ 	utils::Duration filterExposure(utils::Duration exposureValue);
+ 
+ 	utils::Duration filteredExposure_;
+ 	mutable bool luxWarningEnabled_;
+-	double exposureCompensation_;
+ 	Pwl relativeLuminanceTarget_;
+ 	uint64_t frameCount_;
+-	unsigned int lux_;
+ 
+ 	std::vector<AgcConstraint> additionalConstraints_;
+ 	std::map<int32_t, std::vector<AgcConstraint>> constraintModes_;
+diff --git a/src/ipa/rkisp1/algorithms/agc.cpp b/src/ipa/rkisp1/algorithms/agc.cpp
+index b50a7dfd1..155c110c7 100644
+--- a/src/ipa/rkisp1/algorithms/agc.cpp
++++ b/src/ipa/rkisp1/algorithms/agc.cpp
+@@ -295,7 +295,7 @@ int Agc::configure(IPAContext &context, const IPACameraSensorInfo &configInfo)
+ 		       context.configuration.sensor.minAnalogueGain,
+ 		       context.configuration.sensor.maxAnalogueGain, {});
+ 
+-	context.activeState.agc.automatic.yTarget = agc_.effectiveYTarget();
++	context.activeState.agc.automatic.yTarget = agc_.effectiveYTarget(0, 1);
+ 
+ 	agc_.resetFrameCount();
+ 
+@@ -718,9 +718,6 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 	Histogram hist({ params->hist.hist_bins, context.hw.numHistogramBins },
+ 		       [](uint32_t x) { return x >> 4; });
+ 
+-	agc_.setExposureCompensation(pow(2.0, frameContext.agc.exposureValue));
+-	agc_.setLux(frameContext.lux.lux);
+-
+ 	const auto &newEv = agc_.calculateNewEv({
+ 		.traits = AgcTraits{
+ 			{ params->ae.exp_mean, context.hw.numAeCells },
+@@ -730,6 +727,8 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 		.effectiveExposureValue = effectiveExposureValue,
+ 		.constraintModeIndex = frameContext.agc.constraintMode,
+ 		.exposureModeIndex = frameContext.agc.exposureMode,
++		.lux = frameContext.lux.lux,
++		.exposureCompensation = pow(2.0, frameContext.agc.exposureValue),
+ 	});
+ 
+ 	LOG(RkISP1Agc, Debug)

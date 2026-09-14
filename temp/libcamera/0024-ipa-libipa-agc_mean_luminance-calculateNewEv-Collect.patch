@@ -1,0 +1,264 @@
+From a2c558c472f2eba907e6b08ac56b766ce137ca1a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 16 Jul 2026 11:15:41 +0200
+Subject: [PATCH 24/68] ipa: libipa: agc_mean_luminance: calculateNewEv():
+ Collect results
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add a new type that gives proper names to the returned quantities
+instead of just using an `std::tuple`.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 3750ee294e2206c3e62776106bd3dd019a5f15fd)
+---
+ src/ipa/ipu3/algorithms/agc.cpp         | 10 ++++------
+ src/ipa/libipa/agc_mean_luminance.cpp   | 11 ++++++++---
+ src/ipa/libipa/agc_mean_luminance.h     |  7 ++++---
+ src/ipa/libipa/exposure_mode_helper.cpp | 19 ++++++++++++++++++-
+ src/ipa/libipa/exposure_mode_helper.h   | 11 ++++++++---
+ src/ipa/mali-c55/algorithms/agc.cpp     | 10 ++++------
+ src/ipa/rkisp1/algorithms/agc.cpp       | 16 +++++++---------
+ 7 files changed, 53 insertions(+), 31 deletions(-)
+
+diff --git a/src/ipa/ipu3/algorithms/agc.cpp b/src/ipa/ipu3/algorithms/agc.cpp
+index 604ebe914..fc8ff7229 100644
+--- a/src/ipa/ipu3/algorithms/agc.cpp
++++ b/src/ipa/ipu3/algorithms/agc.cpp
+@@ -237,9 +237,7 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 	double analogueGain = frameContext.sensor.gain;
+ 	utils::Duration effectiveExposureValue = exposureTime * analogueGain;
+ 
+-	utils::Duration newExposureTime;
+-	double aGain, qGain, dGain;
+-	std::tie(newExposureTime, aGain, qGain, dGain) = agc_.calculateNewEv({
++	const auto &newEv = agc_.calculateNewEv({
+ 		.traits = AgcTraits{
+ 			rgbTriples_,
+ 			{{
+@@ -257,12 +255,12 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 
+ 	LOG(IPU3Agc, Debug)
+ 		<< "Divided up exposure time, analogue gain and digital gain are "
+-		<< newExposureTime << ", " << aGain << " and " << dGain;
++		<< newEv.exposureTime << ", " << newEv.analogueGain << " and " << newEv.digitalGain;
+ 
+ 	IPAActiveState &activeState = context.activeState;
+ 	/* Update the estimated exposure time and gain. */
+-	activeState.agc.exposure = newExposureTime / context.configuration.sensor.lineDuration;
+-	activeState.agc.gain = aGain;
++	activeState.agc.exposure = newEv.exposureTime / context.configuration.sensor.lineDuration;
++	activeState.agc.gain = newEv.analogueGain;
+ 
+ 	metadata.set(controls::AnalogueGain, frameContext.sensor.gain);
+ 	metadata.set(controls::ExposureTime, exposureTime.get<std::micro>());
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index 3a14d778a..8e6eafd85 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -667,6 +667,11 @@ utils::Duration AgcMeanLuminance::filterExposure(utils::Duration exposureValue)
+  * \brief The index of the exposure mode to use
+  */
+ 
++/**
++ * \struct AgcMeanLuminance::Result
++ * \brief Collection of results of the mean luminance AGC algorithm
++ */
++
+ /**
+  * \brief Calculate the new exposure value and split it between exposure time
+  * and gain
+@@ -679,7 +684,7 @@ utils::Duration AgcMeanLuminance::filterExposure(utils::Duration exposureValue)
+  * \return Tuple of exposure time, analogue gain, quantization gain and digital
+  * gain
+  */
+-std::tuple<utils::Duration, double, double, double>
++AgcMeanLuminance::Result
+ AgcMeanLuminance::calculateNewEv(const Params &params)
+ {
+ 	/*
+@@ -698,7 +703,7 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 		 * doesn't get stuck with 0 in case the sensor driver allows a
+ 		 * min exposure of 0.
+ 		 */
+-		return exposureModeHelper.splitExposure(10ms);
++		return { exposureModeHelper.splitExposure(10ms) };
+ 	}
+ 
+ 	double gain = estimateInitialGain(params.traits);
+@@ -720,7 +725,7 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 	newExposureValue = filterExposure(newExposureValue);
+ 
+ 	frameCount_++;
+-	return exposureModeHelper.splitExposure(newExposureValue);
++	return { exposureModeHelper.splitExposure(newExposureValue) };
+ }
+ 
+ /**
+diff --git a/src/ipa/libipa/agc_mean_luminance.h b/src/ipa/libipa/agc_mean_luminance.h
+index 9b82d97ab..aa4c0369a 100644
+--- a/src/ipa/libipa/agc_mean_luminance.h
++++ b/src/ipa/libipa/agc_mean_luminance.h
+@@ -9,7 +9,6 @@
+ 
+ #include <map>
+ #include <memory>
+-#include <tuple>
+ #include <vector>
+ 
+ #include <libcamera/base/utils.h>
+@@ -87,8 +86,10 @@ public:
+ 		uint32_t exposureModeIndex;
+ 	};
+ 
+-	std::tuple<utils::Duration, double, double, double>
+-	calculateNewEv(const Params &params);
++	struct Result : ExposureModeHelper::Result {
++	};
++
++	[[nodiscard]] Result calculateNewEv(const Params &params);
+ 
+ 	double effectiveYTarget() const;
+ 
+diff --git a/src/ipa/libipa/exposure_mode_helper.cpp b/src/ipa/libipa/exposure_mode_helper.cpp
+index 01c5cba8e..762e27b4f 100644
+--- a/src/ipa/libipa/exposure_mode_helper.cpp
++++ b/src/ipa/libipa/exposure_mode_helper.cpp
+@@ -153,6 +153,23 @@ double ExposureModeHelper::clampGain(double gain, double *quantizationGain) cons
+ 	return clamped;
+ }
+ 
++/**
++ * \struct ExposureModeHelper::Result
++ * \brief Result of splitExposure()
++ *
++ * \var ExposureModeHelper::Result::exposureTime
++ * \brief The applicable exposure time
++ *
++ * \var ExposureModeHelper::Result::analogueGain
++ * \brief The applicable analogue gain
++ *
++ * \var ExposureModeHelper::Result::quantizationGain
++ * \brief The applicable quantization gain
++ *
++ * \var ExposureModeHelper::Result::digitalGain
++ * \brief The applicable digital gain
++ */
++
+ /**
+  * \brief Split exposure into exposure time and gain
+  * \param[in] exposure Exposure value
+@@ -190,7 +207,7 @@ double ExposureModeHelper::clampGain(double gain, double *quantizationGain) cons
+  * \return Tuple of exposure time, analogue gain, quantization gain and digital
+  * gain
+  */
+-std::tuple<utils::Duration, double, double, double>
++ExposureModeHelper::Result
+ ExposureModeHelper::splitExposure(utils::Duration exposure) const
+ {
+ 	ASSERT(maxExposureTime_);
+diff --git a/src/ipa/libipa/exposure_mode_helper.h b/src/ipa/libipa/exposure_mode_helper.h
+index 968192ddc..2bab20f97 100644
+--- a/src/ipa/libipa/exposure_mode_helper.h
++++ b/src/ipa/libipa/exposure_mode_helper.h
+@@ -7,7 +7,6 @@
+ 
+ #pragma once
+ 
+-#include <tuple>
+ #include <utility>
+ #include <vector>
+ 
+@@ -30,8 +29,14 @@ public:
+ 	void setLimits(utils::Duration minExposureTime, utils::Duration maxExposureTime,
+ 		       double minGain, double maxGain);
+ 
+-	std::tuple<utils::Duration, double, double, double>
+-	splitExposure(utils::Duration exposure) const;
++	struct Result {
++		utils::Duration exposureTime;
++		double analogueGain;
++		double quantizationGain;
++		double digitalGain;
++	};
++
++	[[nodiscard]] Result splitExposure(utils::Duration exposure) const;
+ 
+ 	utils::Duration minExposureTime() const { return minExposureTime_; }
+ 	utils::Duration maxExposureTime() const { return maxExposureTime_; }
+diff --git a/src/ipa/mali-c55/algorithms/agc.cpp b/src/ipa/mali-c55/algorithms/agc.cpp
+index 188a0b1e1..2eb37f447 100644
+--- a/src/ipa/mali-c55/algorithms/agc.cpp
++++ b/src/ipa/mali-c55/algorithms/agc.cpp
+@@ -332,9 +332,7 @@ void Agc::process(IPAContext &context,
+ 	utils::Duration currentShutter = exposure * configuration.sensor.lineDuration;
+ 	utils::Duration effectiveExposureValue = currentShutter * analogueGain;
+ 
+-	utils::Duration shutterTime;
+-	double aGain, qGain, dGain;
+-	std::tie(shutterTime, aGain, qGain, dGain) = agc_.calculateNewEv({
++	const auto &newEv = agc_.calculateNewEv({
+ 		.traits = AgcTraits(statistics_),
+ 		.yHist = statistics_.yHist,
+ 		.effectiveExposureValue = effectiveExposureValue,
+@@ -344,10 +342,10 @@ void Agc::process(IPAContext &context,
+ 
+ 	LOG(MaliC55Agc, Debug)
+ 		<< "Divided up shutter, analogue gain and digital gain are "
+-		<< shutterTime << ", " << aGain << " and " << dGain;
++		<< newEv.exposureTime << ", " << newEv.analogueGain << " and " << newEv.digitalGain;
+ 
+-	activeState.agc.automatic.exposure = shutterTime / configuration.sensor.lineDuration;
+-	activeState.agc.automatic.sensorGain = aGain;
++	activeState.agc.automatic.exposure = newEv.exposureTime / configuration.sensor.lineDuration;
++	activeState.agc.automatic.sensorGain = newEv.analogueGain;
+ 
+ 	metadata.set(controls::ExposureTime, currentShutter.get<std::micro>());
+ 	metadata.set(controls::AnalogueGain, frameContext.agc.sensorGain);
+diff --git a/src/ipa/rkisp1/algorithms/agc.cpp b/src/ipa/rkisp1/algorithms/agc.cpp
+index bca867c87..1825e5aee 100644
+--- a/src/ipa/rkisp1/algorithms/agc.cpp
++++ b/src/ipa/rkisp1/algorithms/agc.cpp
+@@ -721,9 +721,7 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 	agc_.setExposureCompensation(pow(2.0, frameContext.agc.exposureValue));
+ 	agc_.setLux(frameContext.lux.lux);
+ 
+-	utils::Duration newExposureTime;
+-	double aGain, qGain, dGain;
+-	std::tie(newExposureTime, aGain, qGain, dGain) = agc_.calculateNewEv({
++	const auto &newEv = agc_.calculateNewEv({
+ 		.traits = AgcTraits{
+ 			{ params->ae.exp_mean, context.hw.numAeCells },
+ 			meteringModes_.at(frameContext.agc.meteringMode),
+@@ -736,21 +734,21 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 
+ 	LOG(RkISP1Agc, Debug)
+ 		<< "Divided up exposure time, analogue gain, quantization gain"
+-		<< " and digital gain are " << newExposureTime << ", " << aGain
+-		<< ", " << qGain << " and " << dGain;
++		<< " and digital gain are " << newEv.exposureTime << ", " << newEv.analogueGain
++		<< ", " << newEv.quantizationGain << " and " << newEv.digitalGain;
+ 
+ 	IPAActiveState &activeState = context.activeState;
+ 	/* Update the estimated exposure and gain. */
+-	activeState.agc.automatic.exposure = newExposureTime / lineDuration;
+-	activeState.agc.automatic.gain = aGain;
+-	activeState.agc.automatic.quantizationGain = qGain;
++	activeState.agc.automatic.exposure = newEv.exposureTime / lineDuration;
++	activeState.agc.automatic.gain = newEv.analogueGain;
++	activeState.agc.automatic.quantizationGain = newEv.quantizationGain;
+ 	activeState.agc.automatic.yTarget = agc_.effectiveYTarget();
+ 	/*
+ 	 * Expand the target frame duration so that we do not run faster than
+ 	 * the minimum frame duration when we have short exposures.
+ 	 */
+ 	processFrameDuration(context, frameContext,
+-			     std::max(frameContext.agc.minFrameDuration, newExposureTime));
++			     std::max(frameContext.agc.minFrameDuration, newEv.exposureTime));
+ 
+ 	fillMetadata(context, frameContext, metadata);
+ }

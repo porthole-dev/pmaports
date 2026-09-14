@@ -1,0 +1,62 @@
+From cbf59e56c64b011d664635fa7680e74a4d8f1e44 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 18:15:35 +0200
+Subject: [PATCH 67/68] ipa: softisp: Configure with the sensor information of
+ the new mode
+
+The IPA kept the IPACameraSensorInfo it was given at init, so after a
+sensor mode change the AGC computed line duration, exposure limits and
+VBLANK from the mode the camera happened to start in. On a sensor whose
+binned mode has a different line length and pixel rate, FrameDuration
+metadata read 33 ms while frames arrived every 8.3 ms, and requested
+frame durations and exposure times were off by the ratio of the line
+durations.
+
+Pass the sensor information of the configured mode in IPAConfigInfo and
+use it.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ include/libcamera/ipa/soft.mojom         | 1 +
+ src/ipa/simple/soft_simple.cpp           | 1 +
+ src/libcamera/pipeline/simple/simple.cpp | 3 +++
+ 3 files changed, 5 insertions(+)
+
+diff --git a/include/libcamera/ipa/soft.mojom b/include/libcamera/ipa/soft.mojom
+index e1921737d..a5ced86d6 100644
+--- a/include/libcamera/ipa/soft.mojom
++++ b/include/libcamera/ipa/soft.mojom
+@@ -10,6 +10,7 @@ import "include/libcamera/ipa/core.mojom";
+ 
+ struct IPAConfigInfo {
+ 	libcamera.ControlInfoMap sensorControls;
++	libcamera.IPACameraSensorInfo sensorInfo;
+ };
+ 
+ interface IPASoftInterface {
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 26f66c982..01345b9d7 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -192,6 +192,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ int IPASoftSimple::configure(const IPAConfigInfo &configInfo, ControlInfoMap *ipaControls)
+ {
+ 	context_.sensorControls = configInfo.sensorControls;
++	context_.sensorInfo = configInfo.sensorInfo;
+ 
+ 	/* Clear the IPA context before the streaming session. */
+ 	context_.configuration = {};
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 0ba8008a3..b3a27963d 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -1628,6 +1628,9 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+ 	} else {
+ 		ipa::soft::IPAConfigInfo configInfo;
+ 		configInfo.sensorControls = data->sensor_->controls();
++		ret = data->sensor_->sensorInfo(&configInfo.sensorInfo);
++		if (ret)
++			return ret;
+ 		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo, &data->controlInfo_);
+ 	}
+ }

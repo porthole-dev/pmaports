@@ -1,0 +1,33 @@
+From ac9cfd4931d7a71af2400aff4e3d6e02ea70e9c8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Fri, 17 Jul 2026 17:06:23 +0200
+Subject: [PATCH 41/68] ipa: libipa: histogram: total(): Use `back()`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Use the back method of `std::vector` to get the last element
+instead of indexing; this is clearer.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit c0cab5b5241f5ee77df7273848774aba61a92547)
+---
+ src/ipa/libipa/histogram.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ipa/libipa/histogram.h b/src/ipa/libipa/histogram.h
+index 8cf8bb6d1..0c02dda2b 100644
+--- a/src/ipa/libipa/histogram.h
++++ b/src/ipa/libipa/histogram.h
+@@ -37,7 +37,7 @@ public:
+ 
+ 	size_t bins() const { return cumulative_.size() - 1; }
+ 	Span<const uint64_t> data() const { return cumulative_; }
+-	uint64_t total() const { return cumulative_[cumulative_.size() - 1]; }
++	uint64_t total() const { return cumulative_.back(); }
+ 	uint64_t cumulativeFrequency(double bin) const;
+ 	double quantile(double q, uint32_t first = 0, uint32_t last = UINT_MAX) const;
+ 	double interQuantileMean(double lowQuantile, double hiQuantile) const;

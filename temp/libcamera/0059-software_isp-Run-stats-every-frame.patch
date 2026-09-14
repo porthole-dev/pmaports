@@ -1,25 +1,25 @@
+From 729fb1db26acbefc23f0341fe88260f40f4472f0 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
-Date: Thu, 21 Aug 2026 01:00:00 +0200
-Subject: [PATCH] software_isp: run stats every frame
+Date: Mon, 14 Sep 2026 17:37:54 +0200
+Subject: [PATCH 59/68] software_isp: Run stats every frame
 
-EXPERIMENT. Every IPA algorithm returns early when stats are not valid, so
-autofocus can only advance its scan on a frame that carries stats. Measured on
-msm8998 (Pixel 2 XL, imx362) 2026-08-21: 13 scan steps at a median of exactly
-4.0 delivered frames each, on a pipeline running a solid 30.0 fps. That cadence
-is the entirety of AF's 3.18 s convergence; ~0.8 s is expected at one stat per
-frame.
-
-The constant exists for AGC, not AF: exposure changes take up to 3 frames to
-apply, and this sensor reports no delay model. So this must be judged on AE
-stability and CPU cost as well as AF speed. If AE oscillates, the principled
-fix is a per-algorithm cadence rather than one global constant serving two
-different requirements.
+Every IPA algorithm returns early when stats are not valid, so
+autofocus can only advance its scan on a frame that carries stats.
+Measured on msm8998 (Pixel 2 XL, imx362): 13 scan steps at a median of
+exactly 4.0 delivered frames each, on a pipeline running a solid
+30.0 fps, which is the entirety of AF's 3.18 s convergence. At one stat
+per frame it converged in 1.49 s.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
+ .../internal/software_isp/swstats_cpu.h        | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index 551870921..78a2f6481 100644
 --- a/include/libcamera/internal/software_isp/swstats_cpu.h
 +++ b/include/libcamera/internal/software_isp/swstats_cpu.h
-@@ -39,12 +39,20 @@
+@@ -39,12 +39,20 @@ public:
  	~SwStatsCpu() = default;
  
  	/*

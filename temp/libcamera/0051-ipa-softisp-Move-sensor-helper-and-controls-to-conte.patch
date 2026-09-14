@@ -1,0 +1,161 @@
+From 37185824499993b673bf639023f1367531973b13 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Mon, 20 Jul 2026 14:14:19 +0200
+Subject: [PATCH 51/68] ipa: softisp: Move sensor helper and controls to
+ context
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+So that algorithms can access it. This also moves the black level
+handling into the blc algorithm instead of doing it in the main
+ipa source file.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit a9bdcedd249e1bbf241dbfeabd85fc5680312489)
+---
+ src/ipa/simple/algorithms/blc.cpp | 12 +++++++++++
+ src/ipa/simple/ipa_context.h      |  4 ++++
+ src/ipa/simple/soft_simple.cpp    | 34 ++++++++++---------------------
+ 3 files changed, 27 insertions(+), 23 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/blc.cpp b/src/ipa/simple/algorithms/blc.cpp
+index e45a913cd..c69392fd2 100644
+--- a/src/ipa/simple/algorithms/blc.cpp
++++ b/src/ipa/simple/algorithms/blc.cpp
+@@ -42,6 +42,18 @@ int BlackLevel::configure(IPAContext &context,
+ {
+ 	if (definedLevel_.has_value())
+ 		context.configuration.black.level = definedLevel_;
++	else if (context.camHelper) {
++		if (auto bl = context.camHelper->blackLevel()) {
++			/*
++			 * The black level from CameraSensorHelper is a 16 bit value, software ISP
++			 * works with 8 bit pixel values, both regardless of the actual
++			 * sensor pixel width. Hence we obtain the pixel-based black value
++			 * by dividing the value from the helper by 256.
++			 */
++			context.configuration.black.level = *bl / 256;
++		}
++	}
++
+ 	context.activeState.blc.level =
+ 		context.configuration.black.level.value_or(16);
+ 	return 0;
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 910947b81..651c62bf0 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -8,6 +8,7 @@
+ #pragma once
+ 
+ #include <array>
++#include <memory>
+ #include <optional>
+ #include <stdint.h>
+ 
+@@ -17,6 +18,7 @@
+ #include "libcamera/internal/vector.h"
+ 
+ #include <libipa/awb.h>
++#include <libipa/camera_sensor_helper.h>
+ #include <libipa/ccm.h>
+ #include <libipa/fc_queue.h>
+ 
+@@ -89,6 +91,8 @@ struct IPAContext {
+ 	}
+ 
+ 	IPACameraSensorInfo sensorInfo;
++	ControlInfoMap sensorControls;
++	std::unique_ptr<CameraSensorHelper> camHelper;
+ 	IPASessionConfiguration configuration;
+ 	IPAActiveState activeState;
+ 	FCQueue<IPAFrameContext> frameContexts;
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index eee15e973..90ef4fb7e 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -77,8 +77,6 @@ private:
+ 
+ 	DebayerParams *params_;
+ 	SwIspStats *stats_;
+-	std::unique_ptr<CameraSensorHelper> camHelper_;
+-	ControlInfoMap sensorInfoMap_;
+ 
+ 	/* Local parameter storage */
+ 	struct IPAContext context_;
+@@ -100,8 +98,8 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 			ControlInfoMap *ipaControls,
+ 			bool *ccmEnabled)
+ {
+-	camHelper_ = CameraSensorHelperFactoryBase::create(settings.sensorModel);
+-	if (!camHelper_) {
++	context_.camHelper = CameraSensorHelperFactoryBase::create(settings.sensorModel);
++	if (!context_.camHelper) {
+ 		LOG(IPASoft, Warning)
+ 			<< "Failed to create camera sensor helper for "
+ 			<< settings.sensorModel;
+@@ -202,10 +200,10 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 
+ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ {
+-	sensorInfoMap_ = configInfo.sensorControls;
++	context_.sensorControls = configInfo.sensorControls;
+ 
+-	const ControlInfo &exposureInfo = sensorInfoMap_.find(V4L2_CID_EXPOSURE)->second;
+-	const ControlInfo &gainInfo = sensorInfoMap_.find(V4L2_CID_ANALOGUE_GAIN)->second;
++	const ControlInfo &exposureInfo = context_.sensorControls.find(V4L2_CID_EXPOSURE)->second;
++	const ControlInfo &gainInfo = context_.sensorControls.find(V4L2_CID_ANALOGUE_GAIN)->second;
+ 
+ 	/* Clear the IPA context before the streaming session. */
+ 	context_.configuration = {};
+@@ -225,24 +223,14 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ 	int32_t againMax = gainInfo.max().get<int32_t>();
+ 	int32_t againDef = gainInfo.def().get<int32_t>();
+ 
+-	if (camHelper_) {
+-		context_.configuration.agc.againMin = camHelper_->gain(againMin);
+-		context_.configuration.agc.againMax = camHelper_->gain(againMax);
++	if (context_.camHelper) {
++		context_.configuration.agc.againMin = context_.camHelper->gain(againMin);
++		context_.configuration.agc.againMax = context_.camHelper->gain(againMax);
+ 		context_.configuration.agc.again10 = std::max(context_.configuration.agc.againMin, 1.0);
+ 		context_.configuration.agc.againMinStep =
+ 			(context_.configuration.agc.againMax -
+ 			 context_.configuration.agc.againMin) /
+ 			100.0;
+-		if (camHelper_->blackLevel().has_value()) {
+-			/*
+-			 * The black level from camHelper_ is a 16 bit value, software ISP
+-			 * works with 8 bit pixel values, both regardless of the actual
+-			 * sensor pixel width. Hence we obtain the pixel-based black value
+-			 * by dividing the value from the helper by 256.
+-			 */
+-			context_.configuration.black.level =
+-				camHelper_->blackLevel().value() / 256;
+-		}
+ 	} else {
+ 		context_.configuration.agc.againMax = againMax;
+ 		context_.configuration.agc.again10 = againDef;
+@@ -303,15 +291,15 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 
+ 	std::tie(frameContext.sensor.exposure, frameContext.sensor.gain) =
+-		agc::extractControls(sensorControls, camHelper_.get());
++		agc::extractControls(sensorControls, context_.camHelper.get());
+ 
+ 	ControlList metadata(controls::controls);
+ 	for (const auto &algo : algorithms())
+ 		algo->process(context_, frame, frameContext, stats_, metadata);
+ 	metadataReady.emit(frame, metadata);
+ 
+-	ControlList ctrls(sensorInfoMap_);
+-	agc::prepareControls(ctrls, camHelper_.get(),
++	ControlList ctrls(context_.sensorControls);
++	agc::prepareControls(ctrls, context_.camHelper.get(),
+ 			     frameContext.agc.exposure, frameContext.agc.gain);
+ 	setSensorControls.emit(ctrls);
+ }

@@ -1,0 +1,167 @@
+From f0f2668d916150b121905a4ba8476b8c23d5557d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Fri, 22 May 2026 12:56:24 +0200
+Subject: [PATCH 40/68] ipa: libipa: agc_mean_luminance: Remove control
+ handling
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The `AgcMeanLuminance` type does not do any actual control handling,
+so let's remove the `ControlInfoMap::Map` member, and let the user
+handle that using the `constraintModes()` / `exposureModeHelpers()`
+getters.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 6dbcdb02692429d7330c15913c36916cd2ea41f3)
+---
+ src/ipa/libipa/agc.cpp                | 15 ++++++++++++---
+ src/ipa/libipa/agc_mean_luminance.cpp | 21 +--------------------
+ src/ipa/libipa/agc_mean_luminance.h   |  8 --------
+ 3 files changed, 13 insertions(+), 31 deletions(-)
+
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+index 1e037780e..5b81d87a3 100644
+--- a/src/ipa/libipa/agc.cpp
++++ b/src/ipa/libipa/agc.cpp
+@@ -436,8 +436,8 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 	 * ControlInfoMap::Map during configuration.
+ 	 */
+ 	config.ctrlMap.erase(&controls::ExposureValue);
+-	for (const auto &[id, _] : impl_.controls())
+-		config.ctrlMap.erase(id);
++	config.ctrlMap.erase(&controls::AeConstraintMode);
++	config.ctrlMap.erase(&controls::AeExposureMode);
+ 
+ 	/* \todo Move this to the `Camera` class. */
+ 	config.ctrlMap[&controls::AeEnable] = ControlInfo{
+@@ -478,7 +478,16 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 
+ 	if (session.autoAllowed) {
+ 		config.ctrlMap[&controls::ExposureValue] = ControlInfo(-8.0f, 8.0f, 0.0f);
+-		config.ctrlMap.merge(impl_.controls());
++
++		std::vector<ControlValue> options;
++		for (const auto &[id, _] : impl_.constraintModes())
++			options.emplace_back(id);
++		config.ctrlMap[&controls::AeConstraintMode] = ControlInfo(options);
++
++		options.clear();
++		for (const auto &[id, _] : impl_.exposureModeHelpers())
++			options.emplace_back(id);
++		config.ctrlMap[&controls::AeExposureMode] = ControlInfo(options);
+ 	}
+ 
+ 	return 0;
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index bbeb58521..7e16164a9 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -236,8 +236,6 @@ int AgcMeanLuminance::parseConstraint(const ValueNode &modeDict, int32_t id)
+ 
+ int AgcMeanLuminance::parseConstraintModes(const ValueNode &tuningData)
+ {
+-	std::vector<ControlValue> availableConstraintModes;
+-
+ 	const ValueNode &constraintModes = tuningData[controls::AeConstraintMode.name()];
+ 	if (constraintModes.isDictionary()) {
+ 		for (const auto &[modeName, modeDict] : constraintModes.asDict()) {
+@@ -257,8 +255,6 @@ int AgcMeanLuminance::parseConstraintModes(const ValueNode &tuningData)
+ 			int ret = parseConstraint(modeDict, it->second);
+ 			if (ret)
+ 				return ret;
+-
+-			availableConstraintModes.push_back(it->second);
+ 		}
+ 	}
+ 
+@@ -277,18 +273,13 @@ int AgcMeanLuminance::parseConstraintModes(const ValueNode &tuningData)
+ 		};
+ 
+ 		constraintModes_[controls::ConstraintNormal].push_back(std::move(constraint));
+-		availableConstraintModes.push_back(controls::ConstraintNormal);
+ 	}
+ 
+-	controls_[&controls::AeConstraintMode] = ControlInfo(availableConstraintModes);
+-
+ 	return 0;
+ }
+ 
+ int AgcMeanLuminance::parseExposureModes(const ValueNode &tuningData)
+ {
+-	std::vector<ControlValue> availableExposureModes;
+-
+ 	const ValueNode &exposureModes = tuningData[controls::AeExposureMode.name()];
+ 	if (exposureModes.isDictionary()) {
+ 		for (const auto &[modeName, modeValues] : exposureModes.asDict()) {
+@@ -331,7 +322,6 @@ int AgcMeanLuminance::parseExposureModes(const ValueNode &tuningData)
+ 			}
+ 
+ 			exposureModeHelpers_.try_emplace(it->second, stages);
+-			availableExposureModes.push_back(it->second);
+ 		}
+ 	}
+ 
+@@ -341,13 +331,9 @@ int AgcMeanLuminance::parseExposureModes(const ValueNode &tuningData)
+ 	 * in the ExposureModeHelper simply driving the exposure time as high as
+ 	 * possible before touching gain.
+ 	 */
+-	if (availableExposureModes.empty()) {
++	if (exposureModeHelpers_.empty())
+ 		exposureModeHelpers_.try_emplace(controls::ExposureNormal,
+ 						 Span<std::pair<utils::Duration, double>>{});
+-		availableExposureModes.push_back(controls::ExposureNormal);
+-	}
+-
+-	controls_[&controls::AeExposureMode] = ControlInfo(availableExposureModes);
+ 
+ 	return 0;
+ }
+@@ -472,11 +458,6 @@ void AgcMeanLuminance::setLimits(utils::Duration minExposureTime,
+  * \brief Get the ExposureModeHelpers that have been parsed from tuning data
+  */
+ 
+-/**
+- * \fn AgcMeanLuminance::controls()
+- * \brief Get the controls that have been generated after parsing tuning data
+- */
+-
+ /**
+  * \brief Estimate the initial gain needed to achieve a relative luminance
+  * target
+diff --git a/src/ipa/libipa/agc_mean_luminance.h b/src/ipa/libipa/agc_mean_luminance.h
+index 5e986be00..46a4d3e3f 100644
+--- a/src/ipa/libipa/agc_mean_luminance.h
++++ b/src/ipa/libipa/agc_mean_luminance.h
+@@ -13,8 +13,6 @@
+ 
+ #include <libcamera/base/utils.h>
+ 
+-#include <libcamera/controls.h>
+-
+ #include "libcamera/internal/value_node.h"
+ 
+ #include "exposure_mode_helper.h"
+@@ -63,11 +61,6 @@ public:
+ 		return exposureModeHelpers_;
+ 	}
+ 
+-	ControlInfoMap::Map controls()
+-	{
+-		return controls_;
+-	}
+-
+ 	struct Params {
+ 		const Traits &traits;
+ 		const Histogram &yHist;
+@@ -108,7 +101,6 @@ private:
+ 	std::vector<AgcConstraint> additionalConstraints_;
+ 	std::map<int32_t, std::vector<AgcConstraint>> constraintModes_;
+ 	std::map<int32_t, ExposureModeHelper> exposureModeHelpers_;
+-	ControlInfoMap::Map controls_;
+ };
+ 
+ } /* namespace ipa */

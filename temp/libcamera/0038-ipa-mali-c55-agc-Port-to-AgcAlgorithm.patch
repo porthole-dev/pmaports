@@ -1,0 +1,560 @@
+From 94b7fd0529239d939d2d1b9904e6b64c4aa021f3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 21 May 2026 18:43:26 +0200
+Subject: [PATCH 38/68] ipa: mali-c55: agc: Port to `AgcAlgorithm`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Use the `AgcAlgorithm` class to implement the mali-c55 agc algorithm.
+
+Closes: https://gitlab.freedesktop.org/camera/libcamera/-/work_items/262
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 28bf10eacfdde0f04a3851854cc776c9bf1a280e)
+---
+ src/ipa/mali-c55/algorithms/agc.cpp | 131 +++++-----------------
+ src/ipa/mali-c55/algorithms/agc.h   |   4 +-
+ src/ipa/mali-c55/ipa_context.h      |  34 +++---
+ src/ipa/mali-c55/mali-c55.cpp       | 161 +++++-----------------------
+ 4 files changed, 69 insertions(+), 261 deletions(-)
+
+diff --git a/src/ipa/mali-c55/algorithms/agc.cpp b/src/ipa/mali-c55/algorithms/agc.cpp
+index 2eb37f447..e526ff631 100644
+--- a/src/ipa/mali-c55/algorithms/agc.cpp
++++ b/src/ipa/mali-c55/algorithms/agc.cpp
+@@ -13,7 +13,6 @@
+ #include <libcamera/base/utils.h>
+ 
+ #include <libcamera/control_ids.h>
+-#include <libcamera/property_ids.h>
+ 
+ #include "libipa/colours.h"
+ 
+@@ -123,14 +122,12 @@ Agc::Agc()
+ 
+ int Agc::init(IPAContext &context, const ValueNode &tuningData)
+ {
+-	int ret = agc_.parseTuningData(tuningData);
+-	if (ret)
+-		return ret;
+-
+-	context.ctrlMap[&controls::AeEnable] = ControlInfo(false, true);
+-	context.ctrlMap.merge(agc_.controls());
+-
+-	return 0;
++	return agc_.init(tuningData, {
++		.sensor = context.camHelper.get(),
++		.sensorInfo = context.sensorInfo,
++		.sensorControls = context.sensorControls,
++		.ctrlMap = context.ctrlMap,
++	});
+ }
+ 
+ int Agc::configure(IPAContext &context,
+@@ -140,79 +137,23 @@ int Agc::configure(IPAContext &context,
+ 	if (ret)
+ 		return ret;
+ 
+-	/*
+-	 * Defaults; we use whatever the sensor's default exposure is and the
+-	 * minimum analogue gain. AEGC is _active_ by default.
+-	 */
+-	context.activeState.agc.autoEnabled = true;
+-	context.activeState.agc.automatic.sensorGain = context.configuration.agc.minAnalogueGain;
+-	context.activeState.agc.automatic.exposure = context.configuration.agc.defaultExposure;
+-	context.activeState.agc.manual.sensorGain = context.configuration.agc.minAnalogueGain;
+-	context.activeState.agc.manual.exposure = context.configuration.agc.defaultExposure;
+-	context.activeState.agc.constraintMode = agc_.constraintModes().begin()->first;
+-	context.activeState.agc.exposureMode = agc_.exposureModeHelpers().begin()->first;
+-
+-	/* \todo Run this again when FrameDurationLimits is passed in */
+-	agc_.setLimits(context.configuration.agc.minShutterSpeed,
+-		       context.configuration.agc.maxShutterSpeed,
+-		       context.configuration.agc.minAnalogueGain,
+-		       context.configuration.agc.maxAnalogueGain,
+-		       {});
+-
+-	agc_.resetFrameCount();
++	ret = agc_.configure(context.configuration.agc, context.activeState.agc, {
++		.sensor = context.camHelper.get(),
++		.sensorInfo = context.sensorInfo,
++		.sensorControls = context.sensorControls,
++		.ctrlMap = context.ctrlMap,
++	});
++	if (ret)
++		return ret;
+ 
+ 	return 0;
+ }
+ 
+-void Agc::queueRequest(IPAContext &context, const uint32_t frame,
+-		       [[maybe_unused]] IPAFrameContext &frameContext,
++void Agc::queueRequest(IPAContext &context, [[maybe_unused]] const uint32_t frame,
++		       IPAFrameContext &frameContext,
+ 		       const ControlList &controls)
+ {
+-	auto &agc = context.activeState.agc;
+-
+-	const auto &constraintMode = controls.get(controls::AeConstraintMode);
+-	agc.constraintMode = constraintMode.value_or(agc.constraintMode);
+-
+-	const auto &exposureMode = controls.get(controls::AeExposureMode);
+-	agc.exposureMode = exposureMode.value_or(agc.exposureMode);
+-
+-	const auto &agcEnable = controls.get(controls::AeEnable);
+-	if (agcEnable && *agcEnable != agc.autoEnabled) {
+-		agc.autoEnabled = *agcEnable;
+-
+-		LOG(MaliC55Agc, Info)
+-			<< (agc.autoEnabled ? "Enabling" : "Disabling")
+-			<< " AGC";
+-	}
+-
+-	/*
+-	 * If the automatic exposure and gain is enabled we have no further work
+-	 * to do here...
+-	 */
+-	if (agc.autoEnabled)
+-		return;
+-
+-	/*
+-	 * ...otherwise we need to look for exposure and gain controls and use
+-	 * those to set the activeState.
+-	 */
+-	const auto &exposure = controls.get(controls::ExposureTime);
+-	if (exposure) {
+-		agc.manual.exposure = *exposure * 1.0us / context.configuration.sensor.lineDuration;
+-
+-		LOG(MaliC55Agc, Debug)
+-			<< "Exposure set to " << agc.manual.exposure
+-			<< " on request sequence " << frame;
+-	}
+-
+-	const auto &analogueGain = controls.get(controls::AnalogueGain);
+-	if (analogueGain) {
+-		agc.manual.sensorGain = *analogueGain;
+-
+-		LOG(MaliC55Agc, Debug)
+-			<< "Analogue gain set to " << agc.manual.sensorGain
+-			<< " on request sequence " << frame;
+-	}
++	agc_.queueRequest(context.configuration.agc, context.activeState.agc, frameContext.agc, controls);
+ }
+ 
+ void Agc::fillParamsBuffer(MaliC55Params *params, enum MaliC55Blocks type)
+@@ -265,9 +206,11 @@ void Agc::fillWeightsArrayBuffer(MaliC55Params *params, const enum MaliC55Blocks
+ 	std::fill(weights.begin(), weights.end(), 1);
+ }
+ 
+-void Agc::prepare([[maybe_unused]] IPAContext &context, const uint32_t frame,
+-		  [[maybe_unused]] IPAFrameContext &frameContext, MaliC55Params *params)
++void Agc::prepare(IPAContext &context, const uint32_t frame,
++		  IPAFrameContext &frameContext, MaliC55Params *params)
+ {
++	agc_.prepare(context.activeState.agc, frameContext.agc);
++
+ 	if (frame > 0)
+ 		return;
+ 
+@@ -308,11 +251,8 @@ void Agc::process(IPAContext &context,
+ 		  [[maybe_unused]] const uint32_t frame,
+ 		  IPAFrameContext &frameContext,
+ 		  const mali_c55_stats_buffer *stats,
+-		  [[maybe_unused]] ControlList &metadata)
++		  ControlList &metadata)
+ {
+-	IPASessionConfiguration &configuration = context.configuration;
+-	IPAActiveState &activeState = context.activeState;
+-
+ 	if (!stats) {
+ 		LOG(MaliC55Agc, Error) << "No statistics buffer passed to Agc";
+ 		return;
+@@ -323,32 +263,13 @@ void Agc::process(IPAContext &context,
+ 							       statistics_.gHist.interQuantileMean(0, 1),
+ 							       statistics_.bHist.interQuantileMean(0, 1) } });
+ 
+-	/*
+-	 * The Agc algorithm needs to know the effective exposure value that was
+-	 * applied to the sensor when the statistics were collected.
+-	 */
+-	uint32_t exposure = frameContext.agc.exposure;
+-	double analogueGain = frameContext.agc.sensorGain;
+-	utils::Duration currentShutter = exposure * configuration.sensor.lineDuration;
+-	utils::Duration effectiveExposureValue = currentShutter * analogueGain;
+-
+-	const auto &newEv = agc_.calculateNewEv({
++	agc_.process(context.configuration.agc, context.activeState.agc, frameContext.agc, {{
+ 		.traits = AgcTraits(statistics_),
+ 		.yHist = statistics_.yHist,
+-		.effectiveExposureValue = effectiveExposureValue,
+-		.constraintModeIndex = activeState.agc.constraintMode,
+-		.exposureModeIndex = activeState.agc.exposureMode,
+-	});
+-
+-	LOG(MaliC55Agc, Debug)
+-		<< "Divided up shutter, analogue gain and digital gain are "
+-		<< newEv.exposureTime << ", " << newEv.analogueGain << " and " << newEv.digitalGain;
+-
+-	activeState.agc.automatic.exposure = newEv.exposureTime / configuration.sensor.lineDuration;
+-	activeState.agc.automatic.sensorGain = newEv.analogueGain;
++		.exposure = frameContext.sensor.exposure,
++		.gain = frameContext.sensor.gain,
++	}}, metadata);
+ 
+-	metadata.set(controls::ExposureTime, currentShutter.get<std::micro>());
+-	metadata.set(controls::AnalogueGain, frameContext.agc.sensorGain);
+ 	metadata.set(controls::ColourTemperature, context.activeState.agc.temperatureK);
+ }
+ 
+diff --git a/src/ipa/mali-c55/algorithms/agc.h b/src/ipa/mali-c55/algorithms/agc.h
+index ec7fe28c1..809a57c53 100644
+--- a/src/ipa/mali-c55/algorithms/agc.h
++++ b/src/ipa/mali-c55/algorithms/agc.h
+@@ -11,7 +11,7 @@
+ 
+ #include "libcamera/internal/bayer_format.h"
+ 
+-#include "libipa/agc_mean_luminance.h"
++#include "libipa/agc.h"
+ #include "libipa/histogram.h"
+ 
+ #include "algorithm.h"
+@@ -68,7 +68,7 @@ private:
+ 	void fillWeightsArrayBuffer(MaliC55Params *params, enum MaliC55Blocks type);
+ 
+ 	AgcStatistics statistics_;
+-	AgcMeanLuminance agc_;
++	AgcAlgorithm agc_;
+ };
+ 
+ } /* namespace ipa::mali_c55::algorithms */
+diff --git a/src/ipa/mali-c55/ipa_context.h b/src/ipa/mali-c55/ipa_context.h
+index b9c7e08ab..68cd57712 100644
+--- a/src/ipa/mali-c55/ipa_context.h
++++ b/src/ipa/mali-c55/ipa_context.h
+@@ -14,6 +14,8 @@
+ 
+ #include "libcamera/internal/bayer_format.h"
+ 
++#include <libipa/agc.h>
++#include <libipa/camera_sensor_helper.h>
+ #include <libipa/fc_queue.h>
+ 
+ #include "libipa/awb.h"
+@@ -25,34 +27,16 @@ namespace libcamera {
+ namespace ipa::mali_c55 {
+ 
+ struct IPASessionConfiguration {
+-	struct {
+-		utils::Duration minShutterSpeed;
+-		utils::Duration maxShutterSpeed;
+-		uint32_t defaultExposure;
+-		double minAnalogueGain;
+-		double maxAnalogueGain;
+-	} agc;
++	agc::Session agc;
+ 
+ 	struct {
+ 		BayerFormat::Order bayerOrder;
+-		utils::Duration lineDuration;
+ 		uint32_t blackLevel;
+ 	} sensor;
+ };
+ 
+ struct IPAActiveState {
+-	struct {
+-		struct {
+-			uint32_t exposure;
+-			double sensorGain;
+-		} automatic;
+-		struct {
+-			uint32_t exposure;
+-			double sensorGain;
+-		} manual;
+-		bool autoEnabled;
+-		uint32_t constraintMode;
+-		uint32_t exposureMode;
++	struct Agc : agc::ActiveState {
+ 		uint32_t temperatureK;
+ 	} agc;
+ 
+@@ -61,10 +45,12 @@ struct IPAActiveState {
+ };
+ 
+ struct IPAFrameContext : public FrameContext {
++	agc::FrameContext agc;
++
+ 	struct {
+ 		uint32_t exposure;
+-		double sensorGain;
+-	} agc;
++		double gain;
++	} sensor;
+ 
+ 	ipa::awb::FrameContext awb;
+ 	ipa::ccm::FrameContext ccm;
+@@ -82,6 +68,10 @@ struct IPAContext {
+ 
+ 	FCQueue<IPAFrameContext> frameContexts;
+ 
++	ControlInfoMap sensorControls;
++
++	std::unique_ptr<CameraSensorHelper> camHelper;
++
+ 	ControlInfoMap::Map ctrlMap;
+ };
+ 
+diff --git a/src/ipa/mali-c55/mali-c55.cpp b/src/ipa/mali-c55/mali-c55.cpp
+index d6a07acbf..ac77e97cf 100644
+--- a/src/ipa/mali-c55/mali-c55.cpp
++++ b/src/ipa/mali-c55/mali-c55.cpp
+@@ -5,7 +5,6 @@
+  * Mali-C55 ISP image processing algorithms
+  */
+ 
+-#include <array>
+ #include <map>
+ #include <string.h>
+ #include <vector>
+@@ -66,21 +65,11 @@ protected:
+ 	std::string logPrefix() const override;
+ 
+ private:
+-	void updateSessionConfiguration(const IPACameraSensorInfo &info,
+-					const ControlInfoMap &sensorControls,
+-					BayerFormat::Order bayerOrder);
+-	void updateControls(const IPACameraSensorInfo &sensorInfo,
+-			    const ControlInfoMap &sensorControls,
+-			    ControlInfoMap *ipaControls);
+-	void setControls();
++	void updateControls(ControlInfoMap *ipaControls);
++	void setControls(const IPAFrameContext &frameContext);
+ 
+ 	std::map<unsigned int, MappedFrameBuffer> buffers_;
+ 
+-	ControlInfoMap sensorControls_;
+-
+-	/* Interface to the Camera Helper */
+-	std::unique_ptr<CameraSensorHelper> camHelper_;
+-
+ 	/* Local parameter storage */
+ 	struct IPAContext context_;
+ };
+@@ -104,8 +93,8 @@ int IPAMaliC55::init(const IPASettings &settings, const IPAConfigInfo &ipaConfig
+ {
+ 	context_.sensorInfo = ipaConfig.sensorInfo;
+ 
+-	camHelper_ = CameraSensorHelperFactoryBase::create(settings.sensorModel);
+-	if (!camHelper_) {
++	context_.camHelper = CameraSensorHelperFactoryBase::create(settings.sensorModel);
++	if (!context_.camHelper) {
+ 		LOG(IPAMaliC55, Error)
+ 			<< "Failed to create camera sensor helper for "
+ 			<< settings.sensorModel;
+@@ -131,32 +120,23 @@ int IPAMaliC55::init(const IPASettings &settings, const IPAConfigInfo &ipaConfig
+ 		return -EINVAL;
+ 	}
+ 
++	context_.sensorControls = ipaConfig.sensorControls;
++
+ 	int ret = createAlgorithms(context_, (*data)["algorithms"]);
+ 	if (ret)
+ 		return ret;
+ 
+-	updateControls(ipaConfig.sensorInfo, ipaConfig.sensorControls, ipaControls);
++	updateControls(ipaControls);
+ 
+ 	return 0;
+ }
+ 
+-void IPAMaliC55::setControls()
++void IPAMaliC55::setControls(const IPAFrameContext &frameContext)
+ {
+-	IPAActiveState &activeState = context_.activeState;
+-	uint32_t exposure;
+-	double gain;
+-
+-	if (activeState.agc.autoEnabled) {
+-		exposure = activeState.agc.automatic.exposure;
+-		gain = activeState.agc.automatic.sensorGain;
+-	} else {
+-		exposure = activeState.agc.manual.exposure;
+-		gain = activeState.agc.manual.sensorGain;
+-	}
++	ControlList ctrls(context_.sensorControls);
++	agc::prepareControls(ctrls, context_.camHelper.get(),
++			     frameContext.agc.exposure, frameContext.agc.gain);
+ 
+-	ControlList ctrls(sensorControls_);
+-	agc::prepareControls(ctrls, camHelper_.get(),
+-			     exposure, gain);
+ 	setSensorControls.emit(ctrls);
+ }
+ 
+@@ -170,111 +150,19 @@ void IPAMaliC55::stop()
+ 	context_.frameContexts.clear();
+ }
+ 
+-void IPAMaliC55::updateSessionConfiguration(const IPACameraSensorInfo &info,
+-					    const ControlInfoMap &sensorControls,
+-					    BayerFormat::Order bayerOrder)
+-{
+-	context_.configuration.sensor.bayerOrder = bayerOrder;
+-
+-	const ControlInfo &v4l2Exposure = sensorControls.find(V4L2_CID_EXPOSURE)->second;
+-	int32_t minExposure = v4l2Exposure.min().get<int32_t>();
+-	int32_t maxExposure = v4l2Exposure.max().get<int32_t>();
+-	int32_t defExposure = v4l2Exposure.def().get<int32_t>();
+-
+-	const ControlInfo &v4l2Gain = sensorControls.find(V4L2_CID_ANALOGUE_GAIN)->second;
+-	int32_t minGain = v4l2Gain.min().get<int32_t>();
+-	int32_t maxGain = v4l2Gain.max().get<int32_t>();
+-
+-	/*
+-	 * When the AGC computes the new exposure values for a frame, it needs
+-	 * to know the limits for shutter speed and analogue gain.
+-	 * As it depends on the sensor, update it with the controls.
+-	 *
+-	 * \todo take VBLANK into account for maximum shutter speed
+-	 */
+-	context_.configuration.sensor.lineDuration = info.minLineLength * 1.0s / info.pixelRate;
+-	context_.configuration.agc.minShutterSpeed = minExposure * context_.configuration.sensor.lineDuration;
+-	context_.configuration.agc.maxShutterSpeed = maxExposure * context_.configuration.sensor.lineDuration;
+-	context_.configuration.agc.defaultExposure = defExposure;
+-	context_.configuration.agc.minAnalogueGain = camHelper_->gain(minGain);
+-	context_.configuration.agc.maxAnalogueGain = camHelper_->gain(maxGain);
+-
+-	if (camHelper_->blackLevel().has_value()) {
+-		/*
+-		 * The black level from CameraSensorHelper is a 16-bit value.
+-		 * The Mali-C55 ISP expects 20-bit settings, so we shift it to
+-		 * the appropriate width
+-		 */
+-		context_.configuration.sensor.blackLevel =
+-			camHelper_->blackLevel().value() << 4;
+-	}
+-}
+-
+-void IPAMaliC55::updateControls(const IPACameraSensorInfo &sensorInfo,
+-				const ControlInfoMap &sensorControls,
+-				ControlInfoMap *ipaControls)
++void IPAMaliC55::updateControls(ControlInfoMap *ipaControls)
+ {
+ 	ControlInfoMap::Map ctrlMap;
+ 
+-	/*
+-	 * Compute the frame duration limits.
+-	 *
+-	 * The frame length is computed assuming a fixed line length combined
+-	 * with the vertical frame sizes.
+-	 */
+-	const ControlInfo &v4l2HBlank = sensorControls.find(V4L2_CID_HBLANK)->second;
+-	uint32_t hblank = v4l2HBlank.def().get<int32_t>();
+-	uint32_t lineLength = sensorInfo.outputSize.width + hblank;
+-
+-	const ControlInfo &v4l2VBlank = sensorControls.find(V4L2_CID_VBLANK)->second;
+-	std::array<uint32_t, 3> frameHeights{
+-		v4l2VBlank.min().get<int32_t>() + sensorInfo.outputSize.height,
+-		v4l2VBlank.max().get<int32_t>() + sensorInfo.outputSize.height,
+-		v4l2VBlank.def().get<int32_t>() + sensorInfo.outputSize.height,
+-	};
+-
+-	std::array<int64_t, 3> frameDurations;
+-	for (unsigned int i = 0; i < frameHeights.size(); ++i) {
+-		uint64_t frameSize = lineLength * frameHeights[i];
+-		frameDurations[i] = frameSize / (sensorInfo.pixelRate / 1000000U);
+-	}
+-
+-	ctrlMap[&controls::FrameDurationLimits] = ControlInfo(frameDurations[0],
+-							      frameDurations[1],
+-							      Span<const int64_t, 2>{ { frameDurations[2], frameDurations[2] } });
+-
+-	/*
+-	 * Compute exposure time limits from the V4L2_CID_EXPOSURE control
+-	 * limits and the line duration.
+-	 */
+-	double lineDuration = sensorInfo.minLineLength / sensorInfo.pixelRate;
+-
+-	const ControlInfo &v4l2Exposure = sensorControls.find(V4L2_CID_EXPOSURE)->second;
+-	int32_t minExposure = v4l2Exposure.min().get<int32_t>() * lineDuration;
+-	int32_t maxExposure = v4l2Exposure.max().get<int32_t>() * lineDuration;
+-	int32_t defExposure = v4l2Exposure.def().get<int32_t>() * lineDuration;
+-	ctrlMap[&controls::ExposureTime] = ControlInfo(minExposure, maxExposure, defExposure);
+-
+-	/* Compute the analogue gain limits. */
+-	const ControlInfo &v4l2Gain = sensorControls.find(V4L2_CID_ANALOGUE_GAIN)->second;
+-	float minGain = camHelper_->gain(v4l2Gain.min().get<int32_t>());
+-	float maxGain = camHelper_->gain(v4l2Gain.max().get<int32_t>());
+-	float defGain = camHelper_->gain(v4l2Gain.def().get<int32_t>());
+-	ctrlMap[&controls::AnalogueGain] = ControlInfo(minGain, maxGain, defGain);
+-
+-	/*
+-	 * Merge in any controls that we support either statically or from the
+-	 * algorithms.
+-	 */
+ 	ctrlMap.insert(context_.ctrlMap.begin(), context_.ctrlMap.end());
+-
+ 	*ipaControls = ControlInfoMap(std::move(ctrlMap), controls::controls);
+ }
+ 
+ int IPAMaliC55::configure(const IPAConfigInfo &ipaConfig, uint8_t bayerOrder,
+ 			  ControlInfoMap *ipaControls)
+ {
+-	sensorControls_ = ipaConfig.sensorControls;
++	context_.sensorControls = ipaConfig.sensorControls;
++	context_.sensorInfo = ipaConfig.sensorInfo;
+ 
+ 	/* Clear the IPA context before the streaming session. */
+ 	context_.configuration = {};
+@@ -283,9 +171,16 @@ int IPAMaliC55::configure(const IPAConfigInfo &ipaConfig, uint8_t bayerOrder,
+ 
+ 	const IPACameraSensorInfo &info = ipaConfig.sensorInfo;
+ 
+-	updateSessionConfiguration(info, ipaConfig.sensorControls,
+-				   static_cast<BayerFormat::Order>(bayerOrder));
+-	updateControls(info, ipaConfig.sensorControls, ipaControls);
++	context_.configuration.sensor.bayerOrder = static_cast<BayerFormat::Order>(bayerOrder);
++
++	if (auto bl = context_.camHelper->blackLevel()) {
++		/*
++		 * The black level from CameraSensorHelper is a 16-bit value.
++		 * The Mali-C55 ISP expects 20-bit settings, so we shift it to
++		 * the appropriate width
++		 */
++		context_.configuration.sensor.blackLevel = *bl << 4;
++	}
+ 
+ 	for (const auto &a : algorithms()) {
+ 		Algorithm *algo = static_cast<Algorithm *>(a.get());
+@@ -295,6 +190,8 @@ int IPAMaliC55::configure(const IPAConfigInfo &ipaConfig, uint8_t bayerOrder,
+ 			return ret;
+ 	}
+ 
++	updateControls(ipaControls);
++
+ 	return 0;
+ }
+ 
+@@ -354,8 +251,8 @@ void IPAMaliC55::processStats(unsigned int request, unsigned int bufferId,
+ 	stats = reinterpret_cast<mali_c55_stats_buffer *>(
+ 		buffers_.at(bufferId).planes()[0].data());
+ 
+-	std::tie(frameContext.agc.exposure, frameContext.agc.sensorGain) =
+-		agc::extractControls(sensorControls, camHelper_.get());
++	std::tie(frameContext.sensor.exposure, frameContext.sensor.gain) =
++		agc::extractControls(sensorControls, context_.camHelper.get());
+ 
+ 	ControlList metadata(controls::controls);
+ 
+@@ -365,7 +262,7 @@ void IPAMaliC55::processStats(unsigned int request, unsigned int bufferId,
+ 		algo->process(context_, request, frameContext, stats, metadata);
+ 	}
+ 
+-	setControls();
++	setControls(frameContext);
+ 
+ 	statsProcessed.emit(request, metadata);
+ }

@@ -1,0 +1,365 @@
+From 824c095bb67bbe8776393d32b792937e1010cf96 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Mon, 20 Jul 2026 17:10:14 +0200
+Subject: [PATCH 54/68] ipa: softisp: agc: Port to `AgcAlgorithm`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Use the `AgcAlgorithm` class to implement the agc algorithm.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Acked-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 004fea17dda45b1685ec8dd35628ae5b13af9a03)
+---
+ src/ipa/simple/algorithms/agc.cpp | 132 +++++++++++++++++-------------
+ src/ipa/simple/algorithms/agc.h   |  12 ++-
+ src/ipa/simple/ipa_context.h      |  20 +----
+ src/ipa/simple/soft_simple.cpp    |  55 +------------
+ 4 files changed, 88 insertions(+), 131 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 9c4bf2130..70c50a691 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -11,84 +11,98 @@
+ 
+ #include <libipa/histogram.h>
+ 
+-#include "control_ids.h"
+-
+ namespace libcamera {
+ 
+ LOG_DEFINE_CATEGORY(IPASoftExposure)
+ 
+ namespace ipa::soft::algorithms {
+ 
+-int Agc::configure(IPAContext &context, [[maybe_unused]] const IPAConfigInfo &configInfo)
+-{
+-	agc_.setLimits({
+-		.exposure = {
+-			context.configuration.agc.exposureMin,
+-			context.configuration.agc.exposureMax,
+-		},
+-		.gain = {
+-			context.configuration.agc.againMin,
+-			context.configuration.agc.againMax,
+-		},
+-		.gainMinStep = context.configuration.agc.againMinStep,
+-		.gain1 = context.configuration.agc.again10,
+-	});
++namespace {
+ 
+-	return 0;
+-}
+-
+-void Agc::process(IPAContext &context,
+-		  [[maybe_unused]] const uint32_t frame,
+-		  IPAFrameContext &frameContext,
+-		  const SwIspStats *stats,
+-		  ControlList &metadata)
++class AgcTraits : public AgcMeanLuminance::Traits
+ {
+-	utils::Duration exposureTime =
+-		context.configuration.agc.lineDuration * frameContext.sensor.exposure;
+-	metadata.set(controls::ExposureTime, exposureTime.get<std::micro>());
+-	metadata.set(controls::AnalogueGain, frameContext.sensor.gain);
+-
+-	if (!context.activeState.agc.valid) {
+-		/*
+-		 * Init active-state from sensor values in case updateExposure()
+-		 * does not run for the first frame.
+-		 */
+-		context.activeState.agc.exposure = frameContext.sensor.exposure;
+-		context.activeState.agc.again = frameContext.sensor.gain;
+-		context.activeState.agc.valid = true;
++public:
++	AgcTraits(const Histogram &yHist)
++		: yHist_(yHist)
++	{
+ 	}
+ 
+-	if (!stats->valid) {
++	double estimateLuminance(double gain) const override
++	{
+ 		/*
+-		 * Use the new exposure and gain values calculated the last time
+-		 * there were valid stats.
++		 * \todo Improve by asking the weight of saturating and
++		 * non-saturating bins directly from the histogram.
+ 		 */
+-		frameContext.agc.exposure = context.activeState.agc.exposure;
+-		frameContext.agc.gain = context.activeState.agc.again;
+-		return;
++		double sum = 0;
++
++		for (size_t i = 0; i < yHist_.bins(); i++)
++			sum += std::min<double>(yHist_.bins(), i * gain) * yHist_[i];
++
++		return sum / yHist_.total() / yHist_.bins();
+ 	}
+ 
+-	/* \todo The histogram should come already adjusted. */
+-	auto histogram = stats->yHistogram;
+-	const unsigned int blackLevelHistIdx =
+-		context.activeState.blc.level * histogram.size() / 256;
++private:
++	const Histogram &yHist_;
++};
+ 
+-	for (unsigned int i = 0; i < blackLevelHistIdx; i++)
+-		histogram[blackLevelHistIdx] += histogram[i];
++} /* namespace */
+ 
+-	const auto &newEv = agc_.calculateNewEv({
+-		.yHist = {
+-			{ histogram.begin() + blackLevelHistIdx, histogram.end() },
+-		},
+-		.exposure = frameContext.sensor.exposure,
+-		.gain = frameContext.sensor.gain,
++int Agc::init(IPAContext &context, const ValueNode &tuningData)
++{
++	return agc_.init(tuningData, context.camHelper.get(), {
++		.sensorInfo = context.sensorInfo,
++		.sensorControls = context.sensorControls,
++		.ctrlMap = context.ctrlMap,
+ 	});
++}
+ 
+-	frameContext.agc.exposure = newEv.exposure;
+-	frameContext.agc.gain = newEv.analogueGain;
++int Agc::configure(IPAContext &context, [[maybe_unused]] const IPAConfigInfo &configInfo)
++{
++	return agc_.configure(context.configuration.agc, context.activeState.agc, {
++		.sensorInfo = context.sensorInfo,
++		.sensorControls = context.sensorControls,
++		.ctrlMap = context.ctrlMap,
++	});
++}
+ 
+-	context.activeState.agc.exposure = frameContext.agc.exposure;
+-	context.activeState.agc.again = frameContext.agc.gain;
++void Agc::queueRequest(IPAContext &context, [[maybe_unused]] const uint32_t frame,
++		       IPAFrameContext &frameContext, const ControlList &controls)
++{
++	agc_.queueRequest(context.configuration.agc, context.activeState.agc, frameContext.agc, controls);
++}
++
++void Agc::prepare(IPAContext &context, [[maybe_unused]] const uint32_t frame,
++		  IPAFrameContext &frameContext, [[maybe_unused]] DebayerParams *params)
++{
++	agc_.prepare(context.activeState.agc, frameContext.agc);
++}
++
++void Agc::process(IPAContext &context,
++		  [[maybe_unused]] const uint32_t frame,
++		  IPAFrameContext &frameContext,
++		  const SwIspStats *stats,
++		  ControlList &metadata)
++{
++	if (stats->valid) {
++		/* \todo The histogram should come already adjusted. */
++		auto histogram = stats->yHistogram;
++
++		const unsigned int blackLevelHistIdx =
++			context.activeState.blc.level * histogram.size() / 256;
++		for (unsigned int i = 0; i < blackLevelHistIdx; i++)
++			histogram[blackLevelHistIdx] += histogram[i];
++
++		Histogram yHist({ histogram.begin() + blackLevelHistIdx, histogram.end() });
++
++		agc_.process(context.configuration.agc, context.activeState.agc, frameContext.agc, {{
++			.traits = AgcTraits(yHist),
++			.yHist = yHist,
++			.exposure = frameContext.sensor.exposure,
++			.gain = frameContext.sensor.gain,
++		}}, metadata);
++	} else {
++		agc_.process(context.configuration.agc, context.activeState.agc, frameContext.agc, {}, metadata);
++	}
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Agc, "Agc")
+diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
+index b20ea498f..f84ff79ff 100644
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -7,7 +7,7 @@
+ 
+ #pragma once
+ 
+-#include <libipa/agc_msv.h>
++#include <libipa/agc.h>
+ 
+ #include "algorithm.h"
+ 
+@@ -18,15 +18,23 @@ namespace ipa::soft::algorithms {
+ class Agc : public Algorithm
+ {
+ public:
++	int init(IPAContext &context, const ValueNode &tuningData) override;
++
+ 	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
+ 
++	void queueRequest(IPAContext &context, const uint32_t frame,
++			  IPAFrameContext &frameContext, const ControlList &controls) override;
++
++	void prepare(IPAContext &context, const uint32_t frame,
++		     IPAFrameContext &frameContext, DebayerParams *params) override;
++
+ 	void process(IPAContext &context, const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+ 		     const SwIspStats *stats,
+ 		     ControlList &metadata) override;
+ 
+ private:
+-	AgcMSV agc_;
++	AgcAlgorithm agc_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 651c62bf0..f288a73e9 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -17,6 +17,7 @@
+ #include "libcamera/internal/matrix.h"
+ #include "libcamera/internal/vector.h"
+ 
++#include <libipa/agc.h>
+ #include <libipa/awb.h>
+ #include <libipa/camera_sensor_helper.h>
+ #include <libipa/ccm.h>
+@@ -29,11 +30,7 @@ namespace libcamera {
+ namespace ipa::soft {
+ 
+ struct IPASessionConfiguration {
+-	struct {
+-		uint32_t exposureMin, exposureMax;
+-		double againMin, againMax, again10, againMinStep;
+-		utils::Duration lineDuration;
+-	} agc;
++	ipa::agc::Session agc;
+ 	struct {
+ 		std::optional<uint8_t> level;
+ 	} black;
+@@ -42,12 +39,7 @@ struct IPASessionConfiguration {
+ struct IPAActiveState {
+ 	ipa::awb::ActiveState awb;
+ 	ipa::ccm::ActiveState ccm;
+-
+-	struct {
+-		uint32_t exposure;
+-		double again;
+-		bool valid;
+-	} agc;
++	ipa::agc::ActiveState agc;
+ 
+ 	struct {
+ 		uint8_t level;
+@@ -68,11 +60,7 @@ struct IPAActiveState {
+ struct IPAFrameContext : public FrameContext {
+ 	ipa::awb::FrameContext awb;
+ 	ipa::ccm::FrameContext ccm;
+-
+-	struct {
+-		uint32_t exposure;
+-		double gain;
+-	} agc;
++	ipa::agc::FrameContext agc;
+ 
+ 	struct {
+ 		uint32_t exposure;
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index c8d0cd611..51281ac3e 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -107,6 +107,7 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 	}
+ 
+ 	context_.sensorInfo = sensorInfo;
++	context_.sensorControls = sensorControls;
+ 
+ 	/* Load the tuning data file */
+ 	File file(settings.configurationFile);
+@@ -180,22 +181,6 @@ int IPASoftSimple::init(const IPASettings &settings,
+ 	ControlInfoMap::Map ctrlMap = context_.ctrlMap;
+ 	*ipaControls = ControlInfoMap(std::move(ctrlMap), controls::controls);
+ 
+-	/*
+-	 * Check if the sensor driver supports the controls required by the
+-	 * Soft IPA.
+-	 * Don't save the min and max control values yet, as e.g. the limits
+-	 * for V4L2_CID_EXPOSURE depend on the configured sensor resolution.
+-	 */
+-	if (sensorControls.find(V4L2_CID_EXPOSURE) == sensorControls.end()) {
+-		LOG(IPASoft, Error) << "Don't have exposure control";
+-		return -EINVAL;
+-	}
+-
+-	if (sensorControls.find(V4L2_CID_ANALOGUE_GAIN) == sensorControls.end()) {
+-		LOG(IPASoft, Error) << "Don't have gain control";
+-		return -EINVAL;
+-	}
+-
+ 	return 0;
+ }
+ 
+@@ -203,55 +188,17 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo, ControlInfoMap *ip
+ {
+ 	context_.sensorControls = configInfo.sensorControls;
+ 
+-	const ControlInfo &exposureInfo = context_.sensorControls.find(V4L2_CID_EXPOSURE)->second;
+-	const ControlInfo &gainInfo = context_.sensorControls.find(V4L2_CID_ANALOGUE_GAIN)->second;
+-
+ 	/* Clear the IPA context before the streaming session. */
+ 	context_.configuration = {};
+ 	context_.activeState = {};
+ 	context_.frameContexts.clear();
+ 
+-	context_.configuration.agc.lineDuration =
+-		context_.sensorInfo.minLineLength * 1.0s / context_.sensorInfo.pixelRate;
+-	context_.configuration.agc.exposureMin = exposureInfo.min().get<int32_t>();
+-	context_.configuration.agc.exposureMax = exposureInfo.max().get<int32_t>();
+-	if (!context_.configuration.agc.exposureMin) {
+-		LOG(IPASoft, Warning) << "Minimum exposure is zero, that can't be linear";
+-		context_.configuration.agc.exposureMin = 1;
+-	}
+-
+-	int32_t againMin = gainInfo.min().get<int32_t>();
+-	int32_t againMax = gainInfo.max().get<int32_t>();
+-	int32_t againDef = gainInfo.def().get<int32_t>();
+-
+-	if (context_.camHelper) {
+-		context_.configuration.agc.againMin = context_.camHelper->gain(againMin);
+-		context_.configuration.agc.againMax = context_.camHelper->gain(againMax);
+-		context_.configuration.agc.again10 = std::max(context_.configuration.agc.againMin, 1.0);
+-		context_.configuration.agc.againMinStep =
+-			(context_.configuration.agc.againMax -
+-			 context_.configuration.agc.againMin) /
+-			100.0;
+-	} else {
+-		context_.configuration.agc.againMax = againMax;
+-		context_.configuration.agc.again10 = againDef;
+-		context_.configuration.agc.againMin = againMin;
+-		context_.configuration.agc.againMinStep = 1.0;
+-	}
+-
+ 	for (const auto &algo : algorithms()) {
+ 		int ret = algo->configure(context_, configInfo);
+ 		if (ret)
+ 			return ret;
+ 	}
+ 
+-	LOG(IPASoft, Info)
+-		<< "Exposure " << context_.configuration.agc.exposureMin << "-"
+-		<< context_.configuration.agc.exposureMax
+-		<< ", gain " << context_.configuration.agc.againMin << "-"
+-		<< context_.configuration.agc.againMax
+-		<< " (" << context_.configuration.agc.againMinStep << ")";
+-
+ 	*ipaControls = { ControlInfoMap::Map(context_.ctrlMap), controls::controls };
+ 
+ 	return 0;

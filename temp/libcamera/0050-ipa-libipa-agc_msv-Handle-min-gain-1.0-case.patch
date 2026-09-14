@@ -1,0 +1,37 @@
+From 852478830ce30fb530521386e08667705adf48fc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Wed, 22 Jul 2026 15:56:16 +0200
+Subject: [PATCH 50/68] ipa: libipa: agc_msv: Handle min gain > 1.0 case
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When manual gain control is enabled in `AgcAlgorithm`, the limits will
+be set to that particular value. This is very likely larger than 1.0.
+In this case, however, the algorithm should still adjust the exposure
+time if it can. So compare the gain with the maximum of 1.0 and the
+configured min gain, in order to ensure that the exposure will be
+adjusted if the lower boundary of the allowed analogue gains is reached.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 402625f363478420ef134b5f016ea68f276c4330)
+---
+ src/ipa/libipa/agc_msv.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ipa/libipa/agc_msv.cpp b/src/ipa/libipa/agc_msv.cpp
+index 98fd3cd50..c5b8df983 100644
+--- a/src/ipa/libipa/agc_msv.cpp
++++ b/src/ipa/libipa/agc_msv.cpp
+@@ -220,7 +220,7 @@ AgcMSV::Result AgcMSV::updateExposure(uint32_t exposure, double again, float exp
+ 			}
+ 		} else {
+ 			/* Scene too bright: decrease gain first, then exposure. */
+-			if (again > limits_.gain1) {
++			if (again > std::max(limits_.gain1, limits_.gain[0])) {
+ 				double next = again * factor;
+ 				again = std::min(next, again - limits_.gainMinStep);
+ 			} else {

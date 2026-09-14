@@ -1,0 +1,68 @@
+From dce22bd1db385daab763d0eebb2181d75608f303 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:40:07 +0200
+Subject: [PATCH 61/68] ipa: softisp: Apply the frame duration through VBLANK
+
+AgcAlgorithm computes a VBLANK for every frame from FrameDurationLimits
+and the exposure, but the software ISP IPA never sent it and the simple
+pipeline handler did not treat it as a sensor control, so the frame rate
+stayed wherever the sensor driver left it and FrameDurationLimits had no
+effect.
+
+Send VBLANK with exposure and gain, register it as a delayed control
+with a priority write, and when no frame start signal is available and
+controls are applied directly, write it on its own before the others.
+The driver sizes its exposure range from the frame length, so an
+exposure longer than the current frame is otherwise clamped.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ src/ipa/simple/soft_simple.cpp           |  2 ++
+ src/libcamera/pipeline/simple/simple.cpp | 14 ++++++++++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 51281ac3e..6eec9dde2 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -251,6 +251,8 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 	ControlList ctrls(context_.sensorControls);
+ 	agc::prepareControls(ctrls, context_.camHelper.get(),
+ 			     frameContext.agc.exposure, frameContext.agc.gain);
++	if (context_.sensorControls.find(V4L2_CID_VBLANK) != context_.sensorControls.end())
++		ctrls.set(V4L2_CID_VBLANK, static_cast<int32_t>(frameContext.agc.vblank));
+ 	setSensorControls.emit(ctrls);
+ }
+ 
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 3ec07b9d6..f387ad57b 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -570,6 +570,8 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+ 		{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
+ 		{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
+ 	};
++	if (sensor_->controls().find(V4L2_CID_VBLANK) != sensor_->controls().end())
++		params[V4L2_CID_VBLANK] = { delays.vblankDelay, true };
+ 	delayedCtrls_ = std::make_unique<DelayedControls>(sensor_->device(), params);
+ 
+ 	LOG(SimplePipeline, Debug)
+@@ -1051,6 +1053,18 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
+ 	 * Both problems should be fixed.
+ 	 */
+ 	if (!frameStartEmitter_) {
++		/*
++		 * VBLANK first, on its own: the driver sizes the exposure range
++		 * from the frame length, so an exposure longer than the current
++		 * frame is clamped if both arrive in one batch. This is what
++		 * DelayedControls' priority write does when it is used.
++		 */
++		if (sensorControls.contains(V4L2_CID_VBLANK)) {
++			ControlList vblank(sensor_->controls());
++			vblank.set(V4L2_CID_VBLANK, sensorControls.get(V4L2_CID_VBLANK));
++			sensor_->setControls(&vblank);
++		}
++
+ 		ControlList ctrls(sensorControls);
+ 		sensor_->setControls(&ctrls);
+ 	}

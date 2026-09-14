@@ -1,0 +1,55 @@
+[Unit]
+# Serves the listener services this board's trustlets need. Without it
+# Gatekeeper cannot reach RPMB, and the fingerprint trustlet refuses to
+# commit an enrolment.
+Description=QSEE listener supplicant
+Documentation=https://postmarketos.org
+ConditionPathExists=/dev/qsee_lsnr
+After=local-fs.target qsee-supplicant.socket
+Requires=qsee-supplicant.socket
+Before=fprintd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/qsee-supplicant
+Restart=on-failure
+RestartSec=5
+
+# It needs root for SG_IO to the RPMB LU and for /dev/qsee_lsnr, and nothing
+# else. Everything below is what it does NOT need: this process can reach
+# keymaster, Gatekeeper and the replay-protected block, so its blast radius
+# is worth keeping small.
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_DAC_OVERRIDE
+AmbientCapabilities=CAP_SYS_RAWIO
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+PrivateTmp=yes
+PrivateNetwork=yes
+# NOT PrivateDevices=yes: that replaces /dev with a minimal tmpfs and the
+# two nodes this exists to talk to would not be in it. Narrow with
+# DeviceAllow instead, which is a cgroup policy over the real /dev.
+DevicePolicy=closed
+DeviceAllow=/dev/qsee_lsnr rw
+DeviceAllow=/dev/bsg/0:0:0:49476 rw
+# The socket comes from qsee-supplicant.socket, so this needs no write
+# access to /run at all; only its own state directory.
+StateDirectory=qsee-supplicant
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

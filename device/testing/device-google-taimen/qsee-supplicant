@@ -1,0 +1,394 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
+"""Serve the listener services this board's trustlets need, and mint the
+hardware auth token the fingerprint trustlet asks for before an enrolment.
+
+A QSEE trustlet that needs the normal world to store something does not get
+it from its own command: QSEE suspends the command and waits for a listener
+service to answer. The kernel (qsee_lsnr) carries the handshake; this is the
+process that actually answers.
+
+Two jobs:
+
+  RPMB.  Gatekeeper keeps its password handles and throttle counters in the
+  replay-protected block, so listener 0x2000 has to be registered and served
+  or Gatekeeper's enrol simply fails. The frames are built and MAC'd inside
+  TrustZone and the write counter is monotonic, so this relay cannot forge a
+  write or replay an old one -- it only carries bytes to the UFS RPMB
+  well-known LU over SG_IO.
+
+  Auth tokens.  The fingerprint trustlet will not commit an enrolment unless
+  the session was authorized by a Gatekeeper-signed token bound to a
+  challenge it chose. Clients ask for one over a root-only socket; this
+  process holds the Gatekeeper credential so that fprintd does not have to,
+  and so that nothing outside root can reach keymaster, Gatekeeper or RPMB.
+
+  SECURITY NOTE. On Android the token proves the user just entered their
+  lockscreen credential. There is no such credential here, so the Gatekeeper
+  password is a random per-device secret generated on first use and readable
+  only by root: enrolment ends up gated by root and fprintd's polkit rules
+  rather than by the TEE. That is weaker than Android and is the honest
+  position -- matching and unlocking are unaffected, they never needed a
+  token. Do not "improve" this by hardcoding a password.
+
+Protocol on the socket, one line in, a length-prefixed blob out:
+    KEY               -> the keymaster auth-token key, for FPC SET_KEY_DATA
+    TOKEN <hex u64>   -> a 69-byte auth token bound to that challenge
+"""
+import ctypes
+import fcntl
+import os
+import secrets
+import socket
+import socketserver
+import struct
+import sys
+import threading
+
+DEV = "/dev/qsee_lsnr"
+RPMB_BSG = "/dev/bsg/0:0:0:49476"
+SOCKET = "/run/qsee-supplicant.sock"
+STATE_DIR = "/var/lib/qsee-supplicant"
+CRED = STATE_DIR + "/gatekeeper.cred"
+
+KM_APP = "keymaster64"
+RPMB_LISTENER = 0x2000
+RPMB_LISTENER_SIZE = 0x6400
+KM_GET_AUTH_TOKEN_KEY = 0x205
+GK_ENROLL, GK_VERIFY = 0x1001, 0x1002
+
+# A synthetic Gatekeeper user, kept away from the slots a previous Android
+# install enrolled its real lockscreen credential into.
+GK_UID = 31337
+
+SG_IO = 0x2285
+SG_HDR = "<iIIIQQIIIIQIIIIQQIIQIIIIIIIIiIQII"
+SEC_OUT, SEC_IN = 0xB5, 0xA2
+
+
+def _ioc(d, nr, size):
+    return (d << 30) | (size << 16) | (ord("Q") << 8) | nr
+
+
+IOC_REGISTER = _ioc(1, 0x01, 8)
+IOC_RECV = _ioc(3, 0x02, 24)
+IOC_SEND = _ioc(1, 0x03, 24)
+IOC_CMD = _ioc(3, 0x04, 32)
+
+
+def u32(b, off):
+    return struct.unpack_from("<I", b, off)[0]
+
+
+def put(b, off, val):
+    struct.pack_into("<I", b, off, val & 0xFFFFFFFF)
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+# ------------------------------------------------------------------ RPMB
+
+def sg_io(fd, cdb, to_dev, buf):
+    cdb_b = ctypes.create_string_buffer(bytes(cdb), len(cdb))
+    sense = ctypes.create_string_buffer(64)
+    dout_len = len(buf) if to_dev else 0
+    dout_p = ctypes.addressof(buf) if to_dev else 0
+    din_len = 0 if to_dev else len(buf)
+    din_p = 0 if to_dev else ctypes.addressof(buf)
+    hdr = struct.pack(SG_HDR, ord("Q"), 0, 0, len(cdb), ctypes.addressof(cdb_b),
+                      0, 0, 0, 0, 64, ctypes.addressof(sense),
+                      0, dout_len, 0, din_len, dout_p, din_p,
+                      20000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    out = bytearray(hdr)
+    fcntl.ioctl(fd, SG_IO, out, True)
+    f = struct.unpack(SG_HDR, bytes(out))
+    return f[23], f[22]
+
+
+def sg(fd, cdb, to_dev, buf, tries=3):
+    """The first access after a reset raises UNIT ATTENTION; reporting it
+    clears it, so retry rather than failing the boot's first RPMB command."""
+    st = tr = 0
+    for _ in range(tries):
+        st, tr = sg_io(fd, cdb, to_dev, buf)
+        if st != 2 or tr:
+            return st, tr
+    return st, tr
+
+
+def sec_cdb(opcode, nbytes):
+    # INC_512 = 0, length in bytes: the encoding this controller accepts.
+    return struct.pack(">BBHBBIBB", opcode, 0xEC, 0x0001, 0x00, 0, nbytes, 0, 0)
+
+
+def rpmb_read(frames, want):
+    fd = os.open(RPMB_BSG, os.O_RDWR)
+    try:
+        req = ctypes.create_string_buffer(bytes(frames), len(frames))
+        st, tr = sg(fd, sec_cdb(SEC_OUT, len(frames)), True, req)
+        if st or tr:
+            return None
+        rsp = ctypes.create_string_buffer(want)
+        st, tr = sg(fd, sec_cdb(SEC_IN, want), False, rsp)
+        return None if (st or tr) else rsp.raw
+    finally:
+        os.close(fd)
+
+
+def rpmb_write(frames):
+    fd = os.open(RPMB_BSG, os.O_RDWR)
+    try:
+        req = ctypes.create_string_buffer(bytes(frames), len(frames))
+        st, tr = sg(fd, sec_cdb(SEC_OUT, len(frames)), True, req)
+        if st or tr:
+            return None
+        rrr = bytearray(512)
+        struct.pack_into(">H", rrr, 510, 0x0005)        # Result Read Request
+        rq = ctypes.create_string_buffer(bytes(rrr), 512)
+        st, tr = sg(fd, sec_cdb(SEC_OUT, 512), True, rq)
+        if st or tr:
+            return None
+        rsp = ctypes.create_string_buffer(512)
+        st, tr = sg(fd, sec_cdb(SEC_IN, 512), False, rsp)
+        return None if (st or tr) else rsp.raw
+    finally:
+        os.close(fd)
+
+
+def serve_rpmb(buf, length):
+    """One listener request, answered in place; returns the response length.
+
+    librpmb.so's dispatch(): req[0] is the command, read/write take their
+    frames at req[3] with the length in req[2], and the answer goes back at
+    0x14 with req[2] carrying the BYTE COUNT transferred.
+    """
+    cmd = u32(buf, 0)
+
+    if cmd == 0x101:                                    # init
+        put(buf, 8, 0)
+        put(buf, 12, 0x1000)                            # size, in blocks
+        put(buf, 16, 512)                               # bytes per transfer
+        return 0x14
+
+    if cmd in (0x102, 0x103):
+        nbytes, off = u32(buf, 8), u32(buf, 12)
+        frames = bytes(buf[off:off + nbytes])
+        if len(frames) < 512:
+            put(buf, 4, 0xFFFFFFFF); put(buf, 8, 0); put(buf, 12, 0x14)
+            return 0x14
+        if cmd == 0x102:
+            blocks = struct.unpack_from(">H", frames, 506)[0] or 1
+            data = rpmb_read(frames, blocks * 512)
+        else:
+            data = rpmb_write(frames)
+        if data is None:
+            put(buf, 4, 0xFFFFFFFF); put(buf, 8, 0); put(buf, 12, 0x14)
+            return 0x14
+        buf[0x14:0x14 + len(data)] = data
+        put(buf, 4, 0)
+        put(buf, 8, 0x200 if cmd == 0x103 else len(data))
+        put(buf, 12, 0x14)
+        return 0x14 + len(data)
+
+    if cmd == 0x104:                                    # partition config
+        put(buf, 4, 0xFFFFFFFF); put(buf, 8, 0); put(buf, 12, 0x10)
+        return 0x10
+
+    put(buf, 4, 0xFFFFFFFF); put(buf, 12, 0x14)
+    return 0x14
+
+
+class RpmbListener(threading.Thread):
+    def __init__(self, fd):
+        super().__init__(daemon=True)
+        self.fd = fd
+        self.buf = ctypes.create_string_buffer(RPMB_LISTENER_SIZE)
+
+    def run(self):
+        while True:
+            arg = bytearray(struct.pack("<IiQII", 0, 0,
+                                        ctypes.addressof(self.buf),
+                                        RPMB_LISTENER_SIZE, 1000))
+            try:
+                fcntl.ioctl(self.fd, IOC_RECV, arg, True)
+            except OSError as e:
+                if e.errno in (110, 11, 4):             # timeout, again, intr
+                    continue
+                log(f"RECV failed: {e}")
+                continue
+            lid, _, _, length, _ = struct.unpack("<IiQII", arg)
+            view = memoryview(self.buf).cast("B")
+            try:
+                rlen = serve_rpmb(view, length)
+            except Exception as e:                      # never leave it hanging
+                log(f"RPMB handler failed: {e!r}")
+                put(view, 4, 0xFFFFFFFF); put(view, 12, 0x14)
+                rlen = 0x14
+            try:
+                fcntl.ioctl(self.fd, IOC_SEND,
+                            struct.pack("<IiQII", lid, 0,
+                                        ctypes.addressof(self.buf), rlen, 0))
+            except OSError as e:
+                log(f"SEND failed: {e}")
+
+
+# ------------------------------------------------------- keymaster/Gatekeeper
+
+class Trustlets:
+    """Serialised access to the resident keymaster64 app."""
+
+    def __init__(self, fd):
+        self.fd = fd
+        self.lock = threading.Lock()
+        self.app_id = None
+
+    def cmd(self, req_bytes, payload_len, rsp_len=4096):
+        req_len = (payload_len + 0x5F) & ~0x3F
+        req = ctypes.create_string_buffer(bytes(req_bytes),
+                                          max(req_len, len(req_bytes)))
+        rsp = ctypes.create_string_buffer(rsp_len)
+        arg = struct.pack("<IIIIQQ", self.app_id, req_len, rsp_len, 0,
+                          ctypes.addressof(req), ctypes.addressof(rsp))
+        fcntl.ioctl(self.fd, IOC_CMD, bytearray(arg), True)
+        raw = rsp.raw
+        status = struct.unpack_from("<i", raw, 0)[0]
+        off, ln = u32(raw, 4), u32(raw, 8)
+        return status, (raw[off:off + ln] if 0 < ln <= rsp_len - off else b"")
+
+    def auth_token_key(self):
+        req = bytearray(64)
+        struct.pack_into("<II", req, 0, KM_GET_AUTH_TOKEN_KEY, 0x02)
+        rsp = ctypes.create_string_buffer(0x3C0)
+        rq = ctypes.create_string_buffer(bytes(req), 64)
+        arg = struct.pack("<IIIIQQ", self.app_id, 64, 0x3C0, 0,
+                          ctypes.addressof(rq), ctypes.addressof(rsp))
+        fcntl.ioctl(self.fd, IOC_CMD, bytearray(arg), True)
+        raw = rsp.raw
+        if struct.unpack_from("<i", raw, 0)[0] != 0:
+            return b""
+        return raw[u32(raw, 4):u32(raw, 4) + u32(raw, 8)]
+
+    def credential(self):
+        """The device-local Gatekeeper credential, made once and kept 0600."""
+        if os.path.exists(CRED):
+            with open(CRED, "rb") as f:
+                blob = f.read()
+            pwd_len = struct.unpack_from("<I", blob, 0)[0]
+            return blob[4:4 + pwd_len], blob[4 + pwd_len:]
+
+        # No lockscreen credential exists on this system to derive from, so
+        # the best available is a random secret only root can read.
+        pwd = secrets.token_bytes(32)
+        req = bytearray(0x20 + len(pwd))
+        put(req, 0, GK_ENROLL)
+        put(req, 4, GK_UID)
+        put(req, 24, 0x20)
+        put(req, 28, len(pwd))
+        req[0x20:] = pwd
+        st, handle = self.cmd(req, len(pwd))
+        if st != 0 or not handle:
+            raise RuntimeError(f"gatekeeper enrol failed: {st}")
+
+        os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+        tmp = CRED + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(struct.pack("<I", len(pwd)) + pwd + handle)
+        os.replace(tmp, CRED)
+        log(f"enrolled a new Gatekeeper credential, handle {len(handle)} bytes")
+        return pwd, handle
+
+    def token(self, challenge):
+        with self.lock:
+            pwd, handle = self.credential()
+            payload = len(handle) + len(pwd)
+            req = bytearray(0x20 + payload)
+            put(req, 0, GK_VERIFY)
+            put(req, 4, GK_UID)
+            struct.pack_into("<Q", req, 8, challenge)
+            put(req, 16, 0x20)
+            put(req, 20, len(handle))
+            put(req, 24, 0x20 + len(handle))
+            put(req, 28, len(pwd))
+            req[0x20:0x20 + len(handle)] = handle
+            req[0x20 + len(handle):] = pwd
+            st, token = self.cmd(req, payload)
+            if st != 0 or len(token) != 69:
+                raise RuntimeError(f"gatekeeper verify failed: {st}")
+            return token
+
+    def key(self):
+        with self.lock:
+            return self.auth_token_key()
+
+
+# ------------------------------------------------------------------ socket
+
+class Handler(socketserver.StreamRequestHandler):
+    def handle(self):
+        line = self.rfile.readline(128).decode("ascii", "replace").strip()
+        try:
+            if line == "KEY":
+                blob = self.server.trustlets.key()
+            elif line.startswith("TOKEN "):
+                blob = self.server.trustlets.token(int(line.split()[1], 16))
+            else:
+                blob = b""
+            self.wfile.write(struct.pack("<I", len(blob)) + blob)
+        except Exception as e:
+            log(f"{line.split(' ')[0]}: {e}")
+            self.wfile.write(struct.pack("<I", 0))
+
+
+class Server(socketserver.ThreadingUnixStreamServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+    @classmethod
+    def from_systemd(cls, handler):
+        """Adopt the listening socket systemd passed as fd 3 (SD_LISTEN_FDS_START)."""
+        srv = cls.__new__(cls)
+        socketserver.BaseServer.__init__(srv, None, handler)
+        srv.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM,
+                                   fileno=3)
+        return srv
+
+
+def main():
+    fd = os.open(DEV, os.O_RDWR)
+    try:
+        fcntl.ioctl(fd, IOC_REGISTER,
+                    struct.pack("<II", RPMB_LISTENER, RPMB_LISTENER_SIZE))
+        log(f"RPMB listener {RPMB_LISTENER:#x} registered")
+    except FileExistsError:
+        pass
+    RpmbListener(fd).start()
+
+    trustlets = Trustlets(fd)
+    # app_get_id is not reliable for every app on this TZ image, but it is
+    # for this one; the id is stable for the life of the boot.
+    trustlets.app_id = 65537
+
+    # systemd owns the listening socket (qsee-supplicant.socket) and passes
+    # it as fd 3: one path in the host's /run that every sandboxed client
+    # can see, and no write access to /run needed here.
+    if int(os.environ.get("LISTEN_FDS", 0)) >= 1:
+        server = Server.from_systemd(Handler)
+        log("using the socket systemd passed")
+    else:
+        if os.path.exists(SOCKET):
+            os.unlink(SOCKET)
+        old = os.umask(0o177)               # the socket is root-only
+        try:
+            server = Server(SOCKET, Handler)
+        finally:
+            os.umask(old)
+        log(f"listening on {SOCKET} (no socket activation)")
+    server.trustlets = trustlets
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

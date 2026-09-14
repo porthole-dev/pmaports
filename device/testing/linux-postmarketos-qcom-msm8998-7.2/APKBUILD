@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=47
+pkgrel=48
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -309,6 +309,7 @@ source="
 	0218-dt-bindings-misc-Add-FPC-fingerprint-sensor-behind-a.patch
 	0219-misc-Add-driver-for-FPC-fingerprint-sensors-behind-a.patch
 	0220-arm64-dts-qcom-msm8998-google-taimen-Add-the-fingerp.patch
+	0221-misc-Add-a-QSEE-listener-supplicant-transport.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -340,7 +341,7 @@ package() {
 }
 sha512sums="
 6ca338fd2f9d2224b9187ba1cad18c05417c0504771917203a023467a8ac3a34e346bd3bc5a3f5716aa9810381a28c730ea5fc3726773dca36d75a4677178b13  linux-7.2.2.tar.xz
-99a49f75112f1294359e1769c79734570384b638fc40673ac70a128142b3c2ee8b37ba0c2c5e2041fc89e741566914ef83ea44654f40451b41490bc2028347ee  config-postmarketos-qcom-msm8998-7.2.aarch64
+e50e84188b22f56f090c5a86ed8c4056196b87335ea73c11745e9dab4f2bf6475d0fe3b8c49ea17236c0248bdf66ac430af95864244214f5e399012cffd8a07e  config-postmarketos-qcom-msm8998-7.2.aarch64
 0858ed26e3c55bec0208b918e3438657e0b468b75b5d4f2a994dbe05cf1ff82bf3053dc5584fef7379dcbca0556eacbfd5675adacff1de63cc30fad8f6c17559  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 51dcee155f7b1912bd30da88f2f877c6601f2f856f9437aa6da93e1b8dc5dc2fde07b99234bcdb8f8f7a62deaede3563d0959e0e9f628910ae90ad069b6b3c51  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 47e2789a45183718612ce29f3ffd034a27c77b8d437f1c6e3a05e564e4b79b365546b79e8861b92b008f15cf8bba598c2e129a61b695e1cf55ce93a7bcdea7ea  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -561,4 +562,5 @@ f1f846e1d8badf0bf72f64bb18d82014d658f9fc1ee27d84911c4d5bbf196b61f684a47fcb964f1e
 4e0d82bb3400b8113b29e62bb6a48404d2fd427a7e835a6d8bf857afe8eb4b4cfb3225a240cde8fd72e7023a66e3aa14a72ae29f49c0aa772d87f635a7b1196a  0218-dt-bindings-misc-Add-FPC-fingerprint-sensor-behind-a.patch
 9488f162ef78af20f0605a5fdc8333c1fcc52ae078eecec5741cb374a31c8bbdf4b7af5fe29642a5f6836efb225e2ff0512283380effcd1c698c8fb976c170b3  0219-misc-Add-driver-for-FPC-fingerprint-sensors-behind-a.patch
 c27df7e1aedb565f746c8a69c4aaf2025eb38237580a9235cafc58e14fe9b8dc70d851181763839bbb8146c72e79984efec964377c9289d66c9e72aadabf4c8f  0220-arm64-dts-qcom-msm8998-google-taimen-Add-the-fingerp.patch
+eb9a140c15c893a2594a46ad89615d8d6b23adabd49f072cc6030a05b8b52cf6a1daec6ab6efa76f5e8eb3f1839013849f5c2f332893f159aef1cddaab14f83d  0221-misc-Add-a-QSEE-listener-supplicant-transport.patch
 "

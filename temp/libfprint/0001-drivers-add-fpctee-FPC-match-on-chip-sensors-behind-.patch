@@ -1,4 +1,4 @@
-From 0c2fc656ad24dc7d63219a8213aeecee25bc1c5f Mon Sep 17 00:00:00 2001
+From 0c4a6b7163d95f350a0a3d34520cb57dc117fc82 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 13 Sep 2026 21:56:58 +0200
 Subject: [PATCH] drivers: add fpctee, FPC match-on-chip sensors behind a QSEE
@@ -26,18 +26,18 @@ node.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- libfprint/drivers/fpctee/fpctee.c | 1593 +++++++++++++++++++++++++++++
+ libfprint/drivers/fpctee/fpctee.c | 1601 +++++++++++++++++++++++++++++
  libfprint/meson.build             |    2 +
  meson.build                       |    2 +
- 3 files changed, 1597 insertions(+)
+ 3 files changed, 1605 insertions(+)
  create mode 100644 libfprint/drivers/fpctee/fpctee.c
 
 diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
 new file mode 100644
-index 0000000..71a5429
+index 0000000..e202b05
 --- /dev/null
 +++ b/libfprint/drivers/fpctee/fpctee.c
-@@ -0,0 +1,1593 @@
+@@ -0,0 +1,1601 @@
 +/*
 + * FPC match-on-chip fingerprint sensor behind a QSEE trustlet
 + *
@@ -1324,6 +1324,14 @@ index 0000000..71a5429
 +  st = tee_simple (self, GRP_BIO, BIO_IDENTIFY, 0, &self->matched_id);
 +  if (st == IDENTIFY_LOW_QUALITY)
 +    return IDENTIFY_RETRY;
++  /* No template matches -- what fprintd's check for a duplicate before
++   * enrolling gets from an empty database. Android never identifies
++   * without enrolled fingers, so the HAL has no case for it. */
++  if (st == FPC_ERROR_NOT_FOUND)
++    {
++      self->matched_id = 0;
++      st = 0;
++    }
 +  if (st != 0)
 +    {
 +      *error = status_error (st, "identify");

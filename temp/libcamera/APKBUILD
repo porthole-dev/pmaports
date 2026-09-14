@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=libcamera
 _pkgver=0.7.2
 pkgver=9999$_pkgver
-pkgrel=18
+pkgrel=19
 pkgdesc="Linux camera framework"
 url="https://libcamera.org/"
 arch="all"
@@ -23,6 +23,7 @@ makedepends="
 	libunwind-dev
 	libyuv-dev
 	linux-headers
+	mesa-dev
 	meson
 	py3-jinja2
 	py3-ply
@@ -96,6 +97,7 @@ build() {
 	abuild-meson \
 		-Dpipelines=auto,virtual \
 		-Dv4l2=true \
+		-Dsoftisp-gpu=enabled \
 		-Dwerror=false \
 		-Ddocumentation=disabled \
 		. output

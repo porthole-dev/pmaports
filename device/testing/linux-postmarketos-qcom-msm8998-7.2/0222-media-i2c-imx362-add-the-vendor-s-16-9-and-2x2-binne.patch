@@ -1,0 +1,486 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:27:15 +0200
+Subject: [PATCH] media: i2c: imx362: add the vendor's 16:9 and 2x2-binned
+ modes
+
+The driver only knew the full 4032x3032 array at 30 fps, so every consumer
+debayered 12 MP to show a viewfinder and nothing above 30 fps was reachable.
+
+Add three more resolutions from the same vendor sensor library the full mode
+came from (libmmcamera_imx362.so, register tables at .data 0x57290 + k *
+0x5dd0, timing from the sensor_lib_out_info_t array at 0xa9400):
+
+  4032x2272  30 fps  16:9 crop, the source of 4K and 1080p video on Android
+  2016x1512  60 fps  2x2 binned, full field of view
+  2016x1136 120 fps  2x2 binned 16:9, starting at 60 fps
+
+The binned modes' output PLL is pinned to the full mode's, so the CSI-2 link
+runs at 1368 Mbps/lane in every mode. On this board the link passes through
+Easel's MIPI bypass, which is configured once for that rate; CSI-2 is burst
+mode, so a link faster than the data only lengthens LP time between lines.
+
+HBLANK, VBLANK and the exposure range now follow the mode. The exposure range
+must be updated even when VBLANK does not change: an exposure left longer
+than the new frame made the sensor stretch every frame to fit, and 2016x1136
+ran at 47 fps on the full mode's 3102-line maximum.
+
+Also expose the SMIA test pattern, and share the driver mutex with the control
+handler, since set_fmt already calls __v4l2_ctrl_*() under it.
+
+Measured on taimen with libcamera, raw stream, 180 frames each, no sequence
+gaps: 30.1, 30.1, 59.4 and 60.0 fps.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/imx362.c | 351 +++++++++++++++++++++++++++++++++----
+ 1 file changed, 316 insertions(+), 35 deletions(-)
+
+diff --git a/drivers/media/i2c/imx362.c b/drivers/media/i2c/imx362.c
+index 2866e14227c9..15c8d92bf814 100644
+--- a/drivers/media/i2c/imx362.c
++++ b/drivers/media/i2c/imx362.c
+@@ -43,9 +43,8 @@
+ /* ponytail: 896 = 8x, vendor tuning ceiling */
+ #define IMX362_ANA_GAIN_MAX		896
+ 
+-/* vendor sensor_lib_out_info_t timing for the single mode */
+-#define IMX362_LLP			5856
+-#define IMX362_FLL			3112
++/* SMIA test pattern: 0 off, 1 solid, 2 colour bars, 3 fade, 4 PN9 */
++#define IMX362_REG_TEST_PATTERN		0x0600	/* u16 */
+ 
+ #define IMX362_NATIVE_WIDTH		4032U
+ #define IMX362_NATIVE_HEIGHT		3032U
+@@ -195,9 +194,218 @@ static const struct imx362_reg imx362_mode_full[] = {
+ };
+ 
+ /*
+- * Timing from the vendor sensor_lib_out_info_t (res0, .data file offset
+- * 0xa93d0 region): LLP 5856, FLL 3112, vt_pixel_clk 547.2 MHz -> 30.0 fps
+- * exactly; op_pixel_clk 548 MHz.  link_freq = op * 10 bpp / (2 * 4 lanes).
++ * The vendor's other resolutions, same extraction (res1, res6, res4 at .data
++ * 0x57290 + k * 0x5dd0; each table ends at its first all-zero record). res1 is
++ * the 16:9 crop every 4K and 1080p video mode on Android started from; res6
++ * and res4 are its 2x2-binned 4:3 and 16:9 modes (60 and 120 fps).
++ *
++ * The binned modes' output PLL is pinned to res0's, so the link runs at
++ * 1368 Mbps/lane in every mode: Easel's bypass is configured once, at probe,
++ * for exactly that rate, and CSI-2 is burst mode -- a faster link than the
++ * data needs only means longer LP periods between lines. The vendor rates
++ * (720 and 1104 Mbps) would each need Easel re-rated per stream. Skipped:
++ * res2 (zzHDR, needs a merge nobody implements), res5 (240 fps, 1776 Mbps --
++ * the one mode the pinned rate cannot carry) and res7 (a copy of res1).
++ */
++static const struct imx362_reg imx362_mode_4032_2272[] = {
++	{ 0x0112, 0x0a },
++	{ 0x0113, 0x0a },
++	{ 0x0114, 0x03 },
++	{ 0x0220, 0x00 },
++	{ 0x0221, 0x11 },
++	{ 0x0340, 0x09 },
++	{ 0x0341, 0x38 },
++	{ 0x0342, 0x16 },
++	{ 0x0343, 0xe0 },
++	{ 0x0381, 0x01 },
++	{ 0x0383, 0x01 },
++	{ 0x0385, 0x01 },
++	{ 0x0387, 0x01 },
++	{ 0x0900, 0x00 },
++	{ 0x0901, 0x11 },
++	{ 0x30f4, 0x01 },
++	{ 0x30f5, 0xf4 },
++	{ 0x30f6, 0x00 },
++	{ 0x30f7, 0x14 },
++	{ 0x31a0, 0x00 },
++	{ 0x31a5, 0x01 },
++	{ 0x31a6, 0x00 },
++	{ 0x560f, 0xbe },
++	{ 0x0344, 0x00 },
++	{ 0x0345, 0x00 },
++	{ 0x0346, 0x01 },
++	{ 0x0347, 0x78 },
++	{ 0x0348, 0x0f },
++	{ 0x0349, 0xbf },
++	{ 0x034a, 0x0a },
++	{ 0x034b, 0x57 },
++	{ 0x034c, 0x0f },
++	{ 0x034d, 0xc0 },
++	{ 0x034e, 0x08 },
++	{ 0x034f, 0xe0 },
++	{ 0x0408, 0x00 },
++	{ 0x0409, 0x00 },
++	{ 0x040a, 0x00 },
++	{ 0x040b, 0x00 },
++	{ 0x040c, 0x0f },
++	{ 0x040d, 0xc0 },
++	{ 0x040e, 0x08 },
++	{ 0x040f, 0xe0 },
++	{ 0x0301, 0x03 },
++	{ 0x0303, 0x02 },
++	{ 0x0305, 0x04 },
++	{ 0x0306, 0x00 },
++	{ 0x0307, 0x68 },
++	{ 0x0309, 0x0a },
++	{ 0x030b, 0x01 },
++	{ 0x030d, 0x04 },
++	{ 0x030e, 0x00 },
++	{ 0x030f, 0xe4 },
++	{ 0x0310, 0x01 },
++	{ 0x319c, 0x00 },
++	{ 0x7819, 0x00 },
++	{ 0x7934, 0x01 },
++	{ 0x8118, 0x02 },
++	{ 0x8119, 0x00 },
++	{ 0x811b, 0x01 },
++};
++
++static const struct imx362_reg imx362_mode_2016_1512[] = {
++	{ 0x0112, 0x0a },
++	{ 0x0113, 0x0a },
++	{ 0x0114, 0x03 },
++	{ 0x0220, 0x00 },
++	{ 0x0221, 0x11 },
++	{ 0x0340, 0x06 },
++	{ 0x0341, 0x40 },
++	{ 0x0342, 0x15 },
++	{ 0x0343, 0x18 },
++	{ 0x0381, 0x01 },
++	{ 0x0383, 0x01 },
++	{ 0x0385, 0x01 },
++	{ 0x0387, 0x01 },
++	{ 0x0900, 0x01 },
++	{ 0x0901, 0x22 },
++	{ 0x30f4, 0x02 },
++	{ 0x30f5, 0x58 },
++	{ 0x30f6, 0x00 },
++	{ 0x30f7, 0x14 },
++	{ 0x31a0, 0x00 },
++	{ 0x31a5, 0x00 },
++	{ 0x31a6, 0x00 },
++	{ 0x560f, 0xff },
++	{ 0x0344, 0x00 },
++	{ 0x0345, 0x00 },
++	{ 0x0346, 0x00 },
++	{ 0x0347, 0x00 },
++	{ 0x0348, 0x0f },
++	{ 0x0349, 0xbf },
++	{ 0x034a, 0x0b },
++	{ 0x034b, 0xcf },
++	{ 0x034c, 0x07 },
++	{ 0x034d, 0xe0 },
++	{ 0x034e, 0x05 },
++	{ 0x034f, 0xe8 },
++	{ 0x0408, 0x00 },
++	{ 0x0409, 0x00 },
++	{ 0x040a, 0x00 },
++	{ 0x040b, 0x00 },
++	{ 0x040c, 0x07 },
++	{ 0x040d, 0xe0 },
++	{ 0x040e, 0x05 },
++	{ 0x040f, 0xe8 },
++	{ 0x0301, 0x03 },
++	{ 0x0303, 0x02 },
++	{ 0x0305, 0x04 },
++	{ 0x0306, 0x00 },
++	{ 0x0307, 0x82 },
++	{ 0x0309, 0x0a },
++	{ 0x030b, 0x01 }, /* vendor 0x02: op PLL pinned */
++	{ 0x030d, 0x04 },
++	{ 0x030e, 0x00 },
++	{ 0x030f, 0xe4 }, /* vendor 0xf0: op PLL pinned */
++	{ 0x0310, 0x01 },
++	{ 0x319c, 0x00 },
++	{ 0x7819, 0x00 },
++	{ 0x792f, 0x03 },
++	{ 0x8118, 0x02 },
++	{ 0x8119, 0x00 },
++	{ 0x811b, 0x01 },
++};
++
++static const struct imx362_reg imx362_mode_2016_1136[] = {
++	{ 0x0112, 0x0a },
++	{ 0x0113, 0x0a },
++	{ 0x0114, 0x03 },
++	{ 0x0220, 0x00 },
++	{ 0x0221, 0x11 },
++	{ 0x0340, 0x04 },
++	{ 0x0341, 0xc8 },
++	{ 0x0342, 0x15 },
++	{ 0x0343, 0x18 },
++	{ 0x0381, 0x01 },
++	{ 0x0383, 0x01 },
++	{ 0x0385, 0x01 },
++	{ 0x0387, 0x01 },
++	{ 0x0900, 0x01 },
++	{ 0x0901, 0x22 },
++	{ 0x30f4, 0x02 },
++	{ 0x30f5, 0x58 },
++	{ 0x30f6, 0x00 },
++	{ 0x30f7, 0x14 },
++	{ 0x31a0, 0x00 },
++	{ 0x31a5, 0x00 },
++	{ 0x31a6, 0x00 },
++	{ 0x560f, 0xff },
++	{ 0x0344, 0x00 },
++	{ 0x0345, 0x00 },
++	{ 0x0346, 0x01 },
++	{ 0x0347, 0x78 },
++	{ 0x0348, 0x0f },
++	{ 0x0349, 0xbf },
++	{ 0x034a, 0x0a },
++	{ 0x034b, 0x57 },
++	{ 0x034c, 0x07 },
++	{ 0x034d, 0xe0 },
++	{ 0x034e, 0x04 },
++	{ 0x034f, 0x70 },
++	{ 0x0408, 0x00 },
++	{ 0x0409, 0x00 },
++	{ 0x040a, 0x00 },
++	{ 0x040b, 0x00 },
++	{ 0x040c, 0x07 },
++	{ 0x040d, 0xe0 },
++	{ 0x040e, 0x04 },
++	{ 0x040f, 0x70 },
++	{ 0x0301, 0x03 },
++	{ 0x0303, 0x02 },
++	{ 0x0305, 0x04 },
++	{ 0x0306, 0x00 },
++	{ 0x0307, 0xc7 },
++	{ 0x0309, 0x0a },
++	{ 0x030b, 0x01 },
++	{ 0x030d, 0x04 },
++	{ 0x030e, 0x00 },
++	{ 0x030f, 0xe4 }, /* vendor 0xb8: op PLL pinned */
++	{ 0x0310, 0x01 },
++	{ 0x319c, 0x00 },
++	{ 0x7819, 0x00 },
++	{ 0x792f, 0x03 },
++	{ 0x8118, 0x02 },
++	{ 0x8119, 0x00 },
++	{ 0x811b, 0x01 },
++};
++
++/*
++ * Timing from the vendor sensor_lib_out_info_t array (.data 0xa9400, one
++ * 0x60-byte record per resolution): x/y output, LLP, FLL, vt_pixel_clk,
++ * op_pixel_clk. pixel_rate is the vt clock, which is what line duration is
++ * computed from. link_freq = op * 10 bpp / (2 * 4 lanes) = 684 MHz for all
++ * of them once the binned modes' op PLL is pinned (see above).
++ *
++ * @fll is the frame length the mode starts at. It is the vendor's for every
++ * mode but the 120 fps one, which starts at 60 fps: a sensor that defaults
++ * to 8 ms of exposure is a dark preview, and VBLANK still reaches 120.
+  */
+ struct imx362_mode {
+ 	u32 width;
+@@ -205,16 +413,30 @@ struct imx362_mode {
+ 	const struct imx362_reg *regs;
+ 	u32 num_regs;
+ 	u64 pixel_rate;
++	u32 llp;
++	u32 fll_min;
++	u32 fll;
++	struct v4l2_rect crop;	/* analogue crop, native array coordinates */
+ };
+ 
++#define IMX362_MODE(w, h, r, rate, l, fmin, f, t, ch)			\
++	{ .width = w, .height = h, .regs = r, .num_regs = ARRAY_SIZE(r),	\
++	  .pixel_rate = rate, .llp = l, .fll_min = fmin, .fll = f,	\
++	  .crop = { .left = 0, .top = t, .width = 4032, .height = ch } }
++
+ static const struct imx362_mode imx362_modes[] = {
+-	{
+-		.width = 4032,
+-		.height = 3032,
+-		.regs = imx362_mode_full,
+-		.num_regs = ARRAY_SIZE(imx362_mode_full),
+-		.pixel_rate = 547200000,
+-	},
++	/* res0: full array, 30 fps */
++	IMX362_MODE(4032, 3032, imx362_mode_full, 548000000, 5856, 3112, 3112,
++		    0, 3032),
++	/* res1: 16:9 crop, 30 fps -- the 4K video source */
++	IMX362_MODE(4032, 2272, imx362_mode_4032_2272, 416000000, 5856, 2360,
++		    2360, 376, 2272),
++	/* res6: 2x2 binned full array, 60 fps */
++	IMX362_MODE(2016, 1512, imx362_mode_2016_1512, 520000000, 5400, 1600,
++		    1600, 0, 3024),
++	/* res4: 2x2 binned 16:9, 120 fps (FLL 1224), starting at 60 */
++	IMX362_MODE(2016, 1136, imx362_mode_2016_1136, 796000000, 5400, 1224,
++		    2457, 376, 2272),
+ };
+ 
+ static const s64 imx362_link_freqs[] = {
+@@ -254,6 +476,16 @@ struct imx362 {
+ 	struct v4l2_ctrl *pixel_rate;
+ 	struct v4l2_ctrl *link_freq;
+ 	struct v4l2_ctrl *exposure;
++	struct v4l2_ctrl *hblank;
++	struct v4l2_ctrl *vblank;
++};
++
++static const char * const imx362_test_pattern_menu[] = {
++	"Disabled",
++	"Solid Colour",
++	"100% Colour Bars",
++	"Fade to Grey Colour Bars",
++	"PN9",
+ };
+ 
+ static inline struct imx362 *to_imx362(struct v4l2_subdev *sd)
+@@ -482,7 +714,11 @@ static int imx362_set_fmt(struct v4l2_subdev *sd,
+ 			  struct v4l2_subdev_format *fmt)
+ {
+ 	struct imx362 *imx362 = to_imx362(sd);
+-	const struct imx362_mode *mode = &imx362_modes[0];
++	const struct imx362_mode *mode;
++
++	mode = v4l2_find_nearest_size(imx362_modes, ARRAY_SIZE(imx362_modes),
++				      width, height, fmt->format.width,
++				      fmt->format.height);
+ 
+ 	mutex_lock(&imx362->lock);
+ 
+@@ -501,6 +737,25 @@ static int imx362_set_fmt(struct v4l2_subdev *sd,
+ 		fmt->format = imx362->fmt;
+ 		__v4l2_ctrl_s_ctrl_int64(imx362->pixel_rate, mode->pixel_rate);
+ 		__v4l2_ctrl_s_ctrl(imx362->link_freq, 0);
++		__v4l2_ctrl_modify_range(imx362->hblank,
++					 mode->llp - mode->width,
++					 mode->llp - mode->width, 1,
++					 mode->llp - mode->width);
++		__v4l2_ctrl_modify_range(imx362->vblank,
++					 mode->fll_min - mode->height,
++					 IMX362_FLL_MAX - mode->height, 1,
++					 mode->fll - mode->height);
++		/* a new mode starts at its own frame rate, not the last one's */
++		__v4l2_ctrl_s_ctrl(imx362->vblank, mode->fll - mode->height);
++		/*
++		 * Unconditionally: the VBLANK handler only re-ranges exposure when
++		 * the value changes, and an exposure left longer than the new
++		 * frame makes the sensor stretch every frame to fit it -- 2016x1136
++		 * ran at 47 fps on res0's 3102-line maximum.
++		 */
++		__v4l2_ctrl_modify_range(imx362->exposure, IMX362_EXPOSURE_MIN,
++					 mode->fll - IMX362_EXPOSURE_MARGIN, 1,
++					 mode->fll - IMX362_EXPOSURE_MARGIN);
+ 	}
+ 
+ 	mutex_unlock(&imx362->lock);
+@@ -560,6 +815,10 @@ static int imx362_set_ctrl(struct v4l2_ctrl *ctrl)
+ 		ret = imx362_write16(imx362, IMX362_REG_FRM_LENGTH,
+ 				     imx362->cur_mode->height + ctrl->val);
+ 		break;
++	case V4L2_CID_TEST_PATTERN:
++		ret = imx362_write16(imx362, IMX362_REG_TEST_PATTERN,
++				     ctrl->val);
++		break;
+ 	default:
+ 		break;
+ 	}
+@@ -577,12 +836,29 @@ static int imx362_get_selection(struct v4l2_subdev *sd,
+ 				struct v4l2_subdev_state *state,
+ 				struct v4l2_subdev_selection *sel)
+ {
++	struct imx362 *imx362 = to_imx362(sd);
++
+ 	switch (sel->target) {
+ 	case V4L2_SEL_TGT_CROP:
++		if (sel->which == V4L2_SUBDEV_FORMAT_TRY) {
++			const struct v4l2_mbus_framefmt *f =
++				v4l2_subdev_state_get_format(state, 0);
++
++			sel->r = v4l2_find_nearest_size(imx362_modes,
++							ARRAY_SIZE(imx362_modes),
++							width, height,
++							f->width,
++							f->height)->crop;
++			return 0;
++		}
++		mutex_lock(&imx362->lock);
++		sel->r = imx362->cur_mode->crop;
++		mutex_unlock(&imx362->lock);
++		return 0;
+ 	case V4L2_SEL_TGT_NATIVE_SIZE:
+ 	case V4L2_SEL_TGT_CROP_DEFAULT:
+ 	case V4L2_SEL_TGT_CROP_BOUNDS:
+-		/* single full-array mode; PDAF rows are part of the output */
++		/* the full array; PDAF rows are part of res0's output */
+ 		sel->r.left = 0;
+ 		sel->r.top = 0;
+ 		sel->r.width = IMX362_NATIVE_WIDTH;
+@@ -679,6 +955,7 @@ static const struct v4l2_subdev_internal_ops imx362_internal_ops = {
+ static int imx362_probe(struct i2c_client *client)
+ {
+ 	struct device *dev = &client->dev;
++	const struct imx362_mode *mode;
+ 	struct imx362 *imx362;
+ 	unsigned int i;
+ 	int ret;
+@@ -720,9 +997,11 @@ static int imx362_probe(struct i2c_client *client)
+ 	if (ret)
+ 		goto err_power_off;
+ 
+-	ret = v4l2_ctrl_handler_init(&imx362->ctrls, 9);
++	ret = v4l2_ctrl_handler_init(&imx362->ctrls, 10);
+ 	if (ret)
+ 		goto err_power_off;
++	/* set_fmt updates control ranges with __v4l2_ctrl_*(), under this lock */
++	imx362->ctrls.lock = &imx362->lock;
+ 
+ 	imx362->pixel_rate = v4l2_ctrl_new_std(&imx362->ctrls, NULL,
+ 					       V4L2_CID_PIXEL_RATE, 1,
+@@ -735,31 +1014,33 @@ static int imx362_probe(struct i2c_client *client)
+ 	if (imx362->link_freq)
+ 		imx362->link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+ 
+-	/* libcamera-mandatory quartet; single mode so the ranges are fixed */
+-	ret = 0;
+-	{
+-		struct v4l2_ctrl *hblank;
+-
+-		hblank = v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
++	/* libcamera-mandatory quartet; set_fmt moves the blanking ranges */
++	mode = imx362->cur_mode;
++	imx362->hblank = v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
+ 					   V4L2_CID_HBLANK,
+-					   IMX362_LLP - IMX362_NATIVE_WIDTH,
+-					   IMX362_LLP - IMX362_NATIVE_WIDTH, 1,
+-					   IMX362_LLP - IMX362_NATIVE_WIDTH);
+-		if (hblank)
+-			hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+-	}
+-
+-	v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops, V4L2_CID_VBLANK,
+-			  IMX362_FLL - IMX362_NATIVE_HEIGHT,
+-			  IMX362_FLL_MAX - IMX362_NATIVE_HEIGHT, 1,
+-			  IMX362_FLL - IMX362_NATIVE_HEIGHT);
++					   mode->llp - mode->width,
++					   mode->llp - mode->width, 1,
++					   mode->llp - mode->width);
++	if (imx362->hblank)
++		imx362->hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++
++	imx362->vblank = v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
++					   V4L2_CID_VBLANK,
++					   mode->fll_min - mode->height,
++					   IMX362_FLL_MAX - mode->height, 1,
++					   mode->fll - mode->height);
+ 
+ 	imx362->exposure = v4l2_ctrl_new_std(&imx362->ctrls, &imx362_ctrl_ops,
+ 					     V4L2_CID_EXPOSURE,
+ 					     IMX362_EXPOSURE_MIN,
+-					     IMX362_FLL - IMX362_EXPOSURE_MARGIN,
++					     mode->fll - IMX362_EXPOSURE_MARGIN,
+ 					     1,
+-					     IMX362_FLL - IMX362_EXPOSURE_MARGIN);
++					     mode->fll - IMX362_EXPOSURE_MARGIN);
++
++	v4l2_ctrl_new_std_menu_items(&imx362->ctrls, &imx362_ctrl_ops,
++				     V4L2_CID_TEST_PATTERN,
++				     ARRAY_SIZE(imx362_test_pattern_menu) - 1,
++				     0, 0, imx362_test_pattern_menu);
+ 
+ 	/*
+ 	 * 768 = 4x here: this part's gain is 1024/(1024-code), not the

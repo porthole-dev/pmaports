@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=48
+pkgrel=49
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -310,6 +310,9 @@ source="
 	0219-misc-Add-driver-for-FPC-fingerprint-sensors-behind-a.patch
 	0220-arm64-dts-qcom-msm8998-google-taimen-Add-the-fingerp.patch
 	0221-misc-Add-a-QSEE-listener-supplicant-transport.patch
+	0222-media-i2c-imx362-add-the-vendor-s-16-9-and-2x2-binne.patch
+	0223-misc-easel-mipi-let-sensors-retune-a-bypass-link-per.patch
+	0224-media-i2c-imx179-expose-the-video-and-binned-modes.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -563,4 +566,7 @@ f1f846e1d8badf0bf72f64bb18d82014d658f9fc1ee27d84911c4d5bbf196b61f684a47fcb964f1e
 9488f162ef78af20f0605a5fdc8333c1fcc52ae078eecec5741cb374a31c8bbdf4b7af5fe29642a5f6836efb225e2ff0512283380effcd1c698c8fb976c170b3  0219-misc-Add-driver-for-FPC-fingerprint-sensors-behind-a.patch
 c27df7e1aedb565f746c8a69c4aaf2025eb38237580a9235cafc58e14fe9b8dc70d851181763839bbb8146c72e79984efec964377c9289d66c9e72aadabf4c8f  0220-arm64-dts-qcom-msm8998-google-taimen-Add-the-fingerp.patch
 eb9a140c15c893a2594a46ad89615d8d6b23adabd49f072cc6030a05b8b52cf6a1daec6ab6efa76f5e8eb3f1839013849f5c2f332893f159aef1cddaab14f83d  0221-misc-Add-a-QSEE-listener-supplicant-transport.patch
+0883e10fefc2b1a4a79a3ada062201c973e5e2c19e0ebce30e15920af6a46451e49ce9656d1ad748b2f59ac09455483c3b833ab7a9509ac79c9be8dc3dc49693  0222-media-i2c-imx362-add-the-vendor-s-16-9-and-2x2-binne.patch
+472a511b8692220f99f1695161d0feeffbfc291698c6d84220e912235edcd7a75e1591698030ba77fdf22093309842d82e08c5f4194d716513ab314106435449  0223-misc-easel-mipi-let-sensors-retune-a-bypass-link-per.patch
+560e47283b3069933f228df48cea7e36803fd77ceaa6ea1e4ddb91e6a669220f6539e0a0f3432f19528dba6dbec45acd9864dd150f9f58ad4ed305e9b137b71b  0224-media-i2c-imx179-expose-the-video-and-binned-modes.patch
 "

@@ -1,0 +1,314 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 18:26:37 +0200
+Subject: [PATCH] media: i2c: Add ON Semiconductor LC898123F40 OIS controller
+ driver
+
+The rear camera module of the Google Pixel 2 XL carries an LC898123F40
+optical image stabiliser at 0x3e, next to the IMX362 sensor and the
+LC898214XD focus actuator. Nothing drove it, so the lens was never
+stabilised, and the module calibration data it stores (AWB, lens shading,
+focus and PDAF tables) was out of reach.
+
+The part boots its firmware from flash, so the driver only issues the
+commands the vendor camera stack sends (libois_lc898123f40.so and the
+wahoo kernel's fw_update.c): wait for 0xF100 to read 0, then enable
+stabilisation (0xF012, 0xF01C) in still mode (0xF013 = 3), as the vendor
+HAL does whenever the rear camera opens. Firmware that did not boot (RAM
+word 0x8000 reading 0) fails the probe; the vendor's reflash is not ported.
+
+The calibration area (flash word 0x1A00 onwards, read through command
+0xF01B) is registered as a read-only nvmem device, each 32-bit word as
+four little-endian bytes. That is the byte order of the vendor's
+calibration blob, so the offsets its parser uses apply unchanged: on
+taimen the nvmem contents are byte-identical to the vendor-order dump.
+
+Stabilisation is re-enabled on resume in case the supplies dropped.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/Kconfig       |  10 ++
+ drivers/media/i2c/Makefile      |   1 +
+ drivers/media/i2c/lc898123f40.c | 240 ++++++++++++++++++++++++++++++++
+ 3 files changed, 251 insertions(+)
+ create mode 100644 drivers/media/i2c/lc898123f40.c
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 79c898fec47c..03e0b944ab33 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -920,6 +920,16 @@ config VIDEO_AK7375
+ 	  capability. This is designed for linear control of
+ 	  voice coil motors, controlled via I2C serial interface.
+ 
++config VIDEO_LC898123F40
++	tristate "LC898123F40 optical image stabiliser support"
++	depends on I2C
++	select REGMAP_I2C
++	select NVMEM
++	help
++	  ON Semiconductor LC898123F40 OIS controller, used on the Google
++	  Pixel 2 XL (taimen) rear camera. The driver turns stabilisation on
++	  and exposes the camera module's calibration data through nvmem.
++
+ config VIDEO_LC898214XD
+ 	tristate "LC898214XD lens voice coil support"
+ 	depends on I2C && VIDEO_DEV
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 8b87b262c242..bb8fed6b2171 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -66,6 +66,7 @@ obj-$(CONFIG_VIDEO_IMX415) += imx415.o
+ obj-$(CONFIG_VIDEO_IR_I2C) += ir-kbd-i2c.o
+ obj-$(CONFIG_VIDEO_ISL7998X) += isl7998x.o
+ obj-$(CONFIG_VIDEO_KS0127) += ks0127.o
++obj-$(CONFIG_VIDEO_LC898123F40) += lc898123f40.o
+ obj-$(CONFIG_VIDEO_LC898214XD) += lc898214xd.o
+ obj-$(CONFIG_VIDEO_LM3560) += lm3560.o
+ obj-$(CONFIG_VIDEO_LM3646) += lm3646.o
+diff --git a/drivers/media/i2c/lc898123f40.c b/drivers/media/i2c/lc898123f40.c
+new file mode 100644
+index 000000000000..f85c9b54c1e6
+--- /dev/null
++++ b/drivers/media/i2c/lc898123f40.c
+@@ -0,0 +1,240 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * ON Semiconductor LC898123F40 optical image stabilisation controller.
++ *
++ * Google Pixel 2 XL (taimen) rear camera module, 8-bit address 0x7C on CCI
++ * master 0, beside the LC898214XD AF actuator (0xE4) and the IMX362 (0x34).
++ * The part is a Cortex-M0 that boots its firmware from on-chip flash and
++ * reads the gyro itself; the host only issues "high level commands": 16-bit
++ * register addresses carrying 32-bit big-endian values.
++ *
++ * Everything here is what the vendor stack sends, taken from two places:
++ *
++ *  - libois_lc898123f40.so, whose ois_driver_open_lib() returns the driver
++ *    parameters at .data+0: i2c_addr 0x7C, then 15 register-setting blocks
++ *    of { u32 count; struct reg_settings_ois_t[800] } (0x4b04 bytes each) in
++ *    the order libmmcamera2_sensor_modules.so names them ("ENABLE OIS,
++ *    DISABLE OIS, MOVIE MODE, STILL MODE, CENTERING ON, CENTERING OFF, PAN
++ *    TILT, ..."). The init block is empty -- nothing is downloaded. Enable
++ *    is: poll 0xF100 == 0; 0xF012 = 1; poll 0xF100 == 0; 0xF01C = 1.
++ *    Disable is 0xF012 = 0, movie mode 0xF013 = 2, still mode 0xF013 = 3.
++ *
++ *  - fw_update.c in the wahoo kernel: the firmware version is the low byte
++ *    of RAM 0x8000 (0x19 is the last release; the kernel reflashed anything
++ *    older), 0xF100 reads 0 once a command has completed, and writing a flash
++ *    word index to 0xF01B then reading 0xF01B back returns that word of the
++ *    module's calibration area, which starts at word 0x1A00.
++ *
++ * On taimen the controller reports firmware 0x19 and takes these commands
++ * (0xF012 reads back 1, 0xF100 returns to 0). The 0xE001 shift readout does
++ * not show whether stabilisation is working: on a phone at rest it is
++ * noise either way, and under the haptic motor's 155 Hz it swings by the
++ * same +-190 counts with stabilisation on or off.
++ *
++ * Stabilisation is switched on at probe in still mode, which is what the
++ * vendor HAL does whenever the rear camera opens. The calibration area is
++ * exposed as an nvmem device, one 32-bit word per four bytes, little-endian
++ * -- the byte order of the vendor's calibration blob, so the field offsets
++ * of libmmcamera_onsemi_lc898123f40xc_eeprom.so apply to it unchanged.
++ *
++ * NOT ported: the firmware reflash (F40_FlashDownload), and the gyro/hall
++ * sample stream (0xE001) the vendor feeds its EIS.
++ */
++
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/nvmem-provider.h>
++#include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
++#include <linux/unaligned.h>
++
++#define LC898123F40_REG_FW_VERSION	0x8000
++#define LC898123F40_REG_OIS_ENABLE	0xf012
++#define LC898123F40_REG_MODE		0xf013
++#define LC898123F40_REG_SSC_ENABLE	0xf01c
++#define LC898123F40_REG_CAL_READ	0xf01b
++#define LC898123F40_REG_STATUS		0xf100
++
++#define LC898123F40_MODE_STILL		3
++#define LC898123F40_CAL_BASE		0x1a00
++/* the vendor reads 0xb4c bytes; round up to whole words */
++#define LC898123F40_CAL_WORDS		0x2d4
++
++static const char * const lc898123f40_supply_names[] = {
++	"vdd",		/* 1.8 V logic */
++	"vdrv",		/* 2.8 V OIS coil driver */
++};
++
++struct lc898123f40 {
++	struct regmap *regmap;
++	struct mutex lock;	/* serialises command + readback pairs */
++};
++
++static const struct regmap_config lc898123f40_regmap_config = {
++	.reg_bits = 16,
++	.val_bits = 32,
++	.val_format_endian = REGMAP_ENDIAN_BIG,
++	.cache_type = REGCACHE_NONE,
++};
++
++static int lc898123f40_wait_ready(struct lc898123f40 *ois)
++{
++	unsigned int val;
++
++	return regmap_read_poll_timeout(ois->regmap, LC898123F40_REG_STATUS,
++					val, !val, 10000, 500000);
++}
++
++/* write @val to @reg once the previous command has completed */
++static int lc898123f40_command(struct lc898123f40 *ois, unsigned int reg,
++			       unsigned int val)
++{
++	int ret;
++
++	ret = lc898123f40_wait_ready(ois);
++	if (ret)
++		return ret;
++
++	return regmap_write(ois->regmap, reg, val);
++}
++
++static int lc898123f40_enable(struct lc898123f40 *ois)
++{
++	int ret;
++
++	mutex_lock(&ois->lock);
++	ret = lc898123f40_command(ois, LC898123F40_REG_OIS_ENABLE, 1);
++	if (!ret)
++		ret = lc898123f40_command(ois, LC898123F40_REG_SSC_ENABLE, 1);
++	if (!ret)
++		ret = lc898123f40_command(ois, LC898123F40_REG_MODE,
++					  LC898123F40_MODE_STILL);
++	mutex_unlock(&ois->lock);
++
++	return ret;
++}
++
++static int lc898123f40_cal_read(void *priv, unsigned int offset, void *val,
++				size_t bytes)
++{
++	struct lc898123f40 *ois = priv;
++	unsigned int word;
++	u8 buf[4];
++	int ret = 0;
++
++	mutex_lock(&ois->lock);
++	while (bytes) {
++		unsigned int skip = offset % 4, n = min_t(size_t, bytes, 4 - skip);
++
++		ret = regmap_write(ois->regmap, LC898123F40_REG_CAL_READ,
++				   LC898123F40_CAL_BASE + offset / 4);
++		if (!ret)
++			ret = regmap_read(ois->regmap, LC898123F40_REG_CAL_READ,
++					  &word);
++		if (ret)
++			break;
++
++		put_unaligned_le32(word, buf);
++		memcpy(val, buf + skip, n);
++		val += n;
++		offset += n;
++		bytes -= n;
++	}
++	mutex_unlock(&ois->lock);
++
++	return ret;
++}
++
++static int lc898123f40_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct nvmem_config nvmem = {
++		.name = dev_name(dev),
++		.dev = dev,
++		.owner = THIS_MODULE,
++		.read_only = true,
++		.size = LC898123F40_CAL_WORDS * 4,
++		.reg_read = lc898123f40_cal_read,
++	};
++	struct lc898123f40 *ois;
++	unsigned int fw;
++	int ret;
++
++	ois = devm_kzalloc(dev, sizeof(*ois), GFP_KERNEL);
++	if (!ois)
++		return -ENOMEM;
++
++	mutex_init(&ois->lock);
++	i2c_set_clientdata(client, ois);
++
++	ret = devm_regulator_bulk_get_enable(dev,
++					     ARRAY_SIZE(lc898123f40_supply_names),
++					     lc898123f40_supply_names);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to enable supplies\n");
++
++	ois->regmap = devm_regmap_init_i2c(client, &lc898123f40_regmap_config);
++	if (IS_ERR(ois->regmap))
++		return PTR_ERR(ois->regmap);
++
++	/* the firmware boots from flash; a command completes once it is up */
++	ret = lc898123f40_wait_ready(ois);
++	if (ret)
++		return dev_err_probe(dev, ret, "controller not ready\n");
++
++	ret = regmap_read(ois->regmap, LC898123F40_REG_FW_VERSION, &fw);
++	if (ret)
++		return ret;
++	/* a blank RAM word means the firmware did not boot */
++	if (!fw)
++		return dev_err_probe(dev, -ENODEV, "no firmware running\n");
++
++	nvmem.priv = ois;
++	ret = PTR_ERR_OR_ZERO(devm_nvmem_register(dev, &nvmem));
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to register nvmem\n");
++
++	ret = lc898123f40_enable(ois);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to enable stabilisation\n");
++
++	dev_info(dev, "firmware 0x%02x (id 0x%08x), stabilisation on\n",
++		 fw & 0xff, fw);
++
++	return 0;
++}
++
++static int lc898123f40_resume(struct device *dev)
++{
++	/* the supplies may have dropped across system sleep */
++	return lc898123f40_enable(dev_get_drvdata(dev));
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(lc898123f40_pm_ops, NULL, lc898123f40_resume);
++
++static const struct i2c_device_id lc898123f40_id[] = {
++	{ "lc898123f40" },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, lc898123f40_id);
++
++static const struct of_device_id lc898123f40_of_match[] = {
++	{ .compatible = "onnn,lc898123f40" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, lc898123f40_of_match);
++
++static struct i2c_driver lc898123f40_driver = {
++	.driver = {
++		.name = "lc898123f40",
++		.of_match_table = lc898123f40_of_match,
++		.pm = pm_sleep_ptr(&lc898123f40_pm_ops),
++	},
++	.probe = lc898123f40_probe,
++	.id_table = lc898123f40_id,
++};
++module_i2c_driver(lc898123f40_driver);
++
++MODULE_DESCRIPTION("ON Semiconductor LC898123F40 OIS controller");
++MODULE_LICENSE("GPL");

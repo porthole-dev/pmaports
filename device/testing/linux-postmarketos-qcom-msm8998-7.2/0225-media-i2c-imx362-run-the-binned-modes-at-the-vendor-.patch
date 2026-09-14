@@ -1,0 +1,164 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 18:09:16 +0200
+Subject: [PATCH] media: i2c: imx362: run the binned modes at the vendor's link
+ rates
+
+The 2x2-binned modes had their output PLL pinned to the full mode's so the
+CSI-2 link stayed at the 1368 Mbps/lane Easel was armed for at boot. Easel's
+bypass can now be retuned per stream, so restore the vendor's PLL settings
+(720 Mbps/lane for 2016x1512, 1104 for 2016x1136), advertise each mode's
+link frequency, and retune the link before programming a mode.
+
+Measured on taimen, raw stream, 130 frames each, switching modes between
+runs: 2016x1512 59.5 fps, 2016x1136 60.0, 4032x2272 30.1, 4032x3032 30.1,
+and 2016x1136 again 60.0, no sequence gaps.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/imx362.c | 67 +++++++++++++++++++++-----------------
+ 1 file changed, 38 insertions(+), 29 deletions(-)
+
+diff --git a/drivers/media/i2c/imx362.c b/drivers/media/i2c/imx362.c
+index 15c8d92bf814..0e0779d49eec 100644
+--- a/drivers/media/i2c/imx362.c
++++ b/drivers/media/i2c/imx362.c
+@@ -15,6 +15,7 @@
+ #include <linux/delay.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
++#include <linux/math64.h>
+ #include <linux/module.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/regulator/consumer.h>
+@@ -199,13 +200,11 @@ static const struct imx362_reg imx362_mode_full[] = {
+  * the 16:9 crop every 4K and 1080p video mode on Android started from; res6
+  * and res4 are its 2x2-binned 4:3 and 16:9 modes (60 and 120 fps).
+  *
+- * The binned modes' output PLL is pinned to res0's, so the link runs at
+- * 1368 Mbps/lane in every mode: Easel's bypass is configured once, at probe,
+- * for exactly that rate, and CSI-2 is burst mode -- a faster link than the
+- * data needs only means longer LP periods between lines. The vendor rates
+- * (720 and 1104 Mbps) would each need Easel re-rated per stream. Skipped:
+- * res2 (zzHDR, needs a merge nobody implements), res5 (240 fps, 1776 Mbps --
+- * the one mode the pinned rate cannot carry) and res7 (a copy of res1).
++ * Each runs its own output PLL and so its own link rate (1368, 720 and 1104
++ * Mbps/lane); easel_mipi_set_rate() retunes the bypass link to match before
++ * every stream. Skipped: res2 (zzHDR, needs a merge nobody implements), res5
++ * (240 fps -- same 2016x1136 size as res4, and V4L2 cannot tell two modes
++ * apart by frame rate alone) and res7 (a copy of res1).
+  */
+ static const struct imx362_reg imx362_mode_4032_2272[] = {
+ 	{ 0x0112, 0x0a },
+@@ -320,10 +319,10 @@ static const struct imx362_reg imx362_mode_2016_1512[] = {
+ 	{ 0x0306, 0x00 },
+ 	{ 0x0307, 0x82 },
+ 	{ 0x0309, 0x0a },
+-	{ 0x030b, 0x01 }, /* vendor 0x02: op PLL pinned */
++	{ 0x030b, 0x02 },
+ 	{ 0x030d, 0x04 },
+ 	{ 0x030e, 0x00 },
+-	{ 0x030f, 0xe4 }, /* vendor 0xf0: op PLL pinned */
++	{ 0x030f, 0xf0 },
+ 	{ 0x0310, 0x01 },
+ 	{ 0x319c, 0x00 },
+ 	{ 0x7819, 0x00 },
+@@ -386,7 +385,7 @@ static const struct imx362_reg imx362_mode_2016_1136[] = {
+ 	{ 0x030b, 0x01 },
+ 	{ 0x030d, 0x04 },
+ 	{ 0x030e, 0x00 },
+-	{ 0x030f, 0xe4 }, /* vendor 0xb8: op PLL pinned */
++	{ 0x030f, 0xb8 },
+ 	{ 0x0310, 0x01 },
+ 	{ 0x319c, 0x00 },
+ 	{ 0x7819, 0x00 },
+@@ -400,8 +399,7 @@ static const struct imx362_reg imx362_mode_2016_1136[] = {
+  * Timing from the vendor sensor_lib_out_info_t array (.data 0xa9400, one
+  * 0x60-byte record per resolution): x/y output, LLP, FLL, vt_pixel_clk,
+  * op_pixel_clk. pixel_rate is the vt clock, which is what line duration is
+- * computed from. link_freq = op * 10 bpp / (2 * 4 lanes) = 684 MHz for all
+- * of them once the binned modes' op PLL is pinned (see above).
++ * computed from; link_freq = op * 10 bpp / (2 * 4 lanes).
+  *
+  * @fll is the frame length the mode starts at. It is the vendor's for every
+  * mode but the 120 fps one, which starts at 60 fps: a sensor that defaults
+@@ -413,34 +411,38 @@ struct imx362_mode {
+ 	const struct imx362_reg *regs;
+ 	u32 num_regs;
+ 	u64 pixel_rate;
++	u32 link_freq_index;
+ 	u32 llp;
+ 	u32 fll_min;
+ 	u32 fll;
+ 	struct v4l2_rect crop;	/* analogue crop, native array coordinates */
+ };
+ 
+-#define IMX362_MODE(w, h, r, rate, l, fmin, f, t, ch)			\
++#define IMX362_MODE(w, h, r, rate, lf, l, fmin, f, t, ch)		\
+ 	{ .width = w, .height = h, .regs = r, .num_regs = ARRAY_SIZE(r),	\
+-	  .pixel_rate = rate, .llp = l, .fll_min = fmin, .fll = f,	\
++	  .pixel_rate = rate, .link_freq_index = lf, .llp = l,		\
++	  .fll_min = fmin, .fll = f,					\
+ 	  .crop = { .left = 0, .top = t, .width = 4032, .height = ch } }
+ 
++static const s64 imx362_link_freqs[] = {
++	684000000,	/* op 547.2 MHz */
++	360000000,	/* op 288 MHz */
++	552000000,	/* op 441.6 MHz */
++};
++
+ static const struct imx362_mode imx362_modes[] = {
+ 	/* res0: full array, 30 fps */
+-	IMX362_MODE(4032, 3032, imx362_mode_full, 548000000, 5856, 3112, 3112,
+-		    0, 3032),
++	IMX362_MODE(4032, 3032, imx362_mode_full, 548000000, 0, 5856, 3112,
++		    3112, 0, 3032),
+ 	/* res1: 16:9 crop, 30 fps -- the 4K video source */
+-	IMX362_MODE(4032, 2272, imx362_mode_4032_2272, 416000000, 5856, 2360,
+-		    2360, 376, 2272),
++	IMX362_MODE(4032, 2272, imx362_mode_4032_2272, 416000000, 0, 5856,
++		    2360, 2360, 376, 2272),
+ 	/* res6: 2x2 binned full array, 60 fps */
+-	IMX362_MODE(2016, 1512, imx362_mode_2016_1512, 520000000, 5400, 1600,
+-		    1600, 0, 3024),
++	IMX362_MODE(2016, 1512, imx362_mode_2016_1512, 520000000, 1, 5400,
++		    1600, 1600, 0, 3024),
+ 	/* res4: 2x2 binned 16:9, 120 fps (FLL 1224), starting at 60 */
+-	IMX362_MODE(2016, 1136, imx362_mode_2016_1136, 796000000, 5400, 1224,
+-		    2457, 376, 2272),
+-};
+-
+-static const s64 imx362_link_freqs[] = {
+-	684000000,
++	IMX362_MODE(2016, 1136, imx362_mode_2016_1136, 796000000, 2, 5400,
++		    1224, 2457, 376, 2272),
+ };
+ 
+ /*
+@@ -736,7 +738,7 @@ static int imx362_set_fmt(struct v4l2_subdev *sd,
+ 		imx362_set_mode_format(imx362, mode);
+ 		fmt->format = imx362->fmt;
+ 		__v4l2_ctrl_s_ctrl_int64(imx362->pixel_rate, mode->pixel_rate);
+-		__v4l2_ctrl_s_ctrl(imx362->link_freq, 0);
++		__v4l2_ctrl_s_ctrl(imx362->link_freq, mode->link_freq_index);
+ 		__v4l2_ctrl_modify_range(imx362->hblank,
+ 					 mode->llp - mode->width,
+ 					 mode->llp - mode->width, 1,
+@@ -895,8 +897,15 @@ static int imx362_s_stream(struct v4l2_subdev *sd, int enable)
+ 		gpiod_set_value_cansleep(imx362->reset_gpio, 0);
+ 		usleep_range(9000, 10000);
+ 
+-		ret = imx362_write_regs(imx362, imx362_init,
+-					ARRAY_SIZE(imx362_init));
++		/* lanes idle: retune Easel's rear link for this mode's rate */
++		ret = easel_mipi_set_rate(0, div_u64(2 *
++			imx362_link_freqs[mode->link_freq_index], 1000000));
++		if (ret)
++			dev_err(&client->dev, "easel link rate: %d\n", ret);
++
++		if (!ret)
++			ret = imx362_write_regs(imx362, imx362_init,
++						ARRAY_SIZE(imx362_init));
+ 		if (!ret)
+ 			ret = imx362_write_regs(imx362, mode->regs,
+ 						mode->num_regs);

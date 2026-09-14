@@ -1,0 +1,102 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 18:26:38 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: Add camera OIS,
+ laser AF and EEPROM
+
+Describe three camera peripherals the vendor devicetree and camera stack
+use and this one did not:
+
+- the rear module's LC898123F40 OIS controller at 0x3e on CCI master 0
+  (the vendor's 0x7C), powered from the 1.8 V IO rail and the OIS coil
+  driver rail the IMX362 node already references;
+- the front module's calibration EEPROM at 0x51 on CCI master 1 (the
+  vendor's "primax_g802l" eeprom), a 16-bit addressed 24c32-compatible
+  part, read-only;
+- the VL53L0 laser ranging sensor used for rear autofocus, at 0x29 on
+  BLSP2 QUP3 (downstream's i2c_9), with its supply on l19, XSHUT on
+  gpio39 and its interrupt on gpio62. Unpowered and held in shutdown it
+  does not answer on the bus.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 49 +++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index b9949248aff2..0b5e95198029 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -799,9 +799,33 @@ easel_vddpe: easel_vddpe {
+ 			};
+ 		};
+ 	};
++
++	/*
++	 * Rear laser ranging sensor for autofocus: downstream's wahoo_laser@29
++	 * on i2c_9 (msm8998-taimen-camera.dtsi), an ST VL53L0 with its
++	 * 2.8 V supply on pm8998 l19 (3.008 V on both trees), XSHUT on gpio39
++	 * and GPIO1 on gpio62. Unpowered and held in shutdown it does not ACK.
++	 */
++	proximity@29 {
++		compatible = "st,vl53l0x";
++		reg = <0x29>;
++		vdd-supply = <&vreg_l19a_3p0>;
++		reset-gpios = <&tlmm 39 GPIO_ACTIVE_LOW>;
++		interrupt-parent = <&tlmm>;
++		interrupts = <62 IRQ_TYPE_EDGE_FALLING>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&laser_xshut_default>;
++	};
+ };
+ 
+ &tlmm {
++	laser_xshut_default: laser-xshut-default-state {
++		pins = "gpio39";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	bcm15602_default: bcm15602-default-state {
+ 		pon-pins {
+ 			pins = "gpio25";
+@@ -1100,6 +1124,19 @@ af_lens: lens@72 {
+ 		reg = <0x72>;
+ 	};
+ 
++	/*
++	 * Rear OIS controller: vendor 8-bit 0x7C (libois_lc898123f40.so
++	 * i2c_addr, fw_update.c OIS_COMPONENT_I2C_ADDR_WRITE). It also holds
++	 * the module's calibration data (the vendor's "onsemi_lc898123f40xc"
++	 * eeprom, word 0x1A00 of its flash).
++	 */
++	ois@3e {
++		compatible = "onnn,lc898123f40";
++		reg = <0x3e>;
++		vdd-supply = <&vreg_lvs1a_1p8>;
++		vdrv-supply = <&cam0_drv>;
++	};
++
+ 	/*
+ 	 * Vendor slave_info: 8-bit addr 0x34 -> 7-bit 0x1a. Same MCLK-rate and
+ 	 * CAMSS_TOP-domain traps as the front sensor -- see the imx179 node.
+@@ -1173,6 +1210,18 @@ cam1_avdd_en: cam1-avdd-en-state {
+ };
+ 
+ &cci_i2c1 {
++	/*
++	 * Front module calibration EEPROM (vendor "primax_g802l": AWB and lens
++	 * shading). 16-bit addressed; the vendor reads 0x758 bytes from 0.
++	 * Answers at 0x51, and reads back the "PM" module header.
++	 */
++	eeprom@51 {
++		compatible = "atmel,24c32";
++		reg = <0x51>;
++		vcc-supply = <&vreg_lvs1a_1p8>;
++		read-only;
++	};
++
+ 	/*
+ 	 * Address is a bring-up guess: the vendor DT does NOT carry it (the
+ 	 * downstream camera framework gets the slave address from the userspace

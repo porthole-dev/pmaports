@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=53
+pkgrel=54
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -72,6 +72,17 @@ options="!check !archcheck"
 # gain, frame rate, white balance and focus come from libcamera's own control
 # list, and Snapshot shows none of them. Without it the only camera app on the
 # phone cannot use what the imx362/lc898214xd/libcamera work exposes.
+# Installed with the device by default but not hard dependencies, so an image
+# built with `pmbootstrap install --no-recommends`, or `apk del`, can leave
+# them out: fingerprint unlock (it runs a proprietary TrustZone trustlet, so
+# it stays removable), Tap for the NFC portal, and Chromium, the browser this
+# port tunes (taimen-chromium.conf) and carries a fork of (temp/chromium).
+_pmb_recommends="
+	chromium
+	device-google-taimen-fingerprint
+	tap
+	"
+
 depends="
 	alsa-ucm-conf
 	firmware-google-taimen

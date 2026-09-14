@@ -1,4 +1,4 @@
-From 156395b87147f035f007b2079795679495a3caeb Mon Sep 17 00:00:00 2001
+From dd8cecaba4acb42f40bc4282fdc7bb54d8d2fba1 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 13 Sep 2026 21:56:58 +0200
 Subject: [PATCH] drivers: add fpctee, FPC match-on-chip sensors behind a QSEE
@@ -26,18 +26,18 @@ node.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- libfprint/drivers/fpctee/fpctee.c | 1779 +++++++++++++++++++++++++++++
+ libfprint/drivers/fpctee/fpctee.c | 1856 +++++++++++++++++++++++++++++
  libfprint/meson.build             |    2 +
  meson.build                       |    2 +
- 3 files changed, 1783 insertions(+)
+ 3 files changed, 1860 insertions(+)
  create mode 100644 libfprint/drivers/fpctee/fpctee.c
 
 diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
 new file mode 100644
-index 0000000..3b92c4a
+index 0000000..6b50c0b
 --- /dev/null
 +++ b/libfprint/drivers/fpctee/fpctee.c
-@@ -0,0 +1,1779 @@
+@@ -0,0 +1,1856 @@
 +/*
 + * FPC match-on-chip fingerprint sensor behind a QSEE trustlet
 + *
@@ -149,6 +149,11 @@ index 0000000..3b92c4a
 +#define FPCDATA_GET_ENROL_CHALLENGE 0x02
 +#define FPCDATA_AUTHORIZE_ENROL     0x03
 +#define FPCDATA_SET_KEY_DATA        0x05
++#define FPCDATA_CHECK_ENROL_TIMEOUT 0x06
++
++/* The window the trustlet gives an enrolment, in seconds. The HAL takes it
++ * from the Android framework, which asks for 60. */
++#define FPC_ENROL_TIMEOUT_SECS    60
 +
 +/* Names are what the HAL's call sites show, not the trustlet's own. */
 +#define SENSOR_INIT               0x00
@@ -173,6 +178,7 @@ index 0000000..3b92c4a
 +#define FPC_ERROR_IO              -206
 +#define FPC_ERROR_NOT_FOUND       -208
 +#define FPC_ERROR_CANCELLED       -207
++#define FPC_ERROR_TIMEDOUT        -202
 +
 +#define CAPTURE_NO_IMAGE_YET      0x105  /* capture again, nothing to report */
 +#define IDENTIFY_LOW_QUALITY      0x106
@@ -201,6 +207,7 @@ index 0000000..3b92c4a
 +  GHashTable *fs_fds;           /* listener thread only */
 +  gint       fs_errno;          /* listener thread only */
 +
++  gboolean   have_auth_key;
 +  guint32    enrolled_id;
 +  guint32    matched_id;
 +  gint       enroll_done;
@@ -1073,6 +1080,8 @@ index 0000000..3b92c4a
 + * open / close
 + * ---------------------------------------------------------------------- */
 +
++static gboolean install_auth_key (FpiDeviceFpcTee *self);
++
 +static gpointer
 +open_work (FpiDeviceFpcTee *self, GError **error)
 +{
@@ -1105,6 +1114,15 @@ index 0000000..3b92c4a
 +      *error = status_error (st, "loading the template database");
 +      return NULL;
 +    }
++
++  /*
++   * fpc_tee_init_hw_auth(): the HAL installs the auth-token key once here,
++   * at device open, not per enrolment. Unlike the HAL a failure is not fatal
++   * -- it only costs enrolment, and matching never needs the key, so a
++   * device with no supplicant still unlocks. enroll_work() says so plainly
++   * if the key is still missing when it matters.
++   */
++  install_auth_key (self);
 +
 +  return NULL;
 +}
@@ -1274,24 +1292,45 @@ index 0000000..3b92c4a
 +}
 +
 +
++/*
++ * fpc_tee_check_enrol_timeout(): the trustlet times the enrolment session
++ * out, not the host. start=1 opens the window before BEGIN_ENROL; every
++ * enrol step afterwards re-checks it, and -202 ends the session.
++ */
++static gint32
++check_enrol_timeout (FpiDeviceFpcTee *self, gboolean start)
++{
++  guint8 buf[FPC_TEE_CMDBUF_SIZE] = { 0 };
++  gint rc;
++
++  put32 (buf, 0, GRP_FPCDATA);
++  put32 (buf, 4, FPCDATA_CHECK_ENROL_TIMEOUT);
++  put32 (buf, 12, FPC_ENROL_TIMEOUT_SECS);
++  buf[16] = start ? 1 : 0;
++
++  rc = tee_xfer (self, buf);
++  if (rc < 0)
++    return TRANSPORT_ERROR (rc);
++
++  /* This one answers at word 5; word 2 is not its status. */
++  return (gint32) get32 (buf, 20);
++}
++
++
++/* fpc_tee_init_hw_auth(): keymaster's sealed key, handed to the trustlet. */
 +static gboolean
-+authorize_enrol (FpiDeviceFpcTee *self, GError **error)
++install_auth_key (FpiDeviceFpcTee *self)
 +{
 +  g_autoptr(GBytes) key = NULL;
-+  g_autoptr(GBytes) token = NULL;
-+  g_autofree char *ask = NULL;
 +  g_autoptr(GError) local = NULL;
-+  guint64 challenge;
 +  gsize len;
 +  gint32 st;
 +
 +  key = supplicant_ask ("KEY\n", &local);
 +  if (key == NULL)
 +    {
-+      *error = fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
-+                                         "no auth-token key: %s. Enrolment needs "
-+                                         "qsee-supplicant; matching does not.",
-+                                         local->message);
++      fp_dbg ("no auth-token key (%s); enrolment will not be possible",
++              local->message);
 +      return FALSE;
 +    }
 +
@@ -1299,7 +1338,30 @@ index 0000000..3b92c4a
 +                   g_bytes_get_data (key, &len), len);
 +  if (st != 0)
 +    {
-+      *error = status_error (st, "installing the auth-token key");
++      fp_warn ("the trustlet refused the auth-token key: %d", st);
++      return FALSE;
++    }
++
++  self->have_auth_key = TRUE;
++  return TRUE;
++}
++
++
++static gboolean
++authorize_enrol (FpiDeviceFpcTee *self, GError **error)
++{
++  g_autoptr(GBytes) token = NULL;
++  g_autofree char *ask = NULL;
++  g_autoptr(GError) local = NULL;
++  guint64 challenge;
++  gsize len;
++  gint32 st;
++
++  if (!self->have_auth_key && !install_auth_key (self))
++    {
++      *error = fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                         "no auth-token key: enrolment needs "
++                                         "qsee-supplicant, matching does not.");
 +      return FALSE;
 +    }
 +
@@ -1347,6 +1409,13 @@ index 0000000..3b92c4a
 +  if (!authorize_enrol (self, error))
 +    return NULL;
 +
++  st = check_enrol_timeout (self, TRUE);
++  if (st != 0)
++    {
++      *error = status_error (st, "starting the enrolment window");
++      return NULL;
++    }
++
 +  st = tee_simple (self, GRP_BIO, BIO_BEGIN_ENROL, 0, NULL);
 +  if (st != 0)
 +    {
@@ -1374,6 +1443,14 @@ index 0000000..3b92c4a
 +      if (st < 0)
 +        {
 +          *error = status_error (st, "enrol");
++          return NULL;
++        }
++
++      if (check_enrol_timeout (self, FALSE) == FPC_ERROR_TIMEDOUT)
++        {
++          *error = fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                             "enrolment timed out after %d seconds",
++                                             FPC_ENROL_TIMEOUT_SECS);
 +          return NULL;
 +        }
 +

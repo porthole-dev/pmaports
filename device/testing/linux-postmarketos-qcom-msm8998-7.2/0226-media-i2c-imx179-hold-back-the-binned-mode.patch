@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 18:09:17 +0200
+Subject: [PATCH] media: i2c: imx179: hold back the binned mode
+
+At its 340 Mbps/lane rate Easel retunes cleanly, but the SoC never sees a
+start of frame ("VFE sof timeout"), and sweeping the CSIPHY settle count over
+28..52 changes nothing, while 3280x1846 at 540 and 3280x2464 at 648 stream
+at 30 fps before and after the attempt.
+
+Offered anyway, it is the mode libcamera picks for any small viewfinder, so
+the front camera would show nothing. Leave it out of enumeration and format
+selection until it streams.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/imx179.c | 25 +++++++++++++++++++------
+ 1 file changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/i2c/imx179.c b/drivers/media/i2c/imx179.c
+index a226c1259212..2ae417b15037 100644
+--- a/drivers/media/i2c/imx179.c
++++ b/drivers/media/i2c/imx179.c
+@@ -647,18 +647,29 @@ static int imx179_enum_mbus_code(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
++/*
++ * The binned mode (index 0) is left out: at its 340 Mbps/lane Easel retunes
++ * cleanly but the SoC never sees a start of frame, and a CSIPHY settle sweep
++ * over 28..52 changes nothing. Offered, it is what libcamera picks for any
++ * small viewfinder, so it would black out the front camera.
++ */
++#define IMX179_FIRST_MODE	1
++
+ static int imx179_enum_frame_size(struct v4l2_subdev *sd,
+ 				  struct v4l2_subdev_state *state,
+ 				  struct v4l2_subdev_frame_size_enum *fse)
+ {
+-	if (fse->index >= ARRAY_SIZE(imx179_modes) ||
++	const struct imx179_mode *mode;
++
++	if (fse->index >= ARRAY_SIZE(imx179_modes) - IMX179_FIRST_MODE ||
+ 	    fse->code != MEDIA_BUS_FMT_SRGGB10_1X10)
+ 		return -EINVAL;
+ 
+-	fse->min_width = imx179_modes[fse->index].width;
+-	fse->max_width = imx179_modes[fse->index].width;
+-	fse->min_height = imx179_modes[fse->index].height;
+-	fse->max_height = imx179_modes[fse->index].height;
++	mode = &imx179_modes[IMX179_FIRST_MODE + fse->index];
++	fse->min_width = mode->width;
++	fse->max_width = mode->width;
++	fse->min_height = mode->height;
++	fse->max_height = mode->height;
+ 
+ 	return 0;
+ }
+@@ -681,7 +692,9 @@ static int imx179_get_fmt(struct v4l2_subdev *sd,
+ 
+ static const struct imx179_mode *imx179_find_mode(u32 width, u32 height)
+ {
+-	return v4l2_find_nearest_size(imx179_modes, ARRAY_SIZE(imx179_modes),
++	return v4l2_find_nearest_size(imx179_modes + IMX179_FIRST_MODE,
++				      ARRAY_SIZE(imx179_modes) -
++					IMX179_FIRST_MODE,
+ 				      width, height, width, height);
+ }
+ 

@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=49
+pkgrel=50
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -313,6 +313,12 @@ source="
 	0222-media-i2c-imx362-add-the-vendor-s-16-9-and-2x2-binne.patch
 	0223-misc-easel-mipi-let-sensors-retune-a-bypass-link-per.patch
 	0224-media-i2c-imx179-expose-the-video-and-binned-modes.patch
+	0225-media-i2c-imx362-run-the-binned-modes-at-the-vendor-.patch
+	0226-media-i2c-imx179-hold-back-the-binned-mode.patch
+	0227-dt-bindings-media-i2c-Add-ON-Semiconductor-LC898123F.patch
+	0228-media-i2c-Add-ON-Semiconductor-LC898123F40-OIS-contr.patch
+	0229-iio-proximity-vl53l0x-i2c-select-the-triggered-buffe.patch
+	0230-arm64-dts-qcom-msm8998-google-taimen-Add-camera-OIS-.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -344,7 +350,7 @@ package() {
 }
 sha512sums="
 6ca338fd2f9d2224b9187ba1cad18c05417c0504771917203a023467a8ac3a34e346bd3bc5a3f5716aa9810381a28c730ea5fc3726773dca36d75a4677178b13  linux-7.2.2.tar.xz
-e50e84188b22f56f090c5a86ed8c4056196b87335ea73c11745e9dab4f2bf6475d0fe3b8c49ea17236c0248bdf66ac430af95864244214f5e399012cffd8a07e  config-postmarketos-qcom-msm8998-7.2.aarch64
+3e4f37a049c4f18b99f049b70abef6cff10a6485dcae7cc9b3e34633fbf7ebd734846e5f1407e0527537d0497d98d9ca6f7417a6dcb64e7ee66d71cd54cbf8dd  config-postmarketos-qcom-msm8998-7.2.aarch64
 0858ed26e3c55bec0208b918e3438657e0b468b75b5d4f2a994dbe05cf1ff82bf3053dc5584fef7379dcbca0556eacbfd5675adacff1de63cc30fad8f6c17559  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 51dcee155f7b1912bd30da88f2f877c6601f2f856f9437aa6da93e1b8dc5dc2fde07b99234bcdb8f8f7a62deaede3563d0959e0e9f628910ae90ad069b6b3c51  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 47e2789a45183718612ce29f3ffd034a27c77b8d437f1c6e3a05e564e4b79b365546b79e8861b92b008f15cf8bba598c2e129a61b695e1cf55ce93a7bcdea7ea  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -569,4 +575,10 @@ eb9a140c15c893a2594a46ad89615d8d6b23adabd49f072cc6030a05b8b52cf6a1daec6ab6efa76f
 0883e10fefc2b1a4a79a3ada062201c973e5e2c19e0ebce30e15920af6a46451e49ce9656d1ad748b2f59ac09455483c3b833ab7a9509ac79c9be8dc3dc49693  0222-media-i2c-imx362-add-the-vendor-s-16-9-and-2x2-binne.patch
 472a511b8692220f99f1695161d0feeffbfc291698c6d84220e912235edcd7a75e1591698030ba77fdf22093309842d82e08c5f4194d716513ab314106435449  0223-misc-easel-mipi-let-sensors-retune-a-bypass-link-per.patch
 560e47283b3069933f228df48cea7e36803fd77ceaa6ea1e4ddb91e6a669220f6539e0a0f3432f19528dba6dbec45acd9864dd150f9f58ad4ed305e9b137b71b  0224-media-i2c-imx179-expose-the-video-and-binned-modes.patch
+8b83d1ed3d0c2f22febaf717955d67f116622a254a94eafa8acf47d3bc9f55dc44434ca4b97b3fb7f8d8b483b8481818c6509404b6dca641398100946a786075  0225-media-i2c-imx362-run-the-binned-modes-at-the-vendor-.patch
+aa32fb25f4623f974dd47fd15f599a9ad2b0560d0107f1e61d6bdeacd5720b4b74e771c711a5f728849a5b7d3352531c8e36c373c57a0b30e0ba106f56533c6a  0226-media-i2c-imx179-hold-back-the-binned-mode.patch
+aca39be802af8e8d825535284d536287acdd798ff5873653fa12f79050a63e9edfebe9bfc72b2fc449aca7e92bf50d32f836e1f8aab140f13547ed7ee6bb7776  0227-dt-bindings-media-i2c-Add-ON-Semiconductor-LC898123F.patch
+20cf0a0cbcb383c21753e92b15bad7932c82c13f675465bc8a0eca1ff80dc8a156599dc407acf943c7e1d67231a29b0f1b63612817387789cae64c531d089600  0228-media-i2c-Add-ON-Semiconductor-LC898123F40-OIS-contr.patch
+b2714aac45fe1266e6812fcb280a1e9b01cb356703bec73e1fd001864f7c553639403d92e1373e137e372d91a73fffdc28af930c3dd657e9ffd51c9eb5e7fa9a  0229-iio-proximity-vl53l0x-i2c-select-the-triggered-buffe.patch
+cd0364e5c3e4799a047022c13299a6375a34b8c58a7a8710381dff83bbc279d025fcb70195d4749ef96a0807d74f11cb0647fab63254fb37d30afeceed4d41ca  0230-arm64-dts-qcom-msm8998-google-taimen-Add-camera-OIS-.patch
 "

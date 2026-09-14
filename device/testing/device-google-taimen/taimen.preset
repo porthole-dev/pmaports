@@ -81,3 +81,12 @@ disable tuned-ppd.service
 # 99-default.preset says "disable *", so a unit this package ships without a
 # rule is silently disabled and the phone quietly loses its touch boost.
 enable powerhintd.service
+
+# qsee-supplicant, shipped by the -fingerprint subpackage since pkgrel 50.
+# Same reason as every other line here: 99-default.preset says "disable *",
+# so without this it is silently disabled -- and then Gatekeeper cannot reach
+# RPMB, and enrolling a finger fails with the trustlet refusing to commit.
+# The unit carries ConditionPathExists=/dev/qsee_lsnr, so on a kernel without
+# the listener transport it simply does not start rather than failing.
+enable qsee-supplicant.service
+enable qsee-supplicant.socket

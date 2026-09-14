@@ -1,0 +1,471 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 11:48:02 +0200
+Subject: [PATCH] misc: Add a QSEE listener supplicant transport
+
+A QSEE trustlet that needs something from the normal world does not get it
+from its own command: QSEE suspends the command, answers INCOMPLETE with the
+id of the listener service it wants, and only lets the command finish once
+that service has been served. drivers/misc/fpc1020.c already does this for
+one trustlet's file listeners, with the services themselves left to
+userspace because which files a trustlet may touch is policy.
+
+Generalise that. /dev/qsee_lsnr lets a supplicant register the listeners it
+intends to serve, answer their requests, and send commands to any resident
+trustlet, while the kernel keeps only the parts that have to be here: the
+SCM calls, memory below 4 GB and the handshake. It is the same split
+OP-TEE uses with tee-supplicant.
+
+The Google Pixel 2 XL needs it for fingerprint enrolment. Its fingerprint
+trustlet will not commit an enrolment without a Gatekeeper-signed hardware
+auth token; Gatekeeper lives inside the resident keymaster64 app and keeps
+its password handles in RPMB, and QSEE refuses a request for a listener
+nobody registered, so without a supplicant its enrol simply fails. RPMB
+needs no kernel support of its own: it is reachable as SECURITY PROTOCOL
+IN/OUT on the UFS RPMB well-known LU's bsg node.
+
+The device is root-only, and grants over any resident trustlet the same
+authority /dev/fpc_tee already grants over one.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/misc/Kconfig     |  20 ++
+ drivers/misc/Makefile    |   1 +
+ drivers/misc/qsee_lsnr.c | 388 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 409 insertions(+)
+ create mode 100644 drivers/misc/qsee_lsnr.c
+
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 455286a44b0b..55c74fc5efa3 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -661,6 +661,26 @@ source "drivers/misc/keba/Kconfig"
+ source "drivers/misc/amd-sbi/Kconfig"
+ source "drivers/misc/rp1/Kconfig"
+ 
++config QSEE_LISTENER
++	tristate "QSEE listener supplicant transport"
++	depends on QCOM_QSEECOM
++	help
++	  Say Y here to let userspace serve the listener services a Qualcomm
++	  QSEE trustlet needs, and send commands to a resident trustlet,
++	  through /dev/qsee_lsnr.
++
++	  A trustlet that stores data asks the normal world to do it: QSEE
++	  suspends the command and waits for a listener to answer. Which
++	  services exist, and what they are allowed to touch, is policy, so
++	  this driver carries only the SCM calls and the handshake and leaves
++	  the services themselves to a supplicant process -- the arrangement
++	  OP-TEE uses with tee-supplicant. On the Google Pixel 2 XL the
++	  fingerprint trustlet needs RPMB served this way before it will
++	  authorize an enrolment.
++
++	  This driver can also be built as a module. If so, the module will
++	  be called qsee_lsnr.
++
+ config FPC1020
+ 	tristate "FPC fingerprint sensor behind a QSEE trustlet"
+ 	depends on OF && GPIOLIB
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index 555a04b3cdad..0b063b9f4ea7 100644
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -76,3 +76,4 @@ obj-y				+= keba/
+ obj-y				+= amd-sbi/
+ obj-$(CONFIG_MISC_RP1)		+= rp1/
+ obj-$(CONFIG_FPC1020)		+= fpc1020.o
++obj-$(CONFIG_QSEE_LISTENER)	+= qsee_lsnr.o
+diff --git a/drivers/misc/qsee_lsnr.c b/drivers/misc/qsee_lsnr.c
+new file mode 100644
+index 000000000000..50036f01e70c
+--- /dev/null
++++ b/drivers/misc/qsee_lsnr.c
+@@ -0,0 +1,388 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * QSEE listener supplicant transport.
++ *
++ * A QSEE trustlet that needs something from the normal world -- file storage,
++ * RPMB -- does not get it from its own command: QSEE suspends the command and
++ * answers INCOMPLETE with the id of the listener service it wants, and the
++ * command only finishes once that service has been served. Which services
++ * exist, and what each is allowed to touch, is policy, so this driver keeps
++ * only the parts that must be in the kernel -- the SCM calls, memory below
++ * 4 GB, and the handshake -- and hands the requests to a supplicant process
++ * through /dev/qsee_lsnr. It is the arrangement OP-TEE uses with
++ * tee-supplicant, and the one drivers/misc/fpc1020.c already uses for the
++ * fingerprint trustlet's own file listeners.
++ *
++ * Userspace registers the listeners it intends to serve, answers their
++ * requests with FPC_TEE-style RECV/SEND ioctls, and sends commands to any
++ * resident trustlet with QSEE_IOC_CMD. On the Google Pixel 2 XL that is what
++ * lets Gatekeeper -- which lives inside the resident keymaster64 app and
++ * keeps its password handles in RPMB -- mint the hardware auth token the
++ * fingerprint trustlet demands before it will commit an enrolment. RPMB
++ * itself needs no kernel support here: it is reachable as SECURITY PROTOCOL
++ * IN/OUT on the UFS RPMB well-known LU's bsg node.
++ *
++ * The device is root-only. A process that can open it can send arbitrary
++ * commands to any resident trustlet, which is the same authority
++ * /dev/fpc_tee already grants for one.
++ *
++ * Copyright (C) 2026 Giuseppe Maggio <jertlok@proton.me>
++ */
++
++#include <linux/dma-mapping.h>
++#include <linux/fs.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/platform_device.h>
++#include <linux/slab.h>
++#include <linux/spinlock.h>
++#include <linux/uaccess.h>
++#include <linux/wait.h>
++
++#include <linux/firmware/qcom/qcom_scm.h>
++#include <linux/firmware/qcom/qcom_tzmem.h>
++
++#define QSEE_MAX_LISTENERS	4
++#define QSEE_MAX_CMD		(64 * 1024)
++#define QSEE_LISTENER_TIMEOUT_MS 30000
++
++struct qsee_lsnr_register {
++	__u32 id;
++	__u32 size;
++};
++
++struct qsee_lsnr_xfer {
++	__u32 id;		/* RECV: out. SEND: in, must match. */
++	__s32 status;		/* SEND: 0 served, nonzero failed. */
++	__u64 buf;
++	__u32 len;
++	__u32 timeout_ms;	/* RECV only. */
++};
++
++struct qsee_lsnr_cmd {
++	__u32 app_id;
++	__u32 req_len;
++	__u32 rsp_len;
++	__u32 pad;
++	__u64 req;
++	__u64 rsp;
++};
++
++#define QSEE_IOC_REGISTER	_IOW('Q', 0x01, struct qsee_lsnr_register)
++#define QSEE_IOC_RECV		_IOWR('Q', 0x02, struct qsee_lsnr_xfer)
++#define QSEE_IOC_SEND		_IOW('Q', 0x03, struct qsee_lsnr_xfer)
++#define QSEE_IOC_CMD		_IOWR('Q', 0x04, struct qsee_lsnr_cmd)
++
++enum qsee_state {
++	QSEE_IDLE,
++	QSEE_PENDING,
++	QSEE_SERVING,
++	QSEE_DONE,
++};
++
++static struct {
++	struct device *dev;
++	struct qcom_tzmem_pool *pool;
++	struct mutex lock;		/* one command at a time */
++
++	struct {
++		u32 id;
++		size_t size;
++		void *buf;
++		dma_addr_t phys;
++		bool registered;
++	} lsnr[QSEE_MAX_LISTENERS];
++	unsigned int nr;
++
++	spinlock_t slock;		/* guards the rendezvous below */
++	enum qsee_state state;
++	unsigned int idx;
++	int status;
++	wait_queue_head_t req_wq;
++	wait_queue_head_t rsp_wq;
++} q;
++
++/* Called with the QSEECOM call lock held, from inside a blocked app command. */
++static int qsee_handle(void *priv, u32 listener_id)
++{
++	unsigned int i;
++	long left;
++	int ret;
++
++	for (i = 0; i < q.nr; i++)
++		if (q.lsnr[i].id == listener_id && q.lsnr[i].registered)
++			break;
++	if (i == q.nr) {
++		pr_warn("qsee-lsnr: request for unregistered listener 0x%x\n",
++			listener_id);
++		return -ENOENT;
++	}
++
++	spin_lock(&q.slock);
++	q.idx = i;
++	q.state = QSEE_PENDING;
++	spin_unlock(&q.slock);
++	wake_up_interruptible(&q.req_wq);
++
++	left = wait_event_killable_timeout(q.rsp_wq, q.state == QSEE_DONE,
++					   msecs_to_jiffies(QSEE_LISTENER_TIMEOUT_MS));
++
++	spin_lock(&q.slock);
++	ret = q.state == QSEE_DONE ? q.status : (left < 0 ? left : -ETIMEDOUT);
++	q.state = QSEE_IDLE;
++	spin_unlock(&q.slock);
++
++	if (ret)
++		pr_warn("qsee-lsnr: listener 0x%x not served: %d\n", listener_id, ret);
++	return ret;
++}
++
++static int qsee_do_register(unsigned long arg)
++{
++	struct qsee_lsnr_register r;
++	unsigned int i;
++	int ret;
++
++	if (copy_from_user(&r, (void __user *)arg, sizeof(r)))
++		return -EFAULT;
++	if (!r.size || r.size > SZ_1M)
++		return -EINVAL;
++	if (q.nr >= QSEE_MAX_LISTENERS)
++		return -ENOSPC;
++
++	for (i = 0; i < q.nr; i++)
++		if (q.lsnr[i].id == r.id)
++			return -EEXIST;
++
++	i = q.nr;
++	q.lsnr[i].buf = dmam_alloc_coherent(q.dev, r.size, &q.lsnr[i].phys,
++					    GFP_KERNEL);
++	if (!q.lsnr[i].buf)
++		return -ENOMEM;
++
++	ret = qcom_scm_qseecom_listener_register(r.id, q.lsnr[i].phys, r.size);
++	if (ret) {
++		pr_err("qsee-lsnr: registering 0x%x failed: %d\n", r.id, ret);
++		return ret;
++	}
++
++	q.lsnr[i].id = r.id;
++	q.lsnr[i].size = r.size;
++	q.lsnr[i].registered = true;
++	q.nr++;
++	pr_info("qsee-lsnr: listener 0x%x registered, %u bytes\n", r.id, r.size);
++	return 0;
++}
++
++static int qsee_do_recv(unsigned long arg)
++{
++	struct qsee_lsnr_xfer x;
++	unsigned int i;
++	long left;
++
++	if (copy_from_user(&x, (void __user *)arg, sizeof(x)))
++		return -EFAULT;
++
++	left = wait_event_interruptible_timeout(q.req_wq, q.state == QSEE_PENDING,
++						msecs_to_jiffies(x.timeout_ms));
++	if (left < 0)
++		return left;
++	if (!left)
++		return -ETIMEDOUT;
++
++	spin_lock(&q.slock);
++	if (q.state != QSEE_PENDING) {
++		spin_unlock(&q.slock);
++		return -EAGAIN;
++	}
++	q.state = QSEE_SERVING;
++	i = q.idx;
++	spin_unlock(&q.slock);
++
++	x.id = q.lsnr[i].id;
++	x.len = min_t(u32, x.len, q.lsnr[i].size);
++	if (copy_to_user(u64_to_user_ptr(x.buf), q.lsnr[i].buf, x.len) ||
++	    copy_to_user((void __user *)arg, &x, sizeof(x))) {
++		spin_lock(&q.slock);
++		q.status = -EFAULT;
++		q.state = QSEE_DONE;
++		spin_unlock(&q.slock);
++		wake_up(&q.rsp_wq);
++		return -EFAULT;
++	}
++	return 0;
++}
++
++static int qsee_do_send(unsigned long arg)
++{
++	struct qsee_lsnr_xfer x;
++	unsigned int i;
++	int status;
++
++	if (copy_from_user(&x, (void __user *)arg, sizeof(x)))
++		return -EFAULT;
++
++	spin_lock(&q.slock);
++	i = q.idx;
++	if (q.state != QSEE_SERVING || x.id != q.lsnr[i].id ||
++	    x.len > q.lsnr[i].size) {
++		spin_unlock(&q.slock);
++		return -EINVAL;
++	}
++	spin_unlock(&q.slock);
++
++	status = x.status ? -EIO : 0;
++	if (copy_from_user(q.lsnr[i].buf, u64_to_user_ptr(x.buf), x.len))
++		status = -EFAULT;
++
++	spin_lock(&q.slock);
++	if (q.state == QSEE_SERVING) {
++		q.status = status;
++		q.state = QSEE_DONE;
++	}
++	spin_unlock(&q.slock);
++	wake_up(&q.rsp_wq);
++
++	return status == -EFAULT ? -EFAULT : 0;
++}
++
++static int qsee_do_cmd(unsigned long arg)
++{
++	struct qsee_lsnr_cmd c;
++	void *req, *rsp;
++	int ret;
++
++	if (copy_from_user(&c, (void __user *)arg, sizeof(c)))
++		return -EFAULT;
++	if (!c.req_len || c.req_len > QSEE_MAX_CMD ||
++	    !c.rsp_len || c.rsp_len > QSEE_MAX_CMD)
++		return -EMSGSIZE;
++
++	ret = mutex_lock_interruptible(&q.lock);
++	if (ret)
++		return ret;
++
++	req = qcom_tzmem_alloc(q.pool, c.req_len, GFP_KERNEL | GFP_DMA32);
++	rsp = qcom_tzmem_alloc(q.pool, c.rsp_len, GFP_KERNEL | GFP_DMA32);
++	if (!req || !rsp) {
++		ret = -ENOMEM;
++		goto out;
++	}
++
++	memset(req, 0, c.req_len);
++	memset(rsp, 0, c.rsp_len);
++	if (copy_from_user(req, u64_to_user_ptr(c.req), c.req_len)) {
++		ret = -EFAULT;
++		goto out;
++	}
++
++	ret = qcom_scm_qseecom_app_send_listener(c.app_id, req, c.req_len,
++						 rsp, c.rsp_len,
++						 qsee_handle, NULL);
++	if (!ret && copy_to_user(u64_to_user_ptr(c.rsp), rsp, c.rsp_len))
++		ret = -EFAULT;
++
++out:
++	if (rsp)
++		qcom_tzmem_free(rsp);
++	if (req)
++		qcom_tzmem_free(req);
++	mutex_unlock(&q.lock);
++	return ret;
++}
++
++static long qsee_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
++{
++	switch (cmd) {
++	case QSEE_IOC_REGISTER:
++		return qsee_do_register(arg);
++	case QSEE_IOC_RECV:
++		return qsee_do_recv(arg);
++	case QSEE_IOC_SEND:
++		return qsee_do_send(arg);
++	case QSEE_IOC_CMD:
++		return qsee_do_cmd(arg);
++	default:
++		return -ENOTTY;
++	}
++}
++
++static const struct file_operations qsee_fops = {
++	.owner = THIS_MODULE,
++	.unlocked_ioctl = qsee_ioctl,
++	.compat_ioctl = compat_ptr_ioctl,
++	.llseek = noop_llseek,
++};
++
++static struct miscdevice qsee_miscdev = {
++	.minor = MISC_DYNAMIC_MINOR,
++	.name = "qsee_lsnr",
++	.fops = &qsee_fops,
++};
++
++static struct platform_device *qsee_pdev;
++
++static int __init qsee_lsnr_init(void)
++{
++	struct qcom_tzmem_pool_config cfg = {
++		.initial_size = 64 * PAGE_SIZE,
++		.policy = QCOM_TZMEM_POLICY_STATIC,
++	};
++	int ret;
++
++	/* A real device, so dmam_alloc_coherent and the tzmem pool have one. */
++	qsee_pdev = platform_device_register_simple("qsee_lsnr", -1, NULL, 0);
++	if (IS_ERR(qsee_pdev))
++		return PTR_ERR(qsee_pdev);
++	q.dev = &qsee_pdev->dev;
++
++	ret = dma_coerce_mask_and_coherent(q.dev, DMA_BIT_MASK(32));
++	if (ret) {
++		pr_err("qsee-lsnr: dma mask failed: %d\n", ret);
++		goto err;
++	}
++
++	mutex_init(&q.lock);
++	spin_lock_init(&q.slock);
++	init_waitqueue_head(&q.req_wq);
++	init_waitqueue_head(&q.rsp_wq);
++
++	q.pool = devm_qcom_tzmem_pool_new(q.dev, &cfg);
++	if (IS_ERR(q.pool)) {
++		ret = PTR_ERR(q.pool);
++		pr_err("qsee-lsnr: tzmem pool failed: %d\n", ret);
++		goto err;
++	}
++
++	ret = misc_register(&qsee_miscdev);
++	if (ret) {
++		pr_err("qsee-lsnr: misc_register failed: %d\n", ret);
++		goto err;
++	}
++
++	pr_info("qsee-lsnr: /dev/qsee_lsnr ready\n");
++	return 0;
++
++err:
++	platform_device_unregister(qsee_pdev);
++	return ret;
++}
++
++static void __exit qsee_lsnr_exit(void)
++{
++	unsigned int i;
++
++	misc_deregister(&qsee_miscdev);
++	for (i = 0; i < q.nr; i++)
++		if (q.lsnr[i].registered)
++			qcom_scm_qseecom_listener_unregister(q.lsnr[i].id);
++	platform_device_unregister(qsee_pdev);
++}
++
++module_init(qsee_lsnr_init);
++module_exit(qsee_lsnr_exit);
++
++MODULE_AUTHOR("Giuseppe Maggio <jertlok@proton.me>");
++MODULE_DESCRIPTION("QSEE listener supplicant transport");
++MODULE_LICENSE("GPL");

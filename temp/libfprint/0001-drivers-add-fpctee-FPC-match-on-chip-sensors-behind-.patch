@@ -1,4 +1,4 @@
-From 735ff3f49354fb371ab096341f2e97bd66ca8f1a Mon Sep 17 00:00:00 2001
+From 156395b87147f035f007b2079795679495a3caeb Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 13 Sep 2026 21:56:58 +0200
 Subject: [PATCH] drivers: add fpctee, FPC match-on-chip sensors behind a QSEE
@@ -26,18 +26,18 @@ node.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- libfprint/drivers/fpctee/fpctee.c | 1606 +++++++++++++++++++++++++++++
+ libfprint/drivers/fpctee/fpctee.c | 1779 +++++++++++++++++++++++++++++
  libfprint/meson.build             |    2 +
  meson.build                       |    2 +
- 3 files changed, 1610 insertions(+)
+ 3 files changed, 1783 insertions(+)
  create mode 100644 libfprint/drivers/fpctee/fpctee.c
 
 diff --git a/libfprint/drivers/fpctee/fpctee.c b/libfprint/drivers/fpctee/fpctee.c
 new file mode 100644
-index 0000000..48ffcc3
+index 0000000..3b92c4a
 --- /dev/null
 +++ b/libfprint/drivers/fpctee/fpctee.c
-@@ -0,0 +1,1606 @@
+@@ -0,0 +1,1779 @@
 +/*
 + * FPC match-on-chip fingerprint sensor behind a QSEE trustlet
 + *
@@ -81,6 +81,7 @@ index 0000000..48ffcc3
 +#include "drivers_api.h"
 +
 +#include <glib-unix.h>
++#include <gio/gunixsocketaddress.h>
 +#include <glib/gstdio.h>
 +
 +#include <errno.h>
@@ -141,6 +142,13 @@ index 0000000..48ffcc3
 +
 +#define DB_LOAD                   0x0b
 +#define DB_STORE                  0x0c
++
++/* The hardware-auth group: the key keymaster hands over, the challenge the
++ * trustlet picks, and the signed token that opens the enrolment gate. */
++#define GRP_FPCDATA               0x03
++#define FPCDATA_GET_ENROL_CHALLENGE 0x02
++#define FPCDATA_AUTHORIZE_ENROL     0x03
++#define FPCDATA_SET_KEY_DATA        0x05
 +
 +/* Names are what the HAL's call sites show, not the trustlet's own. */
 +#define SENSOR_INIT               0x00
@@ -723,6 +731,40 @@ index 0000000..48ffcc3
 +  return tee_cmd (self, GRP_DB, cmd, buf);
 +}
 +
++/* send_buffer_command(): the payload's length at word 3, the payload at 0x10. */
++static gint32
++buffer_cmd (FpiDeviceFpcTee *self, guint32 group, guint32 cmd,
++            gconstpointer payload, gsize len)
++{
++  guint8 buf[FPC_TEE_CMDBUF_SIZE] = { 0 };
++
++  if (len > FPC_TEE_CMDBUF_SIZE - 16)
++    return -201;
++
++  put32 (buf, 12, len);
++  memcpy (buf + 16, payload, len);
++
++  return tee_cmd (self, group, cmd, buf);
++}
++
++/* The challenge comes back as a 64-bit value at 0x10, not in word 3. */
++static gint32
++get_enrol_challenge (FpiDeviceFpcTee *self, guint64 *challenge)
++{
++  guint8 buf[FPC_TEE_CMDBUF_SIZE] = { 0 };
++  gint32 st = tee_cmd (self, GRP_FPCDATA, FPCDATA_GET_ENROL_CHALLENGE, buf);
++
++  if (st == 0)
++    {
++      guint64 v;
++
++      memcpy (&v, buf + 0x10, sizeof (v));
++      *challenge = GUINT64_FROM_LE (v);
++    }
++
++  return st;
++}
++
 +/* fpc_tee_load_template_db(): an absent, empty or corrupt database means an
 + * empty one. One that cannot even be looked at is an error, rather than
 + * something to store over. */
@@ -1163,7 +1205,135 @@ index 0000000..48ffcc3
 +}
 +
 +/* ---------------------------------------------------------------------- *
-+ * enroll (do_enroll(), without the Android auth token)
++ * Enrolment authorization
++ *
++ * The trustlet will not commit an enrolment unless the session was
++ * authorized by a hardware auth token signed with a key it has been given,
++ * and bound to a challenge it chose. Both come from the QSEE supplicant,
++ * which owns the keymaster and Gatekeeper conversation and the credential
++ * behind it, so that this driver -- and fprintd around it -- never need
++ * reach keymaster, Gatekeeper or RPMB themselves.
++ * ---------------------------------------------------------------------- */
++
++#define SUPPLICANT_SOCKET "/run/qsee-supplicant.sock"
++
++static GBytes *
++supplicant_ask (const char *request, GError **error)
++{
++  g_autoptr(GSocketAddress) addr = NULL;
++  g_autoptr(GSocket) sock = NULL;
++  g_autofree guint8 *buf = NULL;
++  guint32 len;
++  gsize got;
++
++  /* A plain GSocket rather than GSocketClient: the client's connectable
++   * enumeration answers "No such file or directory" for a unix path that is
++   * demonstrably there, and there is nothing to enumerate for AF_UNIX. */
++  sock = g_socket_new (G_SOCKET_FAMILY_UNIX, G_SOCKET_TYPE_STREAM,
++                       G_SOCKET_PROTOCOL_DEFAULT, error);
++  if (sock == NULL)
++    return NULL;
++
++  addr = g_unix_socket_address_new (SUPPLICANT_SOCKET);
++  if (!g_socket_connect (sock, addr, NULL, error))
++    return NULL;
++
++  if (g_socket_send (sock, request, strlen (request), NULL, error) < 0)
++    return NULL;
++
++  for (got = 0; got < sizeof (len); )
++    {
++      gssize n = g_socket_receive (sock, (gchar *) &len + got,
++                                   sizeof (len) - got, NULL, error);
++
++      if (n <= 0)
++        return NULL;
++      got += (gsize) n;
++    }
++
++  len = GUINT32_FROM_LE (len);
++  if (len == 0 || len > 4096)
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                   "supplicant refused '%s'", request);
++      return NULL;
++    }
++
++  buf = g_malloc (len);
++  for (got = 0; got < len; )
++    {
++      gssize n = g_socket_receive (sock, (gchar *) buf + got, len - got,
++                                   NULL, error);
++
++      if (n <= 0)
++        return NULL;
++      got += (gsize) n;
++    }
++
++  return g_bytes_new_take (g_steal_pointer (&buf), len);
++}
++
++
++static gboolean
++authorize_enrol (FpiDeviceFpcTee *self, GError **error)
++{
++  g_autoptr(GBytes) key = NULL;
++  g_autoptr(GBytes) token = NULL;
++  g_autofree char *ask = NULL;
++  g_autoptr(GError) local = NULL;
++  guint64 challenge;
++  gsize len;
++  gint32 st;
++
++  key = supplicant_ask ("KEY\n", &local);
++  if (key == NULL)
++    {
++      *error = fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                         "no auth-token key: %s. Enrolment needs "
++                                         "qsee-supplicant; matching does not.",
++                                         local->message);
++      return FALSE;
++    }
++
++  st = buffer_cmd (self, GRP_FPCDATA, FPCDATA_SET_KEY_DATA,
++                   g_bytes_get_data (key, &len), len);
++  if (st != 0)
++    {
++      *error = status_error (st, "installing the auth-token key");
++      return FALSE;
++    }
++
++  /* The challenge is the trustlet's, and the token must carry it back. */
++  st = get_enrol_challenge (self, &challenge);
++  if (st != 0)
++    {
++      *error = status_error (st, "getting an enrolment challenge");
++      return FALSE;
++    }
++
++  ask = g_strdup_printf ("TOKEN %016" G_GINT64_MODIFIER "x\n", challenge);
++  token = supplicant_ask (ask, &local);
++  if (token == NULL)
++    {
++      *error = fpi_device_error_new_msg (FP_DEVICE_ERROR_GENERAL,
++                                         "no auth token: %s", local->message);
++      return FALSE;
++    }
++
++  st = buffer_cmd (self, GRP_FPCDATA, FPCDATA_AUTHORIZE_ENROL,
++                   g_bytes_get_data (token, &len), len);
++  if (st != 0)
++    {
++      *error = status_error (st, "authorizing the enrolment");
++      return FALSE;
++    }
++
++  fp_dbg ("enrolment authorized");
++  return TRUE;
++}
++
++/* ---------------------------------------------------------------------- *
++ * enroll (do_enroll())
 + * ---------------------------------------------------------------------- */
 +
 +static gpointer
@@ -1173,6 +1343,9 @@ index 0000000..48ffcc3
 +  gint32 st;
 +
 +  self->enroll_done = 0;
++
++  if (!authorize_enrol (self, error))
++    return NULL;
 +
 +  st = tee_simple (self, GRP_BIO, BIO_BEGIN_ENROL, 0, NULL);
 +  if (st != 0)

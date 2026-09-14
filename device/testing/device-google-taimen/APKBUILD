@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=48
+pkgrel=52
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -63,6 +63,11 @@ options="!check !archcheck"
 # callaudiod switches the loudspeaker on and off by setting a sink PORT, and
 # the sink in either profile has exactly one, so its EnableSpeaker can never
 # do anything here. The replacement switches the card profile instead.
+#
+# phosh-nfc-quick-setting rides along with neard because it is the only thing
+# that puts NFC in front of the user: without it neard runs, the reader works,
+# and there is no way to see or toggle any of it. Unversioned for the same
+# reason neard is (above).
 depends="
 	alsa-ucm-conf
 	firmware-google-taimen
@@ -71,6 +76,7 @@ depends="
 	linux-pam
 	mkbootimg
 	neard
+	phosh-nfc-quick-setting
 	postmarketos-base
 	qcom-diag
 	rmtfs
@@ -152,6 +158,10 @@ source="
 	taimen-uclamp-session.desktop
 	taimen-fprintd.conf
 	taimen-fingerprint.conf
+	qsee-supplicant
+	qsee-supplicant.service
+	qsee-supplicant.socket
+	taimen-fingerprint-modules.conf
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -499,12 +509,27 @@ fingerprint() {
 	# feature is opt-in: installing this subpackage is what turns it on. It
 	# pulls in the trustlet and the fprintd/libfprint pair that can drive it
 	# (libfprint's fpctee driver, carried in temp/libfprint).
-	depends="firmware-google-taimen-fingerprint fprintd libfprint"
+	# python3: qsee-supplicant is a Python program.
+	depends="firmware-google-taimen-fingerprint fprintd libfprint python3"
 
 	install -Dm644 "$srcdir"/taimen-fprintd.conf \
 		"$subpkgdir"/usr/lib/systemd/system/fprintd.service.d/50-taimen-fpctee.conf
 	install -Dm644 "$srcdir"/taimen-fingerprint.conf \
 		"$subpkgdir"/usr/lib/tmpfiles.d/taimen-fingerprint.conf
+
+	# The supplicant answers the listener services the trustlets need --
+	# RPMB above all, without which Gatekeeper cannot store a password
+	# handle and the fingerprint trustlet refuses to commit an enrolment.
+	# It holds the Gatekeeper credential so fprintd does not have to, and
+	# so nothing outside root can reach keymaster, Gatekeeper or RPMB.
+	install -Dm755 "$srcdir"/qsee-supplicant \
+		"$subpkgdir"/usr/bin/qsee-supplicant
+	install -Dm644 "$srcdir"/qsee-supplicant.service \
+		"$subpkgdir"/usr/lib/systemd/system/qsee-supplicant.service
+	install -Dm644 "$srcdir"/qsee-supplicant.socket \
+		"$subpkgdir"/usr/lib/systemd/system/qsee-supplicant.socket
+	install -Dm644 "$srcdir"/taimen-fingerprint-modules.conf \
+		"$subpkgdir"/usr/lib/modules-load.d/taimen-fingerprint.conf
 }
 
 kernel_mainline() {
@@ -536,7 +561,7 @@ e1f59cf40a3a58840a86ebc9bd82a78ea0a9ad7d45fd37f6430e47210bb02d636defd487341a8e50
 bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd87e6a44b2814973e9dc849e275695e203a5516b6e4d665a5f  taimen-modem-bringup.initd
 cb7d96d5d0f2153ab76556100053162b0a4c90e2301723303b07e39559df762f4c6f5fc4cf3ef572a3212682d983c8daabd8cf1f349396517ab1c00309ecb75e  taimen-modem-bringup.service
 259349fe19752f3d9aac9651acdad3499058030e63587c6af68e1df1c0ddf602096fbccc892893ce02437e67c19b046522c1e80f604a68b48563e486ced143ca  modprobe.conf
-1006f213530ea006b9d670533fe6419b9c5d54717c7ec2e42bc78854f1554ae9c0e67e025c16aa99af3d22d5149e5153b8c0e97c816f00831280efed100c91cc  taimen.preset
+08d0961c63bd8a89c3acb8d0bb40893cea322a305ed21037ccc7d9a7ec60f4c47b44eaa350c3441fc9b9b74468e3e3e61cc144cc2e0f9914c4339b29e6bd981c  taimen.preset
 b32551d380308b4c18fe8323f72f581c37227d382457d457db4116e71b83f9e4202b1094fad26892b7c3976d492e710820dc19cca5518da9d4283bbafb8e157c  taimen-user.preset
 a697a1b2fe3dd3d798e6cdc00e76de93076efca81969cc1bcbc61995d24d437438f6f99b191abe9f483d718be9559b100227457c112f78ad3f1593a54f3a0f50  taimen-pipewire-pulse.service
 640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
@@ -586,4 +611,8 @@ e2c9528ccfb6a79226af530990bc5ca603ad63fa9a36439fdf344a04bc8af1b085659270d4d5e906
 2abb5206a413bc786aad46a9608ce41793fbcb561dce8f1ec050775733f04fe634e292187eaf7d9048f56197109cf2e00c261f89440c9c6eebab0f0446241c0f  taimen-uclamp-session.desktop
 98108586a445cc84fc347f8833cf54ea3cddb80bd07ef2803da922ae7037460016c746f34f7b65f38d31937c7aad064d9fabe452c8e7b9794e02be35f15e0ead  taimen-fprintd.conf
 d3399d04af107c4295dd5d39abea1a447e747ad0b092652d0ec4e26c00ad5ff938fb35dfb11cb8d02604203b5e7056071e0ad4721dfe3a1f296b65f0238d00e6  taimen-fingerprint.conf
+d6f4fcec11c794d73484c735a0b2be8befa00b16a77ed3dbb798d345a7b6ea3fb0bfc87c682a9256df1881f3046bedf8fcfbcf571de68a29bdfcb020eb9cea01  qsee-supplicant
+716315d426b297fbb023ea4b4c4a2d54ee5a9e76cf680ca0bc09021cb8f085b08d267cd775e59e640c71ae101590c7873b04ec3add6b5e0a890bd2dd12ec6d3d  qsee-supplicant.service
+c9eea05ba92470763309d73eff937045f80d2b4dead9aa2922f8028c684b1c8afe0afe94b677df7849f760a0763033290737c235de57b2666c9f5d82fef4e760  qsee-supplicant.socket
+95f5094e2a4bb5abbb4010db037302c20e4b6d5745dddbe720e6283830391bdbef629534f43f1060b854638c61e3f9909f182d600897398d042bbca7087843d3  taimen-fingerprint-modules.conf
 "

@@ -1,0 +1,19 @@
+[Unit]
+# systemd creates this socket itself, in the host's /run, and hands the
+# listening fd to the service. That matters: a RuntimeDirectory= created by a
+# sandboxed service is a bind mount inside ITS namespace, and another
+# sandboxed service -- fprintd, which is the client here -- does not
+# necessarily see what appears in it afterwards. Letting PID 1 own the socket
+# keeps one path that every namespace agrees on, and the service keeps
+# ProtectSystem=strict with no write access to /run at all.
+Description=QSEE listener supplicant socket
+Documentation=https://postmarketos.org
+
+[Socket]
+ListenStream=/run/qsee-supplicant.sock
+SocketMode=0600
+SocketUser=root
+SocketGroup=root
+
+[Install]
+WantedBy=sockets.target

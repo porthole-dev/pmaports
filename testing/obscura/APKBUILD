@@ -14,7 +14,7 @@
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=obscura
 pkgver=0.2.0
-pkgrel=4
+pkgrel=5
 pkgdesc="Camera app with every control your camera has"
 url="https://github.com/Jertlok/obscura"
 arch="all"
@@ -75,5 +75,5 @@ package() {
 }
 
 sha512sums="
-4ec53f63b3e9f9847faa92638207700fb2b1348fed676afffd3a21b8942a2296d9ce7d7cdd2d1e055e4bf193641be749d42d4d26f77225a145ef6056b9320f75  obscura-0.2.0.tar.gz
+9f4ae5dd0cde94577ca4bf41778e70337c3624de0c7c5b351cd5738def22939c3ead36bae69e0bd3f2bdd5d51d2feaac3b4ee7e7047e6853c434949de2617b45  obscura-0.2.0.tar.gz
 "

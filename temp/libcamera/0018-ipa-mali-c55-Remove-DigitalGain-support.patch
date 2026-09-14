@@ -1,0 +1,193 @@
+From 2eb5c73e57063bda510b4921dfd6439543548e0d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Sun, 24 May 2026 15:42:13 +0200
+Subject: [PATCH 18/68] ipa: mali-c55: Remove `DigitalGain` support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The mali-c55 agc algorithm still mainly uses the `AeEnable` control
+(see issue below), but the interaction of that control and `DigitalGain`
+is not well defined, and no other platform supports setting it. So
+remove it for now until things are properly defined.
+
+Link: https://gitlab.freedesktop.org/camera/libcamera/-/work_items/262
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Kieran Bingham <kieran.bingham@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 5381c06d84c2ae6ca81a17eac4e51c739fb6c79f)
+---
+ src/ipa/mali-c55/algorithms/agc.cpp | 57 ++---------------------------
+ src/ipa/mali-c55/algorithms/agc.h   |  3 --
+ src/ipa/mali-c55/ipa_context.h      |  3 --
+ 3 files changed, 4 insertions(+), 59 deletions(-)
+
+diff --git a/src/ipa/mali-c55/algorithms/agc.cpp b/src/ipa/mali-c55/algorithms/agc.cpp
+index e010123ce..ba11bab4f 100644
+--- a/src/ipa/mali-c55/algorithms/agc.cpp
++++ b/src/ipa/mali-c55/algorithms/agc.cpp
+@@ -16,7 +16,6 @@
+ #include <libcamera/property_ids.h>
+ 
+ #include "libipa/colours.h"
+-#include "libipa/fixedpoint.h"
+ 
+ namespace libcamera {
+ 
+@@ -33,14 +32,6 @@ LOG_DEFINE_CATEGORY(MaliC55Agc)
+  */
+ static constexpr unsigned int kNumHistogramBins = 256;
+ 
+-/*
+- * The Mali-C55 ISP has a digital gain block which allows setting gain in Q5.8
+- * format, a range of 0.0 to (very nearly) 32.0. We clamp from 1.0 to the actual
+- * max value which is 8191 * 2^-8.
+- */
+-static constexpr float kMinDigitalGain = 1.0;
+-static constexpr float kMaxDigitalGain = UQ<5, 8>::TraitsType::max;
+-
+ uint32_t AgcStatistics::decodeBinValue(uint16_t binVal)
+ {
+ 	int exponent = (binVal & 0xf000) >> 12;
+@@ -137,8 +128,6 @@ int Agc::init(IPAContext &context, const ValueNode &tuningData)
+ 		return ret;
+ 
+ 	context.ctrlMap[&controls::AeEnable] = ControlInfo(false, true);
+-	context.ctrlMap[&controls::DigitalGain] = ControlInfo(
+-		kMinDigitalGain, kMaxDigitalGain, kMinDigitalGain);
+ 	context.ctrlMap.merge(agc_.controls());
+ 
+ 	return 0;
+@@ -158,10 +147,8 @@ int Agc::configure(IPAContext &context,
+ 	context.activeState.agc.autoEnabled = true;
+ 	context.activeState.agc.automatic.sensorGain = context.configuration.agc.minAnalogueGain;
+ 	context.activeState.agc.automatic.exposure = context.configuration.agc.defaultExposure;
+-	context.activeState.agc.automatic.ispGain = kMinDigitalGain;
+ 	context.activeState.agc.manual.sensorGain = context.configuration.agc.minAnalogueGain;
+ 	context.activeState.agc.manual.exposure = context.configuration.agc.defaultExposure;
+-	context.activeState.agc.manual.ispGain = kMinDigitalGain;
+ 	context.activeState.agc.constraintMode = agc_.constraintModes().begin()->first;
+ 	context.activeState.agc.exposureMode = agc_.exposureModeHelpers().begin()->first;
+ 
+@@ -226,32 +213,6 @@ void Agc::queueRequest(IPAContext &context, const uint32_t frame,
+ 			<< "Analogue gain set to " << agc.manual.sensorGain
+ 			<< " on request sequence " << frame;
+ 	}
+-
+-	const auto &digitalGain = controls.get(controls::DigitalGain);
+-	if (digitalGain) {
+-		agc.manual.ispGain = *digitalGain;
+-
+-		LOG(MaliC55Agc, Debug)
+-			<< "Digital gain set to " << agc.manual.ispGain
+-			<< " on request sequence " << frame;
+-	}
+-}
+-
+-void Agc::fillGainParamBlock(IPAContext &context, IPAFrameContext &frameContext,
+-			     MaliC55Params *params)
+-{
+-	IPAActiveState &activeState = context.activeState;
+-	UQ<5, 8> gain;
+-
+-	if (activeState.agc.autoEnabled)
+-		gain = activeState.agc.automatic.ispGain;
+-	else
+-		gain = activeState.agc.manual.ispGain;
+-
+-	auto block = params->block<MaliC55Blocks::Dgain>();
+-	block->gain = gain.quantized();
+-
+-	frameContext.agc.ispGain = gain;
+ }
+ 
+ void Agc::fillParamsBuffer(MaliC55Params *params, enum MaliC55Blocks type)
+@@ -304,11 +265,9 @@ void Agc::fillWeightsArrayBuffer(MaliC55Params *params, const enum MaliC55Blocks
+ 	std::fill(weights.begin(), weights.end(), 1);
+ }
+ 
+-void Agc::prepare(IPAContext &context, const uint32_t frame,
+-		  IPAFrameContext &frameContext, MaliC55Params *params)
++void Agc::prepare([[maybe_unused]] IPAContext &context, const uint32_t frame,
++		  [[maybe_unused]] IPAFrameContext &frameContext, MaliC55Params *params)
+ {
+-	fillGainParamBlock(context, frameContext, params);
+-
+ 	if (frame > 0)
+ 		return;
+ 
+@@ -370,10 +329,8 @@ void Agc::process(IPAContext &context,
+ 	 */
+ 	uint32_t exposure = frameContext.agc.exposure;
+ 	double analogueGain = frameContext.agc.sensorGain;
+-	double digitalGain = frameContext.agc.ispGain.value();
+-	double totalGain = analogueGain * digitalGain;
+ 	utils::Duration currentShutter = exposure * configuration.sensor.lineDuration;
+-	utils::Duration effectiveExposureValue = currentShutter * totalGain;
++	utils::Duration effectiveExposureValue = currentShutter * analogueGain;
+ 	AgcTraits agcTraits(statistics_);
+ 
+ 	utils::Duration shutterTime;
+@@ -383,21 +340,15 @@ void Agc::process(IPAContext &context,
+ 				    activeState.agc.exposureMode, statistics_.yHist,
+ 				    effectiveExposureValue, agcTraits);
+ 
+-	UQ<5, 8> dGainQ = std::clamp(static_cast<float>(dGain),
+-				     kMinDigitalGain,
+-				     kMaxDigitalGain);
+-
+ 	LOG(MaliC55Agc, Debug)
+ 		<< "Divided up shutter, analogue gain and digital gain are "
+-		<< shutterTime << ", " << aGain << " and " << dGainQ;
++		<< shutterTime << ", " << aGain << " and " << dGain;
+ 
+ 	activeState.agc.automatic.exposure = shutterTime / configuration.sensor.lineDuration;
+ 	activeState.agc.automatic.sensorGain = aGain;
+-	activeState.agc.automatic.ispGain = dGainQ;
+ 
+ 	metadata.set(controls::ExposureTime, currentShutter.get<std::micro>());
+ 	metadata.set(controls::AnalogueGain, frameContext.agc.sensorGain);
+-	metadata.set(controls::DigitalGain, frameContext.agc.ispGain.value());
+ 	metadata.set(controls::ColourTemperature, context.activeState.agc.temperatureK);
+ }
+ 
+diff --git a/src/ipa/mali-c55/algorithms/agc.h b/src/ipa/mali-c55/algorithms/agc.h
+index e36378a2a..ec7fe28c1 100644
+--- a/src/ipa/mali-c55/algorithms/agc.h
++++ b/src/ipa/mali-c55/algorithms/agc.h
+@@ -64,9 +64,6 @@ public:
+ 		     ControlList &metadata) override;
+ 
+ private:
+-	void fillGainParamBlock(IPAContext &context,
+-				IPAFrameContext &frameContext,
+-				MaliC55Params *params);
+ 	void fillParamsBuffer(MaliC55Params *params, enum MaliC55Blocks type);
+ 	void fillWeightsArrayBuffer(MaliC55Params *params, enum MaliC55Blocks type);
+ 
+diff --git a/src/ipa/mali-c55/ipa_context.h b/src/ipa/mali-c55/ipa_context.h
+index deb3f39e0..b9c7e08ab 100644
+--- a/src/ipa/mali-c55/ipa_context.h
++++ b/src/ipa/mali-c55/ipa_context.h
+@@ -45,12 +45,10 @@ struct IPAActiveState {
+ 		struct {
+ 			uint32_t exposure;
+ 			double sensorGain;
+-			UQ<5, 8> ispGain;
+ 		} automatic;
+ 		struct {
+ 			uint32_t exposure;
+ 			double sensorGain;
+-			UQ<5, 8> ispGain;
+ 		} manual;
+ 		bool autoEnabled;
+ 		uint32_t constraintMode;
+@@ -66,7 +64,6 @@ struct IPAFrameContext : public FrameContext {
+ 	struct {
+ 		uint32_t exposure;
+ 		double sensorGain;
+-		UQ<5, 8> ispGain;
+ 	} agc;
+ 
+ 	ipa::awb::FrameContext awb;

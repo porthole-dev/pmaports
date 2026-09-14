@@ -1,0 +1,422 @@
+From bee3d196037265b218d4ebd94c277db40611e4a1 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 19:13:47 +0200
+Subject: [PATCH 68/68] software_isp: debayer_egl: Add lens shading correction
+
+Add an optional lens shading stage to the GPU debayer. DebayerParams
+carries a grid of up to 32x32 RGB gains spanning the sensor's active
+area, and the part of it the image covers; the EGL debayer uploads the
+grid as a texture and the fragment shaders multiply by the bilinearly
+sampled gain after black level subtraction. With no grid, the stage is
+an identity and costs one texture lookup.
+
+The simple IPA's new Lsc algorithm fills the grid from the tuning file
+and derives the covered part from the sensor's analogue crop, so binned
+and cropped modes sample the right region. The CPU debayer does not
+apply it.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../internal/software_isp/debayer_params.h    |  20 ++++
+ src/ipa/simple/algorithms/lsc.cpp             | 111 ++++++++++++++++++
+ src/ipa/simple/algorithms/lsc.h               |  39 ++++++
+ src/ipa/simple/algorithms/meson.build         |   1 +
+ src/libcamera/shaders/bayer_1x_packed.frag    |   9 ++
+ src/libcamera/shaders/bayer_unpacked.frag     |  11 ++
+ src/libcamera/software_isp/debayer_egl.cpp    |  70 +++++++++++
+ src/libcamera/software_isp/debayer_egl.h      |   9 ++
+ 8 files changed, 270 insertions(+)
+ create mode 100644 src/ipa/simple/algorithms/lsc.cpp
+ create mode 100644 src/ipa/simple/algorithms/lsc.h
+
+diff --git a/include/libcamera/internal/software_isp/debayer_params.h b/include/libcamera/internal/software_isp/debayer_params.h
+index 1074720d7..cb8129d53 100644
+--- a/include/libcamera/internal/software_isp/debayer_params.h
++++ b/include/libcamera/internal/software_isp/debayer_params.h
+@@ -10,6 +10,7 @@
+ 
+ #pragma once
+ 
++#include <array>
+ #include <stdint.h>
+ 
+ #include "libcamera/internal/matrix.h"
+@@ -25,6 +26,25 @@ struct DebayerParams {
+ 	float gamma = 1.0;
+ 	float contrastExp = 1.0;
+ 	RGB<double> gains = RGB<double>({ 1.0, 1.0, 1.0 });
++
++	/* Largest lens shading correction grid, in points per axis */
++	static constexpr unsigned int kLscGridMax = 32;
++	/* Lens shading gain represented by an lscGains value of 255 */
++	static constexpr float kLscGainMax = 5.0f;
++
++	/* Lens shading grid size in points, 0 when correction is disabled */
++	uint8_t lscWidth = 0;
++	uint8_t lscHeight = 0;
++	/*
++	 * Row-major RGB gains, lscWidth x lscHeight points spanning the
++	 * sensor's active area edge to edge, scaled so 255 is kLscGainMax.
++	 */
++	std::array<uint8_t, kLscGridMax * kLscGridMax * 3> lscGains{};
++	/*
++	 * The part of the grid the image covers, as offset x, offset y,
++	 * scale x, scale y in the [0, 1] grid coordinate space.
++	 */
++	std::array<float, 4> lscCrop = { 0.0f, 0.0f, 1.0f, 1.0f };
+ };
+ 
+ } /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/lsc.cpp b/src/ipa/simple/algorithms/lsc.cpp
+new file mode 100644
+index 000000000..c14419fc0
+--- /dev/null
++++ b/src/ipa/simple/algorithms/lsc.cpp
+@@ -0,0 +1,111 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Lens shading correction for the GPU software ISP
++ *
++ * The tuning file carries one grid of per-channel gains spanning the sensor's
++ * active area edge to edge, row major, top row first:
++ *
++ *   - Lsc:
++ *       grid: [ 17, 13 ]
++ *       strength: 1.0        # 0 = off, 1 = the full gains
++ *       r: [ ... ]
++ *       g: [ ... ]
++ *       b: [ ... ]
++ *
++ * The GPU debayer applies it after black level subtraction. The CPU debayer
++ * does not apply it.
++ */
++
++#include "lsc.h"
++
++#include <algorithm>
++#include <cmath>
++
++#include <libcamera/base/log.h>
++
++#include "libcamera/internal/software_isp/debayer_params.h"
++
++namespace libcamera {
++
++LOG_DEFINE_CATEGORY(IPASoftLsc)
++
++namespace ipa::soft::algorithms {
++
++int Lsc::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
++{
++	auto grid = tuningData["grid"].get<std::vector<uint32_t>>();
++	if (!grid || grid->size() != 2 ||
++	    (*grid)[0] < 2 || (*grid)[0] > DebayerParams::kLscGridMax ||
++	    (*grid)[1] < 2 || (*grid)[1] > DebayerParams::kLscGridMax) {
++		LOG(IPASoftLsc, Error)
++			<< "'grid' must be [ width, height ], 2 to "
++			<< DebayerParams::kLscGridMax << " points each";
++		return -EINVAL;
++	}
++
++	width_ = (*grid)[0];
++	height_ = (*grid)[1];
++	const size_t points = width_ * height_;
++	const double strength = tuningData["strength"].get<double>(1.0);
++
++	gains_.resize(points * 3);
++	unsigned int c = 0;
++	for (const char *channel : { "r", "g", "b" }) {
++		auto values = tuningData[channel].get<std::vector<double>>();
++		if (!values || values->size() != points) {
++			LOG(IPASoftLsc, Error)
++				<< "'" << channel << "' must hold " << points << " gains";
++			return -EINVAL;
++		}
++
++		for (size_t i = 0; i < points; i++) {
++			const double gain = 1.0 + ((*values)[i] - 1.0) * strength;
++			gains_[i * 3 + c] = static_cast<uint8_t>(std::lround(
++				std::clamp(gain / DebayerParams::kLscGainMax, 0.0, 1.0) * 255));
++		}
++		c++;
++	}
++
++	return 0;
++}
++
++int Lsc::configure(IPAContext &context,
++		   [[maybe_unused]] const IPAConfigInfo &configInfo)
++{
++	/* The image covers the analogue crop of the active area. */
++	const IPACameraSensorInfo &info = context.sensorInfo;
++	const Rectangle &crop = info.analogCrop;
++	const Size &active = info.activeAreaSize;
++
++	if (active.isNull())
++		return 0;
++
++	crop_ = {
++		static_cast<float>(crop.x) / active.width,
++		static_cast<float>(crop.y) / active.height,
++		static_cast<float>(crop.width) / active.width,
++		static_cast<float>(crop.height) / active.height,
++	};
++
++	LOG(IPASoftLsc, Debug)
++		<< "Crop " << crop << " of " << active;
++
++	return 0;
++}
++
++void Lsc::prepare([[maybe_unused]] IPAContext &context,
++		  [[maybe_unused]] const uint32_t frame,
++		  [[maybe_unused]] IPAFrameContext &frameContext,
++		  DebayerParams *params)
++{
++	params->lscWidth = width_;
++	params->lscHeight = height_;
++	std::copy(gains_.begin(), gains_.end(), params->lscGains.begin());
++	params->lscCrop = crop_;
++}
++
++REGISTER_IPA_ALGORITHM(Lsc, "Lsc")
++
++} /* namespace ipa::soft::algorithms */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/lsc.h b/src/ipa/simple/algorithms/lsc.h
+new file mode 100644
+index 000000000..79a3091e2
+--- /dev/null
++++ b/src/ipa/simple/algorithms/lsc.h
+@@ -0,0 +1,39 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Lens shading correction
++ */
++
++#pragma once
++
++#include <vector>
++
++#include "algorithm.h"
++
++namespace libcamera {
++
++namespace ipa::soft::algorithms {
++
++class Lsc : public Algorithm
++{
++public:
++	Lsc() = default;
++	~Lsc() = default;
++
++	int init(IPAContext &context, const ValueNode &tuningData) override;
++	int configure(IPAContext &context,
++		      const IPAConfigInfo &configInfo) override;
++	void prepare(IPAContext &context, const uint32_t frame,
++		     IPAFrameContext &frameContext,
++		     DebayerParams *params) override;
++
++private:
++	unsigned int width_ = 0;
++	unsigned int height_ = 0;
++	/* Row-major RGB gains, quantised for DebayerParams::lscGains */
++	std::vector<uint8_t> gains_;
++	std::array<float, 4> crop_ = { 0.0f, 0.0f, 1.0f, 1.0f };
++};
++
++} /* namespace ipa::soft::algorithms */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/meson.build b/src/ipa/simple/algorithms/meson.build
+index 1cd58d5ea..d9d540917 100644
+--- a/src/ipa/simple/algorithms/meson.build
++++ b/src/ipa/simple/algorithms/meson.build
+@@ -7,4 +7,5 @@ soft_simple_ipa_algorithms = files([
+     'agc.cpp',
+     'blc.cpp',
+     'ccm.cpp',
++    'lsc.cpp',
+ ])
+diff --git a/src/libcamera/shaders/bayer_1x_packed.frag b/src/libcamera/shaders/bayer_1x_packed.frag
+index 0b641a5f3..d458be19a 100644
+--- a/src/libcamera/shaders/bayer_1x_packed.frag
++++ b/src/libcamera/shaders/bayer_1x_packed.frag
+@@ -70,6 +70,10 @@ uniform mat3 ccm;
+ uniform vec3 blacklevel;
+ uniform float gamma;
+ uniform float contrastExp;
++uniform sampler2D lsc;
++uniform vec4 lsc_crop;
++uniform float lsc_enable;
++uniform float lsc_gain_max;
+ 
+ float apply_contrast(float value)
+ {
+@@ -232,6 +236,11 @@ void main(void)
+ 	 */
+ 	rgb = (rgb - blacklevel) / (1.0 - blacklevel);
+ 
++	/* Lens shading: lsc_crop maps the image into texture coordinates. */
++	rgb *= mix(vec3(1.0),
++		   texture2D(lsc, lsc_crop.xy + (center_pixel + 0.5) / tex_size * lsc_crop.zw).rgb * lsc_gain_max,
++		   lsc_enable);
++
+ 	/* Apply AWB gains, and saturate each channel at sensor range */
+ 	rgb = clamp(rgb * awb, vec3(0.0), vec3(1.0));
+ 
+diff --git a/src/libcamera/shaders/bayer_unpacked.frag b/src/libcamera/shaders/bayer_unpacked.frag
+index 10c5e941b..fa7f5147b 100644
+--- a/src/libcamera/shaders/bayer_unpacked.frag
++++ b/src/libcamera/shaders/bayer_unpacked.frag
+@@ -29,6 +29,12 @@ uniform mat3            ccm;
+ uniform vec3            blacklevel;
+ uniform float           gamma;
+ uniform float           contrastExp;
++uniform vec2            tex_size;
++uniform vec2            tex_bayer_first_red;
++uniform sampler2D       lsc;
++uniform vec4            lsc_crop;
++uniform float           lsc_enable;
++uniform float           lsc_gain_max;
+ 
+ float apply_contrast(float value)
+ {
+@@ -135,6 +141,11 @@ void main(void) {
+      */
+     rgb = (rgb - blacklevel) / (1.0 - blacklevel);
+ 
++    /* Lens shading: lsc_crop maps the image into texture coordinates. */
++    rgb *= mix(vec3(1.0),
++               texture2D(lsc, lsc_crop.xy + (center.zw - tex_bayer_first_red) / tex_size * lsc_crop.zw).rgb * lsc_gain_max,
++               lsc_enable);
++
+     /* Apply AWB gains, and saturate each channel at sensor range */
+     rgb = clamp(rgb * awb, vec3(0.0), vec3(1.0));
+ 
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 02651fe87..fb177b477 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -121,6 +121,10 @@ int DebayerEGL::getShaderVariableLocations(void)
+ 	blackLevelUniformDataIn_ = glGetUniformLocation(programId_, "blacklevel");
+ 	gammaUniformDataIn_ = glGetUniformLocation(programId_, "gamma");
+ 	contrastExpUniformDataIn_ = glGetUniformLocation(programId_, "contrastExp");
++	lscUniform_ = glGetUniformLocation(programId_, "lsc");
++	lscCropUniform_ = glGetUniformLocation(programId_, "lsc_crop");
++	lscEnableUniform_ = glGetUniformLocation(programId_, "lsc_enable");
++	lscGainMaxUniform_ = glGetUniformLocation(programId_, "lsc_gain_max");
+ 
+ 	textureUniformStep_ = glGetUniformLocation(programId_, "tex_step");
+ 	textureUniformSize_ = glGetUniformLocation(programId_, "tex_size");
+@@ -504,9 +508,69 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
+ 	glUniform1f(contrastExpUniformDataIn_, params.contrastExp);
+ 	LOG(Debayer, Debug) << " contrastExpUniformDataIn_ " << contrastExpUniformDataIn_ << " data " << params.contrastExp;
+ 
++	setLensShading(params);
++
+ 	return;
+ }
+ 
++void DebayerEGL::setLensShading(const DebayerParams &params)
++{
++	const unsigned int w = params.lscWidth;
++	const unsigned int h = params.lscHeight;
++	const bool enable = w >= 2 && h >= 2 &&
++			    w <= DebayerParams::kLscGridMax &&
++			    h <= DebayerParams::kLscGridMax;
++
++	glUniform1f(lscEnableUniform_, enable ? 1.0f : 0.0f);
++	glUniform1f(lscGainMaxUniform_, DebayerParams::kLscGainMax);
++	/* The sampler is always bound, to unit 1, so the program stays valid. */
++	glUniform1i(lscUniform_, 1);
++
++	glActiveTexture(GL_TEXTURE1);
++	if (!lscTexture_) {
++		glGenTextures(1, &lscTexture_);
++		glBindTexture(GL_TEXTURE_2D, lscTexture_);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++		const uint8_t unity[3] = { 64, 64, 64 };
++		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB,
++			     GL_UNSIGNED_BYTE, unity);
++	} else {
++		glBindTexture(GL_TEXTURE_2D, lscTexture_);
++	}
++
++	if (enable) {
++		const size_t size = w * h * 3;
++		if (lscUploaded_.size() != size ||
++		    !std::equal(lscUploaded_.begin(), lscUploaded_.end(),
++				params.lscGains.begin())) {
++			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
++			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB,
++				     GL_UNSIGNED_BYTE, params.lscGains.data());
++			glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
++			lscUploaded_.assign(params.lscGains.begin(),
++					    params.lscGains.begin() + size);
++		}
++
++		/*
++		 * Grid points sit on texel centres: grid position p maps to
++		 * texture coordinate (p * (n - 1) + 0.5) / n.
++		 */
++		const float sx = (w - 1.0f) / w;
++		const float sy = (h - 1.0f) / h;
++		glUniform4f(lscCropUniform_,
++			    params.lscCrop[0] * sx + 0.5f / w,
++			    params.lscCrop[1] * sy + 0.5f / h,
++			    params.lscCrop[2] * sx, params.lscCrop[3] * sy);
++	} else {
++		glUniform4f(lscCropUniform_, 0.0f, 0.0f, 1.0f, 1.0f);
++	}
++
++	glActiveTexture(GL_TEXTURE0);
++}
++
+ eGLImage *DebayerEGL::getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer)
+ {
+ 	const SharedFD &fd = input->planes()[0].fd;
+@@ -698,6 +762,12 @@ void DebayerEGL::stop()
+ 
+ 	if (programId_)
+ 		glDeleteProgram(programId_);
++
++	if (lscTexture_) {
++		glDeleteTextures(1, &lscTexture_);
++		lscTexture_ = 0;
++		lscUploaded_.clear();
++	}
+ }
+ 
+ SizeRange DebayerEGL::sizes(PixelFormat inputFormat, const Size &inputSize)
+diff --git a/src/libcamera/software_isp/debayer_egl.h b/src/libcamera/software_isp/debayer_egl.h
+index d6223f3a9..2d3a05d11 100644
+--- a/src/libcamera/software_isp/debayer_egl.h
++++ b/src/libcamera/software_isp/debayer_egl.h
+@@ -67,6 +67,7 @@ private:
+ 	int initBayerShaders(PixelFormat inputFormat, PixelFormat outputFormat);
+ 	int getShaderVariableLocations();
+ 	void setShaderVariableValues(eGLImage &eGLImageIn, const DebayerParams &params);
++	void setLensShading(const DebayerParams &params);
+ 	int debayerGPU(FrameBuffer *input, FrameBuffer *output, const DebayerParams &params, std::optional<MappedFrameBuffer> *mappedInputBuffer, std::optional<DmaSyncer> *inputBufferDmaSyncer);
+ 
+ 	eGLImage *getCachedInputFrameBuffer(FrameBuffer *input, std::optional<MappedFrameBuffer> *inMapped, std::optional<DmaSyncer> *inDmaSyncer);
+@@ -111,6 +112,14 @@ private:
+ 	/* Contrast */
+ 	GLint contrastExpUniformDataIn_;
+ 
++	/* Lens shading correction */
++	GLint lscUniform_;
++	GLint lscCropUniform_;
++	GLint lscEnableUniform_;
++	GLint lscGainMaxUniform_;
++	GLuint lscTexture_ = 0;
++	std::vector<uint8_t> lscUploaded_;
++
+ 	Size nativeOutputSize_;
+ 	Rectangle window_;
+ 	std::unique_ptr<SwStatsCpu> stats_;

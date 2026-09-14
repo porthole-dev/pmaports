@@ -1,0 +1,102 @@
+From e50857bfdcd1bf97af9ee7033910caf108b50732 Mon Sep 17 00:00:00 2001
+From: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Date: Fri, 14 Nov 2025 15:17:10 +0100
+Subject: [PATCH 55/68] ipa: libipa: agc_mean_luminance: Fold resetFrameCount()
+ in configure()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The AgcMeanLuminance::resetFrameCount() function has to be called
+after a call to AgcMeanLuminance::configure(). As the two calls always
+happen one after another, do not require each IPA implementation to do
+that but fold instead the call to resetFrameCount() in
+AgcMeanLuminance::configure().
+
+Update the AgcMeanLuminance class documentation accordingly.
+
+Signed-off-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+Reviewed-by: Paul Elder <paul.elder@ideasonboard.com>
+(cherry picked from commit 63f9b4e5d9a9ba2ee2ebe1bfcdc0af453863c988)
+---
+ src/ipa/libipa/agc.cpp                |  1 -
+ src/ipa/libipa/agc_mean_luminance.cpp | 21 ++++++---------------
+ src/ipa/libipa/agc_mean_luminance.h   |  5 -----
+ 3 files changed, 6 insertions(+), 21 deletions(-)
+
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+index 933539a4c..2c1d2169f 100644
+--- a/src/ipa/libipa/agc.cpp
++++ b/src/ipa/libipa/agc.cpp
+@@ -513,7 +513,6 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 			state.automatic.yTarget = impl.effectiveYTarget(0, 1);
+ 
+ 			impl.configure(session.lineDuration, sensor_);
+-			impl.resetFrameCount();
+ 
+ 			if (!session.autoAllowed)
+ 				return;
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index 7e16164a9..8b2fa067d 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -169,11 +169,11 @@ static constexpr unsigned int kDefaultLuxLevel = 500;
+  *
+  * IPA modules that want to use this class to implement their AEGC algorithm
+  * should derive AgcMeanLuminance::Traits and override the necessary functions.
+- * The users must call parseTuningData() in init(), and must also call setLimits()
+- * and resetFrameCounter() in configure(). They may then use calculateNewEv() in
+- * process(). If the limits passed to setLimits() change for any reason (for example,
+- * in response to a FrameDurationLimit control being passed in queueRequest())
+- * then setLimits() must be called again with the new values.
++ * The users must call parseTuningData() in init(), and must also call configure()
++ * and setLimits() in configure(). They may then use calculateNewEv() in process().
++ * If the limits passed to setLimits() change for any reason (for example, in
++ * response to a FrameDurationLimit control being passed in queueRequest()) then
++ * setLimits() must be called again with the new values.
+  */
+ 
+ AgcMeanLuminance::AgcMeanLuminance()
+@@ -354,6 +354,7 @@ void AgcMeanLuminance::configure(utils::Duration lineDuration,
+ 
+ 	luxWarningEnabled_ = true;
+ 	filteredExposure_ = 0s;
++	frameCount_ = 0;
+ }
+ 
+ /**
+@@ -699,16 +700,6 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 	return { exposureModeHelper.splitExposure(newExposureValue), yTarget };
+ }
+ 
+-/**
+- * \fn AgcMeanLuminance::resetFrameCount()
+- * \brief Reset the frame counter
+- *
+- * This function resets the internal frame counter, which exists to help the
+- * algorithm decide whether it should respond instantly or not. The expectation
+- * is for users to call this function before each camera start call in their
+- * configure() function.
+- */
+-
+ } /* namespace ipa */
+ 
+ } /* namespace libcamera */
+diff --git a/src/ipa/libipa/agc_mean_luminance.h b/src/ipa/libipa/agc_mean_luminance.h
+index 46a4d3e3f..f799618ff 100644
+--- a/src/ipa/libipa/agc_mean_luminance.h
++++ b/src/ipa/libipa/agc_mean_luminance.h
+@@ -79,11 +79,6 @@ public:
+ 
+ 	double effectiveYTarget(double lux, double exposureCompensation) const;
+ 
+-	void resetFrameCount()
+-	{
+-		frameCount_ = 0;
+-	}
+-
+ private:
+ 	int parseRelativeLuminanceTarget(const ValueNode &tuningData);
+ 	int parseConstraint(const ValueNode &modeDict, int32_t id);

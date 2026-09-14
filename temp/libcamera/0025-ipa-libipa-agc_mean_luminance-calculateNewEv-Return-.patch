@@ -1,0 +1,113 @@
+From 40e8ef4a04a076342094f1cb45d6d730c365ebe4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 16 Jul 2026 11:29:25 +0200
+Subject: [PATCH 25/68] ipa: libipa: agc_mean_luminance: calculateNewEv():
+ Return y target
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The rkisp1 agc algorithms needs to save the current y target for the
+wdr algorithm. Instead of having to recalculate it, just return it
+as part of the result set.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 09b596a8b6f19df943b097e74b08e8c2ac1a9291)
+---
+ src/ipa/libipa/agc_mean_luminance.cpp | 13 ++++++++-----
+ src/ipa/libipa/agc_mean_luminance.h   |  3 ++-
+ src/ipa/rkisp1/algorithms/agc.cpp     |  2 +-
+ 3 files changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index 8e6eafd85..fbb5df847 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -501,9 +501,8 @@ void AgcMeanLuminance::setLimits(utils::Duration minExposureTime,
+  * target
+  * \return The calculated initial gain
+  */
+-double AgcMeanLuminance::estimateInitialGain(const Traits &traits) const
++double AgcMeanLuminance::estimateInitialGain(const Traits &traits, double yTarget) const
+ {
+-	double yTarget = effectiveYTarget();
+ 	double yGain = 1.0;
+ 
+ 	/*
+@@ -670,6 +669,9 @@ utils::Duration AgcMeanLuminance::filterExposure(utils::Duration exposureValue)
+ /**
+  * \struct AgcMeanLuminance::Result
+  * \brief Collection of results of the mean luminance AGC algorithm
++ *
++ * \var AgcMeanLuminance::Result::yTarget
++ * \brief The current y target including exposure compensation
+  */
+ 
+ /**
+@@ -693,6 +695,7 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 	 */
+ 	ExposureModeHelper &exposureModeHelper =
+ 		exposureModeHelpers_.at(params.exposureModeIndex);
++	double yTarget = effectiveYTarget();
+ 
+ 	if (params.effectiveExposureValue == 0s) {
+ 		LOG(AgcMeanLuminance, Error)
+@@ -703,10 +706,10 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 		 * doesn't get stuck with 0 in case the sensor driver allows a
+ 		 * min exposure of 0.
+ 		 */
+-		return { exposureModeHelper.splitExposure(10ms) };
++		return { exposureModeHelper.splitExposure(10ms), yTarget };
+ 	}
+ 
+-	double gain = estimateInitialGain(params.traits);
++	double gain = estimateInitialGain(params.traits, yTarget);
+ 	gain = constraintClampGain(params.constraintModeIndex, params.yHist, gain);
+ 
+ 	/*
+@@ -725,7 +728,7 @@ AgcMeanLuminance::calculateNewEv(const Params &params)
+ 	newExposureValue = filterExposure(newExposureValue);
+ 
+ 	frameCount_++;
+-	return { exposureModeHelper.splitExposure(newExposureValue) };
++	return { exposureModeHelper.splitExposure(newExposureValue), yTarget };
+ }
+ 
+ /**
+diff --git a/src/ipa/libipa/agc_mean_luminance.h b/src/ipa/libipa/agc_mean_luminance.h
+index aa4c0369a..6418fe2e6 100644
+--- a/src/ipa/libipa/agc_mean_luminance.h
++++ b/src/ipa/libipa/agc_mean_luminance.h
+@@ -87,6 +87,7 @@ public:
+ 	};
+ 
+ 	struct Result : ExposureModeHelper::Result {
++		double yTarget;
+ 	};
+ 
+ 	[[nodiscard]] Result calculateNewEv(const Params &params);
+@@ -103,7 +104,7 @@ private:
+ 	int parseConstraint(const ValueNode &modeDict, int32_t id);
+ 	int parseConstraintModes(const ValueNode &tuningData);
+ 	int parseExposureModes(const ValueNode &tuningData);
+-	double estimateInitialGain(const Traits &traits) const;
++	double estimateInitialGain(const Traits &traits, double yTarget) const;
+ 	double constraintClampGain(uint32_t constraintModeIndex,
+ 				   const Histogram &hist,
+ 				   double gain) const;
+diff --git a/src/ipa/rkisp1/algorithms/agc.cpp b/src/ipa/rkisp1/algorithms/agc.cpp
+index 1825e5aee..b50a7dfd1 100644
+--- a/src/ipa/rkisp1/algorithms/agc.cpp
++++ b/src/ipa/rkisp1/algorithms/agc.cpp
+@@ -742,7 +742,7 @@ void Agc::process(IPAContext &context, [[maybe_unused]] const uint32_t frame,
+ 	activeState.agc.automatic.exposure = newEv.exposureTime / lineDuration;
+ 	activeState.agc.automatic.gain = newEv.analogueGain;
+ 	activeState.agc.automatic.quantizationGain = newEv.quantizationGain;
+-	activeState.agc.automatic.yTarget = agc_.effectiveYTarget();
++	activeState.agc.automatic.yTarget = newEv.yTarget;
+ 	/*
+ 	 * Expand the target frame duration so that we do not run faster than
+ 	 * the minimum frame duration when we have short exposures.

@@ -1,0 +1,340 @@
+From 03ff33351e3c4f821f84df85371e3a3e5855845c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 16 Jul 2026 15:21:50 +0200
+Subject: [PATCH 28/68] ipa: Simplify sensor exposure/gain setting/getting
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Move the extraction and preparation of `V4L2_CID_{EXPOSURE,ANALOGUE_GAIN}`
+into separate functions. This also implements support for not having a
+a camera sensor helper.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Acked-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit b8f56f3a3216652757b0a72ebb1710b02611e9d9)
+---
+ src/ipa/ipu3/ipu3.cpp          | 13 ++++-----
+ src/ipa/libipa/agc.cpp         | 51 ++++++++++++++++++++++++++++++++
+ src/ipa/libipa/agc.h           | 53 ++++++++++++++++++++++++++++++++++
+ src/ipa/libipa/meson.build     |  2 ++
+ src/ipa/mali-c55/mali-c55.cpp  | 18 +++++-------
+ src/ipa/rkisp1/rkisp1.cpp      | 12 ++++----
+ src/ipa/simple/soft_simple.cpp | 16 ++++------
+ 7 files changed, 130 insertions(+), 35 deletions(-)
+ create mode 100644 src/ipa/libipa/agc.cpp
+ create mode 100644 src/ipa/libipa/agc.h
+
+diff --git a/src/ipa/ipu3/ipu3.cpp b/src/ipa/ipu3/ipu3.cpp
+index 4bdc4b767..4cf9bfa9a 100644
+--- a/src/ipa/ipu3/ipu3.cpp
++++ b/src/ipa/ipu3/ipu3.cpp
+@@ -36,6 +36,7 @@
+ #include "libcamera/internal/mapped_framebuffer.h"
+ #include "libcamera/internal/yaml_parser.h"
+ 
++#include "libipa/agc.h"
+ #include "libipa/camera_sensor_helper.h"
+ 
+ #include "ipa_context.h"
+@@ -596,8 +597,8 @@ void IPAIPU3::processStats(const uint32_t frame,
+ 
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 
+-	frameContext.sensor.exposure = sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+-	frameContext.sensor.gain = camHelper_->gain(sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>());
++	std::tie(frameContext.sensor.exposure, frameContext.sensor.gain) =
++		agc::extractControls(sensorControls, camHelper_.get());
+ 
+ 	ControlList metadata(controls::controls);
+ 
+@@ -642,12 +643,10 @@ void IPAIPU3::queueRequest(const uint32_t frame, const ControlList &controls)
+  */
+ void IPAIPU3::setControls(unsigned int frame)
+ {
+-	int32_t exposure = context_.activeState.agc.exposure;
+-	int32_t gain = camHelper_->gainCode(context_.activeState.agc.gain);
+-
+ 	ControlList ctrls(sensorCtrls_);
+-	ctrls.set(V4L2_CID_EXPOSURE, exposure);
+-	ctrls.set(V4L2_CID_ANALOGUE_GAIN, gain);
++	agc::prepareControls(ctrls, camHelper_.get(),
++			     context_.activeState.agc.exposure,
++			     context_.activeState.agc.gain);
+ 
+ 	ControlList lensCtrls(lensCtrls_);
+ 	lensCtrls.set(V4L2_CID_FOCUS_ABSOLUTE,
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+new file mode 100644
+index 000000000..15bb41fb3
+--- /dev/null
++++ b/src/ipa/libipa/agc.cpp
+@@ -0,0 +1,51 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Copyright (C) 2026 Ideas On Board
++ *
++ * libIPA Agc algorithm
++ */
++
++#include "agc.h"
++
++/**
++ * \file agc.h
++ * \brief libipa AGC algorithm
++ */
++
++namespace libcamera {
++
++namespace ipa {
++
++namespace agc {
++
++/**
++ * \fn extractControls(const ControlList &controls, const CameraSensorHelper *sensor)
++ * \param[in] controls The controls list to extract from
++ * \param[in] sensor The CameraSensorHelper
++ *
++ * This function extracts \a V4L2_CID_EXPOSURE and \a V4L2_CID_ANALOGUE_GAIN
++ * from \a controls and then returns the exposure and gain values. The gain
++ * code is mapped to the real gain value if \a sensor is provided, otherwise
++ * the gain code is returned.
++ *
++ * \return A pair of exposure and analogue gain extracted from \a controls
++ */
++
++/**
++ * \fn prepareControls(ControlList &controls, const CameraSensorHelper *sensor,
++ *                     uint32_t exposure, double gain)
++ * \param[out] controls The controls list to populate
++ * \param[in] sensor The CameraSensorHelper
++ * \param[in] exposure The exposure (in lines)
++ * \param[in] gain The analogue gain
++ *
++ * This function sets \a V4L2_CID_EXPOSURE and \a V4L2_CID_ANALOGUE_GAIN
++ * in \a controls. The gain is mapped to the gain code if \a sensor is provided,
++ * otherwise the gain value will be used directly.
++ */
++
++} /* namespace agc */
++
++} /* namespace ipa */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/libipa/agc.h b/src/ipa/libipa/agc.h
+new file mode 100644
+index 000000000..5a6746408
+--- /dev/null
++++ b/src/ipa/libipa/agc.h
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Copyright (C) 2026 Ideas on Board Oy
++ *
++ * Auto exposure/gain algorithm for implementing the IPA-specific AGC algorithms
++ */
++
++#pragma once
++
++#include <stdint.h>
++#include <utility>
++
++#include <linux/v4l2-controls.h>
++
++#include <libcamera/controls.h>
++
++#include "camera_sensor_helper.h"
++
++namespace libcamera {
++
++namespace ipa {
++
++namespace agc {
++
++[[nodiscard]]
++inline std::pair<uint32_t, double>
++extractControls(const ControlList &controls, const CameraSensorHelper *sensor)
++{
++	auto exposure = controls.get(V4L2_CID_EXPOSURE).get<int32_t>();
++	auto gainCode = controls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
++
++	return {
++		static_cast<uint32_t>(exposure),
++		sensor ? sensor->gain(gainCode) : gainCode,
++	};
++}
++
++inline void
++prepareControls(ControlList &controls, const CameraSensorHelper *sensor,
++		uint32_t exposure, double gain)
++{
++	controls.set(V4L2_CID_EXPOSURE, static_cast<int32_t>(exposure));
++	controls.set(V4L2_CID_ANALOGUE_GAIN,
++		     static_cast<int32_t>(sensor
++					  ? sensor->gainCode(gain)
++					  : static_cast<uint32_t>(gain)));
++}
++
++} /* namespace agc */
++
++} /* namespace ipa */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/libipa/meson.build b/src/ipa/libipa/meson.build
+index edf8eabd8..91f2e0e08 100644
+--- a/src/ipa/libipa/meson.build
++++ b/src/ipa/libipa/meson.build
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: CC0-1.0
+ 
+ libipa_headers = files([
++    'agc.h',
+     'agc_mean_luminance.h',
+     'algorithm.h',
+     'awb_bayes.h',
+@@ -23,6 +24,7 @@ libipa_headers = files([
+ ])
+ 
+ libipa_sources = files([
++    'agc.cpp',
+     'agc_mean_luminance.cpp',
+     'algorithm.cpp',
+     'awb_bayes.cpp',
+diff --git a/src/ipa/mali-c55/mali-c55.cpp b/src/ipa/mali-c55/mali-c55.cpp
+index da0dbe4b3..d6a07acbf 100644
+--- a/src/ipa/mali-c55/mali-c55.cpp
++++ b/src/ipa/mali-c55/mali-c55.cpp
+@@ -27,6 +27,7 @@
+ #include "libcamera/internal/yaml_parser.h"
+ 
+ #include "algorithms/algorithm.h"
++#include "libipa/agc.h"
+ #include "libipa/camera_sensor_helper.h"
+ 
+ #include "ipa_context.h"
+@@ -143,20 +144,19 @@ void IPAMaliC55::setControls()
+ {
+ 	IPAActiveState &activeState = context_.activeState;
+ 	uint32_t exposure;
+-	uint32_t gain;
++	double gain;
+ 
+ 	if (activeState.agc.autoEnabled) {
+ 		exposure = activeState.agc.automatic.exposure;
+-		gain = camHelper_->gainCode(activeState.agc.automatic.sensorGain);
++		gain = activeState.agc.automatic.sensorGain;
+ 	} else {
+ 		exposure = activeState.agc.manual.exposure;
+-		gain = camHelper_->gainCode(activeState.agc.manual.sensorGain);
++		gain = activeState.agc.manual.sensorGain;
+ 	}
+ 
+ 	ControlList ctrls(sensorControls_);
+-	ctrls.set(V4L2_CID_EXPOSURE, static_cast<int32_t>(exposure));
+-	ctrls.set(V4L2_CID_ANALOGUE_GAIN, static_cast<int32_t>(gain));
+-
++	agc::prepareControls(ctrls, camHelper_.get(),
++			     exposure, gain);
+ 	setSensorControls.emit(ctrls);
+ }
+ 
+@@ -354,10 +354,8 @@ void IPAMaliC55::processStats(unsigned int request, unsigned int bufferId,
+ 	stats = reinterpret_cast<mali_c55_stats_buffer *>(
+ 		buffers_.at(bufferId).planes()[0].data());
+ 
+-	frameContext.agc.exposure =
+-		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+-	frameContext.agc.sensorGain =
+-		camHelper_->gain(sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>());
++	std::tie(frameContext.agc.exposure, frameContext.agc.sensorGain) =
++		agc::extractControls(sensorControls, camHelper_.get());
+ 
+ 	ControlList metadata(controls::controls);
+ 
+diff --git a/src/ipa/rkisp1/rkisp1.cpp b/src/ipa/rkisp1/rkisp1.cpp
+index b4d76698e..feba153d3 100644
+--- a/src/ipa/rkisp1/rkisp1.cpp
++++ b/src/ipa/rkisp1/rkisp1.cpp
+@@ -29,6 +29,7 @@
+ #include "libcamera/internal/yaml_parser.h"
+ 
+ #include "algorithms/algorithm.h"
++#include "libipa/agc.h"
+ 
+ #include "ipa_context.h"
+ #include "params.h"
+@@ -324,10 +325,8 @@ void IPARkISP1::processStats(const uint32_t frame, const uint32_t bufferId,
+ 		stats = reinterpret_cast<rkisp1_stat_buffer *>(
+ 			mappedBuffers_.at(bufferId).planes()[0].data());
+ 
+-	frameContext.sensor.exposure =
+-		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+-	frameContext.sensor.gain =
+-		context_.camHelper->gain(sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>());
++	std::tie(frameContext.sensor.exposure, frameContext.sensor.gain) =
++		agc::extractControls(sensorControls, context_.camHelper.get());
+ 
+ 	ControlList metadata(controls::controls);
+ 
+@@ -361,7 +360,6 @@ void IPARkISP1::setControls(unsigned int frame)
+ 
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 	uint32_t exposure = frameContext.agc.exposure;
+-	uint32_t gain = context_.camHelper->gainCode(frameContext.agc.gain);
+ 	uint32_t vblank = frameContext.agc.vblank;
+ 
+ 	LOG(IPARkISP1, Debug)
+@@ -369,8 +367,8 @@ void IPARkISP1::setControls(unsigned int frame)
+ 		<< ", gain " << frameContext.agc.gain << ", vblank " << vblank;
+ 
+ 	ControlList ctrls(context_.sensorControls);
+-	ctrls.set(V4L2_CID_EXPOSURE, static_cast<int32_t>(exposure));
+-	ctrls.set(V4L2_CID_ANALOGUE_GAIN, static_cast<int32_t>(gain));
++	agc::prepareControls(ctrls, context_.camHelper.get(),
++			     exposure, frameContext.agc.gain);
+ 	ctrls.set(V4L2_CID_VBLANK, static_cast<int32_t>(vblank));
+ 
+ 	setSensorControls.emit(frame, ctrls);
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 3932daaa1..eee15e973 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -27,6 +27,7 @@
+ #include "libcamera/internal/yaml_parser.h"
+ 
+ #include "algorithms/adjust.h"
++#include "libipa/agc.h"
+ #include "libipa/camera_sensor_helper.h"
+ 
+ #include "module.h"
+@@ -301,10 +302,8 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ {
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 
+-	frameContext.sensor.exposure =
+-		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+-	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
+-	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
++	std::tie(frameContext.sensor.exposure, frameContext.sensor.gain) =
++		agc::extractControls(sensorControls, camHelper_.get());
+ 
+ 	ControlList metadata(controls::controls);
+ 	for (const auto &algo : algorithms())
+@@ -312,13 +311,8 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 	metadataReady.emit(frame, metadata);
+ 
+ 	ControlList ctrls(sensorInfoMap_);
+-
+-	int32_t againNew = camHelper_
+-		? camHelper_->gainCode(frameContext.agc.gain)
+-		: static_cast<int32_t>(frameContext.agc.gain);
+-	ctrls.set(V4L2_CID_EXPOSURE, frameContext.agc.exposure);
+-	ctrls.set(V4L2_CID_ANALOGUE_GAIN, againNew);
+-
++	agc::prepareControls(ctrls, camHelper_.get(),
++			     frameContext.agc.exposure, frameContext.agc.gain);
+ 	setSensorControls.emit(ctrls);
+ }
+ 

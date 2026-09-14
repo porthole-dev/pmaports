@@ -1,0 +1,45 @@
+From fb58110f7872ccf28da2ed0b53d1837c9088e6ff Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Wed, 22 Jul 2026 15:48:22 +0200
+Subject: [PATCH 45/68] ipa: softisp: agc: Simplify min gain step handling
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Use `std::{min,max}()` just like it is done for the exposure.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Acked-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+(cherry picked from commit b7e9d46dd9c6aa93787778336bb6a0991f4ae11f)
+---
+ src/ipa/simple/algorithms/agc.cpp | 10 ++--------
+ 1 file changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 65f1c765d..79d4e0d4b 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -130,19 +130,13 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 			exposure = std::max(next, exposure + 1);
+ 		} else {
+ 			double next = again * factor;
+-			if (next - again < context.configuration.agc.againMinStep)
+-				again += context.configuration.agc.againMinStep;
+-			else
+-				again = next;
++			again = std::max(next, again + context.configuration.agc.againMinStep);
+ 		}
+ 	} else {
+ 		/* Scene too bright: decrease gain first, then exposure. */
+ 		if (again > context.configuration.agc.again10) {
+ 			double next = again * factor;
+-			if (again - next < context.configuration.agc.againMinStep)
+-				again -= context.configuration.agc.againMinStep;
+-			else
+-				again = next;
++			again = std::min(next, again - context.configuration.agc.againMinStep);
+ 		} else {
+ 			uint32_t next = exposure * factor;
+ 			exposure = std::min(next, exposure - 1);

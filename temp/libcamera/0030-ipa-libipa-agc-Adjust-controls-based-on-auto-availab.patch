@@ -1,0 +1,88 @@
+From 870a66d07d5cf3cde3c42a6b660ad2d5591f9ff1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 13 Aug 2026 15:04:50 +0200
+Subject: [PATCH 30/68] ipa: libipa: agc: Adjust controls based on "auto"
+ availablity
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+If the auto mode is not possible (e.g. without statistics in raw mode),
+then the controls should be adjusted to reflect that.
+
+Specifically, ensure that the `ExposureValue` control and the controls
+from `AgcMeanLuminance` are only present if the auto mode is enabled.
+
+Furthermore, only advertise `{AnalogueGain,ExposureTime}ModeAuto` conditionally.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 1a2141d1a7d9d1ec053660c1a50864d52c5cab7b)
+---
+ src/ipa/libipa/agc.cpp | 43 +++++++++++++++++++++++++++++++++---------
+ 1 file changed, 34 insertions(+), 9 deletions(-)
+
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+index 070550b7d..93ed69896 100644
+--- a/src/ipa/libipa/agc.cpp
++++ b/src/ipa/libipa/agc.cpp
+@@ -428,6 +428,16 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 	state.minFrameDuration = session.minFrameDuration;
+ 	state.maxFrameDuration = session.maxFrameDuration;
+ 
++	/*
++	 * The IPA control maps keep their states, so the removal is necessary.
++	 *
++	 * \todo Remove it once IPA modules have been changed to always use a new
++	 * ControlInfoMap::Map during configuration.
++	 */
++	config.ctrlMap.erase(&controls::ExposureValue);
++	for (const auto &[id, _] : impl_.controls())
++		config.ctrlMap.erase(id);
++
+ 	/* \todo Move this to the `Camera` class. */
+ 	config.ctrlMap[&controls::AeEnable] = ControlInfo{
+ 		false, session.autoAllowed, session.autoAllowed
+@@ -444,16 +454,31 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 		frameDurations[0], frameDurations[1],
+ 		Span<const int64_t, 2>{ { frameDurations[2], frameDurations[2] } },
+ 	};
+-	config.ctrlMap[&controls::ExposureTimeMode] = ControlInfo{
+-		{{ controls::ExposureTimeModeAuto, controls::ExposureTimeModeManual }},
+-		controls::ExposureTimeModeAuto,
+-	};
+-	config.ctrlMap[&controls::AnalogueGainMode] = ControlInfo{
+-		{{ controls::AnalogueGainModeAuto, controls::AnalogueGainModeManual }},
+-		controls::AnalogueGainModeAuto,
++
++	const auto add = [&](const ControlId &cid, const auto &automatic, const auto &manual) {
++		std::array<ControlValue, 2> values;
++		size_t count = 0;
++
++		if (session.autoAllowed)
++			values[count++] = ControlValue(automatic);
++
++		values[count++] = ControlValue(manual);
++
++		config.ctrlMap[&cid] = ControlInfo{
++			{ values.data(), count },
++			ControlValue(session.autoAllowed ? automatic : manual),
++		};
+ 	};
+-	config.ctrlMap[&controls::ExposureValue] = ControlInfo(-8.0f, 8.0f, 0.0f);
+-	config.ctrlMap.merge(impl_.controls());
++
++	add(controls::ExposureTimeMode,
++	    controls::ExposureTimeModeAuto, controls::ExposureTimeModeManual);
++	add(controls::AnalogueGainMode,
++	    controls::AnalogueGainModeAuto, controls::AnalogueGainModeManual);
++
++	if (session.autoAllowed) {
++		config.ctrlMap[&controls::ExposureValue] = ControlInfo(-8.0f, 8.0f, 0.0f);
++		config.ctrlMap.merge(impl_.controls());
++	}
+ 
+ 	return 0;
+ }

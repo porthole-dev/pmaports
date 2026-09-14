@@ -1,0 +1,89 @@
+From 4d186a1d5361221b7f7140db1b00baefd2a09cc6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Wed, 22 Jul 2026 14:17:08 +0200
+Subject: [PATCH 47/68] ipa: softisp: agc: Adjust histogram for black level
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Instead of providing the black separately, adjust the luminance histogram
+according to the current black level. Everything under the black level is
+summed into the bin corresponding to the current black level, and the MSV
+calculation is carried out on the partial histogram that starts at the
+bin of the black level. This is needed in order to be able to move the
+algorithm out of the softisp ipa.
+
+This also changes the behaviour slightly as previously everything under
+the black level was ignored, and only the remaining part was split into
+the 5 bins, but now the ignored bins are instead summed into the "first"
+bin of the "new" histogram.
+
+This is intended to improve the accuracy of the histogram by not ignoring
+the bins under the black level; but on the other hand this can cause the
+same histogram to be perceived as "darker" by the algorithm.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit f979ca8c1d6005d8b677972d5cd57225c2fac036)
+---
+ src/ipa/simple/algorithms/agc.cpp | 24 ++++++++++++++----------
+ 1 file changed, 14 insertions(+), 10 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index b3b13b1cf..4343007b4 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -66,19 +66,15 @@ static constexpr float kExpMaxStep = 0.15;
+ 
+ namespace {
+ 
+-std::optional<float> calculateMSV(const Histogram &histogram, uint8_t blackLevel)
++std::optional<float> calculateMSV(const Histogram &histogram)
+ {
+ 	/*
+ 	 * Calculate Mean Sample Value (MSV) according to formula from:
+ 	 * https://www.araa.asn.au/acra/acra2007/papers/paper84final.pdf
+ 	 */
+-	const unsigned int blackLevelHistIdx =
+-		blackLevel * histogram.bins() / 256;
+-	const unsigned int histogramSize =
+-		histogram.bins() - blackLevelHistIdx;
+-	const unsigned int yHistValsPerBin = histogramSize / kExposureBinsCount;
++	const unsigned int yHistValsPerBin = histogram.bins() / kExposureBinsCount;
+ 	const unsigned int yHistValsPerBinMod =
+-		histogramSize / (histogramSize % kExposureBinsCount + 1);
++		histogram.bins() / (histogram.bins() % kExposureBinsCount + 1);
+ 	int exposureBins[kExposureBinsCount] = {};
+ 	unsigned int denom = 0;
+ 	unsigned int num = 0;
+@@ -86,9 +82,9 @@ std::optional<float> calculateMSV(const Histogram &histogram, uint8_t blackLevel
+ 	if (yHistValsPerBin == 0)
+ 		return std::nullopt;
+ 
+-	for (unsigned int i = 0; i < histogramSize; i++) {
++	for (unsigned int i = 0; i < histogram.bins(); i++) {
+ 		unsigned int idx = (i - (i / yHistValsPerBinMod)) / yHistValsPerBin;
+-		exposureBins[idx] += histogram[blackLevelHistIdx + i];
++		exposureBins[idx] += histogram[i];
+ 	}
+ 
+ 	for (unsigned int i = 0; i < kExposureBinsCount; i++) {
+@@ -193,7 +189,15 @@ void Agc::process(IPAContext &context,
+ 		return;
+ 	}
+ 
+-	auto exposureMSV = calculateMSV({ stats->yHistogram }, context.activeState.blc.level);
++	/* \todo The histogram should come already adjusted. */
++	auto histogram = stats->yHistogram;
++	const unsigned int blackLevelHistIdx =
++		context.activeState.blc.level * histogram.size() / 256;
++
++	for (unsigned int i = 0; i < blackLevelHistIdx; i++)
++		histogram[blackLevelHistIdx] += histogram[i];
++
++	auto exposureMSV = calculateMSV({ { histogram.begin() + blackLevelHistIdx, histogram.end() } });
+ 	if (!exposureMSV) {
+ 		LOG(IPASoftExposure, Debug)
+ 			<< "Not adjusting exposure due to insufficient histogram data";

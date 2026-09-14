@@ -1,0 +1,33 @@
+From 362151a46100cb7a58b2885d86302f063cdad011 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 16 Jul 2026 10:27:51 +0200
+Subject: [PATCH 21/68] ipa: libipa: agc_mean_luminance: calculateNewEv(): Fix
+ typo
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+splut -> split
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit e42aac8db4fac51414d4591b510e055b14d970f3)
+---
+ src/ipa/libipa/agc_mean_luminance.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index c1ec5a3dd..4eb70ef0f 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -648,7 +648,7 @@ utils::Duration AgcMeanLuminance::filterExposure(utils::Duration exposureValue)
+ }
+ 
+ /**
+- * \brief Calculate the new exposure value and splut it between exposure time
++ * \brief Calculate the new exposure value and split it between exposure time
+  * and gain
+  * \param[in] constraintModeIndex The index of the current constraint mode
+  * \param[in] exposureModeIndex The index of the current exposure mode

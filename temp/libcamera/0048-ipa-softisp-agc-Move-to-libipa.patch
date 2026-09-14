@@ -1,0 +1,571 @@
+From e13ee7fbb9d1b678e0413d08fda99b626531b700 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Mon, 20 Jul 2026 13:43:48 +0200
+Subject: [PATCH 48/68] ipa: softisp: agc: Move to libipa
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Move the agc algorithm used into a separate component in libipa, and use it.
+While it is also a (mean) luminance based algorithm, there is already
+`AgcMeanLuminance`, so call it `AgcMSV` (from "mean sample value").
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit d84a7c0f4907dcc2fb010fb5f73cbebba972fe58)
+---
+ src/ipa/libipa/agc_msv.cpp        | 232 ++++++++++++++++++++++++++++++
+ src/ipa/libipa/agc_msv.h          |  51 +++++++
+ src/ipa/libipa/meson.build        |   2 +
+ src/ipa/simple/algorithms/agc.cpp | 170 ++++------------------
+ src/ipa/simple/algorithms/agc.h   |   7 +-
+ 5 files changed, 316 insertions(+), 146 deletions(-)
+ create mode 100644 src/ipa/libipa/agc_msv.cpp
+ create mode 100644 src/ipa/libipa/agc_msv.h
+
+diff --git a/src/ipa/libipa/agc_msv.cpp b/src/ipa/libipa/agc_msv.cpp
+new file mode 100644
+index 000000000..395f3cb46
+--- /dev/null
++++ b/src/ipa/libipa/agc_msv.cpp
+@@ -0,0 +1,232 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Copyright (C) 2024, Red Hat Inc.
++ *
++ * Luminance mean sample value based AGC algorithm
++ */
++
++#include "agc_msv.h"
++
++#include <algorithm>
++#include <cmath>
++#include <optional>
++
++#include <libcamera/base/log.h>
++
++#include "histogram.h"
++
++namespace libcamera {
++
++namespace ipa {
++
++LOG_DEFINE_CATEGORY(AgcMSV)
++
++/**
++ * \class AgcMSV
++ * \brief Binned mean luminance based AGC algorithm
++ *
++ * This is a best-effort, low-complexity auto exposure/gain algorithm based on
++ * the 2007 paper "Automatic camera exposure control"
++ * (https://www.araa.asn.au/acra/acra2007/papers/paper84final.pdf)
++ *
++ * Due to its simplicity, it is a better fit than AgcMeanLuminance when
++ * operating a sensor without a known gain model.
++ *
++ * The algorithm operates by inspecting the luminance histogram of a frame, and
++ * then splitting it into a fixed number of bins. Then an average is calculated
++ * (MSV ~ mean sample value), which is compared to the target MSV. If the current
++ * MSV is too low, first the exposure time, then the analogue gain is raised.
++ * If it is too high, first the analogue gain, then the exposure time is
++ * reduced.
++ */
++
++/**
++ * \class AgcMSV::Limits
++ * \brief Set of limits for the algorithm
++ *
++ * \var AgcMSV::Limits::exposure
++ * \brief Minimum and maximum allowed exposure (in lines)
++ *
++ * \var AgcMSV::Limits::gain
++ * \brief Minimum and maximum allowed gain
++ *
++ * \var AgcMSV::Limits::gainMinStep
++ * \brief Minimum allowed gain adjustment
++ *
++ * \var AgcMSV::Limits::gain1
++ * \brief The gain value assumed to result in a gain of 1.0
++ *
++ * The algorithm will not lower the gain value below this.
++ */
++
++/**
++ * \struct AgcMSV::Params
++ * \brief Collection of parameters for the algorithm
++ *
++ * \var AgcMSV::Params::yHist
++ * \brief Luminance histogram of the frame
++ *
++ * \var AgcMSV::Params::exposure
++ * \brief Effective exposure of the frame (in lines)
++ *
++ * \var AgcMSV::Params::gain
++ * \brief Effective gain of the frame
++ */
++
++/**
++ * \struct AgcMSV::Result
++ * \brief Collection of results of the algorithm
++ *
++ * \var AgcMSV::Result::exposure
++ * \brief The applicable exposure (in lines)
++ *
++ * \var AgcMSV::Result::analogueGain
++ * \brief The applicable analogue gain
++ */
++
++namespace {
++
++/*
++ * The number of bins to use for the optimal exposure calculations.
++ */
++static constexpr unsigned int kExposureBinsCount = 5;
++
++/*
++ * The exposure is optimal when the mean sample value of the histogram is
++ * in the middle of the range.
++ */
++static constexpr float kExposureOptimal = kExposureBinsCount / 2.0;
++
++/*
++ * This implements the hysteresis for the exposure adjustment.
++ * It is small enough to have the exposure close to the optimal, and is big
++ * enough to prevent the exposure from wobbling around the optimal value.
++ */
++static constexpr float kExposureSatisfactory = 0.2;
++
++/*
++ * Proportional gain for exposure/gain adjustment. Maps the MSV error to a
++ * multiplicative correction factor:
++ *
++ *   factor = 1.0 + kExpProportionalGain * error
++ *
++ * With kExpProportionalGain = 0.04:
++ *   - max error ~2.5 -> factor 1.10 (~10% step, same as before)
++ *   - error 1.0      -> factor 1.04 (~4% step)
++ *   - error 0.3      -> factor 1.012 (~1.2% step)
++ *
++ * This replaces the fixed 10% bang-bang step with a proportional correction
++ * that converges smoothly and avoids overshooting near the target.
++ */
++static constexpr float kExpProportionalGain = 0.04;
++
++/*
++ * Maximum multiplicative step per frame, to bound the correction when the
++ * scene changes dramatically.
++ */
++static constexpr float kExpMaxStep = 0.15;
++
++std::optional<float> calculateMSV(const Histogram &histogram)
++{
++	/*
++	 * Calculate Mean Sample Value (MSV) according to formula from:
++	 * https://www.araa.asn.au/acra/acra2007/papers/paper84final.pdf
++	 */
++	const unsigned int yHistValsPerBin = histogram.bins() / kExposureBinsCount;
++	const unsigned int yHistValsPerBinMod =
++		histogram.bins() / (histogram.bins() % kExposureBinsCount + 1);
++	int exposureBins[kExposureBinsCount] = {};
++	unsigned int denom = 0;
++	unsigned int num = 0;
++
++	if (yHistValsPerBin == 0)
++		return std::nullopt;
++
++	for (unsigned int i = 0; i < histogram.bins(); i++) {
++		unsigned int idx = (i - (i / yHistValsPerBinMod)) / yHistValsPerBin;
++		exposureBins[idx] += histogram[i];
++	}
++
++	for (unsigned int i = 0; i < kExposureBinsCount; i++) {
++		LOG(AgcMSV, Debug) << i << ": " << exposureBins[i];
++		denom += exposureBins[i];
++		num += exposureBins[i] * (i + 1);
++	}
++
++	return (denom == 0 ? 0 : static_cast<float>(num) / denom);
++}
++
++} /* namespace */
++
++/**
++ * \brief Set the limits for the algorithm
++ */
++void AgcMSV::setLimits(const Limits &limits)
++{
++	limits_ = limits;
++}
++
++/**
++ * \brief Calculate a new set of AGC parameters
++ */
++AgcMSV::Result AgcMSV::calculateNewEv(const Params &params)
++{
++	auto exposureMSV = calculateMSV(params.yHist);
++	if (!exposureMSV) {
++		LOG(AgcMSV, Debug)
++			<< "Not adjusting exposure due to insufficient histogram data";
++		return { params.exposure, params.gain };
++	}
++
++	return updateExposure(params.exposure, params.gain, *exposureMSV);
++}
++
++AgcMSV::Result AgcMSV::updateExposure(uint32_t exposure, double again, float exposureMSV)
++{
++	float error = kExposureOptimal - exposureMSV;
++	if (std::abs(error) <= kExposureSatisfactory)
++		return { exposure, again };
++
++	/*
++	 * Compute a proportional correction factor. The sign of the error
++	 * determines the direction: positive error means too dark (increase),
++	 * negative means too bright (decrease).
++	 */
++	float step = std::clamp(error * kExpProportionalGain,
++				-kExpMaxStep, kExpMaxStep);
++	float factor = 1.0f + step;
++
++	if (factor > 1.0f) {
++		/* Scene too dark: increase exposure first, then gain. */
++		if (exposure < limits_.exposure[1]) {
++			uint32_t next = exposure * factor;
++			exposure = std::max(next, exposure + 1);
++		} else {
++			double next = again * factor;
++			again = std::max(next, again + limits_.gainMinStep);
++		}
++	} else {
++		/* Scene too bright: decrease gain first, then exposure. */
++		if (again > limits_.gain1) {
++			double next = again * factor;
++			again = std::min(next, again - limits_.gainMinStep);
++		} else {
++			uint32_t next = exposure * factor;
++			exposure = std::min(next, exposure - 1);
++		}
++	}
++
++	exposure = std::clamp(exposure, limits_.exposure[0], limits_.exposure[1]);
++	again = std::clamp(again, limits_.gain[0], limits_.gain[1]);
++
++	LOG(AgcMSV, Debug)
++		<< "exposureMSV:" << exposureMSV
++		<< " error:" << error << " factor:" << factor
++		<< " exposure:" << exposure << " analogue-gain:" << again;
++
++	return { exposure, again };
++}
++
++} /* namespace ipa */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/libipa/agc_msv.h b/src/ipa/libipa/agc_msv.h
+new file mode 100644
+index 000000000..ef6c393df
+--- /dev/null
++++ b/src/ipa/libipa/agc_msv.h
+@@ -0,0 +1,51 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Copyright (C) 2024, Red Hat Inc.
++ *
++ * Luminance mean sample value based AGC algorithm
++ */
++
++#pragma once
++
++#include <array>
++#include <stdint.h>
++
++namespace libcamera {
++
++namespace ipa {
++
++class Histogram;
++
++class AgcMSV
++{
++public:
++	struct Limits {
++		std::array<uint32_t, 2> exposure;
++		std::array<double, 2> gain;
++		double gainMinStep;
++		double gain1;
++	};
++
++	struct Params {
++		const Histogram &yHist;
++		uint32_t exposure;
++		double gain;
++	};
++
++	struct Result {
++		uint32_t exposure;
++		double analogueGain;
++	};
++
++	void setLimits(const Limits &limits);
++	[[nodiscard]] Result calculateNewEv(const Params &params);
++
++private:
++	AgcMSV::Result updateExposure(uint32_t exposure, double again, float exposureMSV);
++
++	Limits limits_ = {};
++};
++
++} /* namespace ipa */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/libipa/meson.build b/src/ipa/libipa/meson.build
+index 91f2e0e08..b6f015ae3 100644
+--- a/src/ipa/libipa/meson.build
++++ b/src/ipa/libipa/meson.build
+@@ -3,6 +3,7 @@
+ libipa_headers = files([
+     'agc.h',
+     'agc_mean_luminance.h',
++    'agc_msv.h',
+     'algorithm.h',
+     'awb_bayes.h',
+     'awb_grey.h',
+@@ -26,6 +27,7 @@ libipa_headers = files([
+ libipa_sources = files([
+     'agc.cpp',
+     'agc_mean_luminance.cpp',
++    'agc_msv.cpp',
+     'algorithm.cpp',
+     'awb_bayes.cpp',
+     'awb_grey.cpp',
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 4343007b4..9c4bf2130 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -7,11 +7,6 @@
+ 
+ #include "agc.h"
+ 
+-#include <algorithm>
+-#include <cmath>
+-#include <optional>
+-#include <stdint.h>
+-
+ #include <libcamera/base/log.h>
+ 
+ #include <libipa/histogram.h>
+@@ -24,138 +19,22 @@ LOG_DEFINE_CATEGORY(IPASoftExposure)
+ 
+ namespace ipa::soft::algorithms {
+ 
+-/*
+- * The number of bins to use for the optimal exposure calculations.
+- */
+-static constexpr unsigned int kExposureBinsCount = 5;
+-
+-/*
+- * The exposure is optimal when the mean sample value of the histogram is
+- * in the middle of the range.
+- */
+-static constexpr float kExposureOptimal = kExposureBinsCount / 2.0;
+-
+-/*
+- * This implements the hysteresis for the exposure adjustment.
+- * It is small enough to have the exposure close to the optimal, and is big
+- * enough to prevent the exposure from wobbling around the optimal value.
+- */
+-static constexpr float kExposureSatisfactory = 0.2;
+-
+-/*
+- * Proportional gain for exposure/gain adjustment. Maps the MSV error to a
+- * multiplicative correction factor:
+- *
+- *   factor = 1.0 + kExpProportionalGain * error
+- *
+- * With kExpProportionalGain = 0.04:
+- *   - max error ~2.5 -> factor 1.10 (~10% step, same as before)
+- *   - error 1.0      -> factor 1.04 (~4% step)
+- *   - error 0.3      -> factor 1.012 (~1.2% step)
+- *
+- * This replaces the fixed 10% bang-bang step with a proportional correction
+- * that converges smoothly and avoids overshooting near the target.
+- */
+-static constexpr float kExpProportionalGain = 0.04;
+-
+-/*
+- * Maximum multiplicative step per frame, to bound the correction when the
+- * scene changes dramatically.
+- */
+-static constexpr float kExpMaxStep = 0.15;
+-
+-namespace {
+-
+-std::optional<float> calculateMSV(const Histogram &histogram)
+-{
+-	/*
+-	 * Calculate Mean Sample Value (MSV) according to formula from:
+-	 * https://www.araa.asn.au/acra/acra2007/papers/paper84final.pdf
+-	 */
+-	const unsigned int yHistValsPerBin = histogram.bins() / kExposureBinsCount;
+-	const unsigned int yHistValsPerBinMod =
+-		histogram.bins() / (histogram.bins() % kExposureBinsCount + 1);
+-	int exposureBins[kExposureBinsCount] = {};
+-	unsigned int denom = 0;
+-	unsigned int num = 0;
+-
+-	if (yHistValsPerBin == 0)
+-		return std::nullopt;
+-
+-	for (unsigned int i = 0; i < histogram.bins(); i++) {
+-		unsigned int idx = (i - (i / yHistValsPerBinMod)) / yHistValsPerBin;
+-		exposureBins[idx] += histogram[i];
+-	}
+-
+-	for (unsigned int i = 0; i < kExposureBinsCount; i++) {
+-		LOG(IPASoftIspExposure, Debug) << i << ": " << exposureBins[i];
+-		denom += exposureBins[i];
+-		num += exposureBins[i] * (i + 1);
+-	}
+-
+-	return (denom == 0 ? 0 : static_cast<float>(num) / denom);
+-}
+-
+-} /* namespace */
+-
+-Agc::Agc()
++int Agc::configure(IPAContext &context, [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+-}
+-
+-void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
+-{
+-	uint32_t exposure = frameContext.sensor.exposure;
+-	double again = frameContext.sensor.gain;
+-
+-	double error = kExposureOptimal - exposureMSV;
+-
+-	if (std::abs(error) <= kExposureSatisfactory)
+-		return;
+-
+-	/*
+-	 * Compute a proportional correction factor. The sign of the error
+-	 * determines the direction: positive error means too dark (increase),
+-	 * negative means too bright (decrease).
+-	 */
+-	float step = std::clamp(static_cast<float>(error) * kExpProportionalGain,
+-				-kExpMaxStep, kExpMaxStep);
+-	float factor = 1.0f + step;
+-
+-	if (factor > 1.0f) {
+-		/* Scene too dark: increase exposure first, then gain. */
+-		if (exposure < context.configuration.agc.exposureMax) {
+-			uint32_t next = exposure * factor;
+-			exposure = std::max(next, exposure + 1);
+-		} else {
+-			double next = again * factor;
+-			again = std::max(next, again + context.configuration.agc.againMinStep);
+-		}
+-	} else {
+-		/* Scene too bright: decrease gain first, then exposure. */
+-		if (again > context.configuration.agc.again10) {
+-			double next = again * factor;
+-			again = std::min(next, again - context.configuration.agc.againMinStep);
+-		} else {
+-			uint32_t next = exposure * factor;
+-			exposure = std::min(next, exposure - 1);
+-		}
+-	}
+-
+-	exposure = std::clamp(exposure, context.configuration.agc.exposureMin,
+-			      context.configuration.agc.exposureMax);
+-	again = std::clamp(again, context.configuration.agc.againMin,
+-			   context.configuration.agc.againMax);
+-
+-	frameContext.agc.exposure = exposure;
+-	frameContext.agc.gain = again;
+-
+-	context.activeState.agc.exposure = exposure;
+-	context.activeState.agc.again = again;
+-
+-	LOG(IPASoftExposure, Debug)
+-		<< "exposureMSV " << exposureMSV
+-		<< " error " << error << " factor " << factor
+-		<< " exp " << exposure << " again " << again;
++	agc_.setLimits({
++		.exposure = {
++			context.configuration.agc.exposureMin,
++			context.configuration.agc.exposureMax,
++		},
++		.gain = {
++			context.configuration.agc.againMin,
++			context.configuration.agc.againMax,
++		},
++		.gainMinStep = context.configuration.agc.againMinStep,
++		.gain1 = context.configuration.agc.again10,
++	});
++
++	return 0;
+ }
+ 
+ void Agc::process(IPAContext &context,
+@@ -197,14 +76,19 @@ void Agc::process(IPAContext &context,
+ 	for (unsigned int i = 0; i < blackLevelHistIdx; i++)
+ 		histogram[blackLevelHistIdx] += histogram[i];
+ 
+-	auto exposureMSV = calculateMSV({ { histogram.begin() + blackLevelHistIdx, histogram.end() } });
+-	if (!exposureMSV) {
+-		LOG(IPASoftExposure, Debug)
+-			<< "Not adjusting exposure due to insufficient histogram data";
+-		return;
+-	}
++	const auto &newEv = agc_.calculateNewEv({
++		.yHist = {
++			{ histogram.begin() + blackLevelHistIdx, histogram.end() },
++		},
++		.exposure = frameContext.sensor.exposure,
++		.gain = frameContext.sensor.gain,
++	});
++
++	frameContext.agc.exposure = newEv.exposure;
++	frameContext.agc.gain = newEv.analogueGain;
+ 
+-	updateExposure(context, frameContext, *exposureMSV);
++	context.activeState.agc.exposure = frameContext.agc.exposure;
++	context.activeState.agc.again = frameContext.agc.gain;
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Agc, "Agc")
+diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
+index 112d9f5a1..b20ea498f 100644
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -7,6 +7,8 @@
+ 
+ #pragma once
+ 
++#include <libipa/agc_msv.h>
++
+ #include "algorithm.h"
+ 
+ namespace libcamera {
+@@ -16,8 +18,7 @@ namespace ipa::soft::algorithms {
+ class Agc : public Algorithm
+ {
+ public:
+-	Agc();
+-	~Agc() = default;
++	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
+ 
+ 	void process(IPAContext &context, const uint32_t frame,
+ 		     IPAFrameContext &frameContext,
+@@ -25,7 +26,7 @@ public:
+ 		     ControlList &metadata) override;
+ 
+ private:
+-	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
++	AgcMSV agc_;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */

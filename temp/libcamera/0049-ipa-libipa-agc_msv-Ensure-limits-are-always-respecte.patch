@@ -1,0 +1,132 @@
+From e1d02c3dec0ae9eccebc9ec915fb9f919b9661c1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Wed, 22 Jul 2026 15:55:03 +0200
+Subject: [PATCH 49/68] ipa: libipa: agc_msv: Ensure limits are always
+ respected
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Make sure that even in the presence of continous limit changes, the
+returned exposure and gain values are always within bounds. This is
+needed for integration into `AgcAlgorithm`, which might vary the limits
+for every invocation.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Acked-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 1169f6c0834215b8f2c3bc70626f3a927867fe00)
+---
+ src/ipa/libipa/agc_msv.cpp | 84 ++++++++++++++++++++------------------
+ 1 file changed, 45 insertions(+), 39 deletions(-)
+
+diff --git a/src/ipa/libipa/agc_msv.cpp b/src/ipa/libipa/agc_msv.cpp
+index 395f3cb46..98fd3cd50 100644
+--- a/src/ipa/libipa/agc_msv.cpp
++++ b/src/ipa/libipa/agc_msv.cpp
+@@ -171,59 +171,65 @@ void AgcMSV::setLimits(const Limits &limits)
+  */
+ AgcMSV::Result AgcMSV::calculateNewEv(const Params &params)
+ {
+-	auto exposureMSV = calculateMSV(params.yHist);
+-	if (!exposureMSV) {
++	AgcMSV::Result result = { params.exposure, params.gain };
++
++	if (auto exposureMSV = calculateMSV(params.yHist)) {
++		result = updateExposure(params.exposure, params.gain, *exposureMSV);
++	} else {
+ 		LOG(AgcMSV, Debug)
+ 			<< "Not adjusting exposure due to insufficient histogram data";
+-		return { params.exposure, params.gain };
+ 	}
+ 
+-	return updateExposure(params.exposure, params.gain, *exposureMSV);
++	result.exposure = std::clamp(result.exposure, limits_.exposure[0], limits_.exposure[1]);
++	result.analogueGain = std::clamp(result.analogueGain, limits_.gain[0], limits_.gain[1]);
++
++	LOG(AgcMSV, Debug)
++		<< "exposure:" << result.exposure
++		<< " analogue-gain:" << result.analogueGain;
++
++	return result;
+ }
+ 
+ AgcMSV::Result AgcMSV::updateExposure(uint32_t exposure, double again, float exposureMSV)
+ {
+ 	float error = kExposureOptimal - exposureMSV;
+-	if (std::abs(error) <= kExposureSatisfactory)
+-		return { exposure, again };
+ 
+-	/*
+-	 * Compute a proportional correction factor. The sign of the error
+-	 * determines the direction: positive error means too dark (increase),
+-	 * negative means too bright (decrease).
+-	 */
+-	float step = std::clamp(error * kExpProportionalGain,
+-				-kExpMaxStep, kExpMaxStep);
+-	float factor = 1.0f + step;
+-
+-	if (factor > 1.0f) {
+-		/* Scene too dark: increase exposure first, then gain. */
+-		if (exposure < limits_.exposure[1]) {
+-			uint32_t next = exposure * factor;
+-			exposure = std::max(next, exposure + 1);
+-		} else {
+-			double next = again * factor;
+-			again = std::max(next, again + limits_.gainMinStep);
+-		}
+-	} else {
+-		/* Scene too bright: decrease gain first, then exposure. */
+-		if (again > limits_.gain1) {
+-			double next = again * factor;
+-			again = std::min(next, again - limits_.gainMinStep);
++	LOG(AgcMSV, Debug)
++		<< "exposureMSV:" << exposureMSV << " error:" << error;
++
++	if (std::abs(error) > kExposureSatisfactory) {
++		/*
++		 * Compute a proportional correction factor. The sign of the error
++		 * determines the direction: positive error means too dark (increase),
++		 * negative means too bright (decrease).
++		 */
++		float step = std::clamp(error * kExpProportionalGain,
++					-kExpMaxStep, kExpMaxStep);
++		float factor = 1.0f + step;
++
++		LOG(AgcMSV, Debug) << "factor:" << factor;
++
++		if (factor > 1.0f) {
++			/* Scene too dark: increase exposure first, then gain. */
++			if (exposure < limits_.exposure[1]) {
++				uint32_t next = exposure * factor;
++				exposure = std::max(next, exposure + 1);
++			} else {
++				double next = again * factor;
++				again = std::max(next, again + limits_.gainMinStep);
++			}
+ 		} else {
+-			uint32_t next = exposure * factor;
+-			exposure = std::min(next, exposure - 1);
++			/* Scene too bright: decrease gain first, then exposure. */
++			if (again > limits_.gain1) {
++				double next = again * factor;
++				again = std::min(next, again - limits_.gainMinStep);
++			} else {
++				uint32_t next = exposure * factor;
++				exposure = std::min(next, exposure - 1);
++			}
+ 		}
+ 	}
+ 
+-	exposure = std::clamp(exposure, limits_.exposure[0], limits_.exposure[1]);
+-	again = std::clamp(again, limits_.gain[0], limits_.gain[1]);
+-
+-	LOG(AgcMSV, Debug)
+-		<< "exposureMSV:" << exposureMSV
+-		<< " error:" << error << " factor:" << factor
+-		<< " exposure:" << exposure << " analogue-gain:" << again;
+-
+ 	return { exposure, again };
+ }
+ 

@@ -1,0 +1,33 @@
+From 8d16a2fd12a57dd9837d61bb99466a0272a6280f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Tue, 21 Jul 2026 09:23:55 +0200
+Subject: [PATCH 27/68] ipa: libipa: agc_mean_luminance: Reset
+ `filteredExposure_` when configuring
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reset `filteredExposure_` to 0 when `configure()` is called so that
+the current run is not affected by previous ones.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 9e18bba602255060d7ff5161c91e1d161e95c21d)
+---
+ src/ipa/libipa/agc_mean_luminance.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index e6373b52e..bbeb58521 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -367,6 +367,7 @@ void AgcMeanLuminance::configure(utils::Duration lineDuration,
+ 		helper.configure(lineDuration, sensorHelper);
+ 
+ 	luxWarningEnabled_ = true;
++	filteredExposure_ = 0s;
+ }
+ 
+ /**

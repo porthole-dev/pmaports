@@ -1,0 +1,367 @@
+From 25913193ec1a5bff2db3960ef20c9b38ce3d4929 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:45:17 +0200
+Subject: [PATCH 65/68] ipa: softisp: Add contrast autofocus
+
+A hill climb over the sharpness statistic, normalised by mean luminance:
+a coarse scan over the lens range, a fine step either side of the best
+position, then lock, with a rescan in continuous mode when sharpness
+drops for several frames.
+
+It implements the AfMode (manual, auto, continuous), AfTrigger and
+LensPosition controls and reports AfState. LensPosition is in dioptres
+and converted to actuator codes with a piecewise linear map from the
+tuning file, so the algorithm needs no knowledge of the lens driver's
+code range.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ src/ipa/simple/algorithms/af.cpp      | 253 ++++++++++++++++++++++++++
+ src/ipa/simple/algorithms/af.h        |  65 +++++++
+ src/ipa/simple/algorithms/meson.build |   1 +
+ 3 files changed, 319 insertions(+)
+ create mode 100644 src/ipa/simple/algorithms/af.cpp
+ create mode 100644 src/ipa/simple/algorithms/af.h
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+new file mode 100644
+index 000000000..f8e6e30a6
+--- /dev/null
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -0,0 +1,253 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Contrast autofocus for the software ISP
++ *
++ * A hill climb over the sharpness statistic (squared horizontal differences of
++ * block-averaged green, normalised by squared mean luminance): a coarse scan across the
++ * whole lens range, a fine step either side of the best coarse position,
++ * then lock. In continuous mode a sustained sharpness drop restarts the scan.
++ *
++ * The algorithm works in lens actuator codes and speaks dioptres on the
++ * LensPosition control, through a piecewise linear map from the tuning file:
++ *
++ *   - Af:
++ *       map: [ 0.0, 0, 10.0, 581 ]   # dioptres, actuator code, ...
++ *       default: 0.5                 # dioptres, the LensPosition default
++ */
++
++#include "af.h"
++
++#include <algorithm>
++#include <cmath>
++
++#include <libcamera/base/log.h>
++
++namespace libcamera {
++
++LOG_DEFINE_CATEGORY(IPASoftAf)
++
++namespace ipa::soft::algorithms {
++
++/* Rescan when sharpness stays below this fraction of the locked value. */
++static constexpr double kRescanRatio = 0.55;
++static constexpr unsigned int kRescanFrames = 6;
++/* Frames with statistics to wait for the AGC before (re)scanning. */
++static constexpr unsigned int kWarmupFrames = 6;
++/*
++ * Frames with statistics to skip after every lens move. The lens is written
++ * after the statistics of a frame are processed, and the sensor is already
++ * exposing the next frame by then, so the first frame after a move is always
++ * taken with the lens in transit; with a long exposure in a dim scene the
++ * second can be too. Without this, a scan in a dim room measured the same
++ * sharpness at every position.
++ */
++static constexpr unsigned int kSettleFrames = 2;
++/* A scan whose sharpness varies by less than this is a failure. */
++static constexpr double kMinContrastRatio = 1.03;
++
++int Af::init(IPAContext &context, const ValueNode &tuningData)
++{
++	std::optional<Pwl> map = tuningData["map"].get<Pwl>();
++	if (!map || map->size() < 2) {
++		LOG(IPASoftAf, Error) << "Tuning file needs a dioptre to code 'map'";
++		return -EINVAL;
++	}
++
++	auto inverse = map->inverse();
++	if (!inverse.second) {
++		LOG(IPASoftAf, Error) << "Lens position map is not invertible";
++		return -EINVAL;
++	}
++
++	map_ = std::move(*map);
++	inverseMap_ = std::move(inverse.first);
++
++	const Pwl::Interval codes = map_.range();
++	codeMin_ = static_cast<int32_t>(std::lround(codes.start));
++	codeMax_ = static_cast<int32_t>(std::lround(codes.end));
++	/* Ten coarse steps across the range, refined at a quarter step. */
++	coarseStep_ = std::max((codeMax_ - codeMin_) / 10, 1);
++	fineStep_ = std::max(coarseStep_ / 4, 1);
++
++	const Pwl::Interval dioptres = map_.domain();
++	float def = tuningData["default"].get<float>(static_cast<float>(dioptres.start));
++
++	context.ctrlMap[&controls::AfMode] =
++		ControlInfo(controls::AfModeValues,
++			    ControlValue(static_cast<int32_t>(controls::AfModeContinuous)));
++	context.ctrlMap[&controls::AfTrigger] = ControlInfo(controls::AfTriggerValues);
++	context.ctrlMap[&controls::LensPosition] =
++		ControlInfo(static_cast<float>(dioptres.start),
++			    static_cast<float>(dioptres.end), def);
++
++	code_ = static_cast<int32_t>(std::lround(map_.eval(def)));
++
++	return 0;
++}
++
++int Af::configure(IPAContext &context,
++		  [[maybe_unused]] const IPAConfigInfo &configInfo)
++{
++	if (mode_ == controls::AfModeContinuous)
++		startScan();
++
++	context.activeState.af.lensCode = code_;
++
++	return 0;
++}
++
++void Af::startScan()
++{
++	warmup_ = kWarmupFrames;
++	scan_ = Scan::Coarse;
++	state_ = controls::AfStateScanning;
++	code_ = codeMin_;
++	bestCode_ = codeMin_;
++	bestSharpness_ = 0;
++	worstSharpness_ = UINT64_MAX;
++}
++
++void Af::queueRequest([[maybe_unused]] IPAContext &context,
++		      [[maybe_unused]] const uint32_t frame,
++		      [[maybe_unused]] IPAFrameContext &frameContext,
++		      const ControlList &controls)
++{
++	const auto &mode = controls.get(controls::AfMode);
++	if (mode && *mode != mode_) {
++		mode_ = static_cast<controls::AfModeEnum>(*mode);
++		scan_ = Scan::Idle;
++		state_ = controls::AfStateIdle;
++		if (mode_ == controls::AfModeContinuous)
++			startScan();
++	}
++
++	const auto &position = controls.get(controls::LensPosition);
++	if (position && mode_ == controls::AfModeManual) {
++		const Pwl::Interval dioptres = map_.domain();
++		code_ = static_cast<int32_t>(
++			std::lround(map_.eval(std::clamp<double>(*position, dioptres.start,
++								 dioptres.end))));
++	}
++
++	const auto &trigger = controls.get(controls::AfTrigger);
++	if (trigger && mode_ == controls::AfModeAuto) {
++		if (*trigger == controls::AfTriggerStart) {
++			startScan();
++		} else {
++			scan_ = Scan::Idle;
++			state_ = controls::AfStateIdle;
++		}
++	}
++}
++
++void Af::step(uint64_t sharpness)
++{
++	bestSharpness_ = std::max(bestSharpness_, sharpness);
++	worstSharpness_ = std::min(worstSharpness_, sharpness);
++
++	switch (scan_) {
++	case Scan::Coarse:
++		if (sharpness >= bestSharpness_)
++			bestCode_ = code_;
++
++		if (code_ < codeMax_) {
++			code_ = std::min(code_ + coarseStep_, codeMax_);
++			break;
++		}
++
++		scan_ = Scan::Fine;
++		fineDir_ = -1;
++		code_ = std::clamp(bestCode_ - fineStep_, codeMin_, codeMax_);
++		break;
++
++	case Scan::Fine:
++		if (sharpness >= bestSharpness_)
++			bestCode_ = code_;
++
++		if (fineDir_ < 0) {
++			fineDir_ = 1;
++			code_ = std::clamp(bestCode_ + fineStep_, codeMin_, codeMax_);
++			break;
++		}
++
++		code_ = bestCode_;
++		lockedSharpness_ = bestSharpness_;
++		lowFrames_ = 0;
++
++		if (bestSharpness_ < worstSharpness_ * kMinContrastRatio) {
++			state_ = controls::AfStateFailed;
++			scan_ = mode_ == controls::AfModeContinuous ? Scan::Locked : Scan::Idle;
++		} else {
++			state_ = controls::AfStateFocused;
++			scan_ = mode_ == controls::AfModeContinuous ? Scan::Locked : Scan::Idle;
++		}
++
++		LOG(IPASoftAf, Debug)
++			<< "Scan done at code " << bestCode_ << ", sharpness "
++			<< bestSharpness_ << " (worst " << worstSharpness_ << ")";
++		break;
++
++	case Scan::Locked:
++		if (sharpness < lockedSharpness_ * kRescanRatio) {
++			if (++lowFrames_ >= kRescanFrames) {
++				LOG(IPASoftAf, Debug) << "Sharpness dropped, rescanning";
++				startScan();
++			}
++		} else {
++			lowFrames_ = 0;
++			/* Track slow scene drift. */
++			lockedSharpness_ = (lockedSharpness_ * 15 + sharpness) / 16;
++		}
++		break;
++
++	case Scan::Idle:
++		break;
++	}
++}
++
++void Af::process(IPAContext &context,
++		 [[maybe_unused]] const uint32_t frame,
++		 [[maybe_unused]] IPAFrameContext &frameContext,
++		 const SwIspStats *stats,
++		 ControlList &metadata)
++{
++	/*
++	 * The lens is written after this returns; see kSettleFrames for why
++	 * the frames that follow a move are not measured.
++	 */
++	if (stats->valid && scan_ != Scan::Idle && mode_ != controls::AfModeManual) {
++		if (warmup_ > 0) {
++			/*
++			 * The gradient sum scales with brightness: let the AGC
++			 * settle, and the lens after a move.
++			 */
++			warmup_--;
++		} else {
++			uint64_t num = 0;
++			uint64_t den = 0;
++			for (unsigned int i = 0; i < SwIspStats::kYHistogramSize; i++) {
++				num += static_cast<uint64_t>(stats->yHistogram[i]) * i;
++				den += stats->yHistogram[i];
++			}
++			const uint64_t meanY = den ? std::max<uint64_t>(num / den, 1) : 1;
++
++			const int32_t code = code_;
++			step(stats->sharpness * 1024 / (meanY * meanY));
++			if (code_ != code)
++				warmup_ = std::max(warmup_, kSettleFrames);
++		}
++	}
++
++	context.activeState.af.lensCode = code_;
++
++	metadata.set(controls::AfMode, static_cast<int32_t>(mode_));
++	metadata.set(controls::AfState, static_cast<int32_t>(state_));
++	metadata.set(controls::LensPosition,
++		     static_cast<float>(inverseMap_.eval(code_)));
++}
++
++REGISTER_IPA_ALGORITHM(Af, "Af")
++
++} /* namespace ipa::soft::algorithms */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+new file mode 100644
+index 000000000..06902b02c
+--- /dev/null
++++ b/src/ipa/simple/algorithms/af.h
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: LGPL-2.1-or-later */
++/*
++ * Contrast autofocus
++ */
++
++#pragma once
++
++#include <libcamera/control_ids.h>
++
++#include <libipa/pwl.h>
++
++#include "algorithm.h"
++
++namespace libcamera {
++
++namespace ipa::soft::algorithms {
++
++class Af : public Algorithm
++{
++public:
++	Af() = default;
++	~Af() = default;
++
++	int init(IPAContext &context, const ValueNode &tuningData) override;
++	int configure(IPAContext &context,
++		      const IPAConfigInfo &configInfo) override;
++	void queueRequest(IPAContext &context, const uint32_t frame,
++			  IPAFrameContext &frameContext,
++			  const ControlList &controls) override;
++	void process(IPAContext &context, const uint32_t frame,
++		     IPAFrameContext &frameContext,
++		     const SwIspStats *stats,
++		     ControlList &metadata) override;
++
++private:
++	enum class Scan { Idle, Coarse, Fine, Locked };
++
++	void startScan();
++	void step(uint64_t sharpness);
++
++	/* Lens position in dioptres to actuator code, and back. */
++	Pwl map_;
++	Pwl inverseMap_;
++	int32_t codeMin_ = 0;
++	int32_t codeMax_ = 0;
++	int32_t coarseStep_ = 0;
++	int32_t fineStep_ = 0;
++
++	controls::AfModeEnum mode_ = controls::AfModeContinuous;
++	controls::AfStateEnum state_ = controls::AfStateIdle;
++	Scan scan_ = Scan::Idle;
++
++	int32_t code_ = 0;
++	int32_t bestCode_ = 0;
++	uint64_t bestSharpness_ = 0;
++	uint64_t worstSharpness_ = 0;
++	int32_t fineDir_ = 0;
++	uint64_t lockedSharpness_ = 0;
++	unsigned int lowFrames_ = 0;
++	unsigned int warmup_ = 0;
++};
++
++} /* namespace ipa::soft::algorithms */
++
++} /* namespace libcamera */
+diff --git a/src/ipa/simple/algorithms/meson.build b/src/ipa/simple/algorithms/meson.build
+index 73c637220..1cd58d5ea 100644
+--- a/src/ipa/simple/algorithms/meson.build
++++ b/src/ipa/simple/algorithms/meson.build
+@@ -2,6 +2,7 @@
+ 
+ soft_simple_ipa_algorithms = files([
+     'adjust.cpp',
++    'af.cpp',
+     'awb.cpp',
+     'agc.cpp',
+     'blc.cpp',

@@ -1,0 +1,58 @@
+From 6822cc548f424445cd649e2550db316ff3fa9e61 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 16 Jul 2026 10:47:59 +0200
+Subject: [PATCH 23/68] ipa: libipa: agc_mean_luminance: constraintClampGain():
+ Mark `const`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+There is no reason not to have this member function as `const`. This also
+necessitates the use of `at()` for the map lookup, so use it just like it
+is already done in `calculateNewEv()`.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 733a7b944412e4fb809ab24da791f52a5e215ecc)
+---
+ src/ipa/libipa/agc_mean_luminance.cpp | 4 ++--
+ src/ipa/libipa/agc_mean_luminance.h   | 2 +-
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/ipa/libipa/agc_mean_luminance.cpp b/src/ipa/libipa/agc_mean_luminance.cpp
+index bf7d16434..3a14d778a 100644
+--- a/src/ipa/libipa/agc_mean_luminance.cpp
++++ b/src/ipa/libipa/agc_mean_luminance.cpp
+@@ -538,7 +538,7 @@ double AgcMeanLuminance::estimateInitialGain(const Traits &traits) const
+  */
+ double AgcMeanLuminance::constraintClampGain(uint32_t constraintModeIndex,
+ 					     const Histogram &hist,
+-					     double gain)
++					     double gain) const
+ {
+ 	auto applyConstraint = [this, &gain, &hist](const AgcConstraint &constraint) {
+ 		double lux = lux_;
+@@ -568,7 +568,7 @@ double AgcMeanLuminance::constraintClampGain(uint32_t constraintModeIndex,
+ 		}
+ 	};
+ 
+-	std::vector<AgcConstraint> &constraints = constraintModes_[constraintModeIndex];
++	const std::vector<AgcConstraint> &constraints = constraintModes_.at(constraintModeIndex);
+ 	std::for_each(constraints.begin(), constraints.end(), applyConstraint);
+ 
+ 	std::for_each(additionalConstraints_.begin(), additionalConstraints_.end(), applyConstraint);
+diff --git a/src/ipa/libipa/agc_mean_luminance.h b/src/ipa/libipa/agc_mean_luminance.h
+index eb9d6fec2..9b82d97ab 100644
+--- a/src/ipa/libipa/agc_mean_luminance.h
++++ b/src/ipa/libipa/agc_mean_luminance.h
+@@ -105,7 +105,7 @@ private:
+ 	double estimateInitialGain(const Traits &traits) const;
+ 	double constraintClampGain(uint32_t constraintModeIndex,
+ 				   const Histogram &hist,
+-				   double gain);
++				   double gain) const;
+ 	utils::Duration filterExposure(utils::Duration exposureValue);
+ 
+ 	utils::Duration filteredExposure_;

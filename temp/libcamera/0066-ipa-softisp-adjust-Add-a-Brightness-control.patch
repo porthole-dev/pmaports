@@ -1,0 +1,106 @@
+From 200e67b5f7b6a55534791656eb108d5bb0f5b366 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:48:21 +0200
+Subject: [PATCH 66/68] ipa: softisp: adjust: Add a Brightness control
+
+Implement Brightness by moving the black level the debayer subtracts,
+by up to 10% of the signal range either way. That makes it an offset in
+linear space rather than after gamma, but it needs no change to either
+the CPU or the GPU debayer.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ src/ipa/simple/algorithms/adjust.cpp | 23 +++++++++++++++++++++++
+ src/ipa/simple/ipa_context.h         |  3 +++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/adjust.cpp b/src/ipa/simple/algorithms/adjust.cpp
+index 8bf39c4c8..1de710378 100644
+--- a/src/ipa/simple/algorithms/adjust.cpp
++++ b/src/ipa/simple/algorithms/adjust.cpp
+@@ -19,6 +19,7 @@ namespace libcamera {
+ 
+ namespace ipa::soft::algorithms {
+ 
++constexpr float kDefaultBrightness = 0.0f;
+ constexpr float kDefaultContrast = 1.0f;
+ constexpr float kDefaultSaturation = 1.0f;
+ 
+@@ -28,6 +29,8 @@ int Adjust::init(IPAContext &context, [[maybe_unused]] const ValueNode &tuningDa
+ {
+ 	context.ctrlMap[&controls::Gamma] =
+ 		ControlInfo(0.1f, 10.0f, kDefaultGamma);
++	context.ctrlMap[&controls::Brightness] =
++		ControlInfo(-1.0f, 1.0f, kDefaultBrightness);
+ 	context.ctrlMap[&controls::Contrast] =
+ 		ControlInfo(0.0f, 2.0f, kDefaultContrast);
+ 	if (context.ccmEnabled)
+@@ -40,6 +43,7 @@ int Adjust::configure(IPAContext &context,
+ 		      [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+ 	context.activeState.knobs.gamma = kDefaultGamma;
++	context.activeState.knobs.brightness = std::optional<float>();
+ 	context.activeState.knobs.contrast = std::optional<float>();
+ 	context.activeState.knobs.saturation = std::optional<float>();
+ 
+@@ -57,6 +61,12 @@ void Adjust::queueRequest(typename Module::Context &context,
+ 		LOG(IPASoftAdjust, Debug) << "Setting gamma to " << gamma.value();
+ 	}
+ 
++	const auto &brightness = controls.get(controls::Brightness);
++	if (brightness.has_value()) {
++		context.activeState.knobs.brightness = brightness;
++		LOG(IPASoftAdjust, Debug) << "Setting brightness to " << brightness.value();
++	}
++
+ 	const auto &contrast = controls.get(controls::Contrast);
+ 	if (contrast.has_value()) {
+ 		context.activeState.knobs.contrast = contrast;
+@@ -106,6 +116,16 @@ void Adjust::prepare(IPAContext &context,
+ 		frameContext.saturation = saturation;
+ 	}
+ 
++	/*
++	 * ponytail: brightness moves the black level the debayer subtracts, so
++	 * it is an offset in linear space rather than after gamma, and needs no
++	 * change to the CPU or GPU debayer. Full scale lifts or crushes 10% of
++	 * the signal range. Requires BlackLevel to be prepared first.
++	 */
++	const float brightness = context.activeState.knobs.brightness.value_or(kDefaultBrightness);
++	params->blackLevel = params->blackLevel - RGB<double>(brightness * 0.1);
++	frameContext.brightness = context.activeState.knobs.brightness;
++
+ 	params->gamma = 1.0 / context.activeState.knobs.gamma;
+ 	const float contrast = context.activeState.knobs.contrast.value_or(kDefaultContrast);
+ 	params->contrastExp = tan(std::clamp(contrast * M_PI_4, 0.0, M_PI_2 - 0.00001));
+@@ -120,6 +140,9 @@ void Adjust::process([[maybe_unused]] IPAContext &context,
+ 	const auto &gamma = frameContext.gamma;
+ 	metadata.set(controls::Gamma, gamma);
+ 
++	const auto &brightness = frameContext.brightness;
++	metadata.set(controls::Brightness, brightness.value_or(kDefaultBrightness));
++
+ 	const auto &contrast = frameContext.contrast;
+ 	metadata.set(controls::Contrast, contrast.value_or(kDefaultContrast));
+ 
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index c7c3f0e5d..99f190db9 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -56,6 +56,8 @@ struct IPAActiveState {
+ 
+ 	struct {
+ 		float gamma;
++		/* -1..1 range, 0.0 = normal */
++		std::optional<float> brightness;
+ 		/* 0..2 range, 1.0 = normal */
+ 		std::optional<float> contrast;
+ 		std::optional<float> saturation;
+@@ -73,6 +75,7 @@ struct IPAFrameContext : public FrameContext {
+ 	} sensor;
+ 
+ 	float gamma;
++	std::optional<float> brightness;
+ 	std::optional<float> contrast;
+ 	std::optional<float> saturation;
+ };

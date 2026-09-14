@@ -1,0 +1,57 @@
+From 82a78e68af7330171defa9a5510dc9ec7dd9c23d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Fri, 31 Jul 2026 16:48:36 +0200
+Subject: [PATCH 36/68] ipa: libipa: agc: Use minimum line length
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`IPACameraSensorInfo::minLineLength` already contains the minimum
+line length, taking the output format and minimum horizontal blanking
+into account.
+
+Furthermore, the `CameraSensor` implementations already set the horizontal
+blanking to the minimum when initializing the sensor.
+
+And finally the line duration is already calculated with the minimum
+line length.
+
+So use the minimum for the frame duration calculations as well.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Stefan Klug <stefan.klug@ideasonboard.com>
+(cherry picked from commit 9a7afb89cb4c79ae360e5df20b77ce282db14383)
+---
+ src/ipa/libipa/agc.cpp | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+index 46f75d621..6bff549a6 100644
+--- a/src/ipa/libipa/agc.cpp
++++ b/src/ipa/libipa/agc.cpp
+@@ -342,10 +342,11 @@ int AgcAlgorithm::init(const ValueNode &tuningData, const ConfigurationParams &c
+ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 			    const ConfigurationParams &config)
+ {
++	const uint32_t lineLength = config.sensorInfo.minLineLength;
++
+ 	session = {};
+ 	session.autoAllowed = config.autoAllowed;
+-	session.lineDuration =
+-		config.sensorInfo.minLineLength * 1.0s / config.sensorInfo.pixelRate;
++	session.lineDuration = lineLength * 1.0s / config.sensorInfo.pixelRate;
+ 	session.sensor.outputSize = config.sensorInfo.outputSize;
+ 
+ 	const double lineDurationUs = session.lineDuration.get<std::micro>();
+@@ -378,9 +379,6 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 	 * The frame length is computed assuming a fixed line length combined
+ 	 * with the vertical frame sizes.
+ 	 */
+-	const ControlInfo &v4l2HBlank = config.sensorControls.find(V4L2_CID_HBLANK)->second;
+-	uint32_t hblank = v4l2HBlank.def().get<int32_t>();
+-	uint32_t lineLength = config.sensorInfo.outputSize.width + hblank;
+ 
+ 	const ControlInfo &v4l2VBlank = config.sensorControls.find(V4L2_CID_VBLANK)->second;
+ 	std::array<uint32_t, 3> frameHeights{

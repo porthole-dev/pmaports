@@ -1,0 +1,33 @@
+From 4a2568012befd47e115bbb75992e89bd627cc446 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Wed, 20 May 2026 19:17:32 +0200
+Subject: [PATCH 14/68] ipa: rkisp1: Update sensor info when configuring
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+830340615afd ("ipa: rkisp1: Add sensor info to context") added the sensor
+info to the `IPAContext` type, but it only updates it in `init()`, do it
+in configure as well.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Kieran Bingham <kieran.bingham@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 0cd9e47d0b87e9af41f568a79023e79b5c0f30e9)
+---
+ src/ipa/rkisp1/rkisp1.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/ipa/rkisp1/rkisp1.cpp b/src/ipa/rkisp1/rkisp1.cpp
+index 9f1f133e6..b31d5b59a 100644
+--- a/src/ipa/rkisp1/rkisp1.cpp
++++ b/src/ipa/rkisp1/rkisp1.cpp
+@@ -225,6 +225,7 @@ int IPARkISP1::configure(const IPAConfigInfo &ipaConfig,
+ 			 const std::map<uint32_t, IPAStream> &streamConfig,
+ 			 ControlInfoMap *ipaControls)
+ {
++	context_.sensorInfo = ipaConfig.sensorInfo;
+ 	context_.sensorControls = ipaConfig.sensorControls;
+ 
+ 	const auto itExp = context_.sensorControls.find(V4L2_CID_EXPOSURE);

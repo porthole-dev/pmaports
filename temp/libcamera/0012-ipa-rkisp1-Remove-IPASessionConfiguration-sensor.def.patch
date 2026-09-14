@@ -1,0 +1,61 @@
+From 86b80f7065c8fa00a04d899e91b992f91a7988ee Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Wed, 20 May 2026 15:57:56 +0200
+Subject: [PATCH 12/68] ipa: rkisp1: Remove
+ `IPASessionConfiguration::sensor.defVBlank`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+It is not used, so remove it.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Kieran Bingham <kieran.bingham@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 5095334d86104d641872731aae8723cb1b1264ff)
+---
+ src/ipa/rkisp1/ipa_context.cpp | 3 ---
+ src/ipa/rkisp1/ipa_context.h   | 1 -
+ src/ipa/rkisp1/rkisp1.cpp      | 2 --
+ 3 files changed, 6 deletions(-)
+
+diff --git a/src/ipa/rkisp1/ipa_context.cpp b/src/ipa/rkisp1/ipa_context.cpp
+index f9d0aff05..302b4cfd7 100644
+--- a/src/ipa/rkisp1/ipa_context.cpp
++++ b/src/ipa/rkisp1/ipa_context.cpp
+@@ -98,9 +98,6 @@ namespace libcamera::ipa::rkisp1 {
+  * \var IPASessionConfiguration::sensor.maxAnalogueGain
+  * \brief Maximum analogue gain supported with the sensor
+  *
+- * \var IPASessionConfiguration::sensor.defVBlank
+- * \brief The default vblank value of the sensor
+- *
+  * \var IPASessionConfiguration::sensor.lineDuration
+  * \brief Line duration in microseconds
+  *
+diff --git a/src/ipa/rkisp1/ipa_context.h b/src/ipa/rkisp1/ipa_context.h
+index 6698ccfd7..ad22c21ac 100644
+--- a/src/ipa/rkisp1/ipa_context.h
++++ b/src/ipa/rkisp1/ipa_context.h
+@@ -72,7 +72,6 @@ struct IPASessionConfiguration {
+ 		double minAnalogueGain;
+ 		double maxAnalogueGain;
+ 
+-		int32_t defVBlank;
+ 		utils::Duration lineDuration;
+ 		Size size;
+ 	} sensor;
+diff --git a/src/ipa/rkisp1/rkisp1.cpp b/src/ipa/rkisp1/rkisp1.cpp
+index 58ef163d8..273540a33 100644
+--- a/src/ipa/rkisp1/rkisp1.cpp
++++ b/src/ipa/rkisp1/rkisp1.cpp
+@@ -249,8 +249,6 @@ int IPARkISP1::configure(const IPAConfigInfo &ipaConfig,
+ 	context_.configuration.paramFormat = ipaConfig.paramFormat;
+ 
+ 	const IPACameraSensorInfo &info = ipaConfig.sensorInfo;
+-	const ControlInfo vBlank = sensorControls_.find(V4L2_CID_VBLANK)->second;
+-	context_.configuration.sensor.defVBlank = vBlank.def().get<int32_t>();
+ 	context_.configuration.sensor.size = info.outputSize;
+ 	context_.configuration.sensor.lineDuration = info.minLineLength * 1.0s / info.pixelRate;
+ 

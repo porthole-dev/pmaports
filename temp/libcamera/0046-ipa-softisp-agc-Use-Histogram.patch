@@ -1,0 +1,63 @@
+From f550ec1b4361ca3bf4d25d917ce4f01e593d7896 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Wed, 22 Jul 2026 14:09:01 +0200
+Subject: [PATCH 46/68] ipa: softisp: agc: Use `Histogram`
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Use the generic `Histogram` type. This is needed to decouple the
+implementation from the software isp, in order to make this usable
+by other components.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 73843381070f2f377193e4c4bd56293867c0d7de)
+---
+ src/ipa/simple/algorithms/agc.cpp | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 79d4e0d4b..b3b13b1cf 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -14,6 +14,8 @@
+ 
+ #include <libcamera/base/log.h>
+ 
++#include <libipa/histogram.h>
++
+ #include "control_ids.h"
+ 
+ namespace libcamera {
+@@ -64,16 +66,16 @@ static constexpr float kExpMaxStep = 0.15;
+ 
+ namespace {
+ 
+-std::optional<float> calculateMSV(const SwIspStats::Histogram &histogram, uint8_t blackLevel)
++std::optional<float> calculateMSV(const Histogram &histogram, uint8_t blackLevel)
+ {
+ 	/*
+ 	 * Calculate Mean Sample Value (MSV) according to formula from:
+ 	 * https://www.araa.asn.au/acra/acra2007/papers/paper84final.pdf
+ 	 */
+ 	const unsigned int blackLevelHistIdx =
+-		blackLevel / (256 / SwIspStats::kYHistogramSize);
++		blackLevel * histogram.bins() / 256;
+ 	const unsigned int histogramSize =
+-		SwIspStats::kYHistogramSize - blackLevelHistIdx;
++		histogram.bins() - blackLevelHistIdx;
+ 	const unsigned int yHistValsPerBin = histogramSize / kExposureBinsCount;
+ 	const unsigned int yHistValsPerBinMod =
+ 		histogramSize / (histogramSize % kExposureBinsCount + 1);
+@@ -191,7 +193,7 @@ void Agc::process(IPAContext &context,
+ 		return;
+ 	}
+ 
+-	auto exposureMSV = calculateMSV(stats->yHistogram, context.activeState.blc.level);
++	auto exposureMSV = calculateMSV({ stats->yHistogram }, context.activeState.blc.level);
+ 	if (!exposureMSV) {
+ 		LOG(IPASoftExposure, Debug)
+ 			<< "Not adjusting exposure due to insufficient histogram data";

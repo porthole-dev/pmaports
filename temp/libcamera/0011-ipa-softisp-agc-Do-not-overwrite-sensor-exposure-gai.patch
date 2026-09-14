@@ -1,0 +1,98 @@
+From a29f21cf915c78328c2f3ed90bb695a9e42b77d3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Mon, 25 May 2026 14:51:54 +0200
+Subject: [PATCH 11/68] ipa: softisp: agc: Do not overwrite sensor
+ exposure/gain
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the agc algorithm do not overwrite the sensor exposure/gain values,
+instead add a new "agc" member to the frame context and update that.
+
+No functional changes are intended as the agc algorithm runs last.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Kieran Bingham <kieran.bingham@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+Reviewed-by: Milan Zamazal <mzamazal@redhat.com>
+(cherry picked from commit 24a9f2ce38318f5729e0b564ccdf2e37f8f6bda9)
+---
+ src/ipa/simple/algorithms/agc.cpp | 11 +++++++----
+ src/ipa/simple/ipa_context.h      |  5 +++++
+ src/ipa/simple/soft_simple.cpp    |  9 +++++----
+ 3 files changed, 17 insertions(+), 8 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index a13a75528..e9bcb2c03 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -67,8 +67,8 @@ Agc::Agc()
+ 
+ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
+ {
+-	int32_t &exposure = frameContext.sensor.exposure;
+-	double &again = frameContext.sensor.gain;
++	int32_t exposure = frameContext.sensor.exposure;
++	double again = frameContext.sensor.gain;
+ 
+ 	double error = kExposureOptimal - exposureMSV;
+ 
+@@ -115,6 +115,9 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 	again = std::clamp(again, context.configuration.agc.againMin,
+ 			   context.configuration.agc.againMax);
+ 
++	frameContext.agc.exposure = exposure;
++	frameContext.agc.gain = again;
++
+ 	context.activeState.agc.exposure = exposure;
+ 	context.activeState.agc.again = again;
+ 
+@@ -150,8 +153,8 @@ void Agc::process(IPAContext &context,
+ 		 * Use the new exposure and gain values calculated the last time
+ 		 * there were valid stats.
+ 		 */
+-		frameContext.sensor.exposure = context.activeState.agc.exposure;
+-		frameContext.sensor.gain = context.activeState.agc.again;
++		frameContext.agc.exposure = context.activeState.agc.exposure;
++		frameContext.agc.gain = context.activeState.agc.again;
+ 		return;
+ 	}
+ 
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index ff312ae8f..71dc22e89 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -67,6 +67,11 @@ struct IPAFrameContext : public FrameContext {
+ 	ipa::awb::FrameContext awb;
+ 	ipa::ccm::FrameContext ccm;
+ 
++	struct {
++		int32_t exposure;
++		double gain;
++	} agc;
++
+ 	struct {
+ 		int32_t exposure;
+ 		double gain;
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index e99df1986..3932daaa1 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -313,10 +313,11 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 
+ 	ControlList ctrls(sensorInfoMap_);
+ 
+-	auto &againNew = frameContext.sensor.gain;
+-	ctrls.set(V4L2_CID_EXPOSURE, frameContext.sensor.exposure);
+-	ctrls.set(V4L2_CID_ANALOGUE_GAIN,
+-		  static_cast<int32_t>(camHelper_ ? camHelper_->gainCode(againNew) : againNew));
++	int32_t againNew = camHelper_
++		? camHelper_->gainCode(frameContext.agc.gain)
++		: static_cast<int32_t>(frameContext.agc.gain);
++	ctrls.set(V4L2_CID_EXPOSURE, frameContext.agc.exposure);
++	ctrls.set(V4L2_CID_ANALOGUE_GAIN, againNew);
+ 
+ 	setSensorControls.emit(ctrls);
+ }

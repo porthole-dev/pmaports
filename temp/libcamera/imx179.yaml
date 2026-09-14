@@ -11,6 +11,16 @@ algorithms:
   - BlackLevel:
       blackLevel: 4096
   - Awb:
+      # Grey world. The curve only turns a manual ColourTemperature into
+      # gains: the reciprocals of this module's own OTP calibration ratios
+      # (at24 EEPROM, r/gr and b/gr at the vendor's 3100/4000/5800 K).
+      colourGains:
+        - ct: 3100
+          gains: [ 1.3654, 2.9771 ]
+        - ct: 4000
+          gains: [ 1.6100, 1.9357 ]
+        - ct: 5800
+          gains: [ 1.9920, 1.5586 ]
   - Ccm:
       ccms:
         - ct: 4500

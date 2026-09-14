@@ -1,0 +1,52 @@
+From ab322cd38ba87b450b42493b4607bffdca8b26d7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Barnab=C3=A1s=20P=C5=91cze?=
+ <barnabas.pocze@ideasonboard.com>
+Date: Thu, 23 Jul 2026 12:03:19 +0200
+Subject: [PATCH 34/68] ipa: libipa: agc: Adjust debug messages slightly
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The log message showing the result of AGC seems too verbose to me,
+and the labels and values are far from each other. And also log the
+line duration when showing exposure and gain limits.
+
+Signed-off-by: Barnabás Pőcze <barnabas.pocze@ideasonboard.com>
+Reviewed-by: Jacopo Mondi <jacopo.mondi@ideasonboard.com>
+(cherry picked from commit 8db8ff50afad338ad9ec6bfcb3d096c857dd39f9)
+---
+ src/ipa/libipa/agc.cpp | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/src/ipa/libipa/agc.cpp b/src/ipa/libipa/agc.cpp
+index 345f09e9a..ad19a1baa 100644
+--- a/src/ipa/libipa/agc.cpp
++++ b/src/ipa/libipa/agc.cpp
+@@ -364,8 +364,10 @@ int AgcAlgorithm::configure(agc::Session &session, agc::ActiveState &state,
+ 	float defGain = config.sensor->gain(v4l2Gain.def().get<int32_t>());
+ 
+ 	LOG(Agc, Debug)
+-		<< "Exposure: [" << minExposure << ", " << maxExposure
+-		<< "], gain: [" << minGain << ", " << maxGain << "]";
++		<< "exposure: [" << minExposure << ',' << maxExposure << "], "
++		<< "gain: [" << minGain << ',' << maxGain << "], "
++		<< "line-duration: " << session.lineDuration << ", "
++		<< "sensor-output: " << session.sensor.outputSize;
+ 
+ 	/*
+ 	 * Compute the frame duration limits.
+@@ -736,10 +738,10 @@ void AgcAlgorithm::process(const agc::Session &session, agc::ActiveState &state,
+ 	state.automatic.yTarget = newEv.yTarget;
+ 
+ 	LOG(Agc, Debug)
+-		<< "Divided up exposure time, analogue gain, quantization gain"
+-		<< " and digital gain are " << newEv.exposureTime
+-		<< ", " << state.automatic.gain << ", " << state.automatic.quantizationGain
+-		<< " and " << newEv.digitalGain;
++		<< "exposure-time: " << newEv.exposureTime << ", "
++		<< "analogue-gain: " << state.automatic.gain << ", "
++		<< "quantization-gain: " << state.automatic.quantizationGain << ", "
++		<< "digital-gain: " << newEv.digitalGain;
+ 
+ 	/*
+ 	 * Expand the target frame duration so that we do not run faster than

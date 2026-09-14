@@ -1,0 +1,126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:48:11 +0200
+Subject: [PATCH] misc: easel-mipi: let sensors retune a bypass link per stream
+
+Both bypass links were configured once, at probe, for one rate each: 648
+Mbps/lane on the front link and 1368 on the rear. A sensor mode at any other
+rate cannot lock Easel's receiver, so the front imx179 could only ever
+stream its full mode, and the rear binned modes had to be bent to the full
+mode's rate.
+
+The vendor HAL reconfigures the link through startMipi() for every sensor
+mode. Do the same: export easel_mipi_set_rate(), which a sensor calls with
+its lanes idle before programming a mode, and which reruns the existing
+bypass configuration for that TX only when the rate actually changes. The
+configured rate per TX is tracked under a mutex, reset on every probe (probe
+also runs again after resume), and cleared if a configuration fails so the
+next stream retries it.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/misc/easel-mipi.c  | 59 ++++++++++++++++++++++++++++++++++++--
+ include/linux/easel-mipi.h |  6 ++++
+ 2 files changed, 63 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/easel-mipi.c b/drivers/misc/easel-mipi.c
+index 4831795bf1fa..b9269d892e11 100644
+--- a/drivers/misc/easel-mipi.c
++++ b/drivers/misc/easel-mipi.c
+@@ -824,6 +824,56 @@ void easel_mipi_kick(unsigned int txdev)
+ }
+ EXPORT_SYMBOL_GPL(easel_mipi_kick);
+ 
++/*
++ * What each TX is configured for, so a sensor can ask for its mode's rate at
++ * every stream start and only pay for a reconfiguration when it changes. The
++ * vendor HAL does the same through startMipi() for every sensor mode; one
++ * boot-time rate per link is why the front camera could only ever run its
++ * full mode (the binned and video rates cannot lock an RX armed for 648).
++ */
++static DEFINE_MUTEX(easel_rate_lock);
++static unsigned int easel_tx_rx[2] = { 0, 1 };
++static u32 easel_tx_rate[2];
++
++static int easel_link_config(struct easel *easel, unsigned int rxdev,
++			     unsigned int txdev, u32 rate)
++{
++	int ret;
++
++	ret = easel_mipi_bypass(easel, rxdev, txdev, rate);
++	easel_tx_rx[txdev] = rxdev;
++	easel_tx_rate[txdev] = ret ? 0 : rate;
++
++	return ret;
++}
++
++/**
++ * easel_mipi_set_rate - retune a bypass link for the stream about to start
++ * @txdev: the Easel TX the sensor's link leaves on (0 rear, 1 front)
++ * @rate: the sensor mode's rate in Mbps per lane (2 * V4L2 link frequency)
++ *
++ * Call with the sensor in standby, before its mode registers are written, so
++ * the RX retrains on the new rate from LP-11. No-op if the link already runs
++ * at @rate or easel-mipi is not bound. Sleeps; process context only.
++ */
++int easel_mipi_set_rate(unsigned int txdev, u32 rate)
++{
++	struct easel *easel;
++	int ret = 0;
++
++	if (txdev > 1)
++		return -EINVAL;
++
++	mutex_lock(&easel_rate_lock);
++	easel = easel_dev;
++	if (easel && easel_tx_rate[txdev] != rate)
++		ret = easel_link_config(easel, easel_tx_rx[txdev], txdev, rate);
++	mutex_unlock(&easel_rate_lock);
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(easel_mipi_set_rate);
++
+ static struct pci_dev *easel_rp;
+ static bool easel_parked;
+ 
+@@ -883,17 +933,22 @@ static int easel_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+ 		udelay(10);
+ 	}
+ 
++	mutex_lock(&easel_rate_lock);
++	easel_tx_rate[0] = easel_tx_rate[1] = 0;
+ 	if (bypass & 0x1)
+-		easel_mipi_bypass(easel, front_rx, front_tx, front_rate);
++		easel_link_config(easel, front_rx, front_tx, front_rate);
+ 	if (bypass & 0x2)
+-		easel_mipi_bypass(easel, 0, 0, rear_rate);
++		easel_link_config(easel, 0, 0, rear_rate);
++	mutex_unlock(&easel_rate_lock);
+ 
+ 	return 0;
+ }
+ 
+ static void easel_remove(struct pci_dev *pdev)
+ {
++	mutex_lock(&easel_rate_lock);
+ 	easel_dev = NULL;
++	mutex_unlock(&easel_rate_lock);
+ 	pci_clear_master(pdev);
+ }
+ 
+diff --git a/include/linux/easel-mipi.h b/include/linux/easel-mipi.h
+index 5be9b0ac17a0..68b5b71a1539 100644
+--- a/include/linux/easel-mipi.h
++++ b/include/linux/easel-mipi.h
+@@ -15,4 +15,10 @@
+  */
+ void easel_mipi_kick(unsigned int txdev);
+ 
++/*
++ * Retune Easel TX @txdev's bypass link to @rate Mbps per lane before a stream
++ * starts, so every sensor mode runs at its own link rate. See easel-mipi.c.
++ */
++int easel_mipi_set_rate(unsigned int txdev, u32 rate);
++
+ #endif

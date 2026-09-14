@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 17:48:11 +0200
+Subject: [PATCH] media: i2c: imx179: expose the video and binned modes
+
+Only the full 3280x2464 mode was enumerable, because Easel's front bypass
+link was armed at that mode's 648 Mbps/lane once at boot and the vendor's
+other two modes run at 540 (3280x1846) and 340 (1640x922) Mbps/lane.
+
+Now that easel-mipi can retune a link per stream, enumerate all three vendor
+modes, pick the nearest one in set_fmt, and set the link rate for the chosen
+mode while the sensor is still in reset, before its registers are written.
+
+Also start every mode at its own frame length: the VBLANK range moved with
+the mode but its value did not, so leaving the binned mode for the full one
+kept 394 lines of blanking and 26 fps. And share the driver mutex with the
+control handler, which set_fmt already assumes.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/imx179.c | 41 +++++++++++++++++++++++---------------
+ 1 file changed, 25 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/media/i2c/imx179.c b/drivers/media/i2c/imx179.c
+index 5de3606cac7c..a226c1259212 100644
+--- a/drivers/media/i2c/imx179.c
++++ b/drivers/media/i2c/imx179.c
+@@ -16,6 +16,7 @@
+ #include <linux/delay.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
++#include <linux/math64.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/pm_runtime.h>
+@@ -650,20 +651,14 @@ static int imx179_enum_frame_size(struct v4l2_subdev *sd,
+ 				  struct v4l2_subdev_state *state,
+ 				  struct v4l2_subdev_frame_size_enum *fse)
+ {
+-	/*
+-	 * Only the FULL mode is exposed: Easel's front bypass link is armed
+-	 * at 648 Mbps (the FULL-mode rate) once at boot, and a stream at the
+-	 * binned/video rates cannot lock the Easel RX -- it also leaves the
+-	 * RX wedged for every later session (HANDOFF §5.0). One mode is the
+-	 * whole camera until per-stream Easel rate switching exists.
+-	 */
+-	if (fse->index > 0 || fse->code != MEDIA_BUS_FMT_SRGGB10_1X10)
++	if (fse->index >= ARRAY_SIZE(imx179_modes) ||
++	    fse->code != MEDIA_BUS_FMT_SRGGB10_1X10)
+ 		return -EINVAL;
+ 
+-	fse->min_width = imx179_modes[2].width;
+-	fse->max_width = imx179_modes[2].width;
+-	fse->min_height = imx179_modes[2].height;
+-	fse->max_height = imx179_modes[2].height;
++	fse->min_width = imx179_modes[fse->index].width;
++	fse->max_width = imx179_modes[fse->index].width;
++	fse->min_height = imx179_modes[fse->index].height;
++	fse->max_height = imx179_modes[fse->index].height;
+ 
+ 	return 0;
+ }
+@@ -684,11 +679,10 @@ static int imx179_get_fmt(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
+-/* Every request snaps to FULL -- the only Easel-compatible mode (see
+- * imx179_enum_frame_size). */
+ static const struct imx179_mode *imx179_find_mode(u32 width, u32 height)
+ {
+-	return &imx179_modes[2];
++	return v4l2_find_nearest_size(imx179_modes, ARRAY_SIZE(imx179_modes),
++				      width, height, width, height);
+ }
+ 
+ static int imx179_set_fmt(struct v4l2_subdev *sd,
+@@ -727,6 +721,8 @@ static int imx179_set_fmt(struct v4l2_subdev *sd,
+ 					 mode->fll - mode->height,
+ 					 IMX179_FLL_MAX - mode->height, 1,
+ 					 mode->fll - mode->height);
++		/* a new mode starts at its own frame rate, not the last one's */
++		__v4l2_ctrl_s_ctrl(imx179->vblank, mode->fll - mode->height);
+ 		__v4l2_ctrl_modify_range(imx179->exposure,
+ 					 IMX179_EXPOSURE_MIN,
+ 					 mode->fll - IMX179_EXPOSURE_MARGIN, 1,
+@@ -885,7 +881,18 @@ static int imx179_s_stream(struct v4l2_subdev *sd, int enable)
+ 		gpiod_set_value_cansleep(imx179->reset_gpio, 0);
+ 		usleep_range(9000, 10000);
+ 
+-		ret = imx179_write(imx179, IMX179_REG_SOFTWARE_RST, 0x01);
++		/*
++		 * Each mode has its own link rate (648, 540 or 340 Mbps/lane)
++		 * and Easel's RX only locks at the rate it was armed for, so
++		 * retune the bypass while the sensor's lanes sit in LP-11.
++		 */
++		ret = easel_mipi_set_rate(1, div_u64(2 * mode->link_freq,
++						    1000000));
++		if (ret)
++			dev_err(&client->dev, "easel link rate: %d\n", ret);
++
++		if (!ret)
++			ret = imx179_write(imx179, IMX179_REG_SOFTWARE_RST, 0x01);
+ 		if (!ret)
+ 			usleep_range(5000, 6000);
+ 		if (!ret)
+@@ -1017,6 +1024,8 @@ static int imx179_probe(struct i2c_client *client)
+ 	ret = v4l2_ctrl_handler_init(&imx179->ctrls, 9);
+ 	if (ret)
+ 		goto err_power_off;
++	/* set_fmt updates control ranges with __v4l2_ctrl_*(), under this lock */
++	imx179->ctrls.lock = &imx179->lock;
+ 
+ 	imx179->pixel_rate = v4l2_ctrl_new_std(&imx179->ctrls, NULL,
+ 					       V4L2_CID_PIXEL_RATE, 1,

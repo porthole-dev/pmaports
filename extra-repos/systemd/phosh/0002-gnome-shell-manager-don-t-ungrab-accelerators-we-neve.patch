@@ -1,0 +1,73 @@
+From 7cc243cda5ce654d3a58e17bc6554f9b06abe75a Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 16:17:12 +0200
+Subject: [PATCH] gnome-shell-manager: don't ungrab accelerators we never
+ grabbed
+
+grab_single_accelerator() deliberately refuses to bind XF86PowerOff, so
+that the shell's own screen-saver-manager keeps the power key and can
+blank the screen. It still records an AcceleratorInfo and hands the
+caller an action id, because g-s-d should go on handling every other
+key.
+
+The free path is not as careful. Whenever that info is disposed of --
+g-s-d ungrabbing, re-grabbing its set after a settings change, or simply
+going away -- free_accelerator_info_from_hash_table() calls
+remove_action_entries() for the accelerator unconditionally. Both sides
+key the shell's one global action group by the accelerator's name, so
+that removes screen-saver-manager's action and sends the compositor an
+ungrab for a binding this code never owned.
+
+The power key is then dead for the rest of the session, silently: the
+grab did succeed, so nothing is logged, and the compositor simply has no
+accelerator registered for the keysym any more. The key still wakes a
+blanked screen, because that is the idle-activity path rather than an
+accelerator, which makes it look like the shell is ignoring only some
+presses.
+
+Remember whether we registered the action, and only remove it if we did.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ src/gnome-shell-manager.c | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/gnome-shell-manager.c b/src/gnome-shell-manager.c
+index 854aa24..3010b83 100644
+--- a/src/gnome-shell-manager.c
++++ b/src/gnome-shell-manager.c
+@@ -71,6 +71,7 @@ typedef struct _AcceleratorInfo {
+   guint                            mode_flags;
+   guint                            grab_flags;
+   guint                            repeat_id;
++  gboolean                         registered;
+ } AcceleratorInfo;
+ 
+ static void
+@@ -89,7 +90,14 @@ free_accelerator_info_from_hash_table (gpointer data)
+   AcceleratorInfo *info = (AcceleratorInfo *) data;
+   g_return_if_fail (info != NULL);
+ 
+-  remove_action_entries (info->accelerator);
++  /*
++   * Only take back what we put there. The shell registers accelerators of
++   * its own in the same action group, keyed by the same name, so removing
++   * one we never added -- see grab_single_accelerator() skipping the power
++   * key -- ungrabs the shell's own binding out from under it.
++   */
++  if (info->registered)
++    remove_action_entries (info->accelerator);
+   g_clear_handle_id (&info->repeat_id, g_source_remove);
+   g_free (info->accelerator);
+   g_free (info->sender);
+@@ -204,6 +212,7 @@ grab_single_accelerator (PhoshGnomeShellManager *self,
+                                                     action_entries,
+                                                     G_N_ELEMENTS (action_entries),
+                                                     info);
++    info->registered = TRUE;
+   } else {
+     /*
+      * FIXME: Don't allow binding of power keys so we can blank the screen
+-- 
+2.55.0
+

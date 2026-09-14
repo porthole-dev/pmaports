@@ -1,0 +1,79 @@
+# Obscura -- a GTK4/libadwaita camera app on libcamera. Its controls panel is
+# generated from the camera's own ControlInfoMap, so every control a libcamera
+# pipeline exposes is reachable without app changes; it also saves RAW as DNG.
+#
+# Packaged the way Alpine packages its libcamera Rust apps
+# (community/cosmic-ext-camera): crates fetched in prepare(), an auditable
+# frozen build, cargo test in check().
+#
+# The source is a tarball of the app repository at a pinned commit, written
+# here by that repository's build-aux/dist.sh, which also refreshes the
+# checksum. When the repository is published, source= becomes
+# https://github.com/Jertlok/obscura/archive/v$pkgver/obscura-$pkgver.tar.gz
+# and the tarball leaves the tree.
+maintainer="Giuseppe Maggio <jertlok@proton.me>"
+pkgname=obscura
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Camera app with every control your camera has"
+url="https://github.com/Jertlok/obscura"
+arch="all"
+license="GPL-3.0-or-later"
+depends="
+	gst-plugins-base
+	gst-plugins-good
+	libcamera-ipa
+	xdg-desktop-portal
+	"
+makedepends_build="
+	appstream
+	cargo
+	cargo-auditable
+	clang-libclang
+	desktop-file-utils
+	gettext-dev
+	glib-dev
+	meson
+	pkgconf
+	rust
+	"
+makedepends_host="
+	glib-dev
+	gst-plugins-base-dev
+	gstreamer-dev
+	gtk4.0-dev
+	libadwaita-dev
+	libcamera-dev
+	rust
+	"
+makedepends="$makedepends_build $makedepends_host"
+source="obscura-$pkgver.tar.gz"
+# net: cargo fetches the crates in prepare().
+# pmb:cross-native2: cargo cross-compiles natively (needs pmbootstrap's Rust
+# cross-native2 support); crossdirect cannot run bindgen for the target, and
+# QEMU-only takes the better part of an hour. !check: cross-built tests cannot
+# run on the build machine.
+options="net !check pmb:cross-native2"
+
+prepare() {
+	default_prepare
+	cargo fetch --target="$CHOST" --locked
+}
+
+build() {
+	export CARGO_NET_OFFLINE=true
+	abuild-meson . output
+	meson compile -C output
+}
+
+check() {
+	cargo test --frozen
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+}
+
+sha512sums="
+f5a59d84d2d65a84e110aa6e8b01a537ad2c1603e856ae7413b19020830a25da0ccf80f0f744c684154f2aff1c5c982c3d92e14bd58dd811e9905191ac1f33ea  obscura-0.1.0.tar.gz
+"

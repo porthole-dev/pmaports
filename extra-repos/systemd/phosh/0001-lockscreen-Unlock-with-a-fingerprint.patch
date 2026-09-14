@@ -1,4 +1,4 @@
-From 2843ba7a646733977521c5ed43f81a6bff1f8f61 Mon Sep 17 00:00:00 2001
+From a95ce09e02bd601821661f5b7b3da3ebe5e48a12 Mon Sep 17 00:00:00 2001
 From: Giuseppe Maggio <jertlok@proton.me>
 Date: Sun, 13 Sep 2026 22:11:04 +0200
 Subject: [PATCH] lockscreen: Unlock with a fingerprint
@@ -25,12 +25,12 @@ passcode wins, and it would keep the device claimed until it timed out.
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  po/POTFILES.in           |   1 +
- src/fingerprint-unlock.c | 493 +++++++++++++++++++++++++++++++++++++++
+ src/fingerprint-unlock.c | 509 +++++++++++++++++++++++++++++++++++++++
  src/fingerprint-unlock.h |  23 ++
- src/lockscreen.c         |  88 +++++++
+ src/lockscreen.c         | 118 +++++++++
  src/meson.build          |   1 +
  src/ui/lockscreen.ui     |   2 +-
- 6 files changed, 607 insertions(+), 1 deletion(-)
+ 6 files changed, 653 insertions(+), 1 deletion(-)
  create mode 100644 src/fingerprint-unlock.c
  create mode 100644 src/fingerprint-unlock.h
 
@@ -48,10 +48,10 @@ index 9f5c72d..39dccf4 100644
  src/layersurface.c
 diff --git a/src/fingerprint-unlock.c b/src/fingerprint-unlock.c
 new file mode 100644
-index 0000000..072f025
+index 0000000..918f19a
 --- /dev/null
 +++ b/src/fingerprint-unlock.c
-@@ -0,0 +1,493 @@
+@@ -0,0 +1,509 @@
 +/*
 + * Copyright (C) 2026 Giuseppe Maggio
 + *
@@ -99,6 +99,7 @@ index 0000000..072f025
 +enum {
 +  MATCHED,
 +  STATUS,
++  LOCKOUT,
 +  N_SIGNALS
 +};
 +static guint signals[N_SIGNALS];
@@ -240,7 +241,10 @@ index 0000000..072f025
 +  self->failures++;
 +  if (self->failures >= MAX_FAILURES) {
 +    phosh_fingerprint_unlock_stop (self);
-+    g_signal_emit (self, signals[STATUS], 0, _("Too many attempts, use your passcode"));
++    /* Its own signal, not a status: this one has to stay on screen rather
++     * than time out, because the passcode is now the only way in. */
++    g_signal_emit (self, signals[LOCKOUT], 0,
++                   _("Too many attempts. Enter your passcode."));
 +    return;
 +  }
 +
@@ -522,6 +526,18 @@ index 0000000..072f025
 +                                  G_TYPE_FROM_CLASS (klass),
 +                                  G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
 +                                  G_TYPE_NONE, 1, G_TYPE_STRING);
++  /**
++   * PhoshFingerprintUnlock::lockout:
++   * @message: A translated message for the user
++   *
++   * Too many fingers went unrecognized; only the passcode is accepted now,
++   * until the lock screen comes back. Unlike [signal@FingerprintUnlock::status]
++   * this is not a passing hint and should stay on screen.
++   */
++  signals[LOCKOUT] = g_signal_new ("lockout",
++                                   G_TYPE_FROM_CLASS (klass),
++                                   G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
++                                   G_TYPE_NONE, 1, G_TYPE_STRING);
 +}
 +
 +
@@ -575,18 +591,19 @@ index 0000000..8e7fe6d
 +
 +G_END_DECLS
 diff --git a/src/lockscreen.c b/src/lockscreen.c
-index c991cb0..fb98d9f 100644
+index c991cb0..57109c3 100644
 --- a/src/lockscreen.c
 +++ b/src/lockscreen.c
-@@ -12,6 +12,7 @@
+@@ -12,6 +12,8 @@
  #include "auth.h"
  #include "call-notification.h"
  #include "calls-manager.h"
++#include "feedback-manager.h"
 +#include "fingerprint-unlock.h"
  #include "keypad.h"
  #include "layersurface-priv.h"
  #include "lockscreen-bg.h"
-@@ -98,12 +99,15 @@ typedef struct {
+@@ -98,12 +100,15 @@ typedef struct {
    GtkWidget          *entry_pin;
    GtkGesture         *long_press_del_gesture;
    GtkWidget          *lbl_unlock_status;
@@ -602,7 +619,7 @@ index c991cb0..fb98d9f 100644
  
    struct {
      GtkGesture *swipe_gesture;
-@@ -373,6 +377,69 @@ focus_pin_entry (PhoshLockscreen *self, gboolean enable_osk)
+@@ -373,6 +378,95 @@ focus_pin_entry (PhoshLockscreen *self, gboolean enable_osk)
  }
  
  
@@ -643,6 +660,9 @@ index c991cb0..fb98d9f 100644
 +  if (priv->auth)
 +    return;
 +
++  /* A status means a finger was read, so acknowledge the touch. */
++  phosh_trigger_feedback ("button-pressed", FALSE);
++
 +  /* Show it where the finger was: on either page. */
 +  phosh_lockscreen_set_unlock_status (self, message);
 +  gtk_label_set_label (GTK_LABEL (priv->lbl_unlock_hint), message);
@@ -655,6 +675,28 @@ index c991cb0..fb98d9f 100644
 +
 +
 +static void
++on_fingerprint_lockout (PhoshLockscreen        *self,
++                        const char             *message,
++                        PhoshFingerprintUnlock *fingerprint)
++{
++  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
++
++  if (priv->auth)
++    return;
++
++  phosh_trigger_feedback ("button-pressed", FALSE);
++
++  /* No restore timer here: the passcode is the only way in until this lock
++   * screen goes away, so the message stays put instead of expiring into
++   * "Enter Passcode" as if nothing had happened. */
++  g_clear_handle_id (&priv->fingerprint_status_id, g_source_remove);
++  phosh_lockscreen_set_unlock_status (self, message);
++  gtk_label_set_label (GTK_LABEL (priv->lbl_unlock_hint), message);
++  g_signal_emit (self, signals[WAKEUP_OUTPUT], 0);
++}
++
++
++static void
 +on_fingerprint_matched (PhoshLockscreen *self, PhoshFingerprintUnlock *fingerprint)
 +{
 +  PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
@@ -663,6 +705,7 @@ index c991cb0..fb98d9f 100644
 +  if (priv->auth)
 +    return;
 +
++  phosh_trigger_feedback ("button-pressed", FALSE);
 +  g_debug ("Unlocking with a fingerprint");
 +  g_signal_emit (self, signals[WAKEUP_OUTPUT], 0);
 +  g_signal_emit (self, signals[LOCKSCREEN_UNLOCK], 0);
@@ -672,7 +715,7 @@ index c991cb0..fb98d9f 100644
  static void
  on_auth_authenticate_ready (GObject *source_object, GAsyncResult *result, gpointer user_data)
  {
-@@ -953,6 +1020,22 @@ phosh_lockscreen_constructed (GObject *object)
+@@ -953,6 +1047,25 @@ phosh_lockscreen_constructed (GObject *object)
    on_info_reveal_child_changed (self);
  
    phosh_lockscreen_add_background (self);
@@ -687,6 +730,9 @@ index c991cb0..fb98d9f 100644
 +    g_signal_connect_object (priv->fingerprint, "status",
 +                             G_CALLBACK (on_fingerprint_status), self,
 +                             G_CONNECT_SWAPPED);
++    g_signal_connect_object (priv->fingerprint, "lockout",
++                             G_CALLBACK (on_fingerprint_lockout), self,
++                             G_CONNECT_SWAPPED);
 +    g_signal_connect_object (priv->fingerprint, "notify::active",
 +                             G_CALLBACK (update_unlock_hint), self,
 +                             G_CONNECT_SWAPPED);
@@ -695,7 +741,7 @@ index c991cb0..fb98d9f 100644
  }
  
  static void
-@@ -981,6 +1064,10 @@ phosh_lockscreen_dispose (GObject *object)
+@@ -981,6 +1094,10 @@ phosh_lockscreen_dispose (GObject *object)
    PhoshLockscreen *self = PHOSH_LOCKSCREEN (object);
    PhoshLockscreenPrivate *priv = phosh_lockscreen_get_instance_private (self);
  
@@ -706,7 +752,7 @@ index c991cb0..fb98d9f 100644
    g_clear_object (&priv->notification_settings);
    g_clear_handle_id (&priv->idle_timer, g_source_remove);
    g_clear_object (&priv->calls_manager);
-@@ -1158,6 +1245,7 @@ phosh_lockscreen_class_init (PhoshLockscreenClass *klass)
+@@ -1158,6 +1275,7 @@ phosh_lockscreen_class_init (PhoshLockscreenClass *klass)
    gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, keypad_revealer);
    gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, entry_pin);
    gtk_widget_class_bind_template_child_private (widget_class, PhoshLockscreen, lbl_unlock_status);

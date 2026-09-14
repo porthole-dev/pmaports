@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=52
+pkgrel=53
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -68,6 +68,10 @@ options="!check !archcheck"
 # that puts NFC in front of the user: without it neard runs, the reader works,
 # and there is no way to see or toggle any of it. Unversioned for the same
 # reason neard is (above).
+# obscura is the camera app with the controls this camera now has: exposure,
+# gain, frame rate, white balance and focus come from libcamera's own control
+# list, and Snapshot shows none of them. Without it the only camera app on the
+# phone cannot use what the imx362/lc898214xd/libcamera work exposes.
 depends="
 	alsa-ucm-conf
 	firmware-google-taimen
@@ -76,6 +80,7 @@ depends="
 	linux-pam
 	mkbootimg
 	neard
+	obscura
 	phosh-nfc-quick-setting
 	postmarketos-base
 	qcom-diag

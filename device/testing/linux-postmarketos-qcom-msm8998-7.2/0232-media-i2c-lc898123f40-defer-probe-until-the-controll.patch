@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 19:17:22 +0200
+Subject: [PATCH] media: i2c: lc898123f40: defer probe until the controller
+ answers
+
+At boot the controller does not ACK until the IMX362 driver has brought up
+the camera module rails, so probing first failed with -ENXIO ("controller
+not ready") on every boot, while binding the same device later always
+worked (firmware 0x19, stabilisation on).
+
+Poll for a boot window and defer the probe instead of failing; deferred
+probes rerun when the sensor binds. Which module rail the part needs is not
+established yet, so the dependency cannot be described in the binding.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/i2c/lc898123f40.c | 21 +++++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/lc898123f40.c b/drivers/media/i2c/lc898123f40.c
+index f85c9b54c1e6..7e96ab9614cb 100644
+--- a/drivers/media/i2c/lc898123f40.c
++++ b/drivers/media/i2c/lc898123f40.c
+@@ -42,6 +42,7 @@
+  */
+ 
+ #include <linux/i2c.h>
++#include <linux/iopoll.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/nvmem-provider.h>
+@@ -159,7 +160,7 @@ static int lc898123f40_probe(struct i2c_client *client)
+ 	};
+ 	struct lc898123f40 *ois;
+ 	unsigned int fw;
+-	int ret;
++	int ret, err;
+ 
+ 	ois = devm_kzalloc(dev, sizeof(*ois), GFP_KERNEL);
+ 	if (!ois)
+@@ -178,10 +179,22 @@ static int lc898123f40_probe(struct i2c_client *client)
+ 	if (IS_ERR(ois->regmap))
+ 		return PTR_ERR(ois->regmap);
+ 
+-	/* the firmware boots from flash; a command completes once it is up */
+-	ret = lc898123f40_wait_ready(ois);
++	/*
++	 * The firmware boots from flash; a command completes once it is up.
++	 * Until then the part does not even ACK, and at boot it stays silent
++	 * until the IMX362 driver has brought its own rails up: probing after
++	 * that works every time, probing first never does. Which of those
++	 * rails it needs is not established, so wait for a boot window and
++	 * then defer rather than fail -- deferred probes rerun when the sensor
++	 * binds.
++	 * ponytail: deferral stands in for the missing supply; name that rail
++	 * in the binding once it is found and this becomes a plain failure.
++	 */
++	ret = read_poll_timeout(lc898123f40_wait_ready, err, !err, 10000,
++				200000, false, ois);
+ 	if (ret)
+-		return dev_err_probe(dev, ret, "controller not ready\n");
++		return dev_err_probe(dev, -EPROBE_DEFER,
++				     "controller not answering (%d)\n", err);
+ 
+ 	ret = regmap_read(ois->regmap, LC898123F40_REG_FW_VERSION, &fw);
+ 	if (ret)

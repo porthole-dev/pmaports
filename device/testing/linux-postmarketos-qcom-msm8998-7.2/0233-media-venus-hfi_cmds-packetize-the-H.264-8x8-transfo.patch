@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 19:17:22 +0200
+Subject: [PATCH] media: venus: hfi_cmds: packetize the H.264 8x8 transform for
+ HFI 3xx
+
+venc sets HFI_PROPERTY_PARAM_VENC_H264_TRANSFORM_8X8 for every H.264
+session, but only the 4xx packetizer knows the property. On 3xx firmware
+(MSM8998) the set falls through to the 1x packetizer, which rejects it,
+so session configuration fails and REQBUFS returns -EINVAL: no H.264
+encode works at all on these SoCs, while HEVC and VP8 do.
+
+The 3xx firmware accepts the property: the downstream msm8998 vidc driver
+sends the same id (VENC_COMMON_START + 0x025) as a single u32 enable, which
+is exactly struct hfi_h264_8x8_transform. Handle it in the 3xx packetizer.
+
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/media/platform/qcom/venus/hfi_cmds.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/media/platform/qcom/venus/hfi_cmds.c b/drivers/media/platform/qcom/venus/hfi_cmds.c
+index 3ae063094e3e..9684ecb5f47d 100644
+--- a/drivers/media/platform/qcom/venus/hfi_cmds.c
++++ b/drivers/media/platform/qcom/venus/hfi_cmds.c
+@@ -1177,6 +1177,13 @@ pkt_session_set_property_3xx(struct hfi_session_set_property_pkt *pkt,
+ 	case HFI_PROPERTY_PARAM_VDEC_CONTINUE_DATA_TRANSFER:
+ 		/* for 3xx fw version session_continue is used */
+ 		break;
++	case HFI_PROPERTY_PARAM_VENC_H264_TRANSFORM_8X8: {
++		struct hfi_h264_8x8_transform *in = pdata, *tm = prop_data;
++
++		tm->enable_type = in->enable_type;
++		pkt->shdr.hdr.size += sizeof(u32) + sizeof(*tm);
++		break;
++	}
+ 	default:
+ 		ret = pkt_session_set_property_1x(pkt, cookie, ptype, pdata);
+ 		break;

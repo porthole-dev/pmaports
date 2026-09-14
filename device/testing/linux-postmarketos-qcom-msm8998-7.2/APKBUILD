@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=50
+pkgrel=51
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -319,6 +319,9 @@ source="
 	0228-media-i2c-Add-ON-Semiconductor-LC898123F40-OIS-contr.patch
 	0229-iio-proximity-vl53l0x-i2c-select-the-triggered-buffe.patch
 	0230-arm64-dts-qcom-msm8998-google-taimen-Add-camera-OIS-.patch
+	0231-iio-proximity-vl53l0x-i2c-identify-the-sensor-after-.patch
+	0232-media-i2c-lc898123f40-defer-probe-until-the-controll.patch
+	0233-media-venus-hfi_cmds-packetize-the-H.264-8x8-transfo.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -581,4 +584,7 @@ aca39be802af8e8d825535284d536287acdd798ff5873653fa12f79050a63e9edfebe9bfc72b2fc4
 20cf0a0cbcb383c21753e92b15bad7932c82c13f675465bc8a0eca1ff80dc8a156599dc407acf943c7e1d67231a29b0f1b63612817387789cae64c531d089600  0228-media-i2c-Add-ON-Semiconductor-LC898123F40-OIS-contr.patch
 b2714aac45fe1266e6812fcb280a1e9b01cb356703bec73e1fd001864f7c553639403d92e1373e137e372d91a73fffdc28af930c3dd657e9ffd51c9eb5e7fa9a  0229-iio-proximity-vl53l0x-i2c-select-the-triggered-buffe.patch
 cd0364e5c3e4799a047022c13299a6375a34b8c58a7a8710381dff83bbc279d025fcb70195d4749ef96a0807d74f11cb0647fab63254fb37d30afeceed4d41ca  0230-arm64-dts-qcom-msm8998-google-taimen-Add-camera-OIS-.patch
+7fe16d1dac94db1bb4c17e0ec08c6ed9f29cc94a88384c2662923aca23f04fd25e6144b672dcfdf9eb5513a0f1a3c1a20290ec534a322219aa0ae61e14a9bb88  0231-iio-proximity-vl53l0x-i2c-identify-the-sensor-after-.patch
+632e3d3633854ab30117c13bf929860ede91198de712a0244809d85baa9b855b4891b684ed0e7837ac080fd05566ca9c6399fd9f0e0317ad6e16b536def8c4f4  0232-media-i2c-lc898123f40-defer-probe-until-the-controll.patch
+2951797a2bb72475bec65f74506f8d6c1a1722022e9ee3cc0403d4bee63f76d96868dcd11ccd0ce70ccafcc080af37c7289e80fc426d0a8943d29584407bafcb  0233-media-venus-hfi_cmds-packetize-the-H.264-8x8-transfo.patch
 "

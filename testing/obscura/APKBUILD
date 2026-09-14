@@ -13,8 +13,8 @@
 # and the tarball leaves the tree.
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=obscura
-pkgver=0.1.0
-pkgrel=5
+pkgver=0.2.0
+pkgrel=0
 pkgdesc="Camera app with every control your camera has"
 url="https://github.com/Jertlok/obscura"
 arch="all"
@@ -75,5 +75,5 @@ package() {
 }
 
 sha512sums="
-f804820b8a1daae128b9caed4fca82884d3bf4ee38bb099748a01c1d9d475e3c4aaf38f487c978b5b677a4ee897d9300c1a7c86cafd9e6b6db629f00c530e876  obscura-0.1.0.tar.gz
+1a79ef348684d416f3c6437d92228ed801b386260225b16b72e74e1817bf0a9501e40ad9320bc0a23903beb3bd9a5aaee3986f601e87d38bfb1992df19c6a9e1  obscura-0.2.0.tar.gz
 "

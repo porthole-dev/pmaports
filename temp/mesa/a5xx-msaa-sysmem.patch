@@ -46,6 +46,7 @@ layered rendering and tessellation are already handled.  The affected
 surfaces are small, so the bandwidth cost is slight, and correctness
 beats a resolve that is not implemented.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
 diff --git a/src/gallium/drivers/freedreno/freedreno_gmem.c b/src/gallium/drivers/freedreno/freedreno_gmem.c

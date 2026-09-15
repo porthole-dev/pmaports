@@ -53,7 +53,11 @@ jobs:
       - run: apk -q add git github-cli jq python3
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 100
+          # Pushes and manual runs also build the forked aports that are not
+          # published yet, measured from the merge base with upstream
+          # pmaports: that needs the whole history, commits and trees only.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 100 || 0 }}
+          filter: blob:none
           persist-credentials: false
       - name: Download the published index
         env:
@@ -79,6 +83,7 @@ jobs:
         env:
           PACKAGES: ${{ inputs.packages }}
           HEAVY: ${{ inputs.heavy }}
+          FORKS: ${{ github.event_name != 'pull_request' }}
         run: |
           git config --global --add safe.directory "$PWD"
           CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
@@ -88,7 +93,8 @@ jobs:
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build ${{ matrix.package }}
+    # GitHub appends the package, "Build (mesa)"; a skipped job shows "Build".
+    name: Build
     needs: select
     if: needs.select.outputs.packages != '[]'
     runs-on: ubuntu-24.04-arm

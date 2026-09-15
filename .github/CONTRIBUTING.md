@@ -27,6 +27,28 @@ and AI-assisted contributions are both welcome, under the same rules.
   repository never replaces an existing version.
 - Keep the fork on the version upstream ships and carry changes as patch
   files; CI checks that the sources verify and every patch applies.
-- List long-lived forks in `.github/packages.conf` (`required`, or `heavy` for
-  multi-hour builds).
 - Firmware packages (`firmware-*`) are never built or published by CI.
+
+## What CI builds
+
+CI never builds the whole of pmaports. It builds the packages this branch had
+to fork and that have no prebuilt package yet:
+
+- **Pull requests:** the aports the pull request changes.
+- **Pushes to `taimen-bringup` and manual runs:** the aports the push changes,
+  plus every *forked* aport whose exact `pkgver-pkgrel` is not in the
+  published repository. An aport is forked when this branch added or changed
+  it since the merge base with upstream pmaports; that set is derived from git
+  on every run, so a new fork needs no list entry. Publishing then adds the
+  new packages to the repository.
+- A manual run can name the aports to build instead.
+
+`.github/packages.conf` only overrides this: `heavy` aports (multi-hour
+builds) are built only on a manual run with `heavy` set, and `exclude` aports
+are never built unless a manual run names them.
+
+An aport whose source is downloaded from a private repository of this
+organization (for example a release archive of `porthole-dev/tap`) is skipped
+with a notice: abuild downloads without credentials, so it cannot be fetched
+until that repository is public. Its checksums are set by the release workflow
+of the app, which downloads the archive with credentials.

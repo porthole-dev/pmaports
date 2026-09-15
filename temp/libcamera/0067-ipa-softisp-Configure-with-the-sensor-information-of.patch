@@ -15,6 +15,7 @@ durations.
 Pass the sensor information of the configured mode in IPAConfigInfo and
 use it.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  include/libcamera/ipa/soft.mojom         | 1 +

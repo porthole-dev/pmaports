@@ -17,6 +17,7 @@ second, the AGC's default frame duration ceiling becomes the mode's own
 frame duration or 1/15 s, whichever is longer; FrameDurationLimits still
 reaches the full range.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/ipa/libipa/agc.cpp | 44 +++++++++++++++++++++++++++++++++++++-----

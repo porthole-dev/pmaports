@@ -13,6 +13,7 @@ of a book page with the lens at 0, 3 and 10 dioptres gave absolute
 sample gradients within 1% of each other, the blurriest highest, while
 block differences separated them 2.7x.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../internal/software_isp/swisp_stats.h       |  5 ++

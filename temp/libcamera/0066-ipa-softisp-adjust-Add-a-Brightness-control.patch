@@ -8,6 +8,7 @@ by up to 10% of the signal range either way. That makes it an offset in
 linear space rather than after gamma, but it needs no change to either
 the CPU or the GPU debayer.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/ipa/simple/algorithms/adjust.cpp | 23 +++++++++++++++++++++++

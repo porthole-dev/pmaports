@@ -15,6 +15,7 @@ and derives the covered part from the sensor's analogue crop, so binned
 and cropped modes sample the right region. The CPU debayer does not
 apply it.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../internal/software_isp/debayer_params.h    |  20 ++++

@@ -27,6 +27,7 @@ granted NFC, with a switch that revokes the grant, and the same "apps that are
 not sandboxed can use NFC without asking" caveat camera states. The list
 follows the store live, through the Changed signal.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  panels/privacy/cc-privacy-panel.blp           |  10 +

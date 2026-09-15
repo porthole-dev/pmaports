@@ -1,5 +1,5 @@
-# Checks for pushes and pull requests: commit trailers, APKBUILD lint, and
-# that the sources and patches of every changed aport still apply.
+# Checks for pushes, pull requests and merge groups: commits, APKBUILD lint,
+# and that the sources and patches of every changed aport still apply.
 name: CI
 
 on:
@@ -7,13 +7,15 @@ on:
     branches: [taimen-bringup]
   pull_request:
     branches: [taimen-bringup]
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Superseded pull request runs are cancelled; every push keeps its result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
@@ -22,25 +24,14 @@ jobs:
   commit-check:
     name: Commit check
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 100
-          filter: blob:none
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          # Credentials stay: the partial clone fetches missing objects on demand.
-      - name: Test the check
-        run: sh .github/scripts/test-commit-check.sh
-      - name: Check trailers and DCO sign-off
-        run: |
-          base=$(sh .github/scripts/base-commit.sh)
-          if [ -z "$base" ]; then echo "no new commits"; exit 0; fi
-          sh .github/scripts/commit-check.sh "$base" HEAD \
-            ${{ github.event_name == 'pull_request' && '--dco' || '' }}
+      - uses: porthole-dev/.github/actions/commit-check@43919fea5b785b8c73aa6162348f100c5200d07b # main
 
   lint:
     name: Lint APKBUILDs
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     container: docker.io/library/alpine:edge@sha256:020dfcbaaf4cc1078bf2d9c7ba31a8466e334061dcd2f248001d68f79e52c000
     steps:
       - run: apk -q add atools git jq
@@ -48,6 +39,8 @@ jobs:
         with:
           fetch-depth: 100
           persist-credentials: false
+      - name: Test base-commit.sh
+        run: sh .github/scripts/test-base-commit.sh
       - name: Run apkbuild-lint and check version bumps
         run: |
           git config --global --add safe.directory "$PWD"
@@ -64,7 +57,10 @@ jobs:
         with:
           fetch-depth: 100
           persist-credentials: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Restored everywhere, saved only by pushes: a pull request's cache is
+      # visible to that pull request alone, and each one filled the
+      # repository's 10 GB cache with another copy.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/work/cache_apk_aarch64
           key: pmbootstrap-apk-aarch64-${{ github.run_id }}
@@ -77,3 +73,30 @@ jobs:
             -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
             -e HOST_UID="$(id -u)" -e CI_MERGE_REQUEST_DIFF_BASE_SHA -e GITHUB_REPOSITORY_OWNER \
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'python3 .github/scripts/packages.py check-patches'
+      - if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/work/cache_apk_aarch64
+          key: pmbootstrap-apk-aarch64-${{ github.run_id }}
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: porthole-dev/.github/actions/workflow-lint@43919fea5b785b8c73aa6162348f100c5200d07b # main
+
+  ci-passed:
+    name: CI passed
+    if: ${{ !cancelled() }}
+    needs: [commit-check, lint, patch-check, workflow-lint]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: porthole-dev/.github/actions/ci-passed@43919fea5b785b8c73aa6162348f100c5200d07b # main
+        with:
+          results: ${{ join(needs.*.result, ' ') }}

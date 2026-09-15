@@ -98,6 +98,7 @@ Result on the target device: dispatchFakeMouseMoveEventSoon returns at EventHand
 the whole drag, and the 75 hit tests, their forced layouts, and 437 ms of updateHoverActiveState
 disappear.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 --- a/Source/WebKit/UIProcess/API/gtk/WebKitWebViewBase.cpp
 +++ b/Source/WebKit/UIProcess/API/gtk/WebKitWebViewBase.cpp

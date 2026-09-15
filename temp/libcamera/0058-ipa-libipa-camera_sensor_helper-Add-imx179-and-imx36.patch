@@ -8,6 +8,7 @@ Google Pixel 2 XL (taimen) sensors. Gain models from the vendor
 libmmcamera tuning libraries: imx179 G = 256/(256-code), imx362
 G = 1024/(1024-code). Standard Sony pedestal of 64 at 10 bits.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/ipa/libipa/camera_sensor_helper.cpp | 24 ++++++++++++++++++++++++

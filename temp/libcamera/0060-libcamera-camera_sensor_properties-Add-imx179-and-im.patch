@@ -9,6 +9,7 @@ Sony IMX179 and IMX362, the front and rear sensors of the Google Pixel
 libraries (libmmcamera_imx179.so, libmmcamera_imx362.so). The IMX362
 test pattern menu follows the SMIA register values the driver exposes.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../sensor/camera_sensor_properties.cpp       | 42 +++++++++++++++++++

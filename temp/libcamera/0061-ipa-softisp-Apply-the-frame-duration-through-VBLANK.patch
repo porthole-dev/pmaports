@@ -15,6 +15,7 @@ controls are applied directly, write it on its own before the others.
 The driver sizes its exposure range from the frame length, so an
 exposure longer than the current frame is otherwise clamped.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/ipa/simple/soft_simple.cpp           |  2 ++

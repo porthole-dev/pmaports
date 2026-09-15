@@ -10,6 +10,7 @@ exactly 4.0 delivered frames each, on a pipeline running a solid
 30.0 fps, which is the entirety of AF's 3.18 s convergence. At one stat
 per frame it converged in 1.49 s.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../internal/software_isp/swstats_cpu.h        | 18 +++++++++++++-----

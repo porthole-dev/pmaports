@@ -14,6 +14,7 @@ and converted to actuator codes with a piecewise linear map from the
 tuning file, so the algorithm needs no knowledge of the lens driver's
 code range.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/ipa/simple/algorithms/af.cpp      | 253 ++++++++++++++++++++++++++

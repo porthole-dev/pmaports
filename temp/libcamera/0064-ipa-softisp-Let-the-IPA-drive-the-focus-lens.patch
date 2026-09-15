@@ -9,6 +9,7 @@ simple pipeline handler to the sensor's CameraLens. The IPA sends
 V4L2_CID_FOCUS_ABSOLUTE whenever an algorithm changes the lens code it
 publishes in the active state.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../internal/software_isp/software_isp.h      |  3 +-

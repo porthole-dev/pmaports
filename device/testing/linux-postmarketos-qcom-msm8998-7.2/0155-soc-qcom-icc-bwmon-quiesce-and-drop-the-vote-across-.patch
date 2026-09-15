@@ -12,6 +12,7 @@ bwmon_start() reprograms everything from scratch on resume and the
 first sample re-votes honestly. Validated across an 8-hour overnight
 suspend.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/soc/qcom/icc-bwmon.c | 31 +++++++++++++++++++++++++++++++

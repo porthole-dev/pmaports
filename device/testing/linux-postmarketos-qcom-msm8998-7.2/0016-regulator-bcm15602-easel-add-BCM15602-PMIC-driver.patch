@@ -17,6 +17,7 @@ documented enable sequence behind it. It does not attempt to boot
 Easel's own firmware, bring up its DDR, or touch its IPU -- none of
 which the camera bypass path requires.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/regulator/Kconfig          |   9 +

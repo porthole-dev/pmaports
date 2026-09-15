@@ -23,6 +23,7 @@ rather than ignoring the refusal.
 Both default off. If the fallback turns out to be what msm8998 needs, the right
 patch is to stop special-casing -EINVAL rather than to add a knob.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/firmware.c | 37 +++++++++++++++++++-

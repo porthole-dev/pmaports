@@ -29,6 +29,7 @@ already do, so core_power_v1() calls vcodec_domains_enable() before any
 register access. The children keep their own references; a genpd may have more
 than one consumer.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi    |  5 ++++-

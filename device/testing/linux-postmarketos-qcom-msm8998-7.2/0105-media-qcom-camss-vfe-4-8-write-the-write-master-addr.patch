@@ -20,6 +20,7 @@ Write both limits as downstream does, addr + sizeimage clamped to a
 VFE so the address setters -- which are only handed an address -- can
 compute it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/camss/camss-vfe-4-8.c | 15 +++++++++++++++

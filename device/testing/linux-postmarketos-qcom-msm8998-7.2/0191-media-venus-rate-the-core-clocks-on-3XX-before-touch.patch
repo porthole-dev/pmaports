@@ -21,6 +21,7 @@ one register write to miss the NoC timeout window.
 
 set_clk_rate=1 does what the vendor does. Default off.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../media/platform/qcom/venus/pm_helpers.c    | 21 ++++++++++++++++++-

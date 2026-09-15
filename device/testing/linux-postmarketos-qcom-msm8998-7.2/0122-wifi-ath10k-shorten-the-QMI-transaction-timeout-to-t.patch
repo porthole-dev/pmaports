@@ -27,6 +27,7 @@ watchdog then reset the SoC:
 90 s of QMI waits plus the 20 s watchdog pretimeout accounts for that gap
 almost exactly.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/qmi.c | 2 +-

@@ -24,6 +24,7 @@ the same one-repeated-sample capture. The vendor driver schedules it
 40 ms out for this reason; do the same, and cancel it from PRE_PMD so a
 pending unmute cannot reach a path that has since been powered down.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/wcd934x.c | 52 +++++++++++++++++++++++++++++++++++++-

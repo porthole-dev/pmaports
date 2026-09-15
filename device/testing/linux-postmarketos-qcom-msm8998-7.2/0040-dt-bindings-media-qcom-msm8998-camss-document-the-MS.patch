@@ -9,6 +9,7 @@ VFE 4.8 at the same offsets - with a v5.0.1 CSIPHY in place of the v3.5
 one, so it has no csiphyN_clk_mux register ranges. The clock tree drops
 csiphy_ahb2crif and throttle_axi and adds a core clock per CSIPHY.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../bindings/media/qcom,msm8998-camss.yaml    | 367 ++++++++++++++++++

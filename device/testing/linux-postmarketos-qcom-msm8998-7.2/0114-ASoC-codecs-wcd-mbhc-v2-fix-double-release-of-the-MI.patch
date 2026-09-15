@@ -39,6 +39,7 @@ it being the sole release for their own, separately-taken vote.
 No behaviour other than the vote count changes: enable_irq() and the
 rest of the HEADPHONE-branch cleanup still run unconditionally.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/wcd-mbhc-v2.c | 19 ++++++++++++++++---

@@ -20,6 +20,7 @@ Report the capability and the current timeperframe the same way the
 encoder does, so userspace can set the frame rate and the clock follows
 the real load.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/vdec.c | 17 +++++++++++++++++

@@ -19,6 +19,7 @@ The call is still correctly dropped, for the reasons above.)
 Secure playback, if it ever matters, can revisit with the radios'
 memory map in hand.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 10 ++++++----

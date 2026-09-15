@@ -33,6 +33,7 @@ Do the same: busy-poll both ACD status registers through one helper, with a
 budget of 1ms that is actually 1ms, and report the measured completion time
 per transfer so a regression here is visible rather than intermittent.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 54 +++++++++++++++++++++++--------

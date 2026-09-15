@@ -17,6 +17,7 @@ configured rate per TX is tracked under a mutex, reset on every probe (probe
 also runs again after resume), and cleared if a configuration fails so the
 next stream retries it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/misc/easel-mipi.c  | 59 ++++++++++++++++++++++++++++++++++++--

@@ -25,6 +25,7 @@ it as best-effort too).
 With this, a decode session opened after a runtime suspend/resume cycle
 works, where before it timed out at SESSION_INIT.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/hfi_venus.c | 13 +++++++++++++

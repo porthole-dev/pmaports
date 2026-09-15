@@ -20,6 +20,7 @@ their drivers yet; they keep working through the RPM-side aggregation
 and the keep-alive floor, and can be wired up when their drivers learn
 to vote.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 19 +++++++++++++++++++

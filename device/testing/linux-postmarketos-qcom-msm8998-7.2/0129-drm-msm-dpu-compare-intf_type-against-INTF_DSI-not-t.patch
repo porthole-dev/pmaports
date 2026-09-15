@@ -33,6 +33,7 @@ Also require is_cmd_mode.  In video mode the DPU streams continuously, there
 is no CMD_MDP_DONE to retire a frame, and arming the interlock there would
 make every DCS write wait out its 100 ms timeout.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c | 3 ++-

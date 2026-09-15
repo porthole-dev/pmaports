@@ -42,6 +42,7 @@ which is exactly what this device reports.
 
 Default is 0, which keeps the hardware value and existing behaviour.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/regd.c | 38 +++++++++++++++++++++++++++++++++

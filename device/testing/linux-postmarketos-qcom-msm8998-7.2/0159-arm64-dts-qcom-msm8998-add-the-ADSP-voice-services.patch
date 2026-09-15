@@ -14,6 +14,7 @@ The nodes are inert on their own. They cost three device registrations
 and share the audio protection domain already used by the other four
 services.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 18 ++++++++++++++++++

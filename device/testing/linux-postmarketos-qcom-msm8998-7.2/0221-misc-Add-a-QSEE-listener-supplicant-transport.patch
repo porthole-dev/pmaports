@@ -27,6 +27,7 @@ IN/OUT on the UFS RPMB well-known LU's bsg node.
 The device is root-only, and grants over any resident trustlet the same
 authority /dev/fpc_tee already grants over one.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/misc/Kconfig     |  20 ++

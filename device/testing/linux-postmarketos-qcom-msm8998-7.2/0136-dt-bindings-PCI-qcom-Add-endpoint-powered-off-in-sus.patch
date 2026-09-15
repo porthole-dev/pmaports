@@ -22,6 +22,7 @@ device downstream of this port is powered off in system suspend. The
 property deliberately describes the endpoint's behaviour, not a driver
 policy; what the OS does about it is the driver's decision.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../devicetree/bindings/pci/qcom,pcie-common.yaml        | 9 +++++++++

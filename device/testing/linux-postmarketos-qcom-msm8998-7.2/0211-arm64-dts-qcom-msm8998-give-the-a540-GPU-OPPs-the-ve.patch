@@ -32,6 +32,7 @@ Keep the <target min max> triplet with max at the 1.1 V rail limit
 because pm8005 s1's steps are coarse and an exact value that is not a
 step is rejected by _opp_supported_by_regulators().
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 (cherry picked from commit d1b99c699a9494a3c520c77af37d90a51e6b8a73)
 ---

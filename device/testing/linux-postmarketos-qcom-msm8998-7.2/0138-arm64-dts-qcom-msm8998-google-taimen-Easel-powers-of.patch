@@ -13,6 +13,7 @@ the SoC interconnect on the second s2idle cycle (measured: 5/5 hangs
 attributed to dpm_resume_noirq at 1c00000.pcie / 0000:00:00.0; with
 the controller left untouched, 85/85 clean cycles).
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 13 +++++++++++++

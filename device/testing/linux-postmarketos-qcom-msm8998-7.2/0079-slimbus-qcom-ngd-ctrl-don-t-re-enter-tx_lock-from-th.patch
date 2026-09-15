@@ -22,6 +22,7 @@ The flag is deliberately not the controller state: that is DOWN for the
 whole of bring-up too, and refusing there breaks enumeration - the
 logical address lookup fails and the sound card never appears.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/slimbus/qcom-ngd-ctrl.c | 33 +++++++++++++++++++++++++++++++++

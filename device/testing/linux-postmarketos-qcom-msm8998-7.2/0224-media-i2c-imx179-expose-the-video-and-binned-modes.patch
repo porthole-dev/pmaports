@@ -16,6 +16,7 @@ the mode but its value did not, so leaving the binned mode for the full one
 kept 394 lines of blanking and 26 fps. And share the driver mutex with the
 control handler, which set_fmt already assumes.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/imx179.c | 41 +++++++++++++++++++++++---------------

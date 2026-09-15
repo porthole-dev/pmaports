@@ -9,6 +9,7 @@ SPI bus that TrustZone owns. Describe what the normal world drives: the
 interrupt and reset lines, the IO supply, and the trustlet that talks
 to the sensor. Lines, pin configuration and supply are the vendor's.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-taimen.dts   | 32 +++++++++++++++++++

@@ -25,6 +25,7 @@ preceding two "don't put the global address space..."/"base the TTBR1
 global vm..." commits). Log it, adapted to 6.18's a5xx_gpu_init() and
 a5xx_ucode_load().
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/adreno/a5xx_gpu.c | 18 ++++++++++++++++++

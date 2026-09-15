@@ -39,6 +39,7 @@ qcom_smgr_iio_read_raw()'s SCALE case dispatches purely on chan->type
 PRIMARY and SECONDARY channels already get independent scale handling
 by construction.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iio/common/qcom_smgr/qcom_smgr.c | 30 ++++++++++++++++++++----

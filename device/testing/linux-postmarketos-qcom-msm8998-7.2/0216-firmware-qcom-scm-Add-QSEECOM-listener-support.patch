@@ -29,6 +29,7 @@ Used on the Google Pixel 2 XL, whose fingerprint trustlet reaches its
 template database through two listeners, QSEE's file service (0xa) and
 GP file service (0x7000).
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/firmware/qcom/qcom_scm.c       | 198 +++++++++++++++++++++++--

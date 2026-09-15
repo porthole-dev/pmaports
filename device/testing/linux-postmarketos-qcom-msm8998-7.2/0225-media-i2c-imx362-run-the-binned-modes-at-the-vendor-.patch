@@ -14,6 +14,7 @@ Measured on taimen, raw stream, 130 frames each, switching modes between
 runs: 2016x1512 59.5 fps, 2016x1136 60.0, 4032x2272 30.1, 4032x3032 30.1,
 and 2016x1136 again 60.0, no sequence gaps.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/imx362.c | 67 +++++++++++++++++++++-----------------

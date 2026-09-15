@@ -18,6 +18,7 @@ Every later attempt to place a BAR then fails with -ENOSPC and the
 device cannot be enabled. Give it a defined class, as is already done
 for the TI 816x in PCIe boot mode.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/pci/quirks.c | 17 +++++++++++++++++

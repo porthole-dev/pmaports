@@ -12,6 +12,7 @@ Offered anyway, it is the mode libcamera picks for any small viewfinder, so
 the front camera would show nothing. Leave it out of enumeration and format
 selection until it streams.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/imx179.c | 25 +++++++++++++++++++------

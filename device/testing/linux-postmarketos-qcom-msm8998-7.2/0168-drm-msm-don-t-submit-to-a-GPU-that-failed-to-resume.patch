@@ -61,6 +61,7 @@ retrying, keeping the GPU down for the rest of the boot.
 This does not stop a resume from failing; it stops a failed resume from
 taking the machine down with it, and makes it say which error it was.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/msm_gpu.c | 42 +++++++++++++++++++++++++++++++++--

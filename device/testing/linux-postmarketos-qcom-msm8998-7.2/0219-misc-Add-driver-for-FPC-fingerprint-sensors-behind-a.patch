@@ -36,6 +36,7 @@ Add a driver for those, with /dev/fpc_tee for userspace:
    FPC_TEE_IOC_LISTENER_SEND. Which files the trustlet may touch is
    userspace policy.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  MAINTAINERS                 |   8 +

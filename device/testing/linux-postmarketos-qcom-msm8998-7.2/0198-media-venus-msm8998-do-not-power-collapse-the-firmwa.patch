@@ -29,6 +29,7 @@ taken to linux-media with the bisect evidence.
 
 This replaces the reboot-on-resume attempt, which is reverted here.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 42 ++++--------------------

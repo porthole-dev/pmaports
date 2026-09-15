@@ -20,6 +20,7 @@ its RX port exclusively, and an ASM stream that tries to open the same
 port while voice holds it times out. Downstream keeps both a voice mixer
 and an audio mixer on one port for exactly this reason.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/qdsp6/q6routing.c | 192 ++++++++++++++++++++++++++++++-

@@ -22,6 +22,7 @@ then brings both subcore clocks up at every core power-on -- before the
 firmware boots and probes its engines, which is when the vendor has
 them up -- and the per-session vdec/venc child enables work again.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi    | 7 +++++--

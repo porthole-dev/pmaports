@@ -38,6 +38,7 @@ which is exactly what this hook does.
 Not board-specific: any platform with qcom,select-utmi-as-pipe-clk and a
 collapsing USB GDSC loses the same bits.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/usb/dwc3/dwc3-qcom.c | 19 +++++++++++++++----

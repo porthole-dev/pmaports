@@ -8,6 +8,7 @@ for camera modules. It runs firmware from its own flash, reads the gyro
 itself, and keeps the camera module's calibration data in the same flash.
 It needs a logic supply and a supply for its coil drivers.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../bindings/media/i2c/onnn,lc898123f40.yaml  | 51 +++++++++++++++++++

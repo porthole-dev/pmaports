@@ -16,6 +16,7 @@ is what the vendor driver does.  The first entry is the lowest corner and
 is sourced from the alternate clock, so it is safe to ask for before the
 CPRh loop is armed.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 10 ++++++++++

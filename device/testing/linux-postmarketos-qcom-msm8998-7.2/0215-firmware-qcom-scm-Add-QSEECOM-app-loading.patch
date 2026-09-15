@@ -13,6 +13,7 @@ Add qcom_scm_qseecom_app_load(), which starts an app from its image (the
 scalar arguments downstream's qseecom driver passes, and returns its ID.
 QSEE apps are 32-bit, so an image above 4 GB is refused.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/firmware/qcom/qcom_scm.c       | 47 ++++++++++++++++++++++++++

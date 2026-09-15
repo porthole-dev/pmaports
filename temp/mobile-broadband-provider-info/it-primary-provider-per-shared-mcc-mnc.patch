@@ -5,6 +5,8 @@ Subject: [PATCH] it: mark which provider owns each shared MCC/MNC
 
 Backport onto the 20251101 release of the main-branch change, for
 distributions building from that tarball.
+
+Assisted-by: Claude
 ---
  serviceproviders.xml | 14 +++++++-------
  1 file changed, 7 insertions(+), 7 deletions(-)

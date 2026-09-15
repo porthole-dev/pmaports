@@ -15,6 +15,7 @@ on:
     branches: [taimen-bringup]
   pull_request:
     branches: [taimen-bringup]
+  merge_group:
   workflow_dispatch:
     inputs:
       packages:
@@ -45,6 +46,7 @@ jobs:
   select:
     name: Select packages
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     container: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
     outputs:
       packages: ${{ steps.select.outputs.packages }}
@@ -56,7 +58,7 @@ jobs:
           # Pushes and manual runs also build the forked aports that are not
           # published yet, measured from the merge base with upstream
           # pmaports: that needs the whole history, commits and trees only.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 100 || 0 }}
+          fetch-depth: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 100 || 0 }}
           filter: blob:none
           persist-credentials: false
       - name: Download the published index
@@ -88,7 +90,8 @@ jobs:
         env:
           PACKAGES: ${{ inputs.packages }}
           HEAVY: ${{ inputs.heavy }}
-          FORKS: ${{ github.event_name != 'pull_request' }}
+          # A merge group builds what its pull requests change, like they did.
+          FORKS: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
         run: |
           git config --global --add safe.directory "$PWD"
           CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
@@ -225,3 +228,17 @@ jobs:
       - name: Say why nothing is attested
         if: steps.publish.outputs.uploaded && github.event.repository.visibility != 'public'
         run: echo "::notice::Uploaded files are not attested while this repository is private (artifact attestations need a public repository on this plan)"
+
+  build-passed:
+    # The check for a ruleset to require: the matrix jobs are named after
+    # their package ("Build (mesa)"), so no fixed build check name exists.
+    # Publishing is not part of it (it never runs for a pull request).
+    name: Build passed
+    if: ${{ !cancelled() }}
+    needs: [select, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: porthole-dev/.github/actions/ci-passed@43919fea5b785b8c73aa6162348f100c5200d07b # main
+        with:
+          results: ${{ join(needs.*.result, ' ') }}

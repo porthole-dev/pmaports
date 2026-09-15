@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# One check at a time; a manual run while the scheduled one is going waits.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 env:
   ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
@@ -51,10 +56,11 @@ jobs:
   outdated:
     name: Check for outdated forks
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     container: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
     permissions:
       contents: read
-      issues: write
+      issues: write # create, update and close the tracking issue
     steps:
       - run: apk -q add git github-cli
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

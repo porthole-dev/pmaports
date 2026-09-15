@@ -27,6 +27,7 @@ too-low residency on this SoC is documented to cause error-less random
 reboots (see commit 3f1dcaff642e ("arm64: dts: qcom: msm8998: Fix
 CPU/L2 idle state latency and residency")).
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 43 ++++++++++++++++++++++-----

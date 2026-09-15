@@ -41,6 +41,7 @@ Any N below 11 leaves the OSM disabled, so probing then fails with
 zero: a kernel flashed without the parameter behaves like the known-good
 control rather than like the build under test.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 68 +++++++++++++++++++++++++++++++

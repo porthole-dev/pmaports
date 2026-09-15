@@ -25,6 +25,7 @@ the measured CPU capacity") has to be reverted in the same series.  It
 describes a gold cluster stuck near its lowest frequency, and stops
 being true the moment this driver can raise it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 8 +++++++-

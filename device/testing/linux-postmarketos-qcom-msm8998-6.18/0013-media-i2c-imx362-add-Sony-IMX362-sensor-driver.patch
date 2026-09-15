@@ -18,6 +18,7 @@ VIDEO_IMX179: the two are independently selectable, physically
 distinct sensors on separate CSI links, and only happen to share a
 vendor.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/Kconfig  |  14 +

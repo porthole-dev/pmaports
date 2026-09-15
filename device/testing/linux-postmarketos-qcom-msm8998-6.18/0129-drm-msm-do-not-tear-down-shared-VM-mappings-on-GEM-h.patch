@@ -37,6 +37,7 @@ object alive forever. Targets with private pagetables are unaffected:
 userspace buffers never live in gpu->vm there, so the added
 put_iova_spaces() finds nothing.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/msm_gem.c | 28 +++++++++++++++++++++++++---

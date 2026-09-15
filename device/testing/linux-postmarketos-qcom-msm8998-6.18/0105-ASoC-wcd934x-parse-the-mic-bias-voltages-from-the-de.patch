@@ -26,6 +26,7 @@ are exactly zero. Measured on a Google Pixel 2 XL: ANA_MICB1..4 all read
 Parse the values in probe, as the other three codecs do.
 
 Fixes: 4f16b6351bbf ("ASoC: codecs: wcd: add common helper for wcd codecs")
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/wcd934x.c | 4 ++++

@@ -12,6 +12,7 @@ dropping the qualifier in msm8998_lpass_alloc_dma_channel() and
 msm8998_lpass_init(). Harmless under GCC, but fatal under this tree's
 Clang/LLVM build (-Werror,-Wincompatible-pointer-types-discards-qualifiers).
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/lpass-msm8998.c | 4 ++--

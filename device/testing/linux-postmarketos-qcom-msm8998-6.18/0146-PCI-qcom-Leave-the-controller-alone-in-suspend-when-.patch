@@ -45,6 +45,7 @@ powered across sleep and do not touch the link, the DBI space, or the
 interconnect votes. The cost is the idle power of an inert controller
 kept on across sleep, on boards that opt in via DT.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/pci/controller/dwc/pcie-qcom.c | 29 ++++++++++++++++++++++++++

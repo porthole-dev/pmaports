@@ -39,6 +39,7 @@ provider nodes (no bimc/mnoc) at all, so &mnoc/&bimc do not resolve.
 Bandwidth voting can be added back once an interconnect provider
 lands in this dtsi.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 528 +++++++++++++++++++++++++-

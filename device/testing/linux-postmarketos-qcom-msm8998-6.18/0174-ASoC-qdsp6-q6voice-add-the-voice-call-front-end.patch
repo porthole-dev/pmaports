@@ -22,6 +22,7 @@ session is created and each substream only knows its own back-ends, so
 the call starts once playback and capture have both prepared and ends
 when both are gone.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig             |   4 +

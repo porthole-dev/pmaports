@@ -15,6 +15,7 @@ No current ath10k device is known to hit it (the arg is built from the
 driver's own channel tables, which stay under 64 today), so this is
 hardening rather than a fix for an observed crash. Clamp and warn.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/mac.c | 12 +++++++++++-

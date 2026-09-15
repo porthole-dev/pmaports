@@ -8,6 +8,7 @@ smart amplifier, used for the speaker path on the Google Pixel 2 XL
 (taimen). The part needs a firmware image for its PLL setup and DSP
 program; it stays mute without one.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/Kconfig   |    8 +

@@ -29,6 +29,7 @@ as before this patch.  keep_alive is set on all clocked providers so
 that config-space access keeps a 19.2 MHz floor even before any
 consumer votes, matching qcm2290/sm6115.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/interconnect/qcom/Kconfig   |    9 +

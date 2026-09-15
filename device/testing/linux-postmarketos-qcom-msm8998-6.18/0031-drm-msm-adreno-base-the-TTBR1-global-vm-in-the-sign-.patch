@@ -31,6 +31,7 @@ recover -> GPU healthy again, with the session surviving.
 Ported from taimen-v6.0 onto 6.18's adreno_iommu_create_vm(); the fix
 itself carries over unchanged.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/adreno/adreno_gpu.c | 24 ++++++++++++++++++++++++

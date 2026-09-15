@@ -35,6 +35,7 @@ Note the existing dsi-collide instrumentation cannot see this: it samples
 MDP_BUSY after the DMA, so it detects write-vs-frame, not write-vs-write. It
 reported 0 across the reproduction above, as did the DPU underrun counter.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/panel/panel-lg-sw43402.c | 50 +++++++++++++++++++++---

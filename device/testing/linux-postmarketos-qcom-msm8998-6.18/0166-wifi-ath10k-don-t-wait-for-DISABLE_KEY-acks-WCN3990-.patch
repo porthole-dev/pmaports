@@ -13,6 +13,7 @@ carries on normally. The wait only stalls the wiphy for 3 s per key at
 suspend entry and on every roam. Send the command and return; SET_KEY
 keeps its wait and its recovery escalation.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/mac.c | 13 +++++++++++++

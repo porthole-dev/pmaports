@@ -38,6 +38,7 @@ so make the thumbnail path agree with it. A surface whose texture is gone is
 simply skipped, the thumbnail comes out missing that surface, and the
 compositor stays up.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/render.c | 3 +++

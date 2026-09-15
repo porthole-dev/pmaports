@@ -25,6 +25,7 @@ existing helper for exactly this, and desktop.c already uses the same
 wl_list_for_each + phoc_output_damage_whole pattern after a layout change for
 the same reason.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/render.c | 8 ++++++--

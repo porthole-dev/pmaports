@@ -28,6 +28,8 @@ still in the set, so implicit-modifier clients lose nothing.
 Upstream-bound: wlroots should gate this workaround on the thing it
 actually fears (a GBM without modifier support) instead of erasing
 explicit LINEAR for every client of every LINEAR-only GPU.
+
+Assisted-by: Claude
 ---
 --- a/subprojects/wlroots-0.20.x/types/wlr_linux_dmabuf_v1.c
 +++ b/subprojects/wlroots-0.20.x/types/wlr_linux_dmabuf_v1.c

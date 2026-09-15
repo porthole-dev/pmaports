@@ -22,7 +22,7 @@
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=crossdirect
 pkgver=5.3.1
-pkgrel=4
+pkgrel=5
 pkgdesc="Wrappers to launch native programs (e.g. cross compilers) in foreign chroots"
 url="https://postmarketOS.org"
 arch="all"
@@ -42,7 +42,7 @@ build() {
 	# Architectures and binaries
 	_archs="x86_64 armhf armv7 aarch64 loongarch64 ppc64le riscv64"
 	for _arch in $_archs; do
-		[ "$_arch" == "$CARCH" ] && continue
+		[ "$_arch" = "$CARCH" ] && continue
 		_hostspec="$(arch_to_hostspec $_arch)"
 
 		# Build with -Werror, because we maintain this short program. (If
@@ -101,7 +101,7 @@ package() {
 
 	# Iterate over architectures
 	for _arch in $_archs; do
-		[ "$_arch" == "$CARCH" ] && continue
+		[ "$_arch" = "$CARCH" ] && continue
 
 		# GCC: put arch-specific crossdirect wrapper in arch-specific
 		# bin folder

@@ -1,0 +1,75 @@
+From 89f3123cb4def8bed5aff301f19a96e3ead0cc01 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 10:09:26 +0200
+Subject: [PATCH 02/10] pmb.parse._apkbuild: an empty assignment clears the
+ variable
+
+The parser skipped every assignment with an empty value, so "foo=" and
+'foo=""' kept whatever foo held before. Two visible results:
+
+- A variable initialised empty and set only under a condition, such as
+  vtk's _openvdb_depends_dev="" before a case on $CARCH, was never
+  defined, and "$_openvdb_depends_dev" stayed in depends_dev as a
+  literal package name.
+- A subpackage function that clears an inherited variable with
+  "depends=" (the cross gcc packages do this for every subpackage)
+  inherited the main package's depends anyway.
+
+Assign the empty string instead, as the shell does.
+
+Checked against busybox sh sourcing all 14418 APKBUILDs of Alpine's
+aports and pmaports: no attribute that was parsed correctly before
+changes.
+
+Assisted-by: Claude
+---
+ pmb/parse/_apkbuild.py              |  3 ++-
+ test/parse/test_apkbuild_private.py | 15 ++++++++++++++-
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/pmb/parse/_apkbuild.py b/pmb/parse/_apkbuild.py
+index a65f48f..876c888 100644
+--- a/pmb/parse/_apkbuild.py
++++ b/pmb/parse/_apkbuild.py
+@@ -241,8 +241,9 @@ def _parse_attributes(
+     # Parse all variables first, and replace variables mentioned earlier
+     for i in range(len(lines)):
+         attribute, value, i = parse_next_attribute(lines, i, path)
+-        if not attribute or not value:
++        if attribute is None or value is None:
+             continue
++        # An empty value still assigns: "foo=" clears foo, like in the shell
+         ret[attribute] = replace_variable(ret, value)
+ 
+     if "subpackages" in apkbuild_attributes:
+diff --git a/test/parse/test_apkbuild_private.py b/test/parse/test_apkbuild_private.py
+index 2fcd51c..428fe59 100644
+--- a/test/parse/test_apkbuild_private.py
++++ b/test/parse/test_apkbuild_private.py
+@@ -6,8 +6,9 @@ from typing import Final
+ 
+ import pytest
+ 
++import pmb.helpers.logging
+ from pmb.helpers.exceptions import NonBugError
+-from pmb.parse._apkbuild import archived, maintainers
++from pmb.parse._apkbuild import _apkbuild_from_lines, archived, maintainers, read_file
+ 
+ TESTDIR: Final[Path] = Path(__file__).parent.parent / "data/tests"
+ 
+@@ -55,3 +56,15 @@ def test_archived() -> None:
+         archived(TESTDIR / "APKBUILD.archived")
+         == "I am tired of maintaining so many hello world programs!!"
+     )
++
++
++def test_empty_assignment_clears_variable(tmp_path: Path) -> None:
++    path = tmp_path / "APKBUILD"
++    path.write_text(
++        'pkgname=a\npkgver=1\npkgrel=0\ndepends="foo"\n_extra=""\n'
++        'makedepends="$_extra bar"\nsubpackages="a-sub:sub"\nsub() {\n\tdepends=\n}\n'
++    )
++    pmb.helpers.logging.add_verbose_log_level()
++    apkbuild = _apkbuild_from_lines(read_file(path), path, check_pkgname=False)
++    assert apkbuild["makedepends"] == ["bar"]
++    assert apkbuild["subpackages"]["a-sub"]["depends"] == []

@@ -1,0 +1,83 @@
+# Weekly: do the sources and patches of every forked package still apply, and
+# does an Alpine or postmarketOS package now outrank any fork? Outdated forks
+# are listed in one issue, which is updated and closed as they are fixed.
+#
+# Scheduled workflows run from the default branch only.
+name: Upstream check
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      heavy:
+        description: Also check heavy-tier aports (large downloads)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+
+jobs:
+  patch-check:
+    name: Check sources and patches
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/work/cache_apk_aarch64
+          key: pmbootstrap-apk-aarch64-${{ github.run_id }}
+          restore-keys: pmbootstrap-apk-aarch64-
+      - name: Fetch, verify, unpack and patch every listed aport
+        env:
+          HEAVY: ${{ inputs.heavy }}
+        run: |
+          docker run --rm --privileged \
+            -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
+            -e HOST_UID="$(id -u)" -e HEAVY \
+            "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'python3 .github/scripts/packages.py check-patches --all'
+
+  outdated:
+    name: Check for outdated forks
+    runs-on: ubuntu-24.04
+    container: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - run: apk -q add git github-cli
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare fork versions with Alpine and postmarketOS
+        run: sh .github/scripts/run-pmbootstrap.sh --no-init 'python3 .github/scripts/packages.py outdated'
+      - name: Update the tracking issue
+        if: github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          title="Outdated forked packages"
+          count=$(cat /work/outdated.count)
+          number=$(gh issue list --state all --search "in:title \"$title\"" --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+          if [ "$count" -gt 0 ]; then
+            if [ -n "$number" ]; then
+              gh issue edit "$number" --body-file /work/outdated.md
+              gh issue reopen "$number" 2>/dev/null || true
+            else
+              gh issue create --title "$title" --body-file /work/outdated.md
+            fi
+          elif [ -n "$number" ]; then
+            gh issue edit "$number" --body-file /work/outdated.md
+            gh issue close "$number" 2>/dev/null || true
+          fi

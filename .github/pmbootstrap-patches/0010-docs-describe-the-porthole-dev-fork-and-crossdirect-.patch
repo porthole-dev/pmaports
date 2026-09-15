@@ -1,0 +1,237 @@
+From 73e6d18585873183e6e9c750719459494ad68e9e Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 12:00:39 +0200
+Subject: [PATCH 10/10] docs: describe the porthole-dev fork and crossdirect's
+ Rust handling
+
+FORK.md says what this fork changes and why, how to install and pin it,
+and how to rebase it onto upstream without regressing the APKBUILD
+parser. AI.md and the notices at the top of README.md say how the fork is
+made and that problems go here, not to postmarketOS.
+
+docs/cross_compiling.md: crossdirect now compiles Rust that meson (or any
+build system) passes to rustc directly for the right architecture, and
+supports "cargo auditable build"; the caveat telling packagers to replace
+it with "cargo build" is gone.
+
+Assisted-by: Claude
+---
+ AI.md                   | 44 ++++++++++++++++++++
+ FORK.md                 | 89 +++++++++++++++++++++++++++++++++++++++++
+ README.md               | 12 ++++++
+ docs/cross_compiling.md | 26 ++++++++----
+ 4 files changed, 163 insertions(+), 8 deletions(-)
+ create mode 100644 AI.md
+ create mode 100644 FORK.md
+
+diff --git a/AI.md b/AI.md
+new file mode 100644
+index 0000000..85633b9
+--- /dev/null
++++ b/AI.md
+@@ -0,0 +1,44 @@
++# AI disclosure and responsibility
++
++## How this project is made
++
++This project is developed with substantial help from AI coding assistants,
++mainly Anthropic's Claude. Most code, patches, scripts and documentation were
++drafted by the model under the maintainer's direction. The maintainer decides
++what is built, reviews it, and tests it on real devices.
++
++## How it is marked
++
++- Every commit by the maintainer carries an `Assisted-by: Claude` trailer
++  (`Assisted-by: LLM` for Linux kernel patches, the form the kernel documents).
++  History was rewritten on 2026-09-15 to add it to every earlier commit, because
++  the whole project postdates the first AI-assisted session.
++- An AI is never listed as `Co-authored-by` and never adds `Signed-off-by`.
++  A sign-off is a personal Developer Certificate of Origin, which only a human
++  can give.
++- Commits by other contributors are unchanged and carry only what they wrote.
++
++## Responsibility
++
++- **Using an AI does not move responsibility anywhere.** Whoever signs off or
++  merges a change is responsible for it, exactly as if they had typed it. This
++  is the position of the Linux kernel, Mesa and the Linux Foundation, and it is
++  this project's.
++- **No warranty.** Everything here is provided "as is", without warranty of any
++  kind, under the terms of the LICENSE. Flashing or installing it can brick a
++  device, erase data, or damage hardware (for example by overheating). You use
++  it at your own risk, and the authors are not liable for the result.
++- **Unofficial.** Not affiliated with or endorsed by postmarketOS, Alpine Linux,
++  Google, Qualcomm or Anthropic. Report problems here, not to them.
++- **Licensing.** The output of the tools used is not restricted by their terms.
++  Third-party code keeps its original authors and licence. If you believe
++  something here reproduces your copyrighted work, open an issue and it will be
++  removed.
++
++## Upstream
++
++Patches go to an upstream project only if that project accepts AI-assisted
++contributions, only under that project's own rules, and only when a human
++sends them. No autonomous tool opens merge requests, issues or comments
++anywhere. Nothing from this project is submitted to postmarketOS, whose policy
++does not accept AI-generated contributions.
+diff --git a/FORK.md b/FORK.md
+new file mode 100644
+index 0000000..c81c2c7
+--- /dev/null
++++ b/FORK.md
+@@ -0,0 +1,89 @@
++# The porthole-dev fork of pmbootstrap
++
++This is [pmbootstrap](https://gitlab.postmarketos.org/postmarketOS/pmbootstrap)
++with a short series of changes on top, used by the porthole bring-up toolkit
++and by the porthole-dev package CI. The goals: build Alpine's aports
++unmodified, as fast as possible, for every architecture and device upstream
++supports, with no change for anything that does not use the new paths.
++
++Nothing from this fork is sent to postmarketOS, whose policy does not accept
++AI-generated contributions (see [AI.md](AI.md)).
++
++## Install
++
++```sh
++git clone https://github.com/porthole-dev/pmbootstrap.git
++cd pmbootstrap
++git checkout <pinned commit>
++./pmbootstrap.py --version
++```
++
++Run it from the checkout (`pmbootstrap.py`), or put a symlink to that file on
++`PATH`. It needs nothing beyond what upstream pmbootstrap needs. Pin a commit,
++not the branch: the branch is rebased when upstream moves.
++
++## What differs from upstream, and why
++
++`main` is an upstream commit plus a linear series, each commit with its tests
++and documentation. `git log upstream/main..main` is the authoritative list.
++
++- **Rust in cross-native2**: cargo cross-compiles natively and bindgen in
++  build scripts works. A gtk4-rs/libcamera-rs app builds in 2m35s instead of
++  more than 40 minutes under QEMU.
++- **An empty assignment clears the variable**: the APKBUILD parser ignored
++  `foo=`, so empty defaults stayed a literal `$foo` and subpackages kept the
++  `depends` they should have cleared.
++- **`$CARCH` conditionals are evaluated for the target arch**: abuild picks
++  depends, makedepends and subpackages per `$CARCH`, and pmbootstrap skipped
++  those blocks, so Alpine's mesa was built without bindgen.
++- **envkernel builds kernels with ccache**: its make alias disabled ccache for
++  every kernel compile.
++- **`helpers/apkbuild-vs-shell.py`**: checks the APKBUILD parser against
++  busybox sh over whole aports trees, before and after a change.
++- **`find()` finds arch-dependent subpackages** such as
++  `mesa-vulkan-freedreno`, without parsing all of pmaports.
++- **`build --ignore-depends` works**: the option was parsed and never
++  applied.
++- **crossdirect Rust's native chroot gets build dependencies only, from
++  binary repositories**: runtime depends, or a newer pmaports fork of a
++  library, made pmbootstrap build whole packages for the native arch first.
++- **One sccache server per chroot**: sccache's default TCP port is shared by
++  every chroot and work dir on the host, so one build's server compiled
++  another work dir's crates against the wrong root and failed them.
++
++The changes that make crossdirect handle more of Rust live in pmaports,
++because crossdirect is an aport (`cross/crossdirect`, 5.3.1-r4 in the
++porthole-dev pmaports): rustc called directly by meson compiles target crates
++for the target and proc-macros natively, `cargo auditable build` no longer
++falls back to QEMU, and `bindgen` runs natively. See
++[docs/cross_compiling.md](docs/cross_compiling.md).
++
++## Update from upstream
++
++```sh
++git fetch upstream
++git rebase --onto upstream/main <old upstream commit> main
++```
++
++Then, before moving the pin:
++
++```sh
++pytest -m "not skip_ci"
++ruff check        # no findings beyond those on upstream/main
++ruff format --diff
++mypy .
++```
++
++and, in a container (it runs APKBUILD code), compare the parser with the
++shell against an upstream checkout of the same commit:
++
++```sh
++git worktree add /tmp/pmb-upstream upstream/main
++find aports pmaports -name APKBUILD | xargs \
++    helpers/apkbuild-vs-shell.py --baseline /tmp/pmb-upstream
++```
++
++It must report no regressions and no new errors. Drop a commit from the
++series when upstream has an equivalent.
++
++The remote `upstream` is fetch-only; its push URL is deliberately invalid.
+diff --git a/README.md b/README.md
+index f969d13..177beaa 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,17 @@
+ # pmbootstrap
+ 
++> **Unofficial.** Not affiliated with or endorsed by postmarketOS, Google, or
++> Qualcomm. Do not report problems with this port to postmarketOS; open an
++> issue here.
++>
++> **Experimental.** Flashing can brick the device or erase data. No warranty,
++> see LICENSE.
++>
++> **AI-assisted.** See [AI.md](AI.md).
++>
++> **Fork.** This is the porthole-dev fork of pmbootstrap. See
++> [FORK.md](FORK.md) for what differs and why.
++
+ Sophisticated chroot/build/flash tool to develop and install
+ [postmarketOS](https://postmarketos.org).
+ 
+diff --git a/docs/cross_compiling.md b/docs/cross_compiling.md
+index 1de1a5f..7466ba4 100644
+--- a/docs/cross_compiling.md
++++ b/docs/cross_compiling.md
+@@ -103,11 +103,22 @@ Put build tools (`cargo`, `cargo-auditable`, `clang-libclang` for bindgen,
+ `makedepends_host`. A build system that locates cargo's output itself must
+ honour `CARGO_BUILD_TARGET`, since cargo then writes to `target/<triple>/`.
+ 
+-Rust support in crossdirect is still experimental.
+-[pmaports!4234](https://gitlab.postmarketos.org/postmarketOS/pmaports/-/merge_requests/4234)
+-(cross/crossdirect: improve rust handling) describes some of the problems with
+-that approach; notably, build scripts that load target libraries at run time
+-(bindgen and its libclang) cannot work there.
++**crossdirect** runs rustc natively inside the foreign chroot. Which
++architecture a crate is compiled for depends on the caller:
++
++* cargo, through crossdirect's cargo wrapper (also for `cargo auditable`):
++  crates with `--target` are for the target; build scripts, proc-macros and
++  their dependencies are native. A build script that loads a target library
++  at run time (bindgen and libclang) still cannot work: use cross-native2.
++* anything else that calls rustc directly, like meson (mesa's nouveau, asahi
++  and rusticl drivers): proc-macros are native and every other crate is for the
++  target. The rlibs a proc-macro links are rebuilt for the native architecture
++  on demand, from a record of how they were compiled for the target.
++  `bindgen` runs natively too when the native chroot has it.
++
++This needs crossdirect from the porthole-dev pmaports (5.3.1-r4 or later);
++older crossdirect compiles every crate that meson builds for the native
++architecture, and the link fails with "Relocations in generic ELF".
+ 
+ #### CARGO\_HOME
+ 
+@@ -122,9 +133,8 @@ repository with `pmbootstrap build --src`, patch out the override of
+ 
+ #### Packaging caveats
+ 
+-* `cargo auditable build` is unsupported with crossdirect and falls back to
+-  compiling in QEMU. Change it to `cargo build` to build the package with the
+-  native compiler.
++* With crossdirect, cargo subcommands other than `build`, `test` and `run`
++  (with or without `auditable`) run in QEMU, e.g. `cargo fetch`.
+ * Running tests doesn't really work (e.g. when building squeekboard, the tests
+   hang and time out).
+ 

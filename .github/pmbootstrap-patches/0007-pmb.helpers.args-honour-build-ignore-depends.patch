@@ -1,0 +1,67 @@
+From 4452314cc43c083ef9d9deb0970951c051fb5af0 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 10:07:14 +0200
+Subject: [PATCH 07/10] pmb.helpers.args: honour build --ignore-depends
+
+The option was parsed into args.ignore_depends but never copied into the
+context, and get_depends() reads context.ignore_depends, so
+`pmbootstrap build -i` still queued and built every outdated runtime
+dependency from pmaports. Copy it like no_depends.
+
+Assisted-by: Claude
+---
+ pmb/helpers/args.py       |  1 +
+ test/helpers/test_args.py | 32 ++++++++++++++++++++++++++++++++
+ 2 files changed, 33 insertions(+)
+ create mode 100644 test/helpers/test_args.py
+
+diff --git a/pmb/helpers/args.py b/pmb/helpers/args.py
+index a0b7732..15726db 100644
+--- a/pmb/helpers/args.py
++++ b/pmb/helpers/args.py
+@@ -94,6 +94,7 @@ def init(args: PmbArgs) -> PmbArgs:
+     context.assume_yes = getattr(args, "assume_yes", False)
+     context.force = getattr(args, "force", False)
+     context.no_depends = getattr(args, "no_depends", False)
++    context.ignore_depends = getattr(args, "ignore_depends", False)
+ 
+     # Initialize context
+     pmb.core.context.set_context(context)
+diff --git a/test/helpers/test_args.py b/test/helpers/test_args.py
+new file mode 100644
+index 0000000..1cee7d4
+--- /dev/null
++++ b/test/helpers/test_args.py
+@@ -0,0 +1,32 @@
++# Copyright 2026 Giuseppe Maggio
++# SPDX-License-Identifier: GPL-3.0-or-later
++from pathlib import Path
++
++import pytest
++
++from pmb.core.context import get_context
++from pmb.helpers.args import init as init_args
++from pmb.types import PmbArgs
++
++
++@pytest.mark.parametrize("ignore_depends", [False, True])
++def test_build_ignore_depends_reaches_context(
++    config_file: Path, mock_context: None, logfile: Path, ignore_depends: bool
++) -> None:
++    args = PmbArgs()
++    args.config = config_file
++    args.aports = None
++    args.timeout = 900
++    args.details_to_stdout = False
++    args.quiet = False
++    args.verbose = True
++    args.offline = False
++    args.action = "init"
++    args.cross = False
++    args.ccache = True
++    args.log = logfile
++    args.ignore_depends = ignore_depends
++
++    init_args(args)
++
++    assert get_context().ignore_depends is ignore_depends

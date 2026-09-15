@@ -214,11 +214,18 @@ jobs:
               gh release create "$tag" -R "$PACKAGES_REPO" --title "$tag" \
                 --notes "apk repository for pmaports branch $BRANCH"
             gh release download "$tag" -R "$PACKAGES_REPO" -p '*.apk' -D "$repo" 2>/dev/null || true
-            docker run --rm -v "$repo:/repo" -v "$RUNNER_TEMP/packages/$local/aarch64:/new:ro" \
+            # -i: the script arrives on stdin; without it the container reads
+            # an empty script and exits 0 having published nothing.
+            docker run -i --rm -v "$repo:/repo" -v "$RUNNER_TEMP/packages/$local/aarch64:/new:ro" \
               -v "$keys:/keys:ro" -v "$PWD/.github/keys:/pubkeys:ro" \
               -e ARCH=aarch64 -e KEY="$SIGNING_KEY_NAME" -e PACKAGER \
               -e DESCRIPTION="$PACKAGES_REPO $tag" \
               "$ALPINE" sh -s < .github/scripts/publish-repo.sh
+            # publish-repo.sh always writes .upload (empty when nothing is new).
+            if [ ! -f "$repo/.upload" ]; then
+              echo "::error::publish-repo.sh did not run for $local"
+              exit 1
+            fi
             if [ -s "$repo/.upload" ]; then
               # New packages, then the index, then remove superseded packages:
               # the published index never names a missing file.

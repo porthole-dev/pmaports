@@ -9,6 +9,8 @@
 # -> /native/usr/bin/armv6-alpine-linux-muslgnueabihf-gcc
 # /native/usr/lib/crossdirect/armhf/rustc
 # -> /native/usr/bin/rustc --target=armv6-alpine-linux-musleabihf ...
+# /native/usr/lib/crossdirect/armhf/bindgen
+# -> /native/usr/bin/bindgen, libclang with -target armv6-alpine-linux-musleabihf
 #
 # When building packages in the armhf chroot, PATH will get prepended with
 # "/native/usr/lib/crossdirect/armhf". The end game is of course invoking
@@ -20,13 +22,14 @@
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=crossdirect
 pkgver=5.3.1
-pkgrel=3
+pkgrel=4
 pkgdesc="Wrappers to launch native programs (e.g. cross compilers) in foreign chroots"
 url="https://postmarketOS.org"
 arch="all"
 license="MIT"
 options="!check"
 source="
+	bindgen.sh
 	cargo.sh
 	crossdirect.c
 	exec_native.sh
@@ -122,13 +125,16 @@ package() {
 		# Rust
 		ln -s ../cargo.sh cargo
 		ln -s ../rustc.sh rustc
+		sed "s/@HOSTSPEC@/$_hostspec/" "$srcdir/bindgen.sh" > bindgen
+		chmod 755 bindgen
 	done
 }
 
 sha512sums="
-0f4b48f250425dc57f63955fc8b38477d23db793bee367c3fbe03c3d2a559ba576434d07518310db4cae9d90d501af4051b80038b10fae94b980e537fc9374ad  cargo.sh
+17e1272d9fb0eb213f3e0c16db12d9abef728f3b52f7f702766da0ae7f3accaca502a95b00e2715e8eaec59b45e7a848851723ed078c3516e4e1ddea9d5a040f  bindgen.sh
+b067529f0ef0569ba902be3e1029ecf7f2c948ffeba02f9211c21ca731b88b0169f0d3898cbc227215a52832a3818da09da3186c036d5309e18893fe3c94fa0e  cargo.sh
 a9f8b5e1ef1c61cf98d50c552a55a0922f2273079140c870b431d1e4ffd8792f3fcadd71e03a6659ec2624ea3ca0218424fa4636c5c93a8be01377595a319c0f  crossdirect.c
 73e2b5d2d8ef7c6002b3a787d14945586991493b8d81f59e5c0beda0d3b290543e1fdc6f288da726c5dd121c0861d2a894410b7b749a537df0df5b409e102330  exec_native.sh
-ea9bf8db3810d03d0a7395057f3d6e57f7127d87c55deaedc171c255288f5f3cc6fbcc680a5a1b92786cf573875d5dc22521173799fe2639acc97d0715ff905b  rust-qemu-linker.sh
-de2aa6929bbff5db9132673e667f4525b333d062cb1f7a0597dd924de9e5c7215a9f8e2e6263b6fb5ace06f2c4b64f4ebfd0ede9b78add07c2cd08ec8613e98f  rustc.sh
+5c0dedba79946b7c293a8e211e1c39b8660e05a15b4e556e05d2d76dc4834c51c9ab927d2f22ce49d417cd5190a21b7f626ca05c3264c95a6445860c5d86fb3f  rust-qemu-linker.sh
+03d15064e369a21b1777273155943280641748d3c218c30120ec00dc665e7e680f68cd5cd92620c6958090f40f07cd8eed65a0661b7680a70774e62a3e3f4696  rustc.sh
 "

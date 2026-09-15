@@ -16,15 +16,27 @@ triplet=$(/usr/bin/rustc -vV | sed -n 's/host: //p')
 cmd=$1
 shift
 
+# "cargo auditable build" (Alpine's Rust aports) is "cargo build" with a
+# rustc wrapper that embeds the dependency list: same handling
+auditable=""
+if [ "$cmd" = auditable ] && [ $# -gt 0 ]; then
+	auditable=auditable
+	cmd=$1
+	shift
+fi
+
 case "$cmd" in
 	build|test|run)
 		;;
 	*)
-		echo "WARNING: crossdirect: 'cargo $cmd $*' command not supported, running in QEMU (slow!)" >&2
+		echo "WARNING: crossdirect: 'cargo ${auditable:+$auditable }$cmd $*' command not supported, running in QEMU (slow!)" >&2
 		export PATH="$(echo "$PATH" | sed 's,/native/usr/lib/crossdirect/[^:]*:,,')"
-		exec /usr/bin/cargo "$cmd" "$@"
+		exec /usr/bin/cargo ${auditable:+"$auditable"} "$cmd" "$@"
 		;;
 esac
+
+# Tell rustc.sh that cargo passes --target for target crates
+export CROSSDIRECT_CARGO=1
 
 target_dir=${CARGO_TARGET_DIR:-target}
 target_already_specified=${CARGO_BUILD_TARGET:+1}
@@ -51,10 +63,10 @@ if [ -z "$target_specified" ]; then
 fi
 
 if [ -n "$target_already_specified" ]; then
-	exec /usr/bin/cargo "$cmd" "$@"
+	exec /usr/bin/cargo ${auditable:+"$auditable"} "$cmd" "$@"
 fi
 
-/usr/bin/cargo "$cmd" --target=$triplet "$@"
+/usr/bin/cargo ${auditable:+"$auditable"} "$cmd" --target=$triplet "$@"
 
 # copy target/$triplet/{release,debug,...} to target/{release,debug,...}
 if [ -d "$target_dir/$triplet" ]; then

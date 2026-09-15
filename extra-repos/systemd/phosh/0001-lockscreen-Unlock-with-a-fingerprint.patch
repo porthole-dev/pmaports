@@ -22,6 +22,7 @@ This talks to fprintd over D-Bus rather than running pam_fprintd in a
 second PAM transaction, as pam_fprintd cannot be cancelled once the
 passcode wins, and it would keep the device claimed until it timed out.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  po/POTFILES.in           |   1 +

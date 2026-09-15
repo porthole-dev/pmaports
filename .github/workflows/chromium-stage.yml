@@ -1,0 +1,164 @@
+# One job of the staged chromium build, called by chromium.yml. Design:
+# .github/CHROMIUM.md.
+#
+#   prep     build.yml's build of chromium, stopped when ninja starts; the
+#            work directory is stored as the state's prep layer
+#   build    restore, run ninja until the deadline, store out/bld
+#   package  restore, abuild's build check rootpkg, upload the apks
+name: Chromium stage
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+      tag:
+        type: string
+        required: true
+      stage:
+        description: This job's place in the chain (build mode)
+        type: number
+        default: 0
+      stages:
+        description: Build jobs in the chain (build mode)
+        type: number
+        default: 0
+      stage_minutes:
+        description: Cap on ninja's time, 0 for as long as the job allows
+        type: number
+        default: 0
+    outputs:
+      done:
+        description: ninja has finished; the package job can run
+        value: ${{ jobs.stage.outputs.done }}
+
+permissions:
+  contents: write
+
+env:
+  PACKAGES_REPO: porthole-dev/pmos-packages
+  PACKAGER: Giuseppe Maggio <jertlok@proton.me>
+  ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+  TAG: ${{ inputs.tag }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  stage:
+    name: ${{ inputs.mode == 'build' && format('Build {0}', inputs.stage) || (inputs.mode == 'prep' && 'Prepare sources' || 'Package') }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 360
+    outputs:
+      done: ${{ steps.save.outputs.done }}
+    steps:
+      - name: Start the clock
+        run: |
+          echo "START=$(date +%s)" >> "$GITHUB_ENV"
+          echo "WORK=$RUNNER_TEMP/work" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare the runner
+        run: |
+          command -v zstd >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq zstd; }
+          df -h /
+          # Preinstalled toolchains this job never uses (the build runs in
+          # pmbootstrap chroots).
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache /usr/lib/jvm /usr/share/swift /usr/local/share/powershell \
+            /usr/lib/google-cloud-sdk /opt/az /usr/local/julia* /opt/microsoft /opt/google
+          docker image prune -af >/dev/null
+          df -h /
+      - name: Restore the state
+        if: inputs.mode != 'prep'
+        run: bash .github/scripts/chromium-state.sh restore "$TAG" "$WORK"
+      - name: ${{ inputs.mode == 'build' && 'Run ninja' || (inputs.mode == 'prep' && 'Fetch, unpack, patch, configure' || 'Finish, check and package') }}
+        id: run
+        env:
+          MODE: ${{ inputs.mode }}
+          STAGE_MINUTES: ${{ inputs.stage_minutes }}
+        run: |
+          set -eu
+          # Stop ninja with enough of the 6 h left to store out/bld.
+          deadline=$((START + (360 - 45) * 60))
+          if [ "$STAGE_MINUTES" -gt 0 ] && [ $(($(date +%s) + STAGE_MINUTES * 60)) -lt "$deadline" ]; then
+            deadline=$(($(date +%s) + STAGE_MINUTES * 60))
+          fi
+          case "$MODE" in
+          prep) init= args=prep ;;
+          build) init=--no-init args="build $deadline"; echo "ninja stops at $(date -u -d "@$deadline")" ;;
+          package) init=--no-init args=package ;;
+          esac
+          docker run --rm --privileged \
+            -v "$PWD:/pmaports" -w /pmaports -v "$WORK:/work" \
+            -e HOST_UID="$(id -u)" -e PACKAGER \
+            -e PACKAGES_URL="https://github.com/$PACKAGES_REPO/releases/download" \
+            "$ALPINE" sh .github/scripts/run-pmbootstrap.sh $init "python3 .github/scripts/chromium-stage.py $args"
+          df -h /
+      - name: Store the state
+        id: save
+        # After a failed stage too: samurai's log only records finished edges,
+        # so its progress is valid, and a re-run continues from it.
+        if: ${{ !cancelled() && inputs.mode != 'package' && steps.run.outcome != 'skipped' }}
+        env:
+          MODE: ${{ inputs.mode }}
+          STAGE: ${{ inputs.stage }}
+          STAGES: ${{ inputs.stages }}
+        run: |
+          set -eu
+          result=$WORK/chromium/result.json
+          if [ ! -f "$result" ] || { [ "$MODE" = prep ] && ! jq -e .ok "$result" >/dev/null; }; then
+            echo "::warning::nothing to store"
+            exit 0
+          fi
+          bash .github/scripts/chromium-state.sh save "$TAG" "$WORK" | tee "$RUNNER_TEMP/saved.json"
+          done=$(jq -r .done "$RUNNER_TEMP/saved.json")
+          echo "done=$done" >> "$GITHUB_OUTPUT"
+          {
+            echo "### $TAG"
+            echo '```json'
+            cat "$RUNNER_TEMP/saved.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$MODE" = build ] && [ "$done" != true ] && [ "$STAGE" = "$STAGES" ]; then
+            echo "::warning::ninja has not finished after the last build job of this run. Run the workflow again: it resumes from the stored state."
+          fi
+      - name: Check packages for build machine details
+        if: inputs.mode == 'package'
+        run: |
+          set -eu
+          fail=0
+          for apk in "$WORK"/packages/*/aarch64/*.apk; do
+            dir=$(mktemp -d)
+            tar -xzf "$apk" -C "$dir" 2>/dev/null
+            # prep also built the forked build dependencies that were not
+            # published yet; build.yml publishes those.
+            if ! grep -qx 'origin = chromium' "$dir/.PKGINFO"; then
+              echo "not publishing ${apk##*/}: not built from temp/chromium"
+              rm -rf "$dir" "$apk"
+              continue
+            fi
+            echo "${apk##*/packages/}"
+            grep -E '^(pkgname|pkgver|packager|maintainer|origin|commit) ' "$dir/.PKGINFO" | sed 's/^/  /'
+            for needle in "$(hostname)" /home/runner "$GITHUB_WORKSPACE"; do
+              if grep -rlaF -- "$needle" "$dir" >/dev/null; then
+                echo "::error::${apk##*/} contains a build machine path or hostname"
+                fail=1
+              fi
+            done
+            rm -rf "$dir"
+          done
+          exit "$fail"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: inputs.mode == 'package'
+        with:
+          name: packages-chromium
+          # The <local repository>/aarch64/ layout that the publish job maps to releases.
+          path: |
+            ${{ runner.temp }}/work/packages/
+            !${{ runner.temp }}/work/packages/**/APKINDEX.tar.gz
+          if-no-files-found: error
+          retention-days: 7

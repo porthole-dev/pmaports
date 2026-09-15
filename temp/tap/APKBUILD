@@ -6,13 +6,7 @@
 #
 # NOT a fork. This is the port's own application; it lives in temp/ because
 # that is where this port stages packages that pmaports upstream does not
-# have. Its source is userspace/tap in the taimen repo.
-#
-# The source is a tarball made from that tree rather than fetched from a URL,
-# because the app has not been published yet: run userspace/tap/pack.sh to
-# refresh the tarball and the checksum below before building. When the source
-# lands in a repo of its own, replace source= with the usual github tarball
-# and delete that script.
+# have.
 #
 # TRAP: `porthole pkg build` reports "up-to-date" and skips the build when the
 # content changed but pkgrel did not. Bump pkgrel on every rebuild, and check
@@ -20,9 +14,9 @@
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=tap
 pkgver=0.1.0
-pkgrel=23
+pkgrel=24
 pkgdesc="Read and write NFC tags"
-url="https://github.com/Jertlok/tap"
+url="https://github.com/porthole-dev/tap"
 arch="all"
 license="GPL-3.0-or-later"
 # The app talks to xdg-desktop-portal and to nothing else. neard is not a
@@ -39,14 +33,7 @@ makedepends="
 	meson
 	"
 checkdepends="appstream"
-# The tarball next to this file is the source, committed because there is
-# nowhere to fetch it from yet: it lives in userspace/tap in the
-# taimen repo, and that repo is private, so a github archive URL would not
-# resolve in a build chroot. Regenerate it with that directory's pack.sh,
-# which also refreshes the checksum below. When the source is published,
-# this becomes an ordinary URL in source= and the tarball leaves the tree.
-source="tap-$pkgver.tar.gz"
-builddir="$srcdir/tap-$pkgver"
+source="$pkgname-$pkgver.tar.gz::https://github.com/porthole-dev/tap/archive/refs/tags/v$pkgver.tar.gz"
 
 build() {
 	abuild-meson . output
@@ -61,4 +48,6 @@ package() {
 	DESTDIR="$pkgdir" meson install --no-rebuild -C output
 }
 
-sha512sums="ef4ec120e1ede4f2788a8e0adf5ec4f866801617559028abfa8e16b18e5580a3c932015bd48b9b04334283a2230feb4199555b78209113e279149514af253fed  tap-0.1.0.tar.gz"
+sha512sums="
+13e027edb46f77979ac55f9f424b62e6efe4c063013890a47d7abcac19dfcfdbc855083bc3ee6feac37da452eeac8961125825ffb6a370d1c05d7903d39b56e4  tap-0.1.0.tar.gz
+"

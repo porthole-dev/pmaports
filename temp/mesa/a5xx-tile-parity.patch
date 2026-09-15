@@ -18,6 +18,7 @@ positions that bound the restore blit where an a540 lockup was decoded
 
 Pure additions, matching the vendor's order.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
 --- a/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c	2026-09-04 20:08:22.137190795 +0200

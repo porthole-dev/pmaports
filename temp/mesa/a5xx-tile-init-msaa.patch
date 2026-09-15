@@ -38,6 +38,7 @@ init, blend state forced to a plain copy before the blits, a second
 restore of the first tile, an RB_CNTL write in GMEM render mode, a WFI
 after the render-mode switch, a UCHE invalidate, a CCU flush.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
 diff --git a/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c b/src/gallium/drivers/freedreno/a5xx/fd5_gmem.c

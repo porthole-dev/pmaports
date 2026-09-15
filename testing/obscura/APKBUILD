@@ -8,7 +8,7 @@
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=obscura
 pkgver=0.2.0
-pkgrel=10
+pkgrel=11
 pkgdesc="Camera app with every control your camera has"
 url="https://github.com/porthole-dev/obscura"
 arch="all"
@@ -69,5 +69,5 @@ package() {
 }
 
 sha512sums="
-ee61054c87f1518bd5cf4a102baaaf1ea4082c725041cf5757f7da9fe281b7584048235a29f4f2ca0637da0d093ae9caa53354f1ba8ba8c296191ded7b51ab83  obscura-0.2.0.tar.gz
+5f8d9e2d82d96a6406573d70fbcd7254ef90b14e9f7ff01c5d68c2391b3f854b96ad785d847027b9b847a1cce57f683b73dadae567389a347eb47084e2ec50eb  obscura-0.2.0.tar.gz
 "

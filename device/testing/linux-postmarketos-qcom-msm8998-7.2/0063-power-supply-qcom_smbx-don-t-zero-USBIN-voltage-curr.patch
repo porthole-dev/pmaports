@@ -24,6 +24,7 @@ whenever a cable is delivering power, full battery or not, and false
 when there's genuinely nothing connected -- the case the 0 V / 0 A
 fallback exists for.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/power/supply/qcom_smbx.c | 8 +++-----

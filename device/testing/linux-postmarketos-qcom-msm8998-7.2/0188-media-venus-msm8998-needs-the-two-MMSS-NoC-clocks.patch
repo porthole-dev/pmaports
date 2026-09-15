@@ -30,6 +30,7 @@ holds all six as proxy clocks across firmware authentication:
 Mainline carries four of them. Add the missing two, and raise
 VIDC_CLKS_NUM_MAX to fit, which no other platform's count exceeds.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi    |  7 +++++--

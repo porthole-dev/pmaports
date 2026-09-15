@@ -10,6 +10,7 @@ VL53L1X_I2C next to it. With IIO_TRIGGERED_BUFFER disabled, as in the
 arm64 defconfig-derived config this was found in, the module references
 symbols nothing provides.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iio/proximity/Kconfig | 2 ++

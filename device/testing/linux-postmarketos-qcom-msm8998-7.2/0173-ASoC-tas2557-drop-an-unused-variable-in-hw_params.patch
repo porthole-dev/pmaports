@@ -6,6 +6,7 @@ Subject: [PATCH] ASoC: tas2557: drop an unused variable in hw_params
 It has never been assigned; the function returns tas2557_setup()'s result
 directly. clang warns about it on every build.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/tas2557.c | 1 -

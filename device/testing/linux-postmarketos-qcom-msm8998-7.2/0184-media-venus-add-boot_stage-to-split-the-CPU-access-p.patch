@@ -30,6 +30,7 @@ path itself never worked.
 
 Default -1, so this is inert unless asked for.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/hfi_venus.c | 55 +++++++++++++++++++

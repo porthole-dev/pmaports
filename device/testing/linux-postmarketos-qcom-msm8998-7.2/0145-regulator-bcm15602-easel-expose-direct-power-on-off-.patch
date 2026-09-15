@@ -26,6 +26,7 @@ handling both ways: power-on now unwinds the reference clocks when the
 soc_pwr_good write fails, and power-off only disables clocks a
 successful power-on left enabled.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/regulator/bcm15602-easel.c       | 75 +++++++++++++++++++++---

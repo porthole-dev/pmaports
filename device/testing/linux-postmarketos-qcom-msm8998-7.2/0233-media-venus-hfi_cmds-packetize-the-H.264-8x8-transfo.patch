@@ -14,6 +14,7 @@ The 3xx firmware accepts the property: the downstream msm8998 vidc driver
 sends the same id (VENC_COMMON_START + 0x025) as a single u32 enable, which
 is exactly struct hfi_h264_8x8_transform. Handle it in the 3xx packetizer.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/hfi_cmds.c | 7 +++++++

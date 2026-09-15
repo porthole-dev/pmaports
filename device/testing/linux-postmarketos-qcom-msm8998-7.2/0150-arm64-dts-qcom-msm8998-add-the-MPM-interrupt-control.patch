@@ -36,6 +36,7 @@ No "#power-domain-cells": this firmware only implements PSCI Platform
 Coordinated mode, so the MPM is not a genpd provider here; the vMPM
 handover runs from the driver's system-suspend path instead.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 28 +++++++++++++++++++++++++--

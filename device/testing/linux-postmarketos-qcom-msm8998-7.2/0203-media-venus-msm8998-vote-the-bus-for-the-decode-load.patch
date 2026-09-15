@@ -33,6 +33,7 @@ Nothing above 4k30 is extrapolated.  msm8998 decodes up to 2563200 mbs/sec,
 so a larger load lands on the first row and is under-voted; that wants
 calibrating against the vendor governor before 4k60 is trusted.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 42 ++++++++++++++++++++++++

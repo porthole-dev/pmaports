@@ -10,6 +10,7 @@ without it every init write fails with -EINVAL and the panel never comes
 up. The tree this driver was written against ordered the calls from the
 DSI manager itself, which is why it never needed the flag before.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/panel/panel-lg-sw43402.c | 7 +++++++

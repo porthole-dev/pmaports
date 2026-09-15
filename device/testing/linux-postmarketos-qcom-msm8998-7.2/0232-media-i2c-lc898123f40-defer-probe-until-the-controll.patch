@@ -13,6 +13,7 @@ Poll for a boot window and defer the probe instead of failing; deferred
 probes rerun when the sensor binds. Which module rail the part needs is not
 established yet, so the dependency cannot be described in the binding.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/lc898123f40.c | 21 +++++++++++++++++----

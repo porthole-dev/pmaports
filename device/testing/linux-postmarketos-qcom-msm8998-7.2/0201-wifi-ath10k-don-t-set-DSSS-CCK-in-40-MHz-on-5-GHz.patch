@@ -23,6 +23,7 @@ found while chasing an AP that refused this client, but that refusal was a
 reserved VHT channel width pair and is fixed separately; the AP accepted both
 before and after this patch. It is worth fixing on its own terms.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/mac.c | 6 ++++++

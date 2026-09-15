@@ -18,6 +18,7 @@ qcom,saw2-avs-ctl 0x1010031 before CPRh ever comes up.
 Use the vendor's 0x4580458 AVS limit for both clusters; the values in
 the mainline table clamp silver at 1056 mV, below its CPRh ceilings.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 15 +++++++++++++++

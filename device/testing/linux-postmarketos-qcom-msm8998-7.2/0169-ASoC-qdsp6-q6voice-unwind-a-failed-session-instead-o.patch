@@ -30,6 +30,7 @@ Also drop the claim that q6voice_stop() destroys a control session this
 driver created. It does not, deliberately, and says so in its own
 comment.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/qdsp6/q6voice.c | 75 ++++++++++++++++++++++++----------

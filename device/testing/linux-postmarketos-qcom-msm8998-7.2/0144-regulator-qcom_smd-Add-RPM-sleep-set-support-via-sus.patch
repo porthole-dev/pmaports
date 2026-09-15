@@ -38,6 +38,7 @@ rpmpd (which unconditionally posts both sets, with an active-only twin
 carrying the sleep=0 vote) and the downstream rpm-smd-regulator, which
 only sends sleep-set requests that differ from the active set.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/regulator/qcom_smd-regulator.c | 136 +++++++++++++++++++++++++

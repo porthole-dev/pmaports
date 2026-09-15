@@ -23,6 +23,7 @@ ponytail: this trades power-collapse resume latency (~100ms of PAS
 auth) for correctness. The proper fix is whatever downstream's TZ
 restore contract has that mainline's does not; take it to linux-media.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 35 ++++++++++++++++++++++++

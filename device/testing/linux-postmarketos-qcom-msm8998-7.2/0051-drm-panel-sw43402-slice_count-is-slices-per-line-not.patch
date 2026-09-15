@@ -14,6 +14,7 @@ with it. With 1 on this two-slice panel the DSI frames half a line per
 packet: the left slice of every line decodes, the right slice
 desynchronises into DSC noise. Set the real value, 1440/720 = 2.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/panel/panel-lg-sw43402.c | 9 ++++++++-

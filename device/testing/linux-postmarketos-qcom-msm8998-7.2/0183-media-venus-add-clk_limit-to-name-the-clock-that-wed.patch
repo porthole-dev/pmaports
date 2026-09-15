@@ -24,6 +24,7 @@ still boots names the clock whose CBCR touch never returns.
 
 Default -1 enables all of them, so this is inert unless asked for.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../media/platform/qcom/venus/pm_helpers.c    | 20 +++++++++++++++++++

@@ -34,6 +34,7 @@ and commit 30e7099a6dc9 ("wifi: ath10k: drop
 HTT_DATA_TX_STATUS_DOWNLOAD_FAIL") established that unused values do not
 belong in this enum.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/htt.h    | 9 ++++++++-

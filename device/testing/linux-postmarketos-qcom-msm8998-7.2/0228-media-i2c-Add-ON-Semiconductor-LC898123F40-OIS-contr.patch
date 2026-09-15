@@ -25,6 +25,7 @@ taimen the nvmem contents are byte-identical to the vendor-order dump.
 
 Stabilisation is re-enabled on resume in case the supplies dropped.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/Kconfig       |  10 ++

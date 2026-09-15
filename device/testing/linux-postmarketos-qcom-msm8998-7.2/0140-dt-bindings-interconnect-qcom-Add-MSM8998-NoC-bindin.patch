@@ -12,6 +12,7 @@ The RPM-owned bus clocks (bimc, snoc, cnoc, aggre1/aggre2 NoC and the
 MMSS NoC AXI clock) are voted for over SMD by the driver; the fabrics
 themselves only need their register base.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../bindings/interconnect/qcom,msm8998.yaml   |  46 +++++++

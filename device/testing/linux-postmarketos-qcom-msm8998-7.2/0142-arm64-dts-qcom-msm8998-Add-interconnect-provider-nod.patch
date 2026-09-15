@@ -12,6 +12,7 @@ With these nodes the interconnect driver probes, takes over the six
 RPM bus-clock resources that clk-smd-rpm kickstarts to INT_MAX at
 boot, and scales them down to the aggregated requests at sync_state.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 42 +++++++++++++++++++++++++++

@@ -34,6 +34,7 @@ work needs a new SCM call, not a DT change.
 Keep the node so the hardware is described correctly and so that work has
 somewhere to attach.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 5 +++++

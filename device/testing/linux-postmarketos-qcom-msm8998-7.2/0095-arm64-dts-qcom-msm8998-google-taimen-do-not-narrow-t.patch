@@ -18,6 +18,7 @@ region does not constrain this: the DWC core retargets its iATU on every
 config access rather than mapping flat ECAM, so 128K is ample regardless of
 how many bus numbers the range covers.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 14 +++++++++++---

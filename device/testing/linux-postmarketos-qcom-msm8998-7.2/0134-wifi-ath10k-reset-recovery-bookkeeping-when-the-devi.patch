@@ -17,6 +17,7 @@ wedged the SoC, deterministically, five clean cycles then death.
 
 The device is down and the next start boots fresh firmware; start the
 recovery bookkeeping fresh too.
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/mac.c | 11 +++++++++++

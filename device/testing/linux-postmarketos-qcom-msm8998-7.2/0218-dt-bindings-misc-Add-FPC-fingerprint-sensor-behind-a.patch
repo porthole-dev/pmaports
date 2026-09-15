@@ -14,6 +14,7 @@ Describe that: the trustlet image, the interrupt as a GPIO (its level is
 what the capture sequence waits on, which an interrupt specifier cannot
 report), the reset line and the IO supply.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../devicetree/bindings/misc/fpc,fpc1020.yaml | 59 +++++++++++++++++++

@@ -27,6 +27,7 @@ strictly best-effort and needs no such query.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/firmware/qcom/qcom_scm.c       | 57 ++++++++++++++++++++++++++

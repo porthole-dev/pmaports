@@ -30,6 +30,7 @@ i2c commands. It invalidates instead and the next hw_params reloads,
 which is the right order anyway -- userspace picks the output before it
 starts the stream.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/tas2557.c | 202 +++++++++++++++++++++++++++++++++++--

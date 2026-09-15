@@ -7,6 +7,7 @@ Fingerprint Cards AB (FPC) is a Swedish maker of fingerprint sensors,
 used in many phones, among them the Google Pixel 2 XL.
 
 Link: https://www.fingerprints.com/
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  Documentation/devicetree/bindings/vendor-prefixes.yaml | 2 ++

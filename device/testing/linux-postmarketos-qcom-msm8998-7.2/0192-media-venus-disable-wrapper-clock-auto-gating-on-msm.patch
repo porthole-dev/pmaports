@@ -35,6 +35,7 @@ the top of venus_run(), before venus_set_registers() touches VBIF.
 Scoped to 3XX for now: the 4XX+ wrapper layout differs and those SoCs
 demonstrably do not need it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/hfi_venus.c | 19 +++++++++++++++++++

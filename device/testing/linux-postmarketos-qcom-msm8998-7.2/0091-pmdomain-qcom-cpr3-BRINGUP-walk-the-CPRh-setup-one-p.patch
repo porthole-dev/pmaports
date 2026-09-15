@@ -31,6 +31,7 @@ cpufreq driver finds no APM threshold and gives up cleanly, and
 qcom_cpr3_cprh_enable() refuses to arm a thread that was never set up.
 The default is zero, which touches no hardware at all.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/pmdomain/qcom/cpr3.c | 53 ++++++++++++++++++++++++++++++++++++

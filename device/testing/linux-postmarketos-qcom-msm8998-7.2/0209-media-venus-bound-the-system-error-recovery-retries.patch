@@ -40,6 +40,7 @@ the counter is reset when a new system error arrives and when recovery
 succeeds. Recovering the hardware from this state needs a reboot either
 way, but the machine should not spin until then.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 36 ++++++++++++++++++++----

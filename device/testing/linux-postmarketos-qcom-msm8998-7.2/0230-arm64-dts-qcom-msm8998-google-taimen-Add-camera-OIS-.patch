@@ -18,6 +18,7 @@ use and this one did not:
   gpio39 and its interrupt on gpio62. Unpowered and held in shutdown it
   does not answer on the bus.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-taimen.dts   | 49 +++++++++++++++++++

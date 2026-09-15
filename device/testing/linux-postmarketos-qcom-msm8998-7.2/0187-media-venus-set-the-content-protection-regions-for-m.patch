@@ -28,6 +28,7 @@ gives as <0x70800000 0x6f800000> and <0x1000000 0x24800000>. As a cross-check,
 sdm845 independently carries the same four values, and the venus_ns IOMMU
 stream list downstream matches mainline's msm8998 venus node exactly.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 19 +++++++++++++++++++

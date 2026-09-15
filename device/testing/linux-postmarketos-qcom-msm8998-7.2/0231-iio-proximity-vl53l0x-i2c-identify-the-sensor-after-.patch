@@ -14,6 +14,7 @@ Read the ID once vl53l0x_power_on() has run, and report the error it
 actually got. With that the sensor probes and ranges (about 150 mm to a
 book in front of the rear camera).
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iio/proximity/vl53l0x-i2c.c | 16 +++++++++-------

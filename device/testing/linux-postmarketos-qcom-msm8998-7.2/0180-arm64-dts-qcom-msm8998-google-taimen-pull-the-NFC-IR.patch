@@ -24,6 +24,7 @@ the bias only picks an idle level.  It is wrong here.  Pull it down: the
 controller drives push-pull once powered, so an active interrupt still
 reaches the CPU, and an unpowered controller now reads as idle.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 12 +++++++++++-

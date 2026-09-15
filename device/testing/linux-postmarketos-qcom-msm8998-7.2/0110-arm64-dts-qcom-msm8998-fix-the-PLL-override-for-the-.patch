@@ -11,6 +11,7 @@ the wrong droop-detector level for that corner while every other row in
 both tables is byte-exact against the vendor data.
 
 Fixes: c5d7d4dd8420 ("arm64: dts: qcom: msm8998: add CPRh and cpufreq-hw nodes")
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 4 ++--

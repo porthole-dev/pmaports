@@ -16,6 +16,7 @@ is WRAPPER_BASE + 0x2010 and not a VBIF register at all.
 preset_limit=N writes only the first N entries, so the largest N that still
 boots names the write that never returns. Default -1 writes all of them.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/hfi_venus.c | 22 ++++++++++++++++++-

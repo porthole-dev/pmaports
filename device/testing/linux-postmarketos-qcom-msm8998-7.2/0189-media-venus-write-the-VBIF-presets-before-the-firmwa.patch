@@ -31,6 +31,7 @@ probe is one the vendor only ever issues when resuming from power collapse
 therefore expected, and the existing swallow in venus_set_hw_state() is
 correct rather than a bug.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c      |  4 +++

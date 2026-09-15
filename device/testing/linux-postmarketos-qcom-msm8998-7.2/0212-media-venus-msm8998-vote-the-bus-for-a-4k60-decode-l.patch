@@ -14,6 +14,7 @@ at 3840x2160 through GStreamer into a sink that accepts video metadata,
 and 69 fps through ffmpeg, on the old vote; this row is the honest vote
 for that load, not the fix for a throughput problem.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 1 +

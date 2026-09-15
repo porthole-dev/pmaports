@@ -29,6 +29,7 @@ venus bring-up is fatal, and the node stays disabled until that is found.
 Do not enable the node on the strength of this patch. It bootloops the device,
 and the only way out is a physical Power+VolDown into fastboot.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 5 +++++

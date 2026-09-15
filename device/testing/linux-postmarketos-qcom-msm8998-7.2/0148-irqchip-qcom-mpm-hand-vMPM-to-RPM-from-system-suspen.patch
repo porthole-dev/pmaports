@@ -35,6 +35,7 @@ the SRAM held as the wakeup deadline.  ~0ULL is the explicit "no timer
 wake" value the downstream suspend path uses; hardware wake events
 (PMIC RTC alarm and power key via the SPMI summary pin) do not need it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/irqchip/irq-qcom-mpm.c | 140 ++++++++++++++++++++++++++++-----

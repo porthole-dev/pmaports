@@ -1,0 +1,317 @@
+From bc167c581e734ae553cdaa4260ddd96274efea66 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 12:22:57 +0200
+Subject: [PATCH 09/10] pmb.build: give every chroot its own sccache server
+
+sccache listens on 127.0.0.1:4226 by default. Every chroot of every
+pmbootstrap work dir in the same network namespace therefore shares one
+server: whichever build starts it first owns it, and a Rust build in
+another chroot or work dir sends its compiles there. The server runs rustc
+from its own root, so every crate fails with "sccache: caused by: No such
+file or directory (os error 2)". Seen with two work dirs in one container:
+a crossdirect mesa build in one broke a cross-native2 Rust build in the
+other for as long as the first server lived.
+
+Put the server on a Unix socket in the chroot's own /tmp
+(SCCACHE_SERVER_UDS=/tmp/sccache.sock) for every build: the native chroot
+for native and cross-native2 builds (RUSTC_WRAPPER), the foreign chroot
+for crossdirect, whose rustc wrapper runs sccache with the inherited
+environment.
+
+kill_sccache() probed the TCP port and stopped "the" server from the
+native chroot, which could be another work dir's. Stop each chroot's
+server through its socket instead, with the sccache of that chroot, or
+the native one mounted in a foreign chroot, and remove the socket.
+
+Assisted-by: Claude
+---
+ pmb/build/backend.py       | 99 +++++++++++++++++++++-----------------
+ pmb/chroot/shutdown.py     | 30 +++++++++---
+ pmb/config/__init__.py     |  3 ++
+ test/build/test_sccache.py | 91 +++++++++++++++++++++++++++++++++++
+ 4 files changed, 173 insertions(+), 50 deletions(-)
+ create mode 100644 test/build/test_sccache.py
+
+diff --git a/pmb/build/backend.py b/pmb/build/backend.py
+index 2e680d2..50433b3 100644
+--- a/pmb/build/backend.py
++++ b/pmb/build/backend.py
+@@ -211,6 +211,61 @@ def rust_cross_native2_env(arch: Arch, sysroot: str = "/mnt/sysroot") -> Env:
+     }
+ 
+ 
++def abuild_env(context: Context, arch: Arch, cross: CrossCompile, bootstrap_stage: int) -> Env:
++    """Environment for abuild, depending on the cross-compiler method and target arch."""
++    env: Env = {"SUDO_APK": "abuild-apk --no-progress", "PMB_CROSS": str(cross)}
++    if cross == CrossCompile.CROSS_NATIVE:
++        hostspec = arch.alpine_triple()
++        env["CROSS_COMPILE"] = hostspec + "-"
++        env["CC"] = hostspec + "-gcc"
++    if cross == CrossCompile.CROSS_NATIVE2:
++        env["CHOST"] = str(arch)
++        env["CBUILDROOT"] = "/mnt/sysroot"
++        env["CFLAGS"] = "-Wl,-rpath-link=/mnt/sysroot/usr/lib"
++        env["CGO_CFLAGS"] = "--sysroot=/mnt/sysroot"
++        env["CGO_LDFLAGS"] = "--sysroot=/mnt/sysroot"
++        try:
++            env["GOARCH"] = arch.go()
++        except ValueError:
++            logging.debug(f"Not setting $GOARCH for {arch}")
++        env.update(rust_cross_native2_env(arch))
++
++    elif cross == CrossCompile.CROSSDIRECT:
++        env["PATH"] = ":".join([f"/native/usr/lib/crossdirect/{arch}", pmb.config.chroot_path])
++    else:
++        env["CARCH"] = str(arch)
++    if not context.ccache:
++        env["CCACHE_DISABLE"] = "1"
++
++    # Use sccache without crossdirect (crossdirect uses it via rustc.sh)
++    if context.ccache and cross != CrossCompile.CROSSDIRECT:
++        env["RUSTC_WRAPPER"] = "/usr/bin/sccache"
++
++    # Cache binary objects from go in this path (like ccache)
++    env["GOCACHE"] = "/home/pmos/.cache/go-build"
++
++    # Cache go modules (git repositories). Usually these should be bundled and
++    # it should not be required to download them at build time, in that case
++    # the APKBUILD sets the GOPATH (and therefore indirectly GOMODCACHE). But
++    # e.g. when using --src they are not bundled, in that case it makes sense
++    # to point GOMODCACHE at pmbootstrap's work dir so the modules are only
++    # downloaded once.
++    if context.go_mod_cache:
++        env["GOMODCACHE"] = "/home/pmos/go/pkg/mod"
++
++    if bootstrap_stage:
++        env["BOOTSTRAP"] = str(bootstrap_stage)
++
++    # sccache listens on 127.0.0.1:4226 by default, shared by every chroot and
++    # work dir in the network namespace: a client in one chroot then talks to
++    # a server that another chroot started, which runs rustc from ITS root and
++    # fails with "No such file or directory". A socket in the chroot's own
++    # /tmp keeps one server per chroot (the foreign chroot for crossdirect,
++    # whose rustc wrapper inherits this). See kill_sccache().
++    env["SCCACHE_SERVER_UDS"] = pmb.config.sccache_server_uds
++    return env
++
++
+ def run_abuild(
+     context: Context,
+     apkbuild: Apkbuild,
+@@ -275,49 +330,7 @@ def run_abuild(
+         buildchroot,
+     )
+ 
+-    # Environment variables
+-    env: Env = {"SUDO_APK": "abuild-apk --no-progress", "PMB_CROSS": str(cross)}
+-    if cross == CrossCompile.CROSS_NATIVE:
+-        hostspec = arch.alpine_triple()
+-        env["CROSS_COMPILE"] = hostspec + "-"
+-        env["CC"] = hostspec + "-gcc"
+-    if cross == CrossCompile.CROSS_NATIVE2:
+-        env["CHOST"] = str(arch)
+-        env["CBUILDROOT"] = "/mnt/sysroot"
+-        env["CFLAGS"] = "-Wl,-rpath-link=/mnt/sysroot/usr/lib"
+-        env["CGO_CFLAGS"] = "--sysroot=/mnt/sysroot"
+-        env["CGO_LDFLAGS"] = "--sysroot=/mnt/sysroot"
+-        try:
+-            env["GOARCH"] = arch.go()
+-        except ValueError:
+-            logging.debug(f"Not setting $GOARCH for {arch}")
+-        env.update(rust_cross_native2_env(arch))
+-
+-    elif cross == CrossCompile.CROSSDIRECT:
+-        env["PATH"] = ":".join([f"/native/usr/lib/crossdirect/{arch}", pmb.config.chroot_path])
+-    else:
+-        env["CARCH"] = str(arch)
+-    if not context.ccache:
+-        env["CCACHE_DISABLE"] = "1"
+-
+-    # Use sccache without crossdirect (crossdirect uses it via rustc.sh)
+-    if context.ccache and cross != CrossCompile.CROSSDIRECT:
+-        env["RUSTC_WRAPPER"] = "/usr/bin/sccache"
+-
+-    # Cache binary objects from go in this path (like ccache)
+-    env["GOCACHE"] = "/home/pmos/.cache/go-build"
+-
+-    # Cache go modules (git repositories). Usually these should be bundled and
+-    # it should not be required to download them at build time, in that case
+-    # the APKBUILD sets the GOPATH (and therefore indirectly GOMODCACHE). But
+-    # e.g. when using --src they are not bundled, in that case it makes sense
+-    # to point GOMODCACHE at pmbootstrap's work dir so the modules are only
+-    # downloaded once.
+-    if context.go_mod_cache:
+-        env["GOMODCACHE"] = "/home/pmos/go/pkg/mod"
+-
+-    if bootstrap_stage:
+-        env["BOOTSTRAP"] = str(bootstrap_stage)
++    env = abuild_env(context, arch, cross, bootstrap_stage)
+ 
+     # Build the abuild command
+     # Since we install dependencies with pmb, disable dependency handling in abuild.
+diff --git a/pmb/chroot/shutdown.py b/pmb/chroot/shutdown.py
+index b49aaf7..2b4ddbd 100644
+--- a/pmb/chroot/shutdown.py
++++ b/pmb/chroot/shutdown.py
+@@ -5,12 +5,15 @@ from contextlib import closing
+ from itertools import repeat
+ 
+ import pmb.chroot
++import pmb.config
+ import pmb.helpers.mount
++import pmb.helpers.run
+ import pmb.install.losetup
+ from pmb.core import Chroot, ChrootType
+ from pmb.core.arch import Arch
+ from pmb.core.context import get_context
+ from pmb.helpers import logging
++from pmb.types import Env
+ 
+ 
+ def kill_adb() -> None:
+@@ -24,14 +27,27 @@ def kill_adb() -> None:
+ 
+ def kill_sccache() -> None:
+     """
+-    Kill sccache daemon if it's running. Unlike ccache it automatically spawns
+-    a daemon when you call it and exits after some time of inactivity.
++    Stop the sccache servers of all chroots. Unlike ccache, sccache spawns a
++    server when it is called, which exits only after some time of inactivity
++    and keeps files in the chroot's mounts open meanwhile.
++
++    Each chroot has its own server on a socket in its /tmp, see
++    pmb.build.backend.abuild_env(). Crossdirect runs sccache from /native in
++    the foreign chroot, so that is where its server is.
+     """
+-    port = 4226
+-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+-        sock.settimeout(2)
+-        if sock.connect_ex(("127.0.0.1", port)) == 0:
+-            pmb.chroot.root(["sccache", "--stop-server"])
++    for path in Chroot.glob():
++        sock = path / pmb.config.sccache_server_uds.lstrip("/")
++        if not sock.is_socket():
++            continue
++        env: Env = {"SCCACHE_SERVER_UDS": pmb.config.sccache_server_uds}
++        sccache = "/usr/bin/sccache"
++        if not (path / sccache.lstrip("/")).exists():
++            sccache = "/native/usr/bin/sccache"
++            env["LD_LIBRARY_PATH"] = "/native/lib:/native/usr/lib"
++        if (path / sccache.lstrip("/")).exists():
++            chroot = Chroot.from_str(path.name.removeprefix("chroot_"))
++            pmb.chroot.root([sccache, "--stop-server"], chroot, env=env, check=False)
++        pmb.helpers.run.root(["rm", "-f", sock])
+ 
+ 
+ def shutdown_cryptsetup_device(name: str) -> None:
+diff --git a/pmb/config/__init__.py b/pmb/config/__init__.py
+index 00c8e8e..482d6c2 100644
+--- a/pmb/config/__init__.py
++++ b/pmb/config/__init__.py
+@@ -177,6 +177,9 @@ chroot_mount_bind = {
+     "$WORK/packages/": "/mnt/pmbootstrap/packages",
+ }
+ 
++# The sccache server's socket inside each chroot, see pmb.build.backend.abuild_env()
++sccache_server_uds = "/tmp/sccache.sock"
++
+ # Building chroots (all chroots, except for the rootfs_ chroot) get symlinks in
+ # the "pmos" user's home folder pointing to mountfolders from above.
+ # Rust packaging is new and still a bit weird in Alpine and postmarketOS. As of
+diff --git a/test/build/test_sccache.py b/test/build/test_sccache.py
+new file mode 100644
+index 0000000..7c6a132
+--- /dev/null
++++ b/test/build/test_sccache.py
+@@ -0,0 +1,91 @@
++# Copyright 2026 Giuseppe Maggio
++# SPDX-License-Identifier: GPL-3.0-or-later
++import os
++import socket
++from collections.abc import Sequence
++from pathlib import Path
++from typing import Any
++
++import pytest
++
++import pmb.chroot
++import pmb.config
++import pmb.helpers.run
++from pmb.build.backend import abuild_env
++from pmb.chroot.shutdown import kill_sccache
++from pmb.core.arch import Arch
++from pmb.core.chroot import Chroot
++from pmb.core.config import Config
++from pmb.core.context import Context, get_context
++from pmb.types import CrossCompile
++
++
++@pytest.mark.parametrize(
++    "cross",
++    [CrossCompile.UNNECESSARY, CrossCompile.CROSS_NATIVE2, CrossCompile.CROSSDIRECT],
++)
++def test_every_build_gets_a_chroot_local_sccache_socket(cross: CrossCompile) -> None:
++    env = abuild_env(Context(Config()), Arch.aarch64, cross, 0)
++    assert env["SCCACHE_SERVER_UDS"] == "/tmp/sccache.sock"
++    # crossdirect runs sccache from its rustc wrapper, which inherits the variable
++    assert ("RUSTC_WRAPPER" in env) == (cross != CrossCompile.CROSSDIRECT)
++
++
++def _listen(path: Path) -> socket.socket:
++    path.parent.mkdir(parents=True)
++    cwd = os.getcwd()
++    os.chdir(path.parent)  # AF_UNIX paths are limited to 108 bytes
++    try:
++        sock = socket.socket(socket.AF_UNIX)
++        sock.bind(path.name)
++    finally:
++        os.chdir(cwd)
++    return sock
++
++
++def _touch(path: Path) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.touch()
++
++
++def test_kill_sccache_stops_each_chroots_server(
++    pmb_args: None, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    work = get_context().config.work
++    native = _listen(work / "chroot_native/tmp/sccache.sock")
++    _touch(work / "chroot_native/usr/bin/sccache")
++    foreign = _listen(work / "chroot_buildroot_aarch64/tmp/sccache.sock")
++    _touch(work / "chroot_buildroot_aarch64/native/usr/bin/sccache")
++    (work / "chroot_buildroot_armv7/tmp").mkdir(parents=True)
++
++    stopped: list[tuple[Sequence[str], Chroot, dict[str, str]]] = []
++    removed: list[Path] = []
++
++    def root(cmd: Sequence[str], chroot: Chroot, env: dict[str, str], **_kwargs: Any) -> None:
++        stopped.append((cmd, chroot, env))
++
++    monkeypatch.setattr(pmb.chroot, "root", root)
++    monkeypatch.setattr(pmb.helpers.run, "root", lambda cmd, **_kwargs: removed.append(cmd[-1]))
++
++    kill_sccache()
++    native.close()
++    foreign.close()
++
++    socket_env = {"SCCACHE_SERVER_UDS": pmb.config.sccache_server_uds}
++    assert sorted(stopped, key=str) == sorted(
++        [
++            (["/usr/bin/sccache", "--stop-server"], Chroot.native(), socket_env),
++            (
++                ["/native/usr/bin/sccache", "--stop-server"],
++                Chroot.buildroot(Arch.aarch64),
++                {**socket_env, "LD_LIBRARY_PATH": "/native/lib:/native/usr/lib"},
++            ),
++        ],
++        key=str,
++    )
++    assert sorted(removed) == sorted(
++        [
++            work / "chroot_native/tmp/sccache.sock",
++            work / "chroot_buildroot_aarch64/tmp/sccache.sock",
++        ]
++    )

@@ -1,0 +1,79 @@
+From 05660079ba5c47c1b5723d2e14a41db01732600c Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 10:31:35 +0200
+Subject: [PATCH 06/10] pmb.helpers.pmaports.find: find subpackages that depend
+ on the arch
+
+When a package name is not an aport, find() guesses the aport from the
+name and checks the guess's subpackages. A subpackage that only exists
+for some architectures, like mesa-vulkan-freedreno or mesa-rusticl inside
+'case "$CARCH"', never matched, so find() parsed every APKBUILD in pmaports
+before falling back to the same guess.
+
+Check the guess for each architecture it supports. Only the guess: doing
+this for every aport in the full scan would parse all of pmaports once
+per architecture.
+
+Assisted-by: Claude
+---
+ pmb/helpers/pmaports.py          | 11 +++++++++--
+ test/parse/test_apkbuild_cond.py | 11 +++++++++++
+ 2 files changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/pmb/helpers/pmaports.py b/pmb/helpers/pmaports.py
+index 62f0304..2a7fd36 100644
+--- a/pmb/helpers/pmaports.py
++++ b/pmb/helpers/pmaports.py
+@@ -135,16 +135,23 @@ def guess_main(subpkgname: str) -> Path | None:
+     return None
+ 
+ 
+-def _find_package_in_apkbuild(package: str, path: Path) -> bool:
++def _find_package_in_apkbuild(package: str, path: Path, all_arches: bool = False) -> bool:
+     """
+     Look through subpackages and all provides to see if the APKBUILD at the specified path
+     contains (or provides) the specified package.
+ 
+     :param package: The package to search for
+     :param path: The path to the apkbuild
++    :param all_arches: also find subpackages that the APKBUILD only has on some
++                       architectures, e.g. mesa-vulkan-freedreno inside a
++                       'case "$CARCH"' (parses the APKBUILD once per arch)
+     :return: True if the APKBUILD contains or provides the package
+     """
+     apkbuild = pmb.parse.apkbuild(path)
++    if all_arches and package not in apkbuild["subpackages"]:
++        for arch in sorted(Arch.from_arch_field(apkbuild["arch"]), key=str):
++            if package in pmb.parse.apkbuild(path, arch=arch)["subpackages"]:
++                return True
+ 
+     # Subpackages
+     if package in apkbuild["subpackages"]:
+@@ -240,7 +247,7 @@ def find(
+         # looking for as subpackage
+         guess = guess_main(package)
+         # Parse the APKBUILD and verify if the guess was right
+-        if guess and _find_package_in_apkbuild(package, guess / "APKBUILD"):
++        if guess and _find_package_in_apkbuild(package, guess / "APKBUILD", all_arches=True):
+             ret = guess
+ 
+         if not ret:
+diff --git a/test/parse/test_apkbuild_cond.py b/test/parse/test_apkbuild_cond.py
+index 79e9ad3..68c9397 100644
+--- a/test/parse/test_apkbuild_cond.py
++++ b/test/parse/test_apkbuild_cond.py
+@@ -178,3 +178,14 @@ def test_pmaports_get_evaluates_for_arch(tmp_path: Path, monkeypatch: pytest.Mon
+     assert "rust" in pmb.helpers.pmaports.get("hello-arch", arch=Arch.aarch64)["makedepends"]
+     assert "rust" not in pmb.helpers.pmaports.get("hello-arch", arch=Arch.riscv64)["makedepends"]
+     assert "rust" not in pmb.helpers.pmaports.get("hello-arch")["makedepends"]
++
++
++def test_find_package_in_apkbuild_all_arches(tmp_path: Path) -> None:
++    aport = tmp_path / "hello-arch"
++    aport.mkdir()
++    (aport / "APKBUILD").write_text((TESTDIR / "APKBUILD.arch-conditionals").read_text())
++    find = pmb.helpers.pmaports._find_package_in_apkbuild
++
++    assert not find("hello-arch-vulkan", aport / "APKBUILD")
++    assert find("hello-arch-vulkan", aport / "APKBUILD", all_arches=True)
++    assert not find("hello-arch-missing", aport / "APKBUILD", all_arches=True)

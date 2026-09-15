@@ -1,0 +1,169 @@
+From 0ee49fb50db4860a1c03d53823d7e88179fd2c81 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Mon, 14 Sep 2026 20:01:47 +0200
+Subject: [PATCH 01/10] pmb.build: support Rust in cross-native2
+
+Rust packages could only be built under QEMU or with crossdirect, and
+crossdirect cannot run a build script that loads target libraries at run
+time: bindgen, used by every *-sys crate that generates bindings, dlopen()s
+the target chroot's libclang from a native build script and fails with
+"unsupported relocation type". Such packages had to fall back to
+!pmb:crossdirect, i.e. a full QEMU build.
+
+cross-native2 can do this natively. Set up cargo for it the way the Go
+support already is: CARGO_BUILD_TARGET, the target linker, a target-scoped
+--sysroot that finds the target's standard library in the sysroot's rust
+package (the same toolchain release as the native one, as crossdirect
+already requires), and bindgen's target and sysroot. Target-scoped variables
+keep build scripts and proc-macros native.
+
+Also stop installing every build dependency of a Rust package into the
+native chroot for cross-native2. That is what crossdirect needs; with
+cross-native2 it pulled target libraries such as libcamera-dev into the
+native chroot and built them for the native architecture.
+
+Measured on an aarch64 camera app (gtk4-rs, libadwaita-rs, gstreamer-rs,
+libcamera-rs with bindgen; 213 crates): with !pmb:crossdirect it was still
+compiling after 40 minutes under QEMU; with pmb:cross-native2 the whole
+package builds in 2m35s.
+
+The sysroot goes in RUSTFLAGS rather than target.<triple>.rustflags because
+abuild exports RUSTFLAGS and cargo lets it replace target-scoped flags; with a
+build target set, cargo applies RUSTFLAGS to target artifacts only.
+
+Assisted-by: Claude
+---
+ docs/cross_compiling.md               | 21 ++++++++++++++++-----
+ pmb/build/backend.py                  | 27 +++++++++++++++++++++++++++
+ pmb/build/init.py                     |  8 ++++++--
+ test/build/test_rust_cross_native2.py | 23 +++++++++++++++++++++++
+ 4 files changed, 72 insertions(+), 7 deletions(-)
+ create mode 100644 test/build/test_rust_cross_native2.py
+
+diff --git a/docs/cross_compiling.md b/docs/cross_compiling.md
+index 670b285..1de1a5f 100644
+--- a/docs/cross_compiling.md
++++ b/docs/cross_compiling.md
+@@ -90,13 +90,24 @@ crossdirect to cross-native2 to make them build faster.
+ 
+ ### Rust
+ 
+-Rust packages can either be built with QEMU only, or with the crossdirect
+-method. **Now that we have cross-native2 it makes more sense to try to get
+-rust support working there as it will be faster and more reliable.** Rust
+-support in crossdirect is still experimental.
++Rust packages can be built with QEMU only, crossdirect, or cross-native2.
++
++**cross-native2** is the fast one: cargo and rustc run natively and
++cross-compile for the target, so build scripts and proc-macros are native too.
++pmbootstrap sets `CARGO_BUILD_TARGET`, the target's linker, `--sysroot` in
++`RUSTFLAGS` (target artifacts only, since a build target is set) pointing at
++the target chroot (which provides the target's standard
++library through its own `rust` package) and `BINDGEN_EXTRA_CLANG_ARGS_<target>`.
++Put build tools (`cargo`, `cargo-auditable`, `clang-libclang` for bindgen,
++`meson`, ...) in `makedepends_build`, and target libraries plus `rust` in
++`makedepends_host`. A build system that locates cargo's output itself must
++honour `CARGO_BUILD_TARGET`, since cargo then writes to `target/<triple>/`.
++
++Rust support in crossdirect is still experimental.
+ [pmaports!4234](https://gitlab.postmarketos.org/postmarketOS/pmaports/-/merge_requests/4234)
+ (cross/crossdirect: improve rust handling) describes some of the problems with
+-this approach.
++that approach; notably, build scripts that load target libraries at run time
++(bindgen and its libclang) cannot work there.
+ 
+ #### CARGO\_HOME
+ 
+diff --git a/pmb/build/backend.py b/pmb/build/backend.py
+index 113df2a..2e680d2 100644
+--- a/pmb/build/backend.py
++++ b/pmb/build/backend.py
+@@ -185,6 +185,32 @@ def handle_csum_failure(apkbuild: Apkbuild, chroot: Chroot) -> None:
+         raise RuntimeError(f"Remote checksum mismatch for {apkbuild['pkgname']}")
+ 
+ 
++def rust_cross_native2_env(arch: Arch, sysroot: str = "/mnt/sysroot") -> Env:
++    """Environment for cargo to cross-compile for arch in the native chroot.
++
++    cargo and rustc run natively. The target's standard library comes from the
++    rust package in the sysroot, which is the same toolchain release as the
++    native one -- crossdirect relies on that match too (cross/crossdirect).
++
++    The sysroot goes in RUSTFLAGS, not target.<triple>.rustflags: abuild's
++    default.conf exports RUSTFLAGS, and cargo lets RUSTFLAGS replace any
++    target-scoped rustflags. abuild appends to the value passed in, and with
++    a build target set cargo passes RUSTFLAGS to target artifacts only, so
++    build scripts and proc-macros stay native: bindgen in a build script
++    loads the native libclang and is only told the target and sysroot.
++    """
++    triple = arch.alpine_triple()
++    cargo_triple = triple.upper().replace("-", "_")
++    return {
++        "CARGO_BUILD_TARGET": triple,
++        f"CARGO_TARGET_{cargo_triple}_LINKER": f"{triple}-gcc",
++        "RUSTFLAGS": f"--sysroot={sysroot}/usr -Clink-arg=--sysroot={sysroot}",
++        f"BINDGEN_EXTRA_CLANG_ARGS_{triple.replace('-', '_')}": (
++            f"--target={triple} --sysroot={sysroot}"
++        ),
++    }
++
++
+ def run_abuild(
+     context: Context,
+     apkbuild: Apkbuild,
+@@ -265,6 +291,7 @@ def run_abuild(
+             env["GOARCH"] = arch.go()
+         except ValueError:
+             logging.debug(f"Not setting $GOARCH for {arch}")
++        env.update(rust_cross_native2_env(arch))
+ 
+     elif cross == CrossCompile.CROSSDIRECT:
+         env["PATH"] = ":".join([f"/native/usr/lib/crossdirect/{arch}", pmb.config.chroot_path])
+diff --git a/pmb/build/init.py b/pmb/build/init.py
+index 5316e1e..88a6edd 100644
+--- a/pmb/build/init.py
++++ b/pmb/build/init.py
+@@ -124,8 +124,12 @@ def init_compiler(context: Context, depends: list[str], cross: CrossCompile, arc
+             cross_pkgs += ["sccache"]
+         # crossdirect for rust installs all build dependencies in the
+         # native chroot too, as some of them can be required for building
+-        # native macros / build scripts
+-        cross_pkgs += depends
++        # native macros / build scripts. cross-native2 already installs
++        # makedepends_build natively and makedepends_host in the sysroot;
++        # adding the target libraries here would build them for the native
++        # arch as well.
++        if cross == CrossCompile.CROSSDIRECT:
++            cross_pkgs += depends
+         # Rust depends on gcc and musl-dev; we always install the cross GCC
+         # but we do not install the cross musl-dev by default
+         cross_pkgs += ["musl-dev-" + arch_str]
+diff --git a/test/build/test_rust_cross_native2.py b/test/build/test_rust_cross_native2.py
+new file mode 100644
+index 0000000..e460f09
+--- /dev/null
++++ b/test/build/test_rust_cross_native2.py
+@@ -0,0 +1,23 @@
++# Copyright 2026 Giuseppe Maggio
++# SPDX-License-Identifier: GPL-3.0-or-later
++from pmb.build.backend import rust_cross_native2_env
++from pmb.core.arch import Arch
++
++
++def test_rust_cross_native2_env_aarch64() -> None:
++    env = rust_cross_native2_env(Arch.aarch64)
++    assert env["CARGO_BUILD_TARGET"] == "aarch64-alpine-linux-musl"
++    assert env["CARGO_TARGET_AARCH64_ALPINE_LINUX_MUSL_LINKER"] == "aarch64-alpine-linux-musl-gcc"
++    assert env["RUSTFLAGS"] == "--sysroot=/mnt/sysroot/usr -Clink-arg=--sysroot=/mnt/sysroot"
++    assert env["BINDGEN_EXTRA_CLANG_ARGS_aarch64_alpine_linux_musl"] == (
++        "--target=aarch64-alpine-linux-musl --sysroot=/mnt/sysroot"
++    )
++
++
++def test_rust_cross_native2_env_sets_a_build_target() -> None:
++    # RUSTFLAGS only stays off build scripts and proc-macros while a build
++    # target is set, and the bindgen arguments stay target-scoped.
++    env = rust_cross_native2_env(Arch.armv7)
++    assert "CARGO_BUILD_TARGET" in env
++    assert "BINDGEN_EXTRA_CLANG_ARGS" not in env
++    assert env["CARGO_BUILD_TARGET"] == "armv7-alpine-linux-musleabihf"

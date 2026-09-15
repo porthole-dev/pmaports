@@ -1,0 +1,1220 @@
+From 3723adc19dfe208ab31b65abf37933964aeaeba8 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 10:10:30 +0200
+Subject: [PATCH 03/10] pmb.parse.apkbuild: evaluate $CARCH conditionals for
+ the target arch
+
+abuild sources an APKBUILD with CARCH set, and many aports choose
+dependencies and subpackages that way. Alpine's mesa, for example, adds
+clang-dev, libclc-dev, rust, rust-bindgen and spirv-llvm-translator-dev to
+makedepends and mesa-rusticl to subpackages inside
+'case "$CARCH" in armv7|aarch64|x86|x86_64|loongarch64)'. pmbootstrap's
+parser does not run shell code, so it never saw them: the build chroot
+lacked bindgen and mesa failed with "Program 'bindgen' not found".
+
+Add an optional arch to pmb.parse.apkbuild(), and when it is given,
+rewrite the lines first (pmb/parse/_apkbuild_cond.py): every top-level
+case, if/elif/else and "[ ... ] && ... || ..." list whose conditions can be
+decided exactly is replaced by the commands of the branch the shell would
+take. Conditions may use $CARCH, $CTARGET_ARCH and variables assigned
+earlier in the APKBUILD; tests support =, ==, !=, -n, -z, the integer
+comparisons and !. Subpackage functions get the same treatment, where all
+branches used to apply at once. Anything that cannot be decided without
+running the shell (command substitutions, loops, $CBUILD or $BOOTSTRAP,
+here-documents) leaves that block exactly as it was, and a file that cannot
+be tokenized is not changed at all.
+
+Pass the arch where it is known: pmaports.get(), package.get() (used by
+depends_recurse() for installs) and the build queue, which now re-parses
+the APKBUILD once the build arch is decided. Callers without an arch get
+the previous result.
+
+An int attribute that is not a number, like openjdk's
+provider_priority=$((_majorver + 1)) inside such a block, now parses as 0
+instead of raising.
+
+Checked against busybox sh sourcing all 14418 APKBUILDs of Alpine's
+aports and pmaports for nine architectures: 3237 attributes in 607 aports
+that were wrong are now right, none that were right changed, and no parse
+raises that did not before.
+
+Assisted-by: Claude
+---
+ pmb/build/_package.py                      |  14 +-
+ pmb/helpers/package.py                     |   2 +-
+ pmb/helpers/pmaports.py                    |  14 +-
+ pmb/parse/_apkbuild.py                     |  59 +-
+ pmb/parse/_apkbuild_cond.py                | 593 +++++++++++++++++++++
+ test/data/tests/APKBUILD.arch-conditionals |  63 +++
+ test/parse/test_apkbuild_cond.py           | 180 +++++++
+ 7 files changed, 903 insertions(+), 22 deletions(-)
+ create mode 100644 pmb/parse/_apkbuild_cond.py
+ create mode 100644 test/data/tests/APKBUILD.arch-conditionals
+ create mode 100644 test/parse/test_apkbuild_cond.py
+
+diff --git a/pmb/build/_package.py b/pmb/build/_package.py
+index 8bf3d18..738d2c8 100644
+--- a/pmb/build/_package.py
++++ b/pmb/build/_package.py
+@@ -39,7 +39,7 @@ def check_build_for_arch(pkgname: str, arch: Arch) -> bool:
+     """
+     context = get_context()
+     # Check for pmaport with arch
+-    apkbuild = pmb.helpers.pmaports.get(pkgname)
++    apkbuild = pmb.helpers.pmaports.get(pkgname, arch=arch)
+     if arch in Arch.from_arch_field(apkbuild["arch"]):
+         return True
+ 
+@@ -184,17 +184,18 @@ def is_cached_or_cache(arch: Arch, pkgname: str) -> bool:
+     return visited
+ 
+ 
+-def get_apkbuild(pkgname: str) -> tuple[Path | None, Apkbuild | None]:
++def get_apkbuild(pkgname: str, arch: Arch | None = None) -> tuple[Path | None, Apkbuild | None]:
+     """
+     Parse the APKBUILD path for pkgname.
+ 
+     When there is none, try to find it in the binary package APKINDEX files or raise an exception.
+ 
+     :param pkgname: package name to be built, as specified in the APKBUILD
++    :param arch: architecture to evaluate the APKBUILD for, see pmb.parse.apkbuild()
+     :returns: None or parsed APKBUILD
+     """
+     # Get pmaport, skip upstream only packages
+-    pmaport, apkbuild = pmb.helpers.pmaports.get_with_path(pkgname, False)
++    pmaport, apkbuild = pmb.helpers.pmaports.get_with_path(pkgname, False, arch=arch)
+     if pmaport:
+         pmaport = pkgrepo_relative_path(pmaport)[0]
+         return pmaport, apkbuild
+@@ -346,6 +347,9 @@ def process_package(
+     if arch is None:
+         arch = pmb.build.autodetect.arch(base_apkbuild)
+ 
++    # Depends, makedepends and subpackages may depend on the architecture
++    base_apkbuild = get_apkbuild(pkgname, arch)[1] or base_apkbuild
++
+     if is_cached_or_cache(arch, pkgname) and not force:
+         logging.verbose(f"S{arch}/{pkgname}: already queued")
+         return []
+@@ -388,7 +392,7 @@ def process_package(
+         if index_data:
+             dep = index_data.pkgname
+ 
+-        aports, apkbuild = get_apkbuild(dep)
++        aports, apkbuild = get_apkbuild(dep, arch)
+         if not apkbuild:
+             continue
+ 
+@@ -539,7 +543,7 @@ def packages(
+     if not src:
+         for pkgname in pmb.config.build_packages:
+             if pkgname not in pkgnames:
+-                aport, apkbuild = get_apkbuild(pkgname)
++                aport, apkbuild = get_apkbuild(pkgname, arch)
+                 if not aport or not apkbuild:
+                     continue
+                 bstatus = pmb.build.get_status(arch, apkbuild)
+diff --git a/pmb/helpers/package.py b/pmb/helpers/package.py
+index cbe498e..8dd0e67 100644
+--- a/pmb/helpers/package.py
++++ b/pmb/helpers/package.py
+@@ -86,7 +86,7 @@ def get(
+         * None if the package was not found
+     """
+     # Find in pmaports
+-    pmaport = pmb.helpers.pmaports.get(pkgname, False)
++    pmaport = pmb.helpers.pmaports.get(pkgname, False, arch=arch)
+     if pmaport and arch in Arch.from_arch_field(pmaport["arch"]):
+         return PackageMetadata.from_pmaport(pmaport)
+ 
+diff --git a/pmb/helpers/pmaports.py b/pmb/helpers/pmaports.py
+index e334271..62f0304 100644
+--- a/pmb/helpers/pmaports.py
++++ b/pmb/helpers/pmaports.py
+@@ -274,12 +274,13 @@ def find_optional(package: str) -> Path | None:
+ 
+ 
+ # The only caller with subpackages=False is ui.check_option()
+-@Cache("pkgname", "with_extra_repos", subpackages=True)
++@Cache("pkgname", "with_extra_repos", "arch", subpackages=True)
+ def get_with_path(
+     pkgname: str,
+     must_exist: bool = True,
+     subpackages: bool = True,
+     with_extra_repos: WithExtraRepos = WithExtraRepos.DEFAULT,
++    arch: Arch | None = None,
+ ) -> tuple[Path | None, Apkbuild | None]:
+     """
+     Find and parse an APKBUILD file.
+@@ -293,6 +294,8 @@ def get_with_path(
+         names (slow! might need to parse all APKBUILDs to find it)
+     :param with_extra_repos: use extra repositories (e.g. systemd) when
+         searching for the package
++    :param arch: evaluate the APKBUILD for this architecture, see
++        pmb.parse.apkbuild()
+ 
+     :returns: relevant variables from the APKBUILD as dictionary, e.g.:
+                   { "pkgname": "hello-world",
+@@ -305,11 +308,11 @@ def get_with_path(
+     pkgname_no_op = pmb.helpers.package.remove_operators(pkgname)
+     pmaport = find(pkgname_no_op, must_exist, subpackages, with_extra_repos)
+     if pmaport:
+-        apkbuild = pmb.parse.apkbuild(pmaport / "APKBUILD")
++        apkbuild = pmb.parse.apkbuild(pmaport / "APKBUILD", arch=arch)
+         if pkgname_no_op == pkgname or pmb.helpers.package.check_version_constraints(
+             pkgname, apkbuild["pkgver"]
+         ):
+-            return pmaport, pmb.parse.apkbuild(pmaport / "APKBUILD")
++            return pmaport, apkbuild
+     return None, None
+ 
+ 
+@@ -319,6 +322,7 @@ def get(
+     must_exist: Literal[True] = ...,
+     subpackages: bool = ...,
+     with_extra_repos: WithExtraRepos = ...,
++    arch: Arch | None = ...,
+ ) -> Apkbuild: ...
+ 
+ 
+@@ -328,6 +332,7 @@ def get(
+     must_exist: bool = ...,
+     subpackages: bool = ...,
+     with_extra_repos: WithExtraRepos = ...,
++    arch: Arch | None = ...,
+ ) -> Apkbuild | None: ...
+ 
+ 
+@@ -336,8 +341,9 @@ def get(
+     must_exist: bool = True,
+     subpackages: bool = True,
+     with_extra_repos: WithExtraRepos = WithExtraRepos.DEFAULT,
++    arch: Arch | None = None,
+ ) -> Apkbuild | None:
+-    return get_with_path(pkgname, must_exist, subpackages, with_extra_repos)[1]
++    return get_with_path(pkgname, must_exist, subpackages, with_extra_repos, arch)[1]
+ 
+ 
+ def find_providers(provide: str, default: list[str]) -> list[tuple[Any, Any]]:
+diff --git a/pmb/parse/_apkbuild.py b/pmb/parse/_apkbuild.py
+index 876c888..ef020f2 100644
+--- a/pmb/parse/_apkbuild.py
++++ b/pmb/parse/_apkbuild.py
+@@ -4,7 +4,7 @@ import os
+ import re
+ from collections import OrderedDict
+ from pathlib import Path
+-from typing import Any, Final
++from typing import TYPE_CHECKING, Any, Final
+ 
+ import pmb.config
+ import pmb.helpers.devices
+@@ -13,8 +13,12 @@ from pmb.core.context import get_context
+ from pmb.helpers import logging
+ from pmb.helpers.exceptions import NonBugError
+ from pmb.meta import Cache
++from pmb.parse._apkbuild_cond import resolve as resolve_conditionals
+ from pmb.types import Apkbuild
+ 
++if TYPE_CHECKING:
++    from pmb.core.arch import Arch
++
+ # sh variable name regex: https://stackoverflow.com/a/2821201/3527128
+ 
+ # ${foo}
+@@ -227,7 +231,11 @@ def parse_next_attribute(
+ 
+ 
+ def _parse_attributes(
+-    path: Path, lines: list[str], apkbuild_attributes: dict[str, dict[str, bool]], ret: Apkbuild
++    path: Path,
++    lines: list[str],
++    apkbuild_attributes: dict[str, dict[str, bool]],
++    ret: Apkbuild,
++    arch: "Arch | None" = None,
+ ) -> None:
+     """
+     Parse attributes from a list of lines. Variables are replaced with values
+@@ -237,6 +245,7 @@ def _parse_attributes(
+     :param lines: the lines to parse
+     :param apkbuild_attributes: the attributes to parse
+     :param ret: a dict to update with new parsed variable
++    :param arch: evaluate architecture conditionals of subpackage functions
+     """
+     # Parse all variables first, and replace variables mentioned earlier
+     for i in range(len(lines)):
+@@ -250,7 +259,7 @@ def _parse_attributes(
+         subpackages: OrderedDict[str, str] = OrderedDict()
+         for subpkg in ret["subpackages"].split(" "):
+             if subpkg:
+-                _parse_subpackage(path, lines, ret, subpackages, subpkg)
++                _parse_subpackage(path, lines, ret, subpackages, subpkg, arch)
+         ret["subpackages"] = subpackages
+ 
+     # Split attributes
+@@ -259,9 +268,11 @@ def _parse_attributes(
+             # Split up arrays, delete empty strings inside the list
+             ret[attribute] = list(filter(None, ret[attribute].split()))
+         if options.get("int", False):
+-            if ret[attribute]:
+-                ret[attribute] = int(ret[attribute])
+-            else:
++            try:
++                ret[attribute] = int(ret[attribute] or 0)
++            except ValueError:
++                # e.g. provider_priority=$((_majorver + 1)), which needs a shell
++                logging.verbose(f"{path}: can't parse {attribute}={ret[attribute]}, using 0")
+                 ret[attribute] = 0
+ 
+     # Remove variables not in attributes
+@@ -271,7 +282,12 @@ def _parse_attributes(
+ 
+ 
+ def _parse_subpackage(
+-    path: Path, lines: list[str], apkbuild: Apkbuild, subpackages: dict[str, Any], subpkg: str
++    path: Path,
++    lines: list[str],
++    apkbuild: Apkbuild,
++    subpackages: dict[str, Any],
++    subpkg: str,
++    arch: "Arch | None" = None,
+ ) -> None:
+     """
+     Attempt to parse attributes from a subpackage function.
+@@ -284,6 +300,7 @@ def _parse_subpackage(
+     :param subpackages: the subpackages dict to update
+     :param subpkg: the subpackage to parse
+                    (may contain subpackage function name separated by :)
++    :param arch: evaluate architecture conditionals in the function for arch
+     """
+     subpkgparts = subpkg.split(":")
+     subpkgname = subpkgparts[0]
+@@ -344,6 +361,10 @@ def _parse_subpackage(
+     lines = lines[start:end]
+     # Strip tabs before lines in function
+     lines = [line.strip() + "\n" for line in lines]
++    if arch:
++        lines = resolve_conditionals(
++            lines, {"CARCH": str(arch), "CTARGET_ARCH": str(arch), "subpkgname": subpkgname}
++        )
+ 
+     # Copy variables
+     apkbuild = apkbuild.copy()
+@@ -366,7 +387,11 @@ def _parse_subpackage(
+ 
+ 
+ def _apkbuild_from_lines(
+-    lines: list[str], path: Path, check_pkgver: bool = True, check_pkgname: bool = True
++    lines: list[str],
++    path: Path,
++    check_pkgver: bool = True,
++    check_pkgname: bool = True,
++    arch: "Arch | None" = None,
+ ) -> Apkbuild:
+     """
+     See `apkbuild()` in this module for full explanation. This function exists
+@@ -377,12 +402,16 @@ def _apkbuild_from_lines(
+     :param path: full path to the APKBUILD, for error messages.
+     :param check_pkgver: verify that the pkgver is valid.
+     :param check_pkgname: the pkgname must match the name of the aport folder
++    :param arch: see `apkbuild()`
+     :returns: relevant variables from the APKBUILD. Arrays get returned as
+               arrays.
+     """
++    if arch:
++        lines = resolve_conditionals(lines, {"CARCH": str(arch), "CTARGET_ARCH": str(arch)})
++
+     # Parse all attributes from the config
+     ret = dict.fromkeys(pmb.config.apkbuild_attributes, "")
+-    _parse_attributes(path, lines, pmb.config.apkbuild_attributes, ret)
++    _parse_attributes(path, lines, pmb.config.apkbuild_attributes, ret, arch)
+ 
+     # Sanity check: pkgname
+     suffix = f"/{ret['pkgname']}/APKBUILD"
+@@ -404,8 +433,10 @@ def _apkbuild_from_lines(
+     return ret
+ 
+ 
+-@Cache("path")
+-def apkbuild(path: Path, check_pkgver: bool = True, check_pkgname: bool = True) -> Apkbuild:
++@Cache("path", "arch")
++def apkbuild(
++    path: Path, check_pkgver: bool = True, check_pkgname: bool = True, arch: "Arch | None" = None
++) -> Apkbuild:
+     """
+     Parse relevant information out of the APKBUILD file. This is not meant
+     to be perfect and catch every edge case (for that, a full shell parser
+@@ -416,6 +447,10 @@ def apkbuild(path: Path, check_pkgver: bool = True, check_pkgname: bool = True)
+     :param path: full path to the APKBUILD
+     :param check_pkgver: verify that the pkgver is valid.
+     :param check_pkgname: the pkgname must match the name of the aport folder
++    :param arch: evaluate the APKBUILD for this architecture, like abuild does
++                 with $CARCH: blocks such as ``case "$CARCH" in`` that decide
++                 depends, makedepends or subpackages get the branch for arch.
++                 Without arch, such blocks are skipped.
+     :returns: relevant variables from the APKBUILD. Arrays get returned as
+               arrays.
+     """
+@@ -428,7 +463,7 @@ def apkbuild(path: Path, check_pkgver: bool = True, check_pkgname: bool = True)
+     # Read the file and check line endings
+     lines = read_file(path)
+ 
+-    return _apkbuild_from_lines(lines, path, check_pkgver, check_pkgname)
++    return _apkbuild_from_lines(lines, path, check_pkgver, check_pkgname, arch)
+ 
+ 
+ def kernels(device: str) -> dict[str, str] | None:
+diff --git a/pmb/parse/_apkbuild_cond.py b/pmb/parse/_apkbuild_cond.py
+new file mode 100644
+index 0000000..7f455b5
+--- /dev/null
++++ b/pmb/parse/_apkbuild_cond.py
+@@ -0,0 +1,593 @@
++# Copyright 2026 Giuseppe Maggio
++# SPDX-License-Identifier: GPL-3.0-or-later
++"""
++Evaluate the architecture conditionals of an APKBUILD.
++
++abuild sources an APKBUILD with CARCH set, so a top-level
++``case "$CARCH" in``, ``if [ "$CARCH" = ... ]`` or ``[ "$CARCH" = ... ] &&``
++decides which depends, makedepends and subpackages a build gets. The attribute
++parser in _apkbuild.py reads lines without running them, so it used to skip
++every such block (indented assignments do not match) or apply all branches at
++once (inside subpackage functions, where lines are stripped).
++
++resolve() rewrites the lines first: every block whose conditions can be decided
++exactly is replaced by the commands of the branch the shell would run. A block
++that needs anything else, such as a command substitution, a loop, or a variable
++that only exists at build time ($CBUILD, $BOOTSTRAP), is left exactly as it
++was, so the parser sees what it saw before. If the file cannot be tokenized at
++all, it is returned unchanged.
++"""
++
++import fnmatch
++import re
++from bisect import bisect_right
++from collections.abc import Callable
++from dataclasses import dataclass, field
++
++_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
++_ASSIGNMENT = re.compile(rf"({_NAME})=")
++_FUNCTION_START = re.compile(rf"^{_NAME}\(\)\s*([{{(])")
++_KEYWORDS_END = frozenset({"then", "elif", "else", "fi", "esac", "do", "done", "}"})
++_OPERATORS = (";;", "&&", "||", "<<", ";", "|", "(", ")", "&", "<", ">")
++
++
++class UnevaluableError(Exception):
++    """The shell code cannot be evaluated exactly without running it."""
++
++
++@dataclass
++class Tok:
++    kind: str  # "word", "nl" or one of _OPERATORS
++    text: str
++    start: int
++    end: int
++
++
++@dataclass
++class Cmd:
++    """An and-or list of simple commands: ``a && b || c``."""
++
++    pipelines: list[list[Tok]]
++    ops: list[str]
++    start: int
++    end: int
++
++
++@dataclass
++class If:
++    # (condition, body); the condition is None for "else"
++    arms: list[tuple["list[Item] | None", "list[Item]"]]
++    start: int
++    end: int
++
++
++@dataclass
++class Case:
++    word: Tok
++    arms: list[tuple[list[Tok], "list[Item]"]]
++    start: int
++    end: int
++
++
++@dataclass
++class Opaque:
++    """A loop, group or subshell: parsed for its extent, never evaluated."""
++
++    start: int
++    end: int
++
++
++Item = Cmd | If | Case | Opaque
++
++
++def _skip_dquote(src: str, i: int) -> int:
++    """:returns: index after the closing double quote, i points after the opening one"""
++    while i < len(src):
++        c = src[i]
++        if c == "\\":
++            i += 2
++        elif c == '"':
++            return i + 1
++        elif src.startswith("$(", i):
++            i = _skip_parens(src, i + 2)
++        elif c == "`":
++            i = _skip_backtick(src, i + 1)
++        else:
++            i += 1
++    raise UnevaluableError("unterminated double quote")
++
++
++def _skip_backtick(src: str, i: int) -> int:
++    end = src.find("`", i)
++    if end < 0:
++        raise UnevaluableError("unterminated backtick")
++    return end + 1
++
++
++def _skip_parens(src: str, i: int) -> int:
++    """:returns: index after the parenthesis closing the one before i"""
++    depth = 1
++    while i < len(src):
++        c = src[i]
++        if c == "\\":
++            i += 2
++            continue
++        if c == "'":
++            end = src.find("'", i + 1)
++            if end < 0:
++                raise UnevaluableError("unterminated single quote")
++            i = end + 1
++            continue
++        if c == '"':
++            i = _skip_dquote(src, i + 1)
++            continue
++        if c == "(":
++            depth += 1
++        elif c == ")":
++            depth -= 1
++            if depth == 0:
++                return i + 1
++        i += 1
++    raise UnevaluableError("unterminated command substitution")
++
++
++def _word_end(src: str, i: int) -> int:
++    while i < len(src):
++        c = src[i]
++        if c in " \t\n;&|()<>":
++            return i
++        if c == "\\":
++            i += 2
++        elif c == "'":
++            end = src.find("'", i + 1)
++            if end < 0:
++                raise UnevaluableError("unterminated single quote")
++            i = end + 1
++        elif c == '"':
++            i = _skip_dquote(src, i + 1)
++        elif c == "`":
++            i = _skip_backtick(src, i + 1)
++        elif src.startswith("$(", i):
++            i = _skip_parens(src, i + 2)
++        elif src.startswith("${", i):
++            end = src.find("}", i)
++            if end < 0:
++                raise UnevaluableError("unterminated parameter expansion")
++            i = end + 1
++        else:
++            i += 1
++    return i
++
++
++def tokenize(src: str) -> list[Tok]:
++    toks: list[Tok] = []
++    i = 0
++    while i < len(src):
++        c = src[i]
++        if c in " \t":
++            i += 1
++        elif src.startswith("\\\n", i):
++            i += 2
++        elif c == "\n":
++            toks.append(Tok("nl", c, i, i + 1))
++            i += 1
++        elif c == "#":
++            end = src.find("\n", i)
++            i = len(src) if end < 0 else end
++        else:
++            op = next((op for op in _OPERATORS if src.startswith(op, i)), None)
++            if op == "<<":
++                # A here-document body is not shell code
++                raise UnevaluableError("here-document")
++            if op:
++                toks.append(Tok(op, op, i, i + len(op)))
++                i += len(op)
++            else:
++                end = _word_end(src, i)
++                toks.append(Tok("word", src[i:end], i, end))
++                i = end
++    return toks
++
++
++class _Parser:
++    def __init__(self, toks: list[Tok]) -> None:
++        self.toks = toks
++        self.pos = 0
++
++    def peek(self) -> Tok | None:
++        return self.toks[self.pos] if self.pos < len(self.toks) else None
++
++    def next(self) -> Tok:
++        tok = self.peek()
++        if tok is None:
++            raise UnevaluableError("unexpected end of file")
++        self.pos += 1
++        return tok
++
++    def expect_word(self, text: str) -> Tok:
++        tok = self.next()
++        if tok.kind != "word" or tok.text != text:
++            raise UnevaluableError(f"expected '{text}', got '{tok.text}'")
++        return tok
++
++    def skip(self, kinds: tuple[str, ...] = ("nl", ";")) -> None:
++        while (tok := self.peek()) is not None and tok.kind in kinds:
++            self.pos += 1
++
++    def parse_list(self, stop: frozenset[str] = frozenset()) -> list[Item]:
++        items: list[Item] = []
++        while True:
++            self.skip()
++            tok = self.peek()
++            if tok is None:
++                if stop:
++                    raise UnevaluableError("unexpected end of file")
++                return items
++            if tok.kind == ";;" and "esac" in stop:
++                return items
++            if tok.kind in ("word", ")") and tok.text in stop:
++                return items
++            items.append(self.parse_item())
++
++    def parse_item(self) -> Item:
++        tok = self.next()
++        if tok.kind == "word":
++            if tok.text == "if":
++                return self.parse_if(tok)
++            if tok.text == "case":
++                return self.parse_case(tok)
++            if tok.text in ("for", "while", "until"):
++                return self.parse_loop(tok)
++            if tok.text == "{":
++                self.parse_list(frozenset({"}"}))
++                return Opaque(tok.start, self.next().end)
++            if tok.text in _KEYWORDS_END:
++                raise UnevaluableError(f"unexpected '{tok.text}'")
++        elif tok.kind == "(":
++            self.parse_list(frozenset({")"}))
++            return Opaque(tok.start, self.next().end)
++        else:
++            raise UnevaluableError(f"unexpected '{tok.text}'")
++        self.pos -= 1
++        return self.parse_andor()
++
++    def parse_andor(self) -> Cmd:
++        pipelines: list[list[Tok]] = [[]]
++        ops: list[str] = []
++        start = end = self.toks[self.pos].start
++        while (tok := self.peek()) is not None and tok.kind not in ("nl", ";", ";;"):
++            if tok.kind in ("&&", "||"):
++                if not pipelines[-1]:
++                    raise UnevaluableError(f"unexpected '{tok.text}'")
++                ops.append(tok.kind)
++                pipelines.append([])
++                self.pos += 1
++                self.skip(("nl",))
++                continue
++            if tok.kind in ("(", ")", "&"):
++                # function definitions, background jobs, case patterns
++                raise UnevaluableError(f"unexpected '{tok.text}'")
++            pipelines[-1].append(tok)
++            end = tok.end
++            self.pos += 1
++        if not pipelines[-1]:
++            raise UnevaluableError("incomplete and-or list")
++        return Cmd(pipelines, ops, start, end)
++
++    def parse_if(self, first: Tok) -> If:
++        arms: list[tuple[list[Item] | None, list[Item]]] = []
++        cond: list[Item] | None = self.parse_list(frozenset({"then"}))
++        while True:
++            if cond is not None:
++                self.expect_word("then")
++            body = self.parse_list(frozenset({"elif", "else", "fi"}))
++            arms.append((cond, body))
++            tok = self.next()
++            if tok.text == "fi":
++                return If(arms, first.start, tok.end)
++            if cond is None:
++                raise UnevaluableError("'else' must be the last branch")
++            cond = self.parse_list(frozenset({"then"})) if tok.text == "elif" else None
++
++    def parse_case(self, first: Tok) -> Case:
++        word = self.next()
++        if word.kind != "word":
++            raise UnevaluableError("case without a word")
++        self.expect_word("in")
++        arms: list[tuple[list[Tok], list[Item]]] = []
++        while True:
++            self.skip(("nl",))
++            tok = self.next()
++            if tok.kind == "word" and tok.text == "esac":
++                return Case(word, arms, first.start, tok.end)
++            if tok.kind == "(":
++                tok = self.next()
++            patterns = []
++            while True:
++                if tok.kind != "word":
++                    raise UnevaluableError("bad case pattern")
++                patterns.append(tok)
++                sep = self.next()
++                if sep.kind == ")":
++                    break
++                if sep.kind != "|":
++                    raise UnevaluableError("bad case pattern")
++                tok = self.next()
++            body = self.parse_list(frozenset({"esac"}))
++            if (tok_end := self.peek()) is not None and tok_end.kind == ";;":
++                self.pos += 1
++            arms.append((patterns, body))
++
++    def parse_loop(self, first: Tok) -> Opaque:
++        if first.text == "for":
++            while self.next().text != "do":
++                pass
++        else:
++            self.parse_list(frozenset({"do"}))
++            self.expect_word("do")
++        self.parse_list(frozenset({"done"}))
++        return Opaque(first.start, self.next().end)
++
++
++@dataclass
++class _Evaluator:
++    src: str
++    variables: dict[str, str | None]
++    emitted: list[str] = field(default_factory=list)
++
++    def expand(self, word: str, pattern: bool = False) -> str:
++        """
++        Remove quotes and expand $NAME and ${NAME}, like the shell does for a
++        word that is not split. With pattern=True, quoted glob characters stay
++        literal for fnmatch.
++        """
++        out = []
++        quote = ""
++        i = 0
++
++        def literal(text: str, quoted: bool) -> None:
++            if pattern and quoted:
++                text = re.sub(r"([*?\[])", r"[\1]", text)
++            out.append(text)
++
++        while i < len(word):
++            c = word[i]
++            if quote == "'":
++                if c == "'":
++                    quote = ""
++                else:
++                    literal(c, True)
++                i += 1
++            elif c == "'" and not quote:
++                quote = "'"
++                i += 1
++            elif c == '"':
++                quote = "" if quote else '"'
++                i += 1
++            elif c == "\\" and i + 1 < len(word):
++                if quote and word[i + 1] not in '$`"\\':
++                    literal(c, True)
++                    i += 1
++                else:
++                    literal(word[i + 1], True)
++                    i += 2
++            elif c == "$":
++                match = re.match(rf"\$(?:\{{({_NAME})\}}|({_NAME}))", word[i:])
++                if not match:
++                    raise UnevaluableError(f"cannot expand {word}")
++                value = self.variables.get(match.group(1) or match.group(2))
++                if value is None:
++                    raise UnevaluableError(f"unknown variable in {word}")
++                literal(value, True)
++                i += match.end()
++            elif c == "`":
++                raise UnevaluableError(f"command substitution in {word}")
++            else:
++                literal(c, bool(quote))
++                i += 1
++        return "".join(out)
++
++    def test(self, words: list[Tok]) -> bool:
++        """Evaluate the arguments of [ or test."""
++        if words and words[0].text == "!":
++            return not self.test(words[1:])
++        raw = [w.text for w in words]
++        values = [self.expand(w.text) for w in words]
++        if len(words) == 1:
++            return values[0] != ""
++        if len(words) == 2 and raw[0] in ("-n", "-z"):
++            return (values[1] == "") == (raw[0] == "-z")
++        if len(words) == 3:
++            left, op, right = values[0], raw[1], values[2]
++            if op in ("=", "=="):
++                return left == right
++            if op == "!=":
++                return left != right
++            integer_ops: dict[str, Callable[[int, int], bool]] = {
++                "-eq": int.__eq__,
++                "-ne": int.__ne__,
++                "-lt": int.__lt__,
++                "-le": int.__le__,
++                "-gt": int.__gt__,
++                "-ge": int.__ge__,
++            }
++            if op in integer_ops:
++                try:
++                    return integer_ops[op](int(left), int(right))
++                except ValueError as exception:
++                    raise UnevaluableError(f"not an integer: {left} {op} {right}") from exception
++        raise UnevaluableError(f"unsupported test: {' '.join(raw)}")
++
++    def text(self, toks: list[Tok]) -> str:
++        return self.src[toks[0].start : toks[-1].end]
++
++    def assign(self, word: str) -> None:
++        match = _ASSIGNMENT.match(word)
++        if not match:
++            raise ValueError(f"not an assignment: {word}")
++        try:
++            self.variables[match.group(1)] = self.expand(word[match.end() :])
++        except UnevaluableError:
++            self.variables[match.group(1)] = None
++
++    def run_simple(self, toks: list[Tok], emit: bool) -> int | None:
++        """:returns: exit status, None if unknown"""
++        negate = toks[0].text == "!"
++        if negate:
++            toks = toks[1:]
++        if not toks or any(tok.kind != "word" for tok in toks):
++            raise UnevaluableError("pipe or redirection")
++        words = [tok.text for tok in toks]
++        status: int | None
++        if words[0] == "[":
++            if words[-1] != "]":
++                raise UnevaluableError("[ without ]")
++            status = 0 if self.test(toks[1:-1]) else 1
++        elif words[0] == "test":
++            status = 0 if self.test(toks[1:]) else 1
++        elif words[0] in (":", "true", "false"):
++            status = 1 if words[0] == "false" else 0
++        else:
++            if all(_ASSIGNMENT.match(word) for word in words):
++                for word in words:
++                    self.assign(word)
++                status = 0
++            elif words[0] in ("export", "readonly", "unset", "local"):
++                for word in words[1:]:
++                    if _ASSIGNMENT.match(word):
++                        self.assign(word)
++                    else:
++                        self.variables[word] = None
++                status = 0
++            else:
++                status = None
++            if emit:
++                self.emitted.append(self.text(toks))
++        if negate and status is not None:
++            status = 0 if status else 1
++        return status
++
++    def run(self, items: list[Item], emit: bool) -> int | None:
++        status: int | None = 0
++        for item in items:
++            status = self.run_item(item, emit)
++        return status
++
++    def run_item(self, item: Item, emit: bool) -> int | None:
++        if isinstance(item, Cmd):
++            status = self.run_simple(item.pipelines[0], emit)
++            for op, pipeline in zip(item.ops, item.pipelines[1:], strict=True):
++                if status is None:
++                    raise UnevaluableError("condition with unknown exit status")
++                if (op == "&&") == (status == 0):
++                    status = self.run_simple(pipeline, emit)
++            return status
++        if isinstance(item, If):
++            for cond, body in item.arms:
++                if cond is None:
++                    return self.run(body, emit)
++                status = self.run(cond, False)
++                if status is None:
++                    raise UnevaluableError("condition with unknown exit status")
++                if status == 0:
++                    return self.run(body, emit)
++            return 0
++        if isinstance(item, Case):
++            value = self.expand(item.word.text)
++            for patterns, body in item.arms:
++                if any(fnmatch.fnmatchcase(value, self.expand(p.text, True)) for p in patterns):
++                    return self.run(body, emit)
++            return 0
++        raise UnevaluableError("loop, group or subshell")
++
++    def forget(self, item: Item) -> None:
++        """Mark every variable an unevaluated item might set as unknown."""
++        code = self.src[item.start : item.end]
++        for match in re.finditer(rf"(?:^|[\s;&|(])(?:({_NAME})=|for\s+({_NAME}))", code):
++            self.variables[match.group(1) or match.group(2)] = None
++        for match in re.finditer(rf"\b(?:unset|export|readonly|local)\s+({_NAME})", code):
++            self.variables[match.group(1)] = None
++
++
++def resolve(lines: list[str], variables: dict[str, str]) -> list[str]:
++    """
++    Replace the conditional blocks of APKBUILD lines by the branches taken.
++
++    :param lines: newline-terminated lines of shell code, e.g. an APKBUILD or
++                  the stripped body of a subpackage function
++    :param variables: the variables that are known before the first line,
++                      e.g. {"CARCH": "aarch64"}. Every other variable is
++                      unknown until the code assigns it.
++    :returns: the lines with every block that could be evaluated replaced by
++              the commands that the shell would run, one per line
++    """
++    # Function bodies are not run when the APKBUILD is sourced
++    masked = []
++    function_end = ""  # "}" or ")" while inside a function body
++    for line in lines:
++        if function_end:
++            if line.startswith(function_end):
++                function_end = ""
++            masked.append("\n")
++        elif match := _FUNCTION_START.match(line):
++            end = "}" if match.group(1) == "{" else ")"
++            function_end = "" if line.rstrip().endswith(end) else end
++            masked.append("\n")
++        else:
++            masked.append(line if line.endswith("\n") else line + "\n")
++    src = "".join(masked)
++
++    try:
++        items = _Parser(tokenize(src)).parse_list()
++    except UnevaluableError:
++        return lines
++
++    line_starts = [0]
++    for line in masked[:-1]:
++        line_starts.append(line_starts[-1] + len(line))
++
++    def line_of(offset: int) -> int:
++        return bisect_right(line_starts, offset) - 1
++
++    def contains_function(first: int, last: int) -> bool:
++        return any(masked[i] == "\n" and lines[i].strip() for i in range(first, last + 1))
++
++    evaluator = _Evaluator(src, dict(variables))
++    replacements: dict[int, tuple[int, list[str]]] = {}
++    for index, item in enumerate(items):
++        first, last = line_of(item.start), line_of(item.end - 1)
++        conditional = isinstance(item, If | Case) or (isinstance(item, Cmd) and item.ops)
++        if not conditional:
++            try:
++                evaluator.run_item(item, False)
++            except UnevaluableError:
++                evaluator.forget(item)
++            continue
++
++        shares_lines = (index > 0 and line_of(items[index - 1].end - 1) >= first) or (
++            index + 1 < len(items) and line_of(items[index + 1].start) <= last
++        )
++        saved = dict(evaluator.variables)
++        evaluator.emitted = []
++        try:
++            if shares_lines or contains_function(first, last):
++                raise UnevaluableError("block shares its lines")
++            evaluator.run_item(item, True)
++        except UnevaluableError:
++            evaluator.variables = saved
++            evaluator.forget(item)
++            continue
++        replacements[first] = (last, evaluator.emitted)
++
++    ret: list[str] = []
++    i = 0
++    while i < len(lines):
++        if i in replacements:
++            last, emitted = replacements[i]
++            for command in emitted:
++                ret += [part.strip() + "\n" for part in command.split("\n")]
++            i = last + 1
++        else:
++            ret.append(lines[i])
++            i += 1
++    return ret
+diff --git a/test/data/tests/APKBUILD.arch-conditionals b/test/data/tests/APKBUILD.arch-conditionals
+new file mode 100644
+index 0000000..ccc065e
+--- /dev/null
++++ b/test/data/tests/APKBUILD.arch-conditionals
+@@ -0,0 +1,63 @@
++# Shaped like Alpine's mesa: dependencies and subpackages chosen per $CARCH
++pkgname=hello-arch
++pkgver=1.0
++pkgrel=0
++pkgdesc="architecture conditionals"
++url="https://postmarketos.org"
++arch="all"
++license="MIT"
++_llvmver=23
++subpackages="$pkgname-doc"
++makedepends="
++	meson
++	"
++options="!check"
++
++case "$CARCH" in
++x86*)
++	_drivers="iris"
++	;;
++armv7|aarch64)
++	_drivers="freedreno"
++	subpackages="
++		$subpackages
++		$pkgname-vulkan:_vulkan
++		"
++	;;
++esac
++
++case "$CARCH" in
++armv7|aarch64|x86_64) makedepends="$makedepends clang$_llvmver-dev rust" ;;
++*) ;;
++esac
++
++if [ "$CARCH" = "riscv64" ]; then
++	depends="riscv-only"
++elif [ "$CARCH" != "x86_64" ] && [ "$_llvmver" -ge 20 ]; then
++	depends="not-x86_64"
++else
++	depends="x86_64-only"
++fi
++
++[ "$CARCH" = "armv7" ] && options="$options textrels" || checkdepends="not-armv7"
++
++# Needs a variable that only exists in abuild: left alone
++[ -z "$BOOTSTRAP" ] && makedepends="$makedepends bootstrap-tools"
++
++build() {
++	case "$CARCH" in
++	aarch64) makedepends="never-parsed" ;;
++	esac
++}
++
++_vulkan() {
++	pkgdesc="Vulkan driver"
++	case "$CARCH" in
++	aarch64) depends="vulkan-aarch64" ;;
++	*) depends="vulkan-other" ;;
++	esac
++}
++
++sha512sums="
++0000  hello.tar.gz
++"
+diff --git a/test/parse/test_apkbuild_cond.py b/test/parse/test_apkbuild_cond.py
+new file mode 100644
+index 0000000..79e9ad3
+--- /dev/null
++++ b/test/parse/test_apkbuild_cond.py
+@@ -0,0 +1,180 @@
++# Copyright 2026 Giuseppe Maggio
++# SPDX-License-Identifier: GPL-3.0-or-later
++from pathlib import Path
++from typing import Final
++
++import pytest
++
++import pmb.helpers.logging
++import pmb.helpers.pmaports
++from pmb.core.arch import Arch
++from pmb.parse._apkbuild import _apkbuild_from_lines, read_file
++from pmb.parse._apkbuild_cond import resolve
++
++TESTDIR: Final[Path] = Path(__file__).parent.parent / "data/tests"
++
++
++@pytest.fixture(autouse=True)
++def verbose_log_level() -> None:
++    pmb.helpers.logging.add_verbose_log_level()
++
++
++def run(code: str, carch: str = "aarch64") -> list[str]:
++    lines = [line + "\n" for line in code.strip("\n").split("\n")]
++    return [line.rstrip("\n") for line in resolve(lines, {"CARCH": carch})]
++
++
++def parse(arch: Arch | None) -> dict:
++    path = TESTDIR / "APKBUILD.arch-conditionals"
++    return _apkbuild_from_lines(read_file(path), path, check_pkgname=False, arch=arch)
++
++
++def test_case_takes_the_matching_branch() -> None:
++    code = """
++case "$CARCH" in
++x86*) a=x86 ;;
++armv7|aarch64)
++	a="arm"
++	b=$a
++	;;
++*) a=other ;;
++esac
++"""
++    assert run(code, "x86_64") == ["a=x86"]
++    assert run(code, "aarch64") == ['a="arm"', "b=$a"]
++    assert run(code, "riscv64") == ["a=other"]
++
++
++def test_case_without_match_emits_nothing() -> None:
++    assert run("pre=1\ncase $CARCH in\nx86) a=1;;\nesac\npost=1") == ["pre=1", "post=1"]
++
++
++def test_quoted_pattern_is_literal() -> None:
++    assert run('case "$CARCH" in\n"aarch*") a=1;;\nesac') == []
++
++
++def test_if_elif_else() -> None:
++    code = """
++_v=3
++if [ "$CARCH" = x86 ]; then
++	a=1
++elif test "$_v" -gt 2 && [ -n "$CARCH" ]
++then
++	a=2
++else
++	a=3
++fi
++"""
++    assert run(code, "x86") == ["_v=3", "a=1"]
++    assert run(code, "armv7") == ["_v=3", "a=2"]
++
++
++def test_and_or_list() -> None:
++    code = '[ "$CARCH" != aarch64 ] && a="yes" || a="no"'
++    assert run(code, "aarch64") == ['a="no"']
++    assert run(code, "x86_64") == ['a="yes"']
++
++
++def test_multiline_value_in_branch() -> None:
++    code = """
++case "$CARCH" in
++aarch64)
++	makedepends="
++		$makedepends
++		rust
++		"
++	;;
++esac
++"""
++    assert run(code) == ['makedepends="', "$makedepends", "rust", '"']
++
++
++def test_nested_blocks() -> None:
++    code = """
++if [ "$CARCH" = aarch64 ]; then
++	case "$CARCH" in
++	aarch*) a=1 ;;
++	esac
++fi
++"""
++    assert run(code) == ["a=1"]
++
++
++def test_unknown_variable_leaves_block_alone() -> None:
++    code = '[ -z "$BOOTSTRAP" ] && a=1\nif [ "$CBUILD" != "$CHOST" ]; then\n\tb=1\nfi'
++    assert run(code) == code.split("\n")
++
++
++def test_variable_assigned_in_unevaluated_block_becomes_unknown() -> None:
++    code = """
++_x=1
++for i in 1 2; do _x=2; done
++[ "$_x" = 1 ] && a=1
++"""
++    assert run(code)[-1] == '[ "$_x" = 1 ] && a=1'
++
++
++def test_command_substitution_leaves_block_alone() -> None:
++    code = 'if [ "$(uname -m)" = aarch64 ]; then\n\ta=1\nfi'
++    assert run(code) == code.split("\n")
++
++
++def test_functions_are_not_evaluated() -> None:
++    code = """
++build() {
++	case "$CARCH" in
++	aarch64) a=1 ;;
++	esac
++}
++check() (
++	[ "$CARCH" = aarch64 ] && a=2
++)
++"""
++    assert run(code) == code.strip("\n").split("\n")
++
++
++def test_unparsable_file_is_unchanged() -> None:
++    code = 'a="unterminated\ncase "$CARCH" in\naarch64) b=1 ;;\nesac'
++    assert run(code) == code.split("\n")
++
++
++def test_apkbuild_with_arch() -> None:
++    aarch64 = parse(Arch.aarch64)
++    assert aarch64["makedepends"] == ["meson", "clang23-dev", "rust"]
++    assert list(aarch64["subpackages"]) == ["hello-arch-doc", "hello-arch-vulkan"]
++    assert aarch64["subpackages"]["hello-arch-vulkan"]["depends"] == ["vulkan-aarch64"]
++    assert aarch64["depends"] == ["not-x86_64"]
++    assert aarch64["checkdepends"] == ["not-armv7"]
++    assert aarch64["options"] == ["!check"]
++
++    armv7 = parse(Arch.armv7)
++    assert armv7["options"] == ["!check", "textrels"]
++    assert armv7["checkdepends"] == []
++    assert armv7["subpackages"]["hello-arch-vulkan"]["depends"] == ["vulkan-other"]
++
++    x86_64 = parse(Arch.x86_64)
++    assert x86_64["makedepends"] == ["meson", "clang23-dev", "rust"]
++    assert list(x86_64["subpackages"]) == ["hello-arch-doc"]
++    assert x86_64["depends"] == ["x86_64-only"]
++
++    riscv64 = parse(Arch.riscv64)
++    assert riscv64["makedepends"] == ["meson"]
++    assert riscv64["depends"] == ["riscv-only"]
++
++
++def test_apkbuild_without_arch_skips_conditionals() -> None:
++    apkbuild = parse(None)
++    assert apkbuild["makedepends"] == ["meson"]
++    assert list(apkbuild["subpackages"]) == ["hello-arch-doc"]
++    assert apkbuild["depends"] == []
++
++
++def test_pmaports_get_evaluates_for_arch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    aport = tmp_path / "hello-arch"
++    aport.mkdir()
++    (aport / "APKBUILD").write_text((TESTDIR / "APKBUILD.arch-conditionals").read_text())
++    monkeypatch.setattr(pmb.helpers.pmaports, "find", lambda *_args, **_kwargs: aport)
++
++    assert "rust" in pmb.helpers.pmaports.get("hello-arch", arch=Arch.aarch64)["makedepends"]
++    assert "rust" not in pmb.helpers.pmaports.get("hello-arch", arch=Arch.riscv64)["makedepends"]
++    assert "rust" not in pmb.helpers.pmaports.get("hello-arch")["makedepends"]

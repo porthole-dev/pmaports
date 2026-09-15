@@ -1,0 +1,153 @@
+From e34b4ada1fd5c9cd512c45f395688907fb0d17df Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 11:59:47 +0200
+Subject: [PATCH 08/10] pmb.build: keep crossdirect Rust's native chroot to
+ build dependencies
+
+For a Rust package built with crossdirect, init_compiler() installs the
+package's dependencies in the native chroot too, for build scripts and
+proc-macros. Two things made that expensive:
+
+- The list included runtime depends and checkdepends. A runtime depends
+  on the package's own subpackage with a version (chromium depends on
+  chromium-common=$pkgver-r$pkgrel) cannot be satisfied for the native
+  arch, so pmbootstrap built the whole package for the native arch first.
+  Pass only makedepends (or makedepends_build and makedepends_host).
+
+- The install built every dependency that pmaports has in a newer version
+  than the binary repositories. A camera app with libcamera-dev and
+  gtk4.0-dev in makedepends triggered a native build of the pmaports
+  libcamera and mesa forks, only to put their headers in the native
+  chroot. Install dependencies that a repository provides as binary
+  packages, and build only the ones no repository has.
+
+Measured on testing/obscura built with crossdirect: before, the native
+dependency install started a native mesa build that ran for 10 minutes
+before the first obscura compile; now it takes 7 seconds.
+
+Assisted-by: Claude
+---
+ pmb/build/_package.py            |  7 ++++-
+ pmb/build/init.py                | 16 ++++++++++-
+ test/build/test_init_compiler.py | 48 ++++++++++++++++++++++++++++++++
+ 3 files changed, 69 insertions(+), 2 deletions(-)
+ create mode 100644 test/build/test_init_compiler.py
+
+diff --git a/pmb/build/_package.py b/pmb/build/_package.py
+index 738d2c8..dd85aa2 100644
+--- a/pmb/build/_package.py
++++ b/pmb/build/_package.py
+@@ -605,9 +605,14 @@ def packages(
+         # FIXME: this is only used to detect special compilers and a workaround for rust
+         # in pmb.build.init_compiler(), this should all be refactored and enforce correct
+         # APKBUILDs rather than trying to hack things in here
++        #
++        # Build dependencies only: with crossdirect, init_compiler() installs all of these
++        # in the native chroot for Rust. Runtime depends and checkdepends have no business
++        # there, and a runtime depends on the package's own subpackage (chromium depends
++        # on chromium-common=$pkgver-r$pkgrel) made pmbootstrap build the whole package
++        # for the native arch first, only to satisfy it.
+         pkg_depends = list(
+             {
+-                *pkg["depends"],
+                 *apkbuild.get("makedepends", []),
+                 *apkbuild.get("makedepends_build", []),
+                 *apkbuild.get("makedepends_host", []),
+diff --git a/pmb/build/init.py b/pmb/build/init.py
+index 88a6edd..43b8362 100644
+--- a/pmb/build/init.py
++++ b/pmb/build/init.py
+@@ -10,6 +10,7 @@ from pmb.core import Chroot
+ from pmb.core.arch import Arch
+ from pmb.core.context import Context, get_context
+ from pmb.helpers import logging
++from pmb.parse import apkindex
+ from pmb.types import CrossCompile
+ 
+ 
+@@ -119,6 +120,7 @@ def init_compiler(context: Context, depends: list[str], cross: CrossCompile, arc
+         cross_pkgs += ["gcc-" + arch_str, "g++-" + arch_str]
+     if cross == CrossCompile.CROSSDIRECT:
+         cross_pkgs += ["crossdirect"]
++    native_depends: list[str] = []
+     if "rust" in depends or "cargo" in depends or "cargo-auditable" in depends:
+         if context.ccache:
+             cross_pkgs += ["sccache"]
+@@ -129,10 +131,22 @@ def init_compiler(context: Context, depends: list[str], cross: CrossCompile, arc
+         # adding the target libraries here would build them for the native
+         # arch as well.
+         if cross == CrossCompile.CROSSDIRECT:
+-            cross_pkgs += depends
++            native_depends = depends
+         # Rust depends on gcc and musl-dev; we always install the cross GCC
+         # but we do not install the cross musl-dev by default
+         cross_pkgs += ["musl-dev-" + arch_str]
+ 
+     pmb.chroot.init(Chroot.native())
+     pmb.chroot.apk.install(cross_pkgs, Chroot.native())
++    if native_depends:
++        # The native chroot only needs these as tools and headers for build
++        # scripts and proc-macros, never as build output. Take the binary
++        # package where a repository has one, even if pmaports has a newer
++        # version: building that fork for the native arch (a whole mesa, for
++        # gtk4.0-dev) only to install it here costs more than the build it is
++        # for. Only what no repository provides gets built.
++        native = Arch.native()
++        binary = [d for d in native_depends if apkindex.providers(d, native, must_exist=False)]
++        to_build = [d for d in native_depends if d not in binary]
++        pmb.chroot.apk.install(binary, Chroot.native(), build=False)
++        pmb.chroot.apk.install(to_build, Chroot.native())
+diff --git a/test/build/test_init_compiler.py b/test/build/test_init_compiler.py
+new file mode 100644
+index 0000000..b507538
+--- /dev/null
++++ b/test/build/test_init_compiler.py
+@@ -0,0 +1,48 @@
++# Copyright 2026 Giuseppe Maggio
++# SPDX-License-Identifier: GPL-3.0-or-later
++import importlib
++from collections.abc import Collection
++from typing import Any
++
++import pytest
++
++import pmb.chroot.apk
++from pmb.core.arch import Arch
++from pmb.core.chroot import Chroot
++from pmb.core.config import Config
++from pmb.core.context import Context
++from pmb.types import CrossCompile
++
++# pmb.build.init is also the name of a function in pmb.build
++build_init = importlib.import_module("pmb.build.init")
++
++
++def test_crossdirect_rust_native_depends(monkeypatch: pytest.MonkeyPatch) -> None:
++    installs: list[tuple[list[str], bool]] = []
++
++    def install(packages: Collection[str], chroot: Chroot, build: bool = True) -> None:
++        assert chroot == Chroot.native()
++        installs.append((list(packages), build))
++
++    def providers(package: str, *_args: Any, **_kwargs: Any) -> dict:
++        # libcamera-dev is in a binary repo, only-in-pmaports-dev is not
++        return {} if package == "only-in-pmaports-dev" else {package: None}
++
++    monkeypatch.setattr(pmb.chroot, "init", lambda _chroot: None)
++    monkeypatch.setattr(pmb.chroot.apk, "install", install)
++    monkeypatch.setattr(build_init.apkindex, "providers", providers)
++    context = Context(Config())
++    context.ccache = False
++
++    depends = ["cargo", "libcamera-dev", "only-in-pmaports-dev"]
++    build_init.init_compiler(context, depends, CrossCompile.CROSSDIRECT, Arch.aarch64)
++    assert installs[1:] == [
++        (["cargo", "libcamera-dev"], False),
++        (["only-in-pmaports-dev"], True),
++    ]
++
++    # cross-native2 installs build dependencies elsewhere
++    installs.clear()
++    build_init.init_compiler(context, depends, CrossCompile.CROSS_NATIVE2, Arch.aarch64)
++    assert len(installs) == 1
++    assert "libcamera-dev" not in installs[0][0]

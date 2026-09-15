@@ -1,0 +1,66 @@
+From 1d3eeaf9d6d9487e562a6bd223aa669ea6ee7013 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 10:24:47 +0200
+Subject: [PATCH 04/10] helpers/envkernel.sh: build kernels with ccache
+
+Every envkernel compile ran uncached, for three reasons:
+
+- The make alias sets CCACHE_DISABLE=1 on the command itself, so nothing
+  outside can override it, and pmbootstrap's --no-ccache/ccache setting
+  only reaches package builds.
+- ccache was not necessarily installed in the native chroot, where the
+  compile runs.
+- Alpine's ccache ships masquerade links for gcc, cc, g++ and c++ but none
+  for clang, and envkernel builds with clang by default (LLVM=1).
+
+Point CCACHE_DIR at the cache pmbootstrap already mounts in the native
+chroot (cache_ccache_$ARCH at /mnt/pmbootstrap/ccache) instead of the
+/home/pmos/.ccache symlink, install ccache with the other build
+dependencies, and add the clang and clang++ links.
+
+Upstream disabled the cache in 2022 (MR 2189) as a performance judgement,
+since envkernel builds are incremental anyway. They are not after a clean,
+a branch switch or a re-created native chroot. The porthole workspace has
+run with these three changes since 2026-08: touching one widely included
+header and rebuilding a kernel took 1m49s uncached, 2m09s with a cold cache
+and 43s with a warm one (320 of 321 hits), also after the native chroot was
+deleted and re-created.
+
+Assisted-by: Claude
+---
+ helpers/envkernel.sh | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/helpers/envkernel.sh b/helpers/envkernel.sh
+index 75bf5da..a86720f 100644
+--- a/helpers/envkernel.sh
++++ b/helpers/envkernel.sh
+@@ -189,6 +189,7 @@ initialize_chroot() {
+ 		bc \
+ 		binutils \
+ 		bison \
++		ccache \
+ 		clang-libclang \
+ 		diffutils \
+ 		elfutils-dev \
+@@ -228,6 +229,10 @@ may not be available on stable releases.\n\n"
+ 		[ -n "$has_shwordsplit" ] && unset has_shwordsplit
+ 	fi
+ 
++	# ccache masquerades as gcc, but Alpine's ccache has no links for clang
++	"$pmbootstrap" -q chroot -- ln -sf ../../../bin/ccache /usr/lib/ccache/bin/clang
++	"$pmbootstrap" -q chroot -- ln -sf ../../../bin/ccache /usr/lib/ccache/bin/clang++
++
+ 	# Create /mnt/linux
+ 	sudo mkdir -p "$chroot/mnt/linux"
+ 
+@@ -278,7 +283,8 @@ set_alias_make() {
+ 	# Build make command
+ 	cmd="echo '*** pmbootstrap envkernel.sh active for $PWD! ***';"
+ 	cmd="$cmd pmbootstrap -q chroot --user --"
+-	cmd="$cmd CCACHE_DISABLE=1"
++	# ccache: the dir pmbootstrap mounts for it in the native chroot
++	cmd="$cmd CCACHE_DIR=/mnt/pmbootstrap/ccache"
+ 	cmd="$cmd ARCH=$arch"
+ 	if [ "$need_cross_compiler" = 1 ]; then
+ 		cmd="$cmd CROSS_COMPILE=$cross_compiler"

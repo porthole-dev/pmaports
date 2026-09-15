@@ -18,6 +18,8 @@ indistinguishable from someone repeatedly tapping the card.
 Report a tag carrying no NDEF and leave it connected. Whether it is
 still in the field is the presence check's question, and that check is
 equipped to answer it.
+
+Assisted-by: Claude
 ---
  plugins/mifare.c | 22 ++++++++++++++++++++--
  1 file changed, 20 insertions(+), 2 deletions(-)

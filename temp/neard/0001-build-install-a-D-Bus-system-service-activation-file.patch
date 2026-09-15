@@ -17,6 +17,7 @@ Makefile.am to match: dbusservicedir under datadir, dbusservice_DATA to
 install the generated file, and the usual EXTRA_DIST/CLEANFILES pair for the
 .in source and its generated output.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  Makefile.am              | 7 +++++++

@@ -11,18 +11,15 @@
 # logged in user may do that with no helper and no polkit agent -- verified on
 # device by writing the property from the session with plain busctl.
 #
-# Source is userspace/phosh-nfc-quick-setting in the taimen repo; run its
-# pack.sh to refresh the tarball and the checksum here.
-#
 # TRAP: `porthole pkg build` can report "UNCHANGED -- nothing was rebuilt" and
 # still hand you an apk built from the previous source. Check the artifact's
 # contents, not the exit code, and use --force when in doubt.
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=phosh-nfc-quick-setting
 pkgver=0.1.0
-pkgrel=4
+pkgrel=5
 pkgdesc="Phosh quick setting to turn NFC on and off"
-url="https://github.com/Jertlok/phosh-nfc-quick-setting"
+url="https://github.com/porthole-dev/phosh-nfc-quick-setting"
 arch="all"
 license="GPL-3.0-or-later"
 # neard is what the tile talks to; without it there is no adapter and the tile
@@ -36,14 +33,7 @@ makedepends="
 	phosh-dev
 	"
 options="!check" # no test suite: the thing under test is a shell plugin
-# The tarball next to this file is the source, committed because there is
-# nowhere to fetch it from yet: it lives in userspace/phosh-nfc-quick-setting in the
-# taimen repo, and that repo is private, so a github archive URL would not
-# resolve in a build chroot. Regenerate it with that directory's pack.sh,
-# which also refreshes the checksum below. When the source is published,
-# this becomes an ordinary URL in source= and the tarball leaves the tree.
-source="phosh-nfc-quick-setting-$pkgver.tar.gz"
-builddir="$srcdir/phosh-nfc-quick-setting-$pkgver"
+source="$pkgname-$pkgver.tar.gz::https://github.com/porthole-dev/phosh-nfc-quick-setting/archive/refs/tags/v$pkgver.tar.gz"
 
 build() {
 	abuild-meson . output
@@ -54,4 +44,6 @@ package() {
 	DESTDIR="$pkgdir" meson install --no-rebuild -C output
 }
 
-sha512sums="81c1059cf82d776e50d42da1b315b75f62c40adf091aa680c9f01cfc8f24f9bd7479c923426864291a332f015911e5c84c6f45fbe32a39bd699c8d9d7a6bc936  phosh-nfc-quick-setting-0.1.0.tar.gz"
+sha512sums="
+1656a43d49b92202d4188784b01992c49023bd79b260ef9afd5e1046b849e7713dc17a4d163f7bd946332c2cc06496676d35e1de8dd56142a495e64b3ff0ed35  phosh-nfc-quick-setting-0.1.0.tar.gz
+"

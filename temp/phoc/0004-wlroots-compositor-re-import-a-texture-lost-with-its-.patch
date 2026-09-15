@@ -33,6 +33,7 @@ wlr_surface_get_texture() puts the recovery on the one path every consumer
 of a surface texture already goes through, and only for surfaces that are
 actually drawn.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  types/wlr_compositor.c | 34 ++++++++++++++++++++++++++++++++++

@@ -49,6 +49,8 @@ the plain atomic interface has no layer support, so phoc asks for libliftoff
 before creating the backend unless the environment says otherwise.
 
 Set PHOC_NO_OUTPUT_LAYERS to fall back to compositing everything.
+
+Assisted-by: Claude
 ---
  src/output.c | 513 +++++++++++++++++++++++++++++++++++++++++++++++++++
  src/output.h |   1 +

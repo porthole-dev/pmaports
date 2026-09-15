@@ -90,6 +90,10 @@ def changed(base: str | None = None) -> set[str]:
         return set()
     os.environ[var] = base or default
     common.get_base_commit.cache_clear()
+    # The checkouts have no blobs (filter blob:none) and no credentials: rename
+    # detection between a deleted and an added file would download blobs and
+    # fail. A moved aport is an added one here.
+    common.run_git(["config", "diff.renames", "false"])
     try:
         return common.get_changed_packages(skip_archived=True)
     finally:
@@ -108,8 +112,6 @@ def forks() -> set[str]:
     common.run_git(["remote", "add", "upstream", UPSTREAM], check=False, stderr=subprocess.DEVNULL)
     common.run_git(["config", "remote.upstream.promisor", "true"])
     common.run_git(["config", "remote.upstream.partialclonefilter", "blob:none"])
-    # Rename detection would download blobs; a moved aport is an added one here.
-    common.run_git(["config", "diff.renames", "false"])
     common.run_git(["fetch", "-q", "--filter=blob:none", "--no-tags", "upstream", branch])
     base = common.run_git(["merge-base", "FETCH_HEAD", "HEAD"]).strip()
     print(f"fork point: {base}, the merge base with upstream {branch}")

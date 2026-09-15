@@ -41,6 +41,8 @@ countries, every one of them from a reseller to the network it resells:
 Ting and US Mobile to T-Mobile, simyo to E-Plus, nju mobile to Orange,
 Mineo and OCN to NTTdocomo, Bip to 3, and so on. The remaining 779 are
 unchanged.
+
+Assisted-by: Claude
 ---
  src/libnma.ver                    |   5 +
  src/nma-mobile-providers.c        | 267 ++++++++++++++++++++++++------

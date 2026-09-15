@@ -188,7 +188,6 @@ source="
 	chromium.conf
 	v4l2-venus.conf
 	zz-features.conf
-	google-api.keys
 
 	0001-hotfix-ignore-a-new-warning-in-rust-1.89.patch
 	compiler.patch
@@ -748,14 +747,6 @@ _prepare() {
 _configure() {
 	cd "$builddir"
 
-	##############################################################
-	# Please dont use these keys outside of Alpine Linux project #
-	# You can create your own at:                                #
-	# http://www.chromium.org/developers/how-tos/api-keys        #
-	##############################################################
-	local _google_api_key _google_default_client_id _google_default_client_secret
-	eval "$(base64 -d < $srcdir/google-api.keys)"
-
 	export CFLAGS="${CFLAGS/-g/} -O2 -Wno-unknown-warning-option -Wno-builtin-macro-redefined -Wno-deprecated-declarations -Wno-shift-count-overflow -Wno-ignored-attributes"
 	export CXXFLAGS="${CXXFLAGS/-g/} -O2 -Wno-unknown-warning-option -Wno-builtin-macro-redefined -Wno-deprecated-declarations -Wno-invalid-constexpr"
 	# _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE is set by project
@@ -982,9 +973,6 @@ _configure() {
 		enable_vr=false
 		fatal_linker_warnings=false
 		ffmpeg_branding=\"Chrome\"
-		google_api_key=\"$_google_api_key\"
-		google_default_client_id=\"$_google_default_client_id\"
-		google_default_client_secret=\"$_google_default_client_secret\"
 		host_toolchain=\"//build/toolchain/linux/unbundle:default\"
 		icu_use_data_file=false
 		is_cfi=false
@@ -1306,7 +1294,6 @@ d805e9353da0b52c866a7812593c26b293a7bb4c153012c2e94ff027c7ece7c261b65032f81de334
 9cfcb41d69c5a515b6f9fe2a629579fa499e1f48eb58a0ce4ec8e5029d450bcafb6d963019aaac9a6838244bee9f9ba7fe5ef6146a0ca6b20fcda4ab7f059476  chromium.conf
 465046ed488d91074bb62bafcfcc4530b356eccd95824947cc8a87015432d6bfb2b4810c4b0d23c94b9470bc3dda6dd501fe4a7d6ce939c60723fb8ff0d7532c  v4l2-venus.conf
 fc60d06eead34b854a65065522a3d3c871b04a107ff020f55647b006227b5378ecae63c862d7e61be4fa947150db64ade66178acf78d19ee3e467a6acd0cee54  zz-features.conf
-2d8237a940ea691bd10b08315429677a587f7ef9692a0cca53bfd066eae82998a6c71f402a8669e9de39f94d7f3280745d1628ea6eac5d76ca7116844d4e0dac  google-api.keys
 69b45005451ccd69c354b4c2910e92371cb801665f5e300dbecd36f8bc4ce68e77a431b5dac07c0937787debb4e93b7aadefa0a1e76c4ae334d2547ca3ca14ff  0001-hotfix-ignore-a-new-warning-in-rust-1.89.patch
 25effbae3bd26c84a2bab1cf8bdeeea185412fa387226efd4bb536dc1bdd3615594e01a53bcd1d1fdb79aaa53165c731f1fa2c7251eaee6ddd1a8b9f59593259  compiler.patch
 1bee1448e409fedff635388ee6f1efa6d23c29ae3e6b6fd31452c56974adb40fcd0088c82d1e643d549154663e402942cbab9807dff5aff2d8997a09de6f5655  disable-dns_config_service.patch

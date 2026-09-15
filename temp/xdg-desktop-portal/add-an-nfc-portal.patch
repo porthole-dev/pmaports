@@ -21,6 +21,7 @@ second concept that could only disagree with it.
 OpenNFCRemote is declared and refuses; the connection it hands out lands in the
 next commit.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  data/meson.build                    |   1 +

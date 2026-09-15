@@ -26,6 +26,7 @@ level. The controls read the kept value rather than the register for the
 same reason the driver has to keep it at all: between a download and the
 next power-up the register is not what anyone asked for.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/tas2557.c | 66 ++++++++++++++++++++++++--------------

@@ -22,6 +22,7 @@ absent "interconnects" property as a set of NULL paths, and every icc
 operation on a NULL path is a no-op, so IPA works without bus votes.
 The paths belong in the same change as the provider.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 44 +++++++++++++++++++++++++++

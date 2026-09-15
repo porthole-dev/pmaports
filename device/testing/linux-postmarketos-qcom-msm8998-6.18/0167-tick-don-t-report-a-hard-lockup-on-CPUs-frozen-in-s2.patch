@@ -36,6 +36,7 @@ unfreeze rather than once per suspend, because the touch is consumed by
 the first watchdog_hardlockup_check() that observes it and a long s2idle
 sleep unfreezes once per wakeup.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  kernel/time/tick-common.c | 29 +++++++++++++++++++++++++++++

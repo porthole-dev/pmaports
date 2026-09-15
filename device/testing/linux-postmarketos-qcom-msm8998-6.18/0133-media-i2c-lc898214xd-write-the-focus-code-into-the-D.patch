@@ -53,6 +53,7 @@ bracketed by an unlock and a per-write completion poll, and the
 KT-vs-Largan discriminator is read from the LC898123F40 OIS EEPROM on
 i2c 0x7C, which mainline does not drive.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/lc898214xd.c | 166 +++++++++++++++++++++++++++------

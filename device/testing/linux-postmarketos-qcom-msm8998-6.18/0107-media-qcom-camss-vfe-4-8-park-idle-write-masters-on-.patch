@@ -23,6 +23,7 @@ allocated at subdev init rather than on first use, because
 vfe_disable_output() disables the write masters with output_lock held
 and nothing may sleep there.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../media/platform/qcom/camss/camss-vfe-4-8.c | 39 +++++++++++++++++++

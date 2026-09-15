@@ -29,6 +29,7 @@ data. The error is returned to whoever writes the control rather than
 swallowed: a knob that reports success and moves nothing is worse than no
 knob. A rejected volume never fails the call.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/qdsp6/q6voice-dai.c | 42 ++++++++++++++++

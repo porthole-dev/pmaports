@@ -36,6 +36,7 @@ wpa_supplicant roams from the 2.4 GHz to the 5 GHz BSS of the same AP
 about 35 s after reconnecting.  Neither ath11k nor ath12k restarts the
 firmware on any key install timeout.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/mac.c | 17 ++++++++++++++++-

@@ -22,6 +22,7 @@ It paid for itself: the sequence it produced now works in both directions
 on a live call, and what it measured is the specification the real driver
 has to implement.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig             |  10 +

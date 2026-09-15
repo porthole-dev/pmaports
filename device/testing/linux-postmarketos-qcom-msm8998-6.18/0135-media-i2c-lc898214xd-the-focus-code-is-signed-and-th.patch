@@ -27,6 +27,7 @@ V4L2_CID_FOCUS_ABSOLUTE is unsigned and increases towards near focus, so expose
 0..581 with 0 = infinity (+324) and 581 = macro (-257), converting on the way to
 the hardware.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/lc898214xd.c | 41 +++++++++++++++++++++++++++++-----

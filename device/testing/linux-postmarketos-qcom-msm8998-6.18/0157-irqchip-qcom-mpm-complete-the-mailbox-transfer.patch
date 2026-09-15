@@ -16,6 +16,7 @@ The IPC write completes synchronously inside send_data(), so the
 transfer is done the moment mbox_send_message() returns.  Acknowledge
 it on the spot, like every other APCS IPC client does.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/irqchip/irq-qcom-mpm.c | 8 ++++++++

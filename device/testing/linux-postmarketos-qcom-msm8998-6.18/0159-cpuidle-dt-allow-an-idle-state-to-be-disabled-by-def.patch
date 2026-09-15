@@ -23,6 +23,7 @@ skips disabled states for s2idle, and the governors skip them for
 normal idle, so an enable/disable pair around suspend gives a clean
 "s2idle only" gate with no new cpuidle mechanism.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpuidle/dt_idle_states.c | 2 ++

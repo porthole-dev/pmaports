@@ -18,6 +18,7 @@ stays the default and the override stays at 0.
 The remaining 1-2 stray pixels are unexplained; this knob is the tool for
 whoever chases them.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../qcom/camss/camss-csiphy-3ph-1-0.c         | 22 ++++++++++++++++++-

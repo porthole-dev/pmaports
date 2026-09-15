@@ -33,6 +33,7 @@ The async (legacy cursor) path keeps its wait: it has no wait_flush of
 its own at the top, so two back-to-back async commits would have nothing
 left ordering them.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/msm_atomic.c | 10 ++++++----

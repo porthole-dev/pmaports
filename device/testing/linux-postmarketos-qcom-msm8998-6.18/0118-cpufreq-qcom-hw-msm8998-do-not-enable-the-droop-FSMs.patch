@@ -16,6 +16,7 @@ parked, APM still on MX, DEVIATION_STAT and MET_STAT both zero.
 
 Enable only the three boost FSMs, like the vendor does.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 9 +++++++--

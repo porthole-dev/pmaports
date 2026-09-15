@@ -10,6 +10,7 @@ routing that joins it to the mixers.
 The service nodes themselves were already there but inert; this is what
 gives them a driver to bind to.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 12 +++++++++++-

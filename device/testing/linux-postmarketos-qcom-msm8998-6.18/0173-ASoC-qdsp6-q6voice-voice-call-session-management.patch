@@ -30,6 +30,7 @@ topologies used here needs calibration data.
 The ports are the caller's to choose and must already be running: the
 ADSP renders into them but does not start them.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/Kconfig         |   4 +

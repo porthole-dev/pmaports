@@ -22,6 +22,7 @@ Mode/register tables are decoded from the vendor's
 libmmcamera_imx179.so and cover the sensor's binned, video and full
 3280x2464 modes.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/Kconfig  |   14 +

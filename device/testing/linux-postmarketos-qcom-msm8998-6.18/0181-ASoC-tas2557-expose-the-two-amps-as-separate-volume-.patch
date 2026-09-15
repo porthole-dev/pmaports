@@ -30,6 +30,7 @@ volume-up rounds back to it.
 Verified on the device: Speaker1=3 and Speaker2=12 set independently, with
 the stereo control reading back 3,12.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/tas2557.c | 78 ++++++++++++++++++++++++++++++++++++++

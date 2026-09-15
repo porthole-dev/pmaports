@@ -14,6 +14,7 @@ Log the handles and whether each was joined or created, log a failure
 with the ports it was attempted on, and log each direction as it
 prepares.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/qdsp6/q6voice-dai.c |  4 ++++

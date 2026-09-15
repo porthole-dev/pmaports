@@ -52,6 +52,7 @@ hands-on power presses: 0 none (shipped behaviour), 1 off-before-
 sleep only, 2 +revival, 3 +L23 quiesce (default, full vendor shape;
 the L23 timeout is logged, not fatal).
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/misc/easel-mipi.c | 172 +++++++++++++++++++++++++++++++++++++-

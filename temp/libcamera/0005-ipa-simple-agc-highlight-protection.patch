@@ -1,4 +1,4 @@
-From: taimen camera bring-up
+From: Giuseppe Maggio <jertlok@proton.me>
 Subject: [PATCH] ipa: simple: agc: protect highlights like vendor AE
 
 The MSV controller exposes for the histogram mean alone, so a lamp or a
@@ -8,6 +8,8 @@ When a meaningful share of pixels lands in the top histogram bin, bias
 the measurement upward so the controller backs off and recovers the
 highlights. Threshold 2% of pixels, proportional gain 12, capped at
 +1.5 MSV so a genuinely bright scene cannot crash the exposure.
+
+Assisted-by: Claude
 
 --- a/src/ipa/simple/algorithms/agc.cpp
 +++ b/src/ipa/simple/algorithms/agc.cpp

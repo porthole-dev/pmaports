@@ -23,6 +23,8 @@ Three things follow, none of them PinePhone-specific:
 
 The PinePhone's own selection is unchanged: its decorated names are still
 tried first and still match first.
+
+Assisted-by: Claude
 --- a/pinephone-callaudiod	2026-08-27 11:06:16.778224694 +0200
 +++ b/pinephone-callaudiod	2026-08-27 11:06:16.779586187 +0200
 @@ -70,14 +70,24 @@

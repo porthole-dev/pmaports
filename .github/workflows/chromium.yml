@@ -1,0 +1,358 @@
+# Build temp/chromium in stages that fit GitHub's 6 h job limit, and publish it
+# like build.yml publishes everything else. Design, costs and failure
+# semantics: .github/CHROMIUM.md.
+#
+# Manual runs, and a daily schedule that does nothing unless the repository
+# variable CHROMIUM_SCHEDULE is "true". Never on pushes: build.yml keeps
+# chromium in the heavy tier. A run resumes whatever state an earlier run of
+# the same aport left, so running it again is how an unfinished build
+# continues.
+name: Chromium
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner (arm builds natively, x86_64 cross compiles with pmb:cross-native2)
+        type: choice
+        options: [ubuntu-24.04-arm, ubuntu-24.04]
+        default: ubuntu-24.04-arm
+      stages:
+        description: Build jobs in this run, 1 to 10 (each up to 5 h of ninja)
+        type: number
+        default: 10
+      stage_minutes:
+        description: Cap on each build job's ninja time in minutes, 0 for none (short test runs)
+        type: number
+        default: 0
+      publish:
+        description: Publish the package when it is built
+        type: boolean
+        default: true
+  schedule:
+    - cron: "41 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  # One chain per state; a second run waits and then resumes where this one stopped.
+  group: chromium-${{ inputs.runner || 'ubuntu-24.04-arm' }}
+  cancel-in-progress: false
+
+env:
+  PACKAGES_REPO: porthole-dev/pmos-packages
+  SIGNING_KEY_NAME: porthole-dev-packages-20260915.rsa
+  PACKAGER: Giuseppe Maggio <jertlok@proton.me>
+  ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+
+jobs:
+  plan:
+    name: Plan
+    if: github.event_name != 'schedule' || vars.CHROMIUM_SCHEDULE == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # prune stale states
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      build: ${{ steps.plan.outputs.build }}
+      prepared: ${{ steps.plan.outputs.prepared }}
+      done: ${{ steps.plan.outputs.done }}
+      branch: ${{ steps.plan.outputs.branch }}
+      runner: ${{ steps.plan.outputs.runner }}
+      stages: ${{ steps.plan.outputs.stages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          READ_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
+          RUNNER: ${{ inputs.runner || 'ubuntu-24.04-arm' }}
+          STAGES: ${{ inputs.stages || 10 }}
+        run: |
+          set -eu
+          stages=$(( STAGES < 1 ? 1 : STAGES > 10 ? 10 : STAGES ))
+          branch=$(python3 -c 'import configparser as c; p = c.ConfigParser(); p.read("pmaports.cfg"); ch = c.ConfigParser(); ch.read("channels.cfg"); print(ch[p["pmaports"]["channel"]]["branch_pmaports"])')
+          ver=$(sed -n 's/^pkgver=//p' temp/chromium/APKBUILD)-r$(sed -n 's/^pkgrel=//p' temp/chromium/APKBUILD)
+          tag=$(bash .github/scripts/chromium-state.sh tag "$RUNNER")
+
+          build=true
+          index=$RUNNER_TEMP/APKINDEX.tar.gz
+          if { [ -n "$READ_TOKEN" ] && GH_TOKEN=$READ_TOKEN gh release download "$branch/aarch64" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -O "$index"; } ||
+             curl -fsSL -o "$index" "https://github.com/$PACKAGES_REPO/releases/download/$branch/aarch64/APKINDEX.tar.gz"; then
+            if tar -xzOf "$index" APKINDEX | awk '/^P:/ { p = substr($0, 3) } /^V:/ && p == "chromium" { print substr($0, 3) }' | grep -qx "$ver"; then
+              echo "::notice::chromium $ver is already published"
+              build=false
+            fi
+          else
+            echo "::notice::the published index is not readable; building chromium $ver"
+          fi
+
+          bash .github/scripts/chromium-state.sh manifest "$tag" > "$RUNNER_TEMP/state.json"
+          echo "state $tag:"
+          jq '{stage, records, done, prep_bytes: .prep.bytes, out_bytes: .out.bytes}' "$RUNNER_TEMP/state.json"
+          bash .github/scripts/chromium-state.sh prune "$tag" 14
+
+          {
+            echo "tag=$tag"
+            echo "build=$build"
+            echo "prepared=$(jq 'has("prep")' "$RUNNER_TEMP/state.json")"
+            echo "done=$(jq '.done == true' "$RUNNER_TEMP/state.json")"
+            echo "branch=$branch"
+            echo "runner=$RUNNER"
+            echo "stages=$stages"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  prep:
+    needs: plan
+    if: needs.plan.outputs.build == 'true' && needs.plan.outputs.prepared != 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: prep
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+
+  # Build job k runs while job k-1 succeeded without finishing ninja, up to
+  # the run's stages. GitHub has no loops; the chain is written out.
+  stage-1:
+    needs: [plan, prep]
+    if: ${{ !cancelled() && needs.plan.outputs.build == 'true' && needs.plan.outputs.done != 'true' && contains(fromJSON('["success", "skipped"]'), needs.prep.result) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 1
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-2:
+    needs: [plan, stage-1]
+    if: ${{ !cancelled() && needs.stage-1.result == 'success' && needs.stage-1.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 2 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 2
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-3:
+    needs: [plan, stage-2]
+    if: ${{ !cancelled() && needs.stage-2.result == 'success' && needs.stage-2.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 3 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 3
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-4:
+    needs: [plan, stage-3]
+    if: ${{ !cancelled() && needs.stage-3.result == 'success' && needs.stage-3.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 4 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 4
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-5:
+    needs: [plan, stage-4]
+    if: ${{ !cancelled() && needs.stage-4.result == 'success' && needs.stage-4.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 5 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 5
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-6:
+    needs: [plan, stage-5]
+    if: ${{ !cancelled() && needs.stage-5.result == 'success' && needs.stage-5.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 6 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 6
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-7:
+    needs: [plan, stage-6]
+    if: ${{ !cancelled() && needs.stage-6.result == 'success' && needs.stage-6.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 7 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 7
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-8:
+    needs: [plan, stage-7]
+    if: ${{ !cancelled() && needs.stage-7.result == 'success' && needs.stage-7.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 8 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 8
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-9:
+    needs: [plan, stage-8]
+    if: ${{ !cancelled() && needs.stage-8.result == 'success' && needs.stage-8.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 9 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 9
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  stage-10:
+    needs: [plan, stage-9]
+    if: ${{ !cancelled() && needs.stage-9.result == 'success' && needs.stage-9.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 10 }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: build
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+      stage: 10
+      stages: ${{ fromJSON(needs.plan.outputs.stages) }}
+      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+
+  package:
+    needs: [plan, stage-1, stage-2, stage-3, stage-4, stage-5, stage-6, stage-7, stage-8, stage-9, stage-10]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && (needs.plan.outputs.done == 'true' || contains(needs.*.outputs.done, 'true')) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/chromium-stage.yml
+    with:
+      mode: package
+      runner: ${{ needs.plan.outputs.runner }}
+      tag: ${{ needs.plan.outputs.tag }}
+
+  # build.yml's publish job for the one package: publish-repo.sh merges it into
+  # the release, signs and verifies the index. Then the stored state goes.
+  publish:
+    name: Publish repository
+    needs: [plan, package]
+    if: ${{ !cancelled() && needs.package.result == 'success' && (github.event_name == 'schedule' || inputs.publish) && github.ref_name == 'taimen-bringup' }}
+    runs-on: ubuntu-24.04
+    environment: publish
+    permissions:
+      contents: write  # delete the stored state
+    # build.yml's run-level group on taimen-bringup: the two never rewrite the
+    # release's index at the same time.
+    concurrency:
+      group: build-refs/heads/taimen-bringup
+      cancel-in-progress: false
+    steps:
+      - id: secrets
+        name: Check for publishing secrets
+        env:
+          TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+          KEY: ${{ secrets.PACKAGES_SIGNING_KEY }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::PACKAGES_TOKEN or PACKAGES_SIGNING_KEY is not set"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages-chromium
+          path: ${{ runner.temp }}/packages
+      - name: Sign and upload the repository
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+          SIGNING_KEY: ${{ secrets.PACKAGES_SIGNING_KEY }}
+          BRANCH: ${{ needs.plan.outputs.branch }}
+        run: |
+          set -eu
+          keys=$RUNNER_TEMP/keys
+          (umask 077; mkdir -p "$keys"; printf '%s\n' "$SIGNING_KEY" > "$keys/$SIGNING_KEY_NAME")
+          trap 'rm -rf "$keys"' EXIT
+          local_repo=$(ls "$RUNNER_TEMP/packages")
+          [ "$(echo "$local_repo" | wc -l)" = 1 ] || { echo "::error::expected one local repository: $local_repo"; exit 1; }
+          tag=$BRANCH/aarch64
+          repo=$RUNNER_TEMP/repo
+          mkdir -p "$repo"
+          gh release view "$tag" -R "$PACKAGES_REPO" >/dev/null 2>&1 ||
+            gh release create "$tag" -R "$PACKAGES_REPO" --title "$tag" \
+              --notes "apk repository for pmaports branch $BRANCH"
+          gh release download "$tag" -R "$PACKAGES_REPO" -p '*.apk' -D "$repo" 2>/dev/null || true
+          docker run -i --rm -v "$repo:/repo" -v "$RUNNER_TEMP/packages/$local_repo/aarch64:/new:ro" \
+            -v "$keys:/keys:ro" -v "$PWD/.github/keys:/pubkeys:ro" \
+            -e ARCH=aarch64 -e KEY="$SIGNING_KEY_NAME" -e PACKAGER \
+            -e DESCRIPTION="$PACKAGES_REPO $tag" \
+            "$ALPINE" sh -s < .github/scripts/publish-repo.sh
+          if [ ! -f "$repo/.upload" ]; then
+            echo "::error::publish-repo.sh did not run"
+            exit 1
+          fi
+          if [ -s "$repo/.upload" ]; then
+            (cd "$repo" && grep -vx APKINDEX.tar.gz .upload | xargs -r gh release upload "$tag" -R "$PACKAGES_REPO" --clobber)
+            gh release upload "$tag" -R "$PACKAGES_REPO" --clobber "$repo/APKINDEX.tar.gz"
+            xargs -r -n1 gh release delete-asset "$tag" -R "$PACKAGES_REPO" -y < "$repo/.remove"
+            check=$RUNNER_TEMP/check
+            mkdir -p "$check"
+            gh release download "$tag" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "$check"
+            cmp "$check/APKINDEX.tar.gz" "$repo/APKINDEX.tar.gz"
+            docker run --rm -v "$check:/check:ro" -v "$PWD/.github/keys:/pubkeys:ro" "$ALPINE" \
+              apk verify --keys-dir /pubkeys /check/APKINDEX.tar.gz
+            gh release view "$tag" -R "$PACKAGES_REPO" --json assets --jq '.assets[].name' | sort > "$check/assets"
+            tar -xzOf "$check/APKINDEX.tar.gz" APKINDEX 2>/dev/null |
+              awk -F: '/^P:/ { p = $2 } /^V:/ { print p "-" $2 ".apk" }' | sort > "$check/indexed"
+            if comm -23 "$check/indexed" "$check/assets" | grep .; then
+              echo "::error::The index names packages that are not release assets"
+              exit 1
+            fi
+          fi
+      - name: Delete the stored state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: bash .github/scripts/chromium-state.sh delete "$TAG"

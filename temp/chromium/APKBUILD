@@ -15,14 +15,16 @@
 #   HANDHELD    ozone is wayland-only. Nothing here is SoC-specific: the apk
 #               is meant to serve any aarch64 pmOS handheld, msm8998 and
 #               sdm845 alike. Per-device flags go in the device package.
-#   CROSS SPEED $CC/$CXX are routed through crossdirect and check is off. See
-#               _configure(); it is worth hours.
+#   CROSS       pmb:cross-native2 with Chromium's unbundled host, target and
+#               V8 snapshot toolchains: nothing runs under emulation. See
+#               _toolchain() and cross-unbundle-toolchains.patch. A native
+#               build takes Alpine's path unchanged.
 #
 # Everything else is Alpine's aport unmodified; rebase on it rather than
 # carrying divergence.
 pkgname=chromium
 pkgver=152.0.7977.82
-pkgrel=51
+pkgrel=52
 _copium_tag=152.0
 # DEPS file -> deps['src/third_party/test_fonts']['objects'][0]['object_name']
 # (for the given version, when it changes)
@@ -45,69 +47,41 @@ depends="
 	so:libudev.so.1
 	xdg-utils
 	"
-_llvmver=22
-# TWO ENTRIES HERE ARE LOAD-BEARING FOR THE CROSS BUILD, AND NEITHER LOOKS IT.
-# pmb/build/init.py::init_compiler decides what goes in the NATIVE chroot -- the
-# one crossdirect execs into -- by matching literal strings in this list:
+# 23, not Alpine's 22: Alpine edge moved llvm-runtimes to 23.1.1 (aports
+# 6bd25da175d), so nothing provides clang22-rtlib any more and the 22
+# toolchain cannot link. rust 1.98 is built against LLVM 23 as well.
+_llvmver=23
+# Alpine's makedepends, split for a cross build (CBUILD != CHOST); a native
+# build installs both lists, which is the set Alpine has.
 #
-#   "rust" | "cargo" | "cargo-auditable"  ->  cross_pkgs += <all deps>
-#   "clang" | "clang-dev"                 ->  cross_pkgs += ["clang"]
-#   otherwise                             ->  cross_pkgs += gcc/g++ for $CARCH
-#
-# The rust arm is the problem. It copies EVERY dependency into the native
-# chroot, runtime ones included, and this package's runtime depends open with
-# `$pkgname-common=$pkgver-r$pkgrel`. apk cannot satisfy that on x86_64, so
-# pmbootstrap builds a COMPLETE x86_64 chromium first, to produce a
-# chromium-common nothing will ever install. Measured: the aarch64 build does
-# not start until that one finishes. pmbootstrap's own comment at the call site
-# calls this "a workaround for rust ... this should all be refactored"; until it
-# is, `cmd:rustc` asks for the same package (rust provides it) without matching
-# the string.
-#
-# `clang` then has to be named explicitly, because it is the arm that puts a
-# host clang -- clang22, the same version as clang$_llvmver -- where crossdirect
-# looks for it. Without it _configure() correctly refuses to use crossdirect and
-# every compile runs under qemu.
-#
-# The cost of this pairing, stated: the arms are if/elif/else, so choosing clang
-# means gcc-$CARCH and g++-$CARCH are NOT in the native chroot. Nothing here
-# compiles with gcc -- $CC and $CXX are clang -- but a stray bare `cc` from some
-# third_party script would fail loudly rather than fall back.
-makedepends="
+# makedepends_build runs on the build machine: compilers, generators, node,
+# rust, and the -dev packages of what the HOST and V8 SNAPSHOT toolchains
+# link. The snapshot generator is Blink built for the build machine (V8 set to
+# the target cpu), so that is most of the libraries Blink links as well.
+# makedepends_host is the target sysroot: every target library, plus the
+# target's clang runtime (clang_rt.builtins) and Rust standard library, which
+# cross-unbundle-toolchains.patch takes from there.
+_libs_dev="
 	alsa-lib-dev
-	bash
-	bison
-	bsd-compat-headers
 	brotli-dev
+	bsd-compat-headers
 	bzip2-dev
 	cairo-dev
-	clang
-	clang$_llvmver-dev
-	clang$_llvmver-rtlib
 	crc32c-dev
 	cups-dev
 	curl-dev
 	dav1d-dev
 	dbus-glib-dev
 	double-conversion-dev
-	elfutils
 	elfutils-dev
-	esbuild
 	eudev-dev
 	ffmpeg-dev
-	findutils
 	flac-dev
 	flatbuffers-dev
-	flex
 	freetype-dev
-	gn
-	go
-	gperf
 	gtk+3.0-dev
-	gzip
 	harfbuzz-dev
 	hunspell-dev
-	hwdata-dev
 	jpeg-dev
 	jsoncpp-dev
 	krb5-dev
@@ -131,36 +105,57 @@ makedepends="
 	libxscrnsaver-dev
 	libxslt-dev
 	linux-headers
-	lld$_llvmver
-	llvm$_llvmver
 	mesa-dev
 	minizip-dev
-	mold
-	nodejs
 	nss-dev
 	openh264-dev
 	opus-dev
 	pciutils-dev
-	perl
 	pipewire-dev
 	pulseaudio-dev
-	py3-setuptools
-	python3
 	qt6-qtbase-dev
 	re2-dev
-	cmd:rustc
-	rust-bindgen
-	rustfmt
-	samurai
 	simdutf-dev
 	snappy-dev
 	speex-dev
 	spirv-tools-dev
 	sqlite-dev
 	woff2-dev
-	xcb-proto
 	zlib-dev
 	zstd-dev
+	"
+makedepends_build="
+	$_libs_dev
+	bash
+	bison
+	clang$_llvmver-dev
+	clang$_llvmver-rtlib
+	elfutils
+	esbuild
+	findutils
+	flex
+	gn
+	go
+	gperf
+	gzip
+	hwdata-dev
+	lld$_llvmver
+	llvm$_llvmver
+	mold
+	nodejs
+	perl
+	py3-setuptools
+	python3
+	rust
+	rust-bindgen
+	rustfmt
+	samurai
+	xcb-proto
+	"
+makedepends_host="
+	$_libs_dev
+	clang$_llvmver-rtlib
+	rust
 	"
 checkdepends="xvfb-run"
 subpackages="
@@ -216,6 +211,7 @@ source="
 	v4l2-musl-timeval-types.patch
 	hardware-video-decoding-hook-logging-include.patch
 	xkb-survive-a-seat-with-no-keymap.patch
+	cross-unbundle-toolchains.patch
 	"
 _copium_patches="
 	cr133-ffmpeg-no-noh264parse.patch
@@ -241,14 +237,10 @@ _copium_patches="
 	"
 # chrome-sandbox can use suid when user namespaces aren't available, but uses only userns and drops privileges normally
 #
-# !check: abuild's want_check() skips the suite when CBUILD != CHOST, and a
-# crossdirect build is NOT that -- it runs inside the target buildroot with the
-# compiler quietly redirected, so CBUILD == CHOST and the tests would build and
-# run. That means five more link targets (net_unittests alone is enormous) and
-# then executing them, plus xvfb, under qemu on a foreign arch. Alpine runs
-# them on a native builder; this fork cannot, and pretending otherwise costs
-# hours to produce results about qemu.
-options="suid !check"
+# pmb:cross-native2: the whole build runs on the build machine with the target
+# chroot as the sysroot. abuild's want_check() skips the tests when cross
+# compiling, so check stays as Alpine has it for a native build.
+options="suid pmb:cross-native2"
 
 case "$CARCH" in
 riscv64)
@@ -742,6 +734,54 @@ _prepare() {
 		third_party/libxml/chromium/*.cc
 
 	echo "$CTARGET" >> build/rust/known-target-triples.txt
+	# the host toolchains build Rust for the build machine
+	[ "$CBUILD" = "$CTARGET" ] || echo "$CBUILD" >> build/rust/known-target-triples.txt
+}
+
+# $@ without the words that point at the target sysroot
+_build_flags() {
+	local flag out=
+	for flag; do
+		case "$flag" in
+		--sysroot=*|-Wl,-rpath-link=$CBUILDROOT*) ;;
+		*) out="$out $flag" ;;
+		esac
+	done
+	echo "$out"
+}
+
+# The toolchain environment, for gn gen and again for ninja, which re-runs gn
+# whenever a build file changes.
+#
+# build/toolchain/linux/unbundle/BUILD.gn reads the target toolchain from
+# CC/CXX/AR/NM and the host toolchains from BUILD_CC/BUILD_CXX/BUILD_AR/
+# BUILD_NM, with their flags in CFLAGS... and BUILD_CFLAGS...; the same
+# variables Void Linux exports for its cross build (srcpkgs/chromium/template,
+# _setup_clang). Both are the build machine's clang: compiler_cpu_abi.gn passes
+# --target for each toolchain's cpu (see compiler.patch) and target_sysroot
+# adds --sysroot to the target toolchain only.
+_toolchain() {
+	export AR="/usr/lib/llvm$_llvmver/bin/llvm-ar"
+	export CC="/usr/lib/llvm$_llvmver/bin/clang"
+	export CXX="/usr/lib/llvm$_llvmver/bin/clang++"
+	export NM="/usr/lib/llvm$_llvmver/bin/llvm-nm"
+
+	[ "$CBUILD" = "$CHOST" ] && return 0
+
+	export BUILD_AR="$AR" BUILD_CC="$CC" BUILD_CXX="$CXX" BUILD_NM="$NM"
+	# abuild's cross environment points pkg-config at the target sysroot for
+	# every caller, and build/config/linux/pkg-config.py passes the
+	# environment through. gn already gives the target toolchain's queries
+	# the sysroot (-s $target_sysroot sets PKG_CONFIG_LIBDIR and rewrites the
+	# paths), so drop the global setting and let the host toolchains see the
+	# build machine. Gentoo's ebuild clears PKG_CONFIG_PATH for the same reason.
+	unset PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR
+	# Go only runs build-time generators here (third_party/dawn/tools), so it
+	# builds for the build machine; pmbootstrap's cross-native2 GOARCH and cgo
+	# sysroot are for packages that ship Go binaries. Left set, dawn's
+	# generate-sources-gn.py compiles runtime/cgo for arm64 with the build
+	# machine's clang and fails on the first arm64 assembly file.
+	unset GOARCH CGO_CFLAGS CGO_LDFLAGS
 }
 
 _configure() {
@@ -758,62 +798,14 @@ _configure() {
 	export CXXFLAGS="${CXXFLAGS/-fstack-clash-protection}"
 	export CFLAGS="${CFLAGS/-fstack-clash-protection}"
 
-	# TOOLCHAIN -- and the single decision that sets how long this takes.
-	#
-	# custom_toolchain=unbundle:default means gn records $CC and $CXX
-	# verbatim: build/toolchain/linux/unbundle/BUILD.gn is `cc = getenv("CC")`,
-	# nothing more. Whatever is exported here is what ninja executes for every
-	# one of ~59000 steps.
-	#
-	# An ABSOLUTE path therefore defeats crossdirect. pmbootstrap cross-builds
-	# by putting /native/usr/lib/crossdirect/$CARCH first on PATH, holding
-	# symlinks named clang, clang++, gcc, cc ... to one wrapper that
-	# re-executes the HOST's compiler with -target and --sysroot=/. It decides
-	# on argv[0], so "/usr/lib/llvm22/bin/clang" is never a name it can match,
-	# and every compile runs the target-arch clang under qemu instead. Naming
-	# the wrapper is the whole fix; the chain it opens is
-	#
-	#   crossdirect -> /native/usr/lib/ccache/bin/clang (ccache, natively)
-	#               -> /native/usr/bin/clang            (host clang $_llvmver)
-	#
-	# AR AND NM STAY IN THE CHROOT, AND THIS IS NOT AN OVERSIGHT. llvm-ar and
-	# llvm-nm are format-agnostic, so the host copies would serve aarch64
-	# objects fine -- and pointing $AR at /native cost this build 123 ninja
-	# steps before it died:
-	#
-	#   ninja: job failed with status 127: ... "/native/usr/lib/llvm22/bin/llvm-ar" ...
-	#   Error relocating /lib/libLLVM.so.22.1: unsupported relocation type 1026
-	#
-	# ninja runs $AR DIRECTLY. Only crossdirect-wrapped commands get the
-	# environment that makes a native binary work in here -- it execve()s with
-	# a literal LD_LIBRARY_PATH=/native/lib:/native/usr/lib -- so an x86_64
-	# llvm-ar invoked on its own resolves libLLVM to the aarch64 copy in /lib
-	# and the musl loader rejects it. 1025/1026 are R_AARCH64 relocation
-	# types; that error always means an ELF of one arch met libraries of
-	# another. A wrapper script exporting the path would work; the archive
-	# steps are a small fraction of 56135, so it has not been worth one.
-	#
-	# Every arm of the condition is checked rather than assumed: PMB_CROSS is
-	# exported by pmbootstrap (pmb/build/backend.py), and a missing piece falls
-	# back to the plain in-chroot toolchain rather than failing the build.
-	local _llvm="/usr/lib/llvm$_llvmver"
-	local _xdir="/native/usr/lib/crossdirect/$CARCH"
-	export AR="$_llvm/bin/llvm-ar"
-	export CC="$_llvm/bin/clang"
-	export CXX="$_llvm/bin/clang++"
-	export NM="$_llvm/bin/llvm-nm"
-
-	local _crossdirect=false
-	if [ "$PMB_CROSS" = "crossdirect" ] \
-		&& [ -x "$_xdir/clang" ] && [ -x "$_xdir/clang++" ] \
-		&& [ -x "/native/usr/lib/ccache/bin/clang" ] \
-		&& [ -x "/native/usr/bin/clang" ]; then
-		_crossdirect=true
-		export CC="$_xdir/clang"
-		export CXX="$_xdir/clang++"
-		msg "crossdirect: compiling on the host ($CC)"
-	else
-		msg "crossdirect: NOT in use, compiling under emulation ($CC)"
+	_toolchain
+	if [ "$CBUILD" != "$CHOST" ]; then
+		# the host toolchains take the flags above without the target's sysroot,
+		# which abuild and pmbootstrap put in CFLAGS, CPPFLAGS and LDFLAGS
+		export BUILD_CFLAGS="$(_build_flags $CFLAGS)"
+		export BUILD_CXXFLAGS="$(_build_flags $CXXFLAGS)"
+		export BUILD_CPPFLAGS="$(_build_flags $CPPFLAGS)"
+		export BUILD_LDFLAGS="$(_build_flags $LDFLAGS)"
 	fi
 
 	msg "Configuring build"
@@ -920,11 +912,6 @@ _configure() {
 		;;
 	esac
 
-	# ccache. Behind crossdirect it is already in the chain and running on the
-	# host (crossdirect execs /native/usr/lib/ccache/bin/<name>), so a second
-	# wrapper here would put a target-arch ccache under qemu in front of every
-	# compile -- one emulated process per translation unit, to reach a cache
-	# that is being consulted anyway.
 	case "$USE_CCACHE" in
 	1)
 		local cc_wrapper="ccache"
@@ -933,26 +920,6 @@ _configure() {
 		local cc_wrapper=""
 		;;
 	esac
-	if $_crossdirect; then
-		cc_wrapper=""
-	fi
-
-	# LINKER. use_mold=true makes compiler.gni set use_lld=false -- the
-	# declaration is literally `use_lld = is_clang && ... && !use_mold` -- and
-	# clang is then invoked with -fuse-ld=mold. crossdirect links natively only
-	# for lld, and refuses for any other linker the caller named, deliberately,
-	# so that it never substitutes one the package did not choose. Under mold
-	# every link therefore goes back to qemu, and linking is the half of this
-	# build that does not parallelise. Ask for lld when crossdirect is driving;
-	# keep mold for a native build, where it is the faster of the two.
-	#
-	# The native-link path is itself opt-in on the host side and reads
-	# /native/etc/crossdirect-native-link. Absent that file this is merely a
-	# different linker, never a broken one.
-	local mold=true
-	if $_crossdirect; then
-		mold=false
-	fi
 
 	# shellcheck disable=2089
 	local gn_config="
@@ -973,7 +940,6 @@ _configure() {
 		enable_vr=false
 		fatal_linker_warnings=false
 		ffmpeg_branding=\"Chrome\"
-		host_toolchain=\"//build/toolchain/linux/unbundle:default\"
 		icu_use_data_file=false
 		is_cfi=false
 		is_clang=true
@@ -995,7 +961,7 @@ _configure() {
 		treat_warnings_as_errors=false
 		use_clang_modules=false
 		use_custom_libcxx=true
-		use_mold=$mold
+		use_mold=true
 		use_qt6=true
 		use_pulseaudio=true
 		use_safe_libstdcxx=false
@@ -1008,12 +974,44 @@ _configure() {
 		$_phone_gn
 		"
 
+	# CROSS. The toolchain split Void Linux uses (srcpkgs/chromium/template):
+	# host tools come from unbundle:host and V8's snapshot generator from
+	# unbundle:v8_snapshot_cross, a build-machine toolchain whose V8 targets
+	# $target_cpu, so the snapshot matches the target without running target
+	# code. The target's clang runtime and Rust standard library come from the
+	# sysroot: clang_cross_path and rust_cross_sysroot_absolute, both from
+	# cross-unbundle-toolchains.patch. pkg_config is named so that gn skips its
+	# Debian-sysroot result cache (build/config/linux/pkg_config.gni).
+	if [ "$CBUILD" != "$CHOST" ]; then
+		local target_cpu
+		case "$CARCH" in
+		aarch64) target_cpu=arm64 ;;
+		x86_64) target_cpu=x64 ;;
+		*) die "cross compiling for $CARCH is not supported: V8's snapshot toolchain needs a build machine with the same word size" ;;
+		esac
+		gn_config="$gn_config
+		host_toolchain=\"//build/toolchain/linux/unbundle:host\"
+		v8_snapshot_toolchain=\"//build/toolchain/linux/unbundle:v8_snapshot_cross\"
+		target_cpu=\"$target_cpu\"
+		target_sysroot=\"$CBUILDROOT\"
+		clang_cross_path=\"$CBUILDROOT/usr/lib/llvm$_llvmver\"
+		rust_cross_sysroot_absolute=\"$CBUILDROOT/usr\"
+		pkg_config=\"pkg-config\"
+		host_pkg_config=\"pkg-config\"
+		"
+	else
+		gn_config="$gn_config
+		host_toolchain=\"//build/toolchain/linux/unbundle:default\"
+		"
+	fi
+
 	# shellcheck disable=2090,2116
 	gn gen out/bld $gn_threads --args="$(echo $gn_config)"
 }
 
 build() {
 	msg "Ninja turtles GO!"
+	_toolchain
 
 	# final link needs lots of file descriptors
 	ulimit -n 4096
@@ -1320,4 +1318,5 @@ e48693e6b7aeebf69a5acbf80d9a35defe4c23835121dfeb58b051ac7c527e758a41004f4d193274
 36b54049a64881989648a2b280790b6ded1e92d21a02d49a7b6afdc1256801b90ac5e19b911a68e8c2a819c8b23f14b8f31ec976bb2be157f52065fd1c99a356  v4l2-musl-timeval-types.patch
 05f360268c683729f583888d27aba540d0f089f23a40a73560284b4937651af6d1cbee55a0f48e5382530e42ccf5d3ea859aa48889b2aa2fcb381df83f7e0b62  hardware-video-decoding-hook-logging-include.patch
 9b72ae1fbc53e79d1645f81b2c2f8d2d4a696cdf01bd7e0972f7038ea656c94d1e87a3e7293822d1e67e995b640c74ea84a5d1d1da0f77a11f7b262125afde3f  xkb-survive-a-seat-with-no-keymap.patch
+d2106333af2e053d804ee4b77ff2b71a099267983db74032e34b671d07835dd149c5c2746036760a82699c8bc3e193559f554fb2b54852f971de309cd3173616  cross-unbundle-toolchains.patch
 "

@@ -18,6 +18,7 @@ wherever memory-region points, and the existing ipa_fw_mem carveout
 msm8998-oneplus-common.dtsi already loads GSI firmware from the AP on
 this SoC.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-wahoo.dtsi   | 34 +++++++++++++------

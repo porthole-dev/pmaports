@@ -17,6 +17,7 @@ the sensor's always-on cam_vio supply, and standby release is
 idempotent and cheap, so it is re-issued on every first control write
 after probe.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/Kconfig      |  12 +++

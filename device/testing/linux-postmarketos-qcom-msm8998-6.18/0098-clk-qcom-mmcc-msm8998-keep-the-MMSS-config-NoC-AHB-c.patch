@@ -28,6 +28,7 @@ identified the clock.
 gcc_mmss_noc_cfg_ahb_clk is already marked critical for the same
 reason one level up; this is the MMSS-internal half of the same path.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/clk/qcom/mmcc-msm8998.c | 10 +++++++++-

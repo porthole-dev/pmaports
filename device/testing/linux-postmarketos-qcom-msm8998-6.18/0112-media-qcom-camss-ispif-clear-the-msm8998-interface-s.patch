@@ -15,6 +15,7 @@ Downstream's msm_ispif_reset() writes the whole interface state out by
 hand after the block reset rather than trusting it. Do the same, guarded
 on the SoC version so no other ISPIF user changes behaviour.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../media/platform/qcom/camss/camss-ispif.c   | 35 +++++++++++++++++++

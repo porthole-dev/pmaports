@@ -9,6 +9,7 @@ protect it, so the kernel can own CPU DVFS on this board.  Until now the
 CPUs ran at the frequency the bootloader picked, which left the gold
 cluster running slower than the silver one under load.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-wahoo.dtsi   | 21 +++++++------------

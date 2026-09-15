@@ -20,6 +20,7 @@ Revert this once the OSM is programmed and cpufreq reports both
 policies: with scaling working gold is genuinely the faster cluster,
 and this override would then invert the model in the other direction.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-wahoo.dtsi   | 22 +++++++++++++++++++

@@ -33,6 +33,7 @@ close it.
 Measured on a Pixel 2 XL: 0/3 captures carried audio before, 18
 consecutive captures after, on each of the six digital microphones.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  include/linux/mfd/wcd934x/registers.h |   4 +

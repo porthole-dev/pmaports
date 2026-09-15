@@ -13,6 +13,7 @@ wait_for_commit_done() still waited on the missing interrupt whenever the
 CTL_START readback had already self-cleared, so every commit timed out.
 Wait for pp done instead when the catalog declares no start interrupt.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/disp/dpu1/dpu_encoder_phys_cmd.c | 4 +++-

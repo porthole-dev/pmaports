@@ -12,6 +12,7 @@ bits 9..13 never assert, so every cmd-mode commit spent its whole timeout
 in the ctl-start wait and the display never recovered from the first
 frame. Drop the bogus indices so the cmd encoder uses the pp-done path.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../gpu/drm/msm/disp/dpu1/catalog/dpu_3_0_msm8998.h  | 12 +++++++-----

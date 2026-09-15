@@ -27,6 +27,7 @@ Built as a module rather than built-in on purpose: a built-in driver
 that touches an unresponsive Easel would hang the boot, where a
 loadable module fails safely instead.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/misc/Kconfig       |   9 +

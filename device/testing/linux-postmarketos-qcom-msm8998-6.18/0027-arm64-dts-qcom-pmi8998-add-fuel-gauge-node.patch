@@ -9,6 +9,7 @@ charge. Two reg entries are mandatory: qcom_fg.c reads index 0 as the
 SOC base and index 1 as the CHG base, and aborts probe if the second
 is missing.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/pmi8998.dtsi | 17 +++++++++++++++++

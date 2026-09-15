@@ -28,6 +28,7 @@ feeds a supply widget from a source, which mainline's DAPM does not
 accept. Both name widgets that do not exist and hang the boot at the
 splash rather than merely failing the card.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-taimen.dts   | 277 +++++++++++++++---

@@ -17,6 +17,7 @@ controller that rejects the channel definition.
 Check both, unprepare the stream if enabling it fails, and return the
 error so the PCM layer fails the start where the fault actually is.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/wcd934x.c | 16 ++++++++++++++--

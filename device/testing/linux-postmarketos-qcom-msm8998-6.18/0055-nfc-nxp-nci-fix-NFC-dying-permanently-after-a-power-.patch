@@ -28,6 +28,7 @@ Reproduced on a PN553 (Google Pixel 2 XL): before, the second power-on
 and every one after it failed. After, four off/on cycles in a row all
 succeed.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/nfc/nxp-nci/i2c.c | 26 ++++++++++++++++++++++++--

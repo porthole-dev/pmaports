@@ -15,6 +15,7 @@ backend, one channel on SLIMBUS_0_TX, which is what the handset
 microphone presents and what the vendor configuration also uses. No
 functional change.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/msm8998.c | 22 ++++------------------

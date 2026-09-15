@@ -45,6 +45,7 @@ the panel within a second now run indefinitely clean, with the DCS
 writes interleaving frames at ~30/s. Runtime switch:
 msm.cmd_frame_serialize (default on).
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/disp/dpu1/dpu_encoder.c |  11 ++

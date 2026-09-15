@@ -10,6 +10,7 @@ node's comments down to the two things a reader has to know: why the CSI
 clock mux is mapped over 0x10 rather than 4 bytes, and why the power
 domain order is load bearing.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 96 ++-------------------------

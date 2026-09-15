@@ -14,6 +14,7 @@ Give each regulator its own node name.
 Also reword a comment that contained "drivers/net/ipa/*", which forms
 '/*' inside a block comment and made dtc warn on every build.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi | 9 +++++----

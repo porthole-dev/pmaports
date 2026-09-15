@@ -18,6 +18,7 @@ delivers one repeated sample value, with nothing in any log to say why.
 Check the return, unwind the ports already connected, and hand the error
 back so the caller can fail where the fault is.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/slimbus/stream.c | 15 +++++++++++++--

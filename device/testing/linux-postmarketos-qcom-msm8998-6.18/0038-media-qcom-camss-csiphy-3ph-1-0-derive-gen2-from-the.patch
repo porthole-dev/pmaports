@@ -12,6 +12,7 @@ nothing and is one more thing to forget when a SoC is added.
 Test the table itself. csiphy_device_regs has to be zeroed for that to be
 meaningful, since the gen1 SoCs never assign lane_regs.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../qcom/camss/camss-csiphy-3ph-1-0.c         | 26 +++----------------

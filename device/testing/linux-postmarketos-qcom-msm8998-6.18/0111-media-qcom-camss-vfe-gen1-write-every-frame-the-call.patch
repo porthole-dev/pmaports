@@ -22,6 +22,7 @@ Program downstream's NO_SKIP -- all ones across the full period -- for
 every non-zero pattern. Pattern 0 still means stop, and keeps passing
 through.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../media/platform/qcom/camss/camss-vfe-gen1.c    | 15 +++++++++++++++

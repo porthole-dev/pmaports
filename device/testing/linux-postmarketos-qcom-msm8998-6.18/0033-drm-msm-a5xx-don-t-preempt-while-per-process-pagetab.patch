@@ -66,6 +66,7 @@ interaction was root-caused) into one, since 6.18's a5xx_gpu_init()
 already carries its own nr_rings variable and shipping the parameter
 pre-broken for even one commit isn't useful here.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/adreno/a5xx_gpu.c | 45 +++++++++++++++++++++++++++

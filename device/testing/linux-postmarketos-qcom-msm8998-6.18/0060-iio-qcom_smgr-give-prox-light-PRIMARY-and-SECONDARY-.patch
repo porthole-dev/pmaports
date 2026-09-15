@@ -37,6 +37,7 @@ return. The combined subscribe/unsubscribe refcounting is unchanged --
 both data types are still subscribed and torn down together; only which
 completion a given read blocks on changes.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iio/common/qcom_smgr/qcom_smgr.c | 33 +++++++++++++++++++-----

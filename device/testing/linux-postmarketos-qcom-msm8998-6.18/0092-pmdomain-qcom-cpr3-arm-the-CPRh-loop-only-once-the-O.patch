@@ -35,6 +35,7 @@ Arming is the last statement of the setup sequence for that reason, and
 qcom_cpr3_cprh_enable() refuses a thread whose corner table was never
 installed.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c |  13 ++++

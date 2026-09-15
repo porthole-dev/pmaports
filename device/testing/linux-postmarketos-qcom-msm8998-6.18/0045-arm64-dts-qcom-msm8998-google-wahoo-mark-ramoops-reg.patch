@@ -11,6 +11,7 @@ node sets. Without it the region stays part of the kernel's normal
 linear map instead of being excluded from it, which is the wrong
 model for memory meant to survive a warm reset untouched.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998-google-wahoo.dtsi | 1 +

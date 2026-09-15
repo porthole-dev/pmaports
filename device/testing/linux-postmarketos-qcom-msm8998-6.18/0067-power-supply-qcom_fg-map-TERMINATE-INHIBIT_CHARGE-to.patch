@@ -19,6 +19,7 @@ already maps both states to POWER_SUPPLY_STATUS_FULL. Do the same
 here so the fuel gauge and the charger driver agree on what "full"
 means for the same battery.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/power/supply/qcom_fg.c | 4 +++-

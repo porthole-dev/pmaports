@@ -25,6 +25,7 @@ Write the value to the offset the hardware actually decodes, gated on
 BLOCK_DMA_WITHIN_FRAME: downstream never sets bit 12 at 0x084 and its
 meaning there is unknown.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/dsi/dsi_host.c | 23 +++++++++++++++++++++++

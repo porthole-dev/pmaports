@@ -31,6 +31,7 @@ once wcd934x_get_version() has established which part this is. The three
 writes that were already there are entries in the new tables, so no
 behaviour is lost.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/wcd934x.c | 112 ++++++++++++++++++++++++++++++++++---

@@ -28,6 +28,7 @@ be left free to scale. devfreq trans_stat confirms the new path: 186
 direct 257 -> 710 MHz transitions over a benchmark run, where before
 there were none.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/msm_gpu.h         |  2 +-

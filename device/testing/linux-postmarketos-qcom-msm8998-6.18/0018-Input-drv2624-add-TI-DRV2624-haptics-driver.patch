@@ -8,6 +8,7 @@ used for the vibration motor on the Google Pixel 2 XL (taimen). The
 actuator is exposed through the force-feedback API, which is what
 userspace haptics daemons consume.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/input/misc/Kconfig   |  13 ++

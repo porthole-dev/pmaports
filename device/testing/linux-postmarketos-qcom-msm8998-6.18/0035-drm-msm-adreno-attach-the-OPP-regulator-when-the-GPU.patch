@@ -36,6 +36,7 @@ it's already set elsewhere -- so this only adds the regulator half
 that adreno_get_pwrlevels() was missing, rather than reintroducing
 that earlier commit's now-redundant clk_names wiring on top of it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/adreno/adreno_gpu.c | 22 ++++++++++++++++++++++

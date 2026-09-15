@@ -18,6 +18,7 @@ This is not the attach hang.  The core performs that binding whether or
 not the flag is passed, so removing it changes what this driver asks for,
 not what happens.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 12 ++++++------

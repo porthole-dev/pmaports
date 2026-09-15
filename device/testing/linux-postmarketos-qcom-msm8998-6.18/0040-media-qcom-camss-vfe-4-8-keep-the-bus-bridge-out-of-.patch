@@ -13,6 +13,7 @@ it back refusing grants, which leaves the write masters able to latch
 their configuration and take pixel data but unable to issue a beat or to
 acknowledge a halt - so vfe_gen1_halt() times out as well.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/camss/camss-vfe-4-8.c | 9 ++++++++-

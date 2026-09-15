@@ -33,6 +33,7 @@ Verified on msm8998: after this, one s2idle cycle leaves GENERAL_CFG at
 "On", the dwc3 interrupt +112 instead of +1, and the USB gadget answers
 on the other side of the suspend, over three consecutive cycles.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/usb/dwc3/dwc3-qcom.c | 11 +++++++----

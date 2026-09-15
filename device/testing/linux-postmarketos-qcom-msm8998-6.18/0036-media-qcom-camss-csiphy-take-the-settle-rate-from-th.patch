@@ -19,6 +19,7 @@ downstream as a VFE SOF timeout.
 Only assign timer_clk_rate for the csiphyN_timer clock, and program each
 clock with its own rounded rate.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../media/platform/qcom/camss/camss-csiphy.c  | 33 ++++++++++++-------

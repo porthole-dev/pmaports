@@ -15,6 +15,7 @@ lifetime of the runtime.
 Free the array and clear the pointer, so the runtime is left in the
 state it was in on entry.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/slimbus/stream.c | 2 ++

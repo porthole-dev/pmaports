@@ -38,6 +38,7 @@ The hook goes in ath10k_install_key() rather than in its callers so that
 every path that installs a key - .set_key, the static WEP key upload, and
 the peer key teardown - is covered.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/mac.c | 6 +++++-

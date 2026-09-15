@@ -20,6 +20,7 @@ the divider correct: 6 bytes 6/6, 9 bytes 6/6, 12 bytes 2/6, 15 bytes
 Ask at 6 bytes. A lower watermark only costs bus service requests; the
 FIFO depth, and so the tolerance to a late one, is unchanged.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/codecs/wcd934x.c | 2 +-

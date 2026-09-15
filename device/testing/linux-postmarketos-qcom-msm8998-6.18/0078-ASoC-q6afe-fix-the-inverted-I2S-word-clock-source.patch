@@ -21,6 +21,7 @@ clock ran but the WS pad stayed parked high for the whole stream, so the
 amplifiers never saw a frame and playback was silent.
 
 Fixes: 1148e16b335f ("ASoC: qcom: Update to use set_fmt_new callback")
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  sound/soc/qcom/qdsp6/q6afe.c | 10 ++++++++--

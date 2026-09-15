@@ -25,6 +25,7 @@ clk_summary with mclk0_clk_src inheriting it.
 
 Introduce gpll0_out_main_div2 and parent both divided feeds on it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/clk/qcom/gcc-msm8998.c | 29 +++++++++++++++++++++++++++--

@@ -21,6 +21,7 @@ signature of a 24 kHz stream zero-stuffed to 48 kHz. With the divider
 picked from the rate every image drops to the noise floor and the raw
 samples read as a continuous sinusoid, 16 samples per cycle at 3 kHz.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  include/linux/mfd/wcd934x/registers.h | 1 +

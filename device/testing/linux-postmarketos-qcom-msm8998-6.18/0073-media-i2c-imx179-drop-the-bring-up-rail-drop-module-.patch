@@ -11,6 +11,7 @@ the regulator core's back, ignores the runtime PM state, and keeps a file
 scope pointer to the last probed instance purely so a module parameter can
 reach it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/i2c/imx179.c | 35 -----------------------------------

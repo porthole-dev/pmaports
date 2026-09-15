@@ -24,6 +24,7 @@ Add the hook, sending SLIM_USR_MC_CHAN_CTRL with the channel-remove
 control code followed by a reconfiguration request, mirroring the
 existing enable path.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/slimbus/qcom-ngd-ctrl.c | 94 +++++++++++++++++++++++++++++++++

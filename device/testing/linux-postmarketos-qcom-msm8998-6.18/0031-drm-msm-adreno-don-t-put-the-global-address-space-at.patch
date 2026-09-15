@@ -45,6 +45,7 @@ adreno_iommu_create_vm() and returns struct drm_gpuvm * via
 msm_gem_vm_create() instead of struct msm_gem_address_space * via
 msm_gem_address_space_create(); the fix itself carries over unchanged.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/adreno/adreno_gpu.c | 30 +++++++++++++++++++++++--

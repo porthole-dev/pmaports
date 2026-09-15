@@ -24,6 +24,7 @@ The sensor has no bus libfprint can enumerate, so the device is
 instantiated from the FPCTEE_DEVICE environment variable, naming the
 node.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  libfprint/drivers/fpctee/fpctee.c | 1856 +++++++++++++++++++++++++++++

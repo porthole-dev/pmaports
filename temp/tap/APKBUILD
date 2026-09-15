@@ -14,7 +14,7 @@
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=tap
 pkgver=0.1.0
-pkgrel=24
+pkgrel=25
 pkgdesc="Read and write NFC tags"
 url="https://github.com/porthole-dev/tap"
 arch="all"
@@ -49,5 +49,5 @@ package() {
 }
 
 sha512sums="
-13e027edb46f77979ac55f9f424b62e6efe4c063013890a47d7abcac19dfcfdbc855083bc3ee6feac37da452eeac8961125825ffb6a370d1c05d7903d39b56e4  tap-0.1.0.tar.gz
+b0678d26bdd6486a21270bc3b01b75b25a98086fa0c708b54ea48d460fda8b219afce600714f0b3ee57d6b90a271932fde11079c336b5630964f7ac58c68b24f  tap-0.1.0.tar.gz
 "

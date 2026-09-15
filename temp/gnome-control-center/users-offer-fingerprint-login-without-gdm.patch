@@ -12,6 +12,7 @@ a working reader had no way to enrol a finger at all.
 Keep deferring to GDM's setting when it exists, and treat its absence as
 no policy against it.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  panels/system/users/cc-user-page.c | 4 +++-

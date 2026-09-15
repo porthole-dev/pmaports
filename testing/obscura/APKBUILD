@@ -5,18 +5,12 @@
 # Packaged the way Alpine packages its libcamera Rust apps
 # (community/cosmic-ext-camera): crates fetched in prepare(), an auditable
 # frozen build, cargo test in check().
-#
-# The source is a tarball of the app repository at a pinned commit, written
-# here by that repository's build-aux/dist.sh, which also refreshes the
-# checksum. When the repository is published, source= becomes
-# https://github.com/Jertlok/obscura/archive/v$pkgver/obscura-$pkgver.tar.gz
-# and the tarball leaves the tree.
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=obscura
 pkgver=0.2.0
-pkgrel=9
+pkgrel=10
 pkgdesc="Camera app with every control your camera has"
-url="https://github.com/Jertlok/obscura"
+url="https://github.com/porthole-dev/obscura"
 arch="all"
 license="GPL-3.0-or-later"
 depends="
@@ -47,7 +41,7 @@ makedepends_host="
 	rust
 	"
 makedepends="$makedepends_build $makedepends_host"
-source="obscura-$pkgver.tar.gz"
+source="$pkgname-$pkgver.tar.gz::https://github.com/porthole-dev/obscura/archive/refs/tags/v$pkgver.tar.gz"
 # net: cargo fetches the crates in prepare().
 # pmb:cross-native2: cargo cross-compiles natively (needs pmbootstrap's Rust
 # cross-native2 support); crossdirect cannot run bindgen for the target, and
@@ -75,5 +69,5 @@ package() {
 }
 
 sha512sums="
-7a0f1e265eb29b15e72f01c02529ed407d3f99ed15873846cf2509078db3eb60eac1630dfdef56aa3bb374861c59ea6da495bd3aaee65cfa8dcd22e676ae5b63  obscura-0.2.0.tar.gz
+ee61054c87f1518bd5cf4a102baaaf1ea4082c725041cf5757f7da9fe281b7584048235a29f4f2ca0637da0d093ae9caa53354f1ba8ba8c296191ded7b51ab83  obscura-0.2.0.tar.gz
 "

@@ -1,4 +1,4 @@
-From: taimen camera bring-up
+From: Giuseppe Maggio <jertlok@proton.me>
 Subject: [PATCH] ipa: simple: awb: smooth gains over time
 
 The gray-world AWB applies each frame's measured gains instantly, so the
@@ -8,6 +8,8 @@ gains over roughly a second. Apply an exponential moving average with 0.9
 per-frame retention (~0.6 s time constant at 15 fps) before publishing the
 gains; the smoothed gains also feed estimateCCT(), so the colour
 temperature and CCM interpolation glide instead of stepping.
+
+Assisted-by: Claude
 
 --- a/src/ipa/simple/algorithms/awb.h
 +++ b/src/ipa/simple/algorithms/awb.h

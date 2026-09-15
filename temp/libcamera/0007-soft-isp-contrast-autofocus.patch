@@ -1,10 +1,12 @@
-From: taimen camera bring-up
+From: Giuseppe Maggio <jertlok@proton.me>
 Subject: [PATCH] soft ISP: contrast autofocus with manual override
 
 Sharpness stat + hill-climb Af, all state in the algorithm instance
 (IPAActiveState is re-zeroed at configure, after init). Af is the
 single lens writer via LensPosition metadata. Request LensPosition
 > 0 = manual focus, 0 = continuous AF.
+
+Assisted-by: Claude
 
 --- a/include/libcamera/internal/software_isp/swisp_stats.h
 +++ b/include/libcamera/internal/software_isp/swisp_stats.h

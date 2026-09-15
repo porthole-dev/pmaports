@@ -1,4 +1,4 @@
-From: taimen camera bring-up
+From: Giuseppe Maggio <jertlok@proton.me>
 Subject: [PATCH] ipa: libipa: camera_sensor_helper: add imx179 and imx362
 
 Google Pixel 2 XL (taimen) sensors. Gain models from the vendor
@@ -6,6 +6,8 @@ libmmcamera tuning libraries: imx179 G = 256/(256-code), imx362
 G = 1024/(1024-code). Standard Sony pedestal of 64 at 10 bits.
 Placed next to imx214 rather than fully alphabetically to keep the
 patch to one hunk.
+
+Assisted-by: Claude
 
 --- a/src/ipa/libipa/camera_sensor_helper.cpp
 +++ b/src/ipa/libipa/camera_sensor_helper.cpp

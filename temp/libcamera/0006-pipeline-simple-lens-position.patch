@@ -1,9 +1,11 @@
-From: taimen camera bring-up
+From: Giuseppe Maggio <jertlok@proton.me>
 Subject: [PATCH] pipeline: simple: advertise LensPosition for focus-lens cameras
 
 Expose LensPosition (raw actuator units) when the sensor has a
 lens-focus link. The control is consumed by the soft IPA's Af
 algorithm; the pipeline does not drive the lens directly.
+
+Assisted-by: Claude
 
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp

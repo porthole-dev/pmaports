@@ -51,7 +51,8 @@ jobs:
       - name: Run apkbuild-lint and check version bumps
         run: |
           git config --global --add safe.directory "$PWD"
-          export CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
+          CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
+          export CI_MERGE_REQUEST_DIFF_BASE_SHA
           sh .github/scripts/run-pmbootstrap.sh --no-init 'python3 .github/scripts/packages.py lint'
 
   patch-check:
@@ -70,7 +71,8 @@ jobs:
           restore-keys: pmbootstrap-apk-aarch64-
       - name: Fetch, verify, unpack and patch changed aports
         run: |
-          export CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
+          CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
+          export CI_MERGE_REQUEST_DIFF_BASE_SHA
           docker run --rm --privileged \
             -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
             -e HOST_UID="$(id -u)" -e CI_MERGE_REQUEST_DIFF_BASE_SHA \

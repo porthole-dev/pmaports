@@ -81,7 +81,8 @@ jobs:
           HEAVY: ${{ inputs.heavy }}
         run: |
           git config --global --add safe.directory "$PWD"
-          export CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
+          CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
+          export CI_MERGE_REQUEST_DIFF_BASE_SHA
           INDEX_DIR=/index sh .github/scripts/run-pmbootstrap.sh --no-init 'python3 .github/scripts/packages.py select'
           echo "packages=$(cat /work/matrix.json)" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"

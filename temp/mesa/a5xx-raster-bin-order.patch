@@ -1,0 +1,58 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 15 Sep 2026 15:32:19 +0200
+Subject: [PATCH] freedreno/a5xx: render GMEM bins in raster order
+
+On an a540 (chip_id 0x5040001) GTK4's GL renderer draws symbolic icons and
+glyphs as solid quads in some frames when libcamera's GPU software ISP
+submits from another context in the same process. The damage is confined
+to bins of the rows fd_gmem's 'S' pattern renders right to left.
+
+Measured on the device, frames with a solid-quad header icon (GPU ISP on,
+GSK_RENDERER=gl), mesa 26.2.2 with this series' other a5xx patches:
+
+  default                                   23/42, 18/22, 6/21
+  FD_MESA_DEBUG=nobin                        0/19
+  FD_MESA_DEBUG=sysmem                       0/19
+  FD_MESA_DEBUG=nosbin (raster order)        0/22
+  raster order for a5xx only                 0/11, 0/22, 0/22
+  full restore before the first bin          9/22
+  one-bin-wide VSC pipes, 'S' order kept    14/22
+  CPU ISP / GSK cairo                        0/34, 0/12
+
+Keeping the 'S' order but making every pipe one bin wide, so bins inside a
+pipe are always visited in increasing n, does not help, and neither does
+restoring all state before the first bin; the register state around the
+binning pass is re-emitted by every submit. Only the traversal direction
+matters. The blob programs CP_SET_BIN_DATA5 with the same raster index
+within the pipe.
+
+Skip the row swap on a5xx.
+
+Assisted-by: Claude
+---
+ src/gallium/drivers/freedreno/freedreno_gmem.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/gallium/drivers/freedreno/freedreno_gmem.c b/src/gallium/drivers/freedreno/freedreno_gmem.c
+index 2ee9b0b..fac9755 100644
+--- a/src/gallium/drivers/freedreno/freedreno_gmem.c
++++ b/src/gallium/drivers/freedreno/freedreno_gmem.c
+@@ -412,8 +412,14 @@ gmem_stateobj_init(struct fd_screen *screen, struct gmem_key *key)
+    /* Swap the order of alternating rows to form an 'S' pattern, to improve
+     * cache access patterns (ie. adjacent bins are likely to access adjacent
+     * portions of textures)
++    *
++    * Not on a5xx: with hw binning, bins rendered right to left corrupt
++    * textured draws on an a540 (symbolic icons and glyphs come out as solid
++    * quads) when another context in the same process submits between
++    * frames. It does not depend on the order of bins inside a VSC pipe or on
++    * state left over for the first bin; only the direction does.
+     */
+-   if (!FD_DBG(NOSBIN)) {
++   if (!FD_DBG(NOSBIN) && !is_a5xx(screen)) {
+       for (i = 0; i < gmem->nbins_y; i+=2) {
+          unsigned col0 = gmem->nbins_x * i;
+          for (j = 0; j < gmem->nbins_x/2; j++) {
+-- 
+2.55.0
+

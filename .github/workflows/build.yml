@@ -161,7 +161,8 @@ jobs:
   publish:
     name: Publish repository
     needs: [select, build]
-    if: github.event_name == 'push' && github.ref_name == 'taimen-bringup' && needs.build.result == 'success'
+    # A push to taimen-bringup, or a manual run on it (to fill the repository).
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'taimen-bringup' && needs.build.result == 'success'
     runs-on: ubuntu-24.04
     # Holds the signing key and write token; restrict it to taimen-bringup.
     environment: publish

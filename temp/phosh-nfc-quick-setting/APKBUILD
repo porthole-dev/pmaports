@@ -17,7 +17,7 @@
 maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=phosh-nfc-quick-setting
 pkgver=0.1.0
-pkgrel=5
+pkgrel=6
 pkgdesc="Phosh quick setting to turn NFC on and off"
 url="https://github.com/porthole-dev/phosh-nfc-quick-setting"
 arch="all"
@@ -45,5 +45,5 @@ package() {
 }
 
 sha512sums="
-1656a43d49b92202d4188784b01992c49023bd79b260ef9afd5e1046b849e7713dc17a4d163f7bd946332c2cc06496676d35e1de8dd56142a495e64b3ff0ed35  phosh-nfc-quick-setting-0.1.0.tar.gz
+644a50a3e1f69e52642f62089c90230aa14e06aedbdac31ad68a38f946a9f2d0594bde52d4d978a1c770e576e1997f232c545bb264c525ffc3bea128b9cea096  phosh-nfc-quick-setting-0.1.0.tar.gz
 "

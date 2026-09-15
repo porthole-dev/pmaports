@@ -28,6 +28,8 @@ asserting. priv->loc_client is used as the instance, matching what dispose()
 already does, which also covers the case where re-initialization handed us a
 fresh QmiClientLoc.
 
+Assisted-by: Claude
+
 --- a/src/mm-shared-qmi.c
 +++ b/src/mm-shared-qmi.c
 @@ -7058,14 +7058,27 @@

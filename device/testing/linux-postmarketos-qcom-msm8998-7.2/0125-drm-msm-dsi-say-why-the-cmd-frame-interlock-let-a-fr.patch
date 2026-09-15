@@ -23,6 +23,7 @@ false when it fires:
 
 Diagnostic only; no behaviour change.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/dsi/dsi_host.c | 24 ++++++++++++++++++++++--

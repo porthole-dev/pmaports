@@ -38,6 +38,7 @@ Two defects found in a sensor-path audit:
    guard so event-only sensors (scan_index == -1, same as "no
    secondary") are not misrouted to SECONDARY.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iio/common/qcom_smgr/qcom_smgr.c | 44 ++++++++++++++++++++----

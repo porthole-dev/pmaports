@@ -20,6 +20,7 @@ returning NOTIFY_DONE lets the next handler try, and a platform that is going
 to reset has done so long before a second is up. Ten seconds only guarantees
 the watchdog gets there first, which is precisely the failure above.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/firmware/qcom/qcom_scm.c       | 16 +++++++--

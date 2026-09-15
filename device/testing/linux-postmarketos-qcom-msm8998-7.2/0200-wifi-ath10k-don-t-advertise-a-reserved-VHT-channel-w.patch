@@ -42,6 +42,7 @@ case for IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_MASK or
 IEEE80211_VHT_CAP_EXT_NSS_BW_MASK, so the override is silently discarded and
 the reserved pair still goes out on the air.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/wireless/ath/ath10k/mac.c | 13 +++++++++++++

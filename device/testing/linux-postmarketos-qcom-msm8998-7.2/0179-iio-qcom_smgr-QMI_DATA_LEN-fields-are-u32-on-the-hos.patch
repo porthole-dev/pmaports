@@ -37,6 +37,7 @@ promote every one of these from a one-byte to a two-byte length and corrupt
 the messages a second time. drivers/soc/qcom/qcom_pdr_msg.c is the in-tree
 pattern: u32 in the struct, sizeof(u8) in the ei_array.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../iio/common/qcom_smgr/qmi/qmi_sns_smgr.c   | 38 ++++++-------------

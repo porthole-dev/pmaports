@@ -11,6 +11,7 @@ Apply the same coefficient through ab_coeff, as msm8953 and sdm660
 already do, so AB-heavy consumers (display scanout) get the DDR
 frequency downstream would have given them.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/interconnect/qcom/msm8998.c | 1 +

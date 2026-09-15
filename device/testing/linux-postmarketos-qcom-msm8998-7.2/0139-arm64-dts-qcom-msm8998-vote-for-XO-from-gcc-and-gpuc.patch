@@ -30,6 +30,7 @@ same enable vote in the active set and is CLK_IS_CRITICAL in
 clk-smd-rpm, so the XO reference cannot be dropped while the APSS runs.
 Only the sleep-set vote is released.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 4 ++--

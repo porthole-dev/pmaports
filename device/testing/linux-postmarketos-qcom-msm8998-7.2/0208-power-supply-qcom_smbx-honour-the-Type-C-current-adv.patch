@@ -35,6 +35,7 @@ and a non-compliant legacy adapter drives Rp with a resistor that says
 nothing about the supply behind it. The TYPE_C_STATUS bits were all
 already defined and unused.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/power/supply/qcom_smbx.c | 63 +++++++++++++++++++++++++++++++-

@@ -22,6 +22,7 @@ flips it to hardware control via dev_pm_genpd_set_hwmode() only after
 the subcore clocks are enabled -- the same model sdm845+ videocc uses
 for its vcodec gdscs.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/clk/qcom/mmcc-msm8998.c | 4 ++--

@@ -24,6 +24,7 @@ BATT_CURRENT register family and share the same sign convention, so
 fix both for consistency even though only the gen3 path is exercised
 on taimen.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/power/supply/qcom_fg.c | 4 ++--

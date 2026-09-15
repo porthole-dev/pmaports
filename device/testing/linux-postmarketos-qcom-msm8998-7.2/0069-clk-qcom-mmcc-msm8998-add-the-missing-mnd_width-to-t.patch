@@ -30,6 +30,7 @@ a clock fault.
 The MCLKs are the only consumers of this frequency table, which is why it
 survived this long.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/clk/qcom/mmcc-msm8998.c | 4 ++++

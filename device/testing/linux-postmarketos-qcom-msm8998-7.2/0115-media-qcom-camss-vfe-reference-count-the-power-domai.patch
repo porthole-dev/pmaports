@@ -44,6 +44,7 @@ the cached pointer when the last one goes away, leaving one
 device_link_del() per device_link_add() as before.
 
 Fixes: eb73facec2c2 ("media: qcom: camss: Use common VFE pm_domain_on/pm_domain_off where applicable")
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/camss/camss-vfe.c | 8 ++++++--

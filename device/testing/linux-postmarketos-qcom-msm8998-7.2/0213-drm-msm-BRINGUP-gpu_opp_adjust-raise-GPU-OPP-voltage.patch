@@ -10,6 +10,7 @@ The defaults are the four wahoo OPPs that sat under downstream's GFX
 CPR4 per-corner ceilings (710/596/515/414 MHz), so a bare insmod applies
 the ceilings the DTS change carries.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/Makefile         |  1 +

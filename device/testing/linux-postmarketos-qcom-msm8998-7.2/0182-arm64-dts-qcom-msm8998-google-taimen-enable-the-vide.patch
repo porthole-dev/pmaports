@@ -19,6 +19,7 @@ because the module is blacklisted from autoload -- see the comment in the DTS.
 Booting this without that blacklist is a bootloop that needs a physical
 Power+VolDown to escape.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-taimen.dts   | 28 +++++++++++++++++++

@@ -24,6 +24,7 @@ The buffered path does not wait on the completion, so by inspection it
 is unaffected; that has not been measured.
 
 Fixes: bde809e2905c ("iio: qcom_smgr: fix last_values data race and samp_freq slot routing")
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/iio/common/qcom_smgr/qcom_smgr.c | 9 +++++++++

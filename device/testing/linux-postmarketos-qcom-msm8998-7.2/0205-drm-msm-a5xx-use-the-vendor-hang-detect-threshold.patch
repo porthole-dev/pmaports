@@ -9,6 +9,7 @@ enough that a single long but perfectly healthy draw trips fault
 detection. Qualcomm's own driver has always used 0x3FFFF, four million
 cycles, for every a5xx past a530v1. Use their number.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/adreno/a5xx_gpu.c | 11 +++++++++--

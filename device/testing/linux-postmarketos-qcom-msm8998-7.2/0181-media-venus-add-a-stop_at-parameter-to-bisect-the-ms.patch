@@ -33,6 +33,7 @@ Default -1 runs the whole probe, so this is inert unless asked for. It stays in
 the tree because the wedge is not closed and re-deriving the instrument costs a
 session.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/media/platform/qcom/venus/core.c | 69 ++++++++++++++++++++++++

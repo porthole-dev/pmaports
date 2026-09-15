@@ -25,6 +25,7 @@ The vote is tagged active-only: the CPU cannot demand DRAM bandwidth
 while the application processor is asleep, and the RPM sleep set must
 stay clean for XO shutdown.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 76 +++++++++++++++++++++++++++

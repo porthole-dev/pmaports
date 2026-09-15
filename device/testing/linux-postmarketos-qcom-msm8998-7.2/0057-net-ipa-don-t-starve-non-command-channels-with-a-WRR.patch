@@ -34,6 +34,7 @@ Give non-command channels a weight of 1 to match. With this, mobile data
 works: the TX ring drains, BQL returns to inflight 0, and the GSI
 interrupt count climbs instead of being frozen.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/ipa/gsi.c | 2 ++

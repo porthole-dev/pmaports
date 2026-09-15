@@ -23,6 +23,7 @@ tree). Mirror that: drop every contact when the palm flag arrives and
 report nothing for the palm itself. Later LEAVE events for already
 released slots are harmless no-ops.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/input/touchscreen/ftm4.c | 17 +++++++++++++++++

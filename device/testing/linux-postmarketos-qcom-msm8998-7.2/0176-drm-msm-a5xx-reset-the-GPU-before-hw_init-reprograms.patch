@@ -37,6 +37,7 @@ series of 2, 9, 10, 12, 18, 18 and 20 cycles to death on the same kernel
 without this change.  No GPU faults, no hangchecks and no swallowed
 presses over the run.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/adreno/a5xx_gpu.c | 19 +++++++++++++++++++

@@ -27,6 +27,7 @@ A disabled CRTC legitimately has no encoder, so the message becomes
 DRM_DEBUG_KMS rather than DRM_ERROR: it is a transient state, not a driver
 error.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c | 13 +++++++------

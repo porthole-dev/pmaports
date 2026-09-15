@@ -27,6 +27,7 @@ presses.
 
 Remember whether we registered the action, and only remove it if we did.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/gnome-shell-manager.c | 11 ++++++++++-

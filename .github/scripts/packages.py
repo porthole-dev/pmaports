@@ -13,6 +13,10 @@ Run through run-pmbootstrap.sh.
 
 "Changed" means changed since $CI_MERGE_REQUEST_DIFF_BASE_SHA, the variable
 pmaports' own .ci/lib/common.py reads; unset means nothing changed.
+
+"Forked" means added or changed since the merge base with upstream pmaports:
+the aports this branch carries. It is derived from git, never listed by hand;
+.github/packages.conf only marks heavy aports and exclusions.
 """
 import io
 import json
@@ -37,6 +41,7 @@ GITHUB = ROOT / ".github"
 WORK = pathlib.Path("/work")
 ARCH = "aarch64"
 PACKAGER = os.environ.get("PACKAGER", "")
+UPSTREAM = "https://gitlab.postmarketos.org/postmarketOS/pmaports.git"
 
 
 def excluded(pkg: str) -> bool:
@@ -51,7 +56,7 @@ def tiers() -> dict[str, str]:
         fields = line.split("#", 1)[0].split()
         if fields:
             tier, name = fields
-            assert tier in ("required", "heavy"), f"packages.conf: unknown tier {tier}"
+            assert tier in ("heavy", "exclude"), f"packages.conf: unknown tier {tier}"
             ret[name] = tier
     return ret
 
@@ -77,10 +82,67 @@ def version(d: pathlib.Path) -> str:
     return f"{a['pkgver']}-r{a['pkgrel']}"
 
 
-def changed() -> set[str]:
-    if not os.environ.get("CI_MERGE_REQUEST_DIFF_BASE_SHA"):
+def changed(base: str | None = None) -> set[str]:
+    """Aports changed since base (default: $CI_MERGE_REQUEST_DIFF_BASE_SHA)."""
+    var = "CI_MERGE_REQUEST_DIFF_BASE_SHA"
+    default = os.environ.get(var)
+    if not (base or default):
         return set()
-    return common.get_changed_packages(skip_archived=True)
+    os.environ[var] = base or default
+    common.get_base_commit.cache_clear()
+    try:
+        return common.get_changed_packages(skip_archived=True)
+    finally:
+        if default is None:
+            del os.environ[var]
+        else:
+            os.environ[var] = default
+        common.get_base_commit.cache_clear()
+
+
+def forks() -> set[str]:
+    """Aports this branch adds or changes relative to upstream pmaports, less
+    the exclusions in packages.conf. Needs the full history of HEAD."""
+    branch = pmb.config.pmaports.read_config_channel()["branch_pmaports"]
+    # A second promisor remote: commits and trees only, like the checkout.
+    common.run_git(["remote", "add", "upstream", UPSTREAM], check=False, stderr=subprocess.DEVNULL)
+    common.run_git(["config", "remote.upstream.promisor", "true"])
+    common.run_git(["config", "remote.upstream.partialclonefilter", "blob:none"])
+    # Rename detection would download blobs; a moved aport is an added one here.
+    common.run_git(["config", "diff.renames", "false"])
+    common.run_git(["fetch", "-q", "--filter=blob:none", "--no-tags", "upstream", branch])
+    base = common.run_git(["merge-base", "FETCH_HEAD", "HEAD"]).strip()
+    print(f"fork point: {base}, the merge base with upstream {branch}")
+    excluded_here = {p for p, t in tiers().items() if t == "exclude"}
+    return changed(base) - excluded_here
+
+
+def private_source(d: pathlib.Path) -> str | None:
+    """The URL of a repository of this organization that the APKBUILD fetches
+    from and that cannot be read anonymously (a private repository), or None.
+    abuild downloads without credentials, so such a source cannot be fetched."""
+    owner = os.environ.get("GITHUB_REPOSITORY_OWNER")
+    if not owner:
+        return None
+    text = (d / "APKBUILD").read_text()
+    for repo in sorted(set(re.findall(rf"https://github\.com/{re.escape(owner)}/[A-Za-z0-9._-]+", text))):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(repo, method="HEAD"), timeout=30):
+                pass
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return repo
+        except (urllib.error.URLError, TimeoutError):
+            pass  # a network problem is not a private repository; the fetch will say
+    return None
+
+
+def skip_private(pkg: str, d: pathlib.Path) -> bool:
+    repo = private_source(d)
+    if repo:
+        print(f"::notice::{pkg}: skipped, its source comes from {repo}, which cannot be "
+              "downloaded without credentials while that repository is private")
+    return bool(repo)
 
 
 def pmbootstrap(*args: str) -> None:
@@ -136,11 +198,10 @@ def cmd_lint() -> int:
 
 def cmd_check_patches(everything: bool) -> int:
     heavy = os.environ.get("HEAVY") == "true"
-    if everything:
-        pkgs = [p for p, t in tiers().items() if t != "heavy" or heavy]
-    else:
-        pkgs = changed()
-    todo = resolve(pkgs)
+    tier = tiers()
+    pkgs = forks() if everything else changed()
+    todo = [(p, d) for p, d in resolve(pkgs)
+            if (tier.get(p) != "heavy" or heavy or not everything) and not skip_private(p, d)]
     if not todo:
         print("no aports to check")
         return 0
@@ -219,10 +280,15 @@ def cmd_select() -> int:
         wanted = set(explicit)
     else:
         wanted = changed()
-        if have is None:
-            print("published index not readable: required packages are not added")
-        else:
-            wanted |= {p for p, t in tier.items() if t == "required"}
+        print("changed: " + (", ".join(sorted(wanted)) or "(none)"))
+        if os.environ.get("FORKS") == "true":
+            fork_set = forks()
+            print("forked: " + ", ".join(sorted(fork_set)))
+            if have is None:
+                print("::notice::The published index is not readable (set PACKAGES_READ_TOKEN "
+                      "while the packages repository is private): only changed aports are built")
+            else:
+                wanted |= fork_set  # those already published are dropped below
     matrix = []
     for pkg, d in resolve(wanted):
         v = version(d)
@@ -230,8 +296,12 @@ def cmd_select() -> int:
             print(f"{pkg}: not built for {ARCH}")
         elif tier.get(pkg) == "heavy" and not heavy:
             print(f"{pkg}: heavy tier, skipped (run the workflow manually with heavy)")
+        elif tier.get(pkg) == "exclude" and not explicit:
+            print(f"{pkg}: excluded in packages.conf")
         elif have is not None and have.get(pkg) == v:
             print(f"{pkg}: {v} already published")
+        elif skip_private(pkg, d):
+            pass
         else:
             print(f"{pkg}: {v} will be built")
             matrix.append(pkg)
@@ -315,7 +385,7 @@ def cmd_outdated() -> int:
             for name, ver in read_index(response.read()).items():
                 upstream.setdefault(name, []).append((ver, label))
     rows, outdated = [], 0
-    for pkg, d in resolve(tiers()):
+    for pkg, d in resolve(forks()):
         ours = version(d)
         if pkg not in upstream:
             rows.append(f"| {pkg} | {ours} | - | not in upstream repositories |")

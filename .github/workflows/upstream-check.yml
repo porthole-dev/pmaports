@@ -30,19 +30,22 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The forked aports are found from the merge base with upstream.
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/work/cache_apk_aarch64
           key: pmbootstrap-apk-aarch64-${{ github.run_id }}
           restore-keys: pmbootstrap-apk-aarch64-
-      - name: Fetch, verify, unpack and patch every listed aport
+      - name: Fetch, verify, unpack and patch every forked aport
         env:
           HEAVY: ${{ inputs.heavy }}
         run: |
           docker run --rm --privileged \
             -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
-            -e HOST_UID="$(id -u)" -e HEAVY \
+            -e HOST_UID="$(id -u)" -e HEAVY -e GITHUB_REPOSITORY_OWNER \
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'python3 .github/scripts/packages.py check-patches --all'
 
   outdated:
@@ -56,6 +59,8 @@ jobs:
       - run: apk -q add git github-cli
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
       - name: Compare fork versions with Alpine and postmarketOS
         run: sh .github/scripts/run-pmbootstrap.sh --no-init 'python3 .github/scripts/packages.py outdated'

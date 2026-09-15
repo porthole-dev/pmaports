@@ -3,11 +3,11 @@
 #
 # Builds run in a privileged Alpine container through
 # .github/scripts/run-pmbootstrap.sh, the way pmaports' own CI runs
-# pmbootstrap. Publishing needs the PACKAGES_TOKEN and PACKAGES_SIGNING_KEY
-# secrets of the "publish" environment and is skipped without them. While the
-# packages repository is private, the optional PACKAGES_READ_TOKEN repository
-# secret lets "Select packages" see what is already published. Design:
-# ARCHITECTURE.md in the packages repository.
+# pmbootstrap. Publishing (.github/scripts/publish.sh) needs the PACKAGES_TOKEN
+# and PACKAGES_SIGNING_KEY secrets of the "publish" environment and fails
+# without them. While the packages repository is private, the optional
+# PACKAGES_READ_TOKEN repository secret lets "Select packages" see what is
+# already published. Design: ARCHITECTURE.md in the packages repository.
 name: Build
 
 on:
@@ -70,7 +70,12 @@ jobs:
             mkdir -p "/index/$1"
             if [ -n "$GH_TOKEN" ]; then
               out=$(gh release download "$2" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "/index/$1" 2>&1) && return
-              case "$out" in *"release not found"*) touch "/index/$1/NO_RELEASE" ;; esac
+              case "$out" in
+              *"release not found"*) touch "/index/$1/NO_RELEASE" ;;
+              # A token that cannot read the index would silently rebuild or
+              # skip packages: fail instead.
+              *) echo "::error::Cannot download the $2 index: $out"; exit 1 ;;
+              esac
             else
               wget -q -O "/index/$1/APKINDEX.tar.gz" "https://github.com/$PACKAGES_REPO/releases/download/$2/APKINDEX.tar.gz" ||
                 rm -f "/index/$1/APKINDEX.tar.gz"
@@ -161,91 +166,62 @@ jobs:
   publish:
     name: Publish repository
     needs: [select, build]
-    # A push to taimen-bringup, or a manual run on it (to fill the repository).
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'taimen-bringup' && needs.build.result == 'success'
+    # A push to taimen-bringup, or a manual run on it (to fill the repository),
+    # in this organization. Also when nothing was built: every run keeps the
+    # indexes (x86_64 included) and the packages.conf exclusions in shape.
+    if: >-
+      !cancelled() && github.repository_owner == 'porthole-dev'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && github.ref_name == 'taimen-bringup'
+      && needs.select.result == 'success'
+      && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     # Holds the signing key and write token; restrict it to taimen-bringup.
     environment: publish
+    permissions:
+      contents: read
+      # actions/attest: sign (OIDC) and store the provenance of what is uploaded.
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
-      - id: secrets
-        name: Check for publishing secrets
+      - name: Check for publishing secrets
         env:
           TOKEN: ${{ secrets.PACKAGES_TOKEN }}
           KEY: ${{ secrets.PACKAGES_SIGNING_KEY }}
         run: |
-          if [ -n "$TOKEN" ] && [ -n "$KEY" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Publishing skipped: PACKAGES_TOKEN or PACKAGES_SIGNING_KEY is not set"
+          if [ -z "$TOKEN" ] || [ -z "$KEY" ]; then
+            echo "::error::PACKAGES_TOKEN or PACKAGES_SIGNING_KEY is not set in the publish environment: nothing can be published"
+            exit 1
           fi
-      - if: steps.secrets.outputs.present == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github
           persist-credentials: false
-      - if: steps.secrets.outputs.present == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: needs.build.result == 'success'
         with:
           pattern: packages-*
           merge-multiple: true
           path: ${{ runner.temp }}/packages
-      - name: Sign and upload the repositories
-        if: steps.secrets.outputs.present == 'true'
+      - id: publish
+        name: Sign, upload and verify the repositories
         env:
           GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
           SIGNING_KEY: ${{ secrets.PACKAGES_SIGNING_KEY }}
           BRANCH: ${{ needs.select.outputs.branch }}
         run: |
-          set -eu
-          keys=$RUNNER_TEMP/keys
-          (umask 077; mkdir -p "$keys"; printf '%s\n' "$SIGNING_KEY" > "$keys/$SIGNING_KEY_NAME")
-          trap 'rm -rf "$keys"' EXIT
-          # pmbootstrap's local repositories: edge -> main/aarch64,
-          # systemd-edge -> systemd/main/aarch64 (mirrors.systemd_custom).
-          for local in $(ls "$RUNNER_TEMP/packages"); do
-            case "$local" in
-            systemd-*) tag=systemd/$BRANCH/aarch64 ;;
-            *) tag=$BRANCH/aarch64 ;;
-            esac
-            echo "::group::$local -> release $tag"
-            repo=$RUNNER_TEMP/repo/$local
-            mkdir -p "$repo"
-            gh release view "$tag" -R "$PACKAGES_REPO" >/dev/null 2>&1 ||
-              gh release create "$tag" -R "$PACKAGES_REPO" --title "$tag" \
-                --notes "apk repository for pmaports branch $BRANCH"
-            gh release download "$tag" -R "$PACKAGES_REPO" -p '*.apk' -D "$repo" 2>/dev/null || true
-            # -i: the script arrives on stdin; without it the container reads
-            # an empty script and exits 0 having published nothing.
-            docker run -i --rm -v "$repo:/repo" -v "$RUNNER_TEMP/packages/$local/aarch64:/new:ro" \
-              -v "$keys:/keys:ro" -v "$PWD/.github/keys:/pubkeys:ro" \
-              -e ARCH=aarch64 -e KEY="$SIGNING_KEY_NAME" -e PACKAGER \
-              -e DESCRIPTION="$PACKAGES_REPO $tag" \
-              "$ALPINE" sh -s < .github/scripts/publish-repo.sh
-            # publish-repo.sh always writes .upload (empty when nothing is new).
-            if [ ! -f "$repo/.upload" ]; then
-              echo "::error::publish-repo.sh did not run for $local"
-              exit 1
-            fi
-            if [ -s "$repo/.upload" ]; then
-              # New packages, then the index, then remove superseded packages:
-              # the published index never names a missing file.
-              (cd "$repo" && grep -vx APKINDEX.tar.gz .upload | xargs -r gh release upload "$tag" -R "$PACKAGES_REPO" --clobber)
-              gh release upload "$tag" -R "$PACKAGES_REPO" --clobber "$repo/APKINDEX.tar.gz"
-              xargs -r -n1 gh release delete-asset "$tag" -R "$PACKAGES_REPO" -y < "$repo/.remove"
-              # Verify what was published, not what was built.
-              check=$RUNNER_TEMP/check/$local
-              mkdir -p "$check"
-              gh release download "$tag" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "$check"
-              cmp "$check/APKINDEX.tar.gz" "$repo/APKINDEX.tar.gz"
-              docker run --rm -v "$check:/check:ro" -v "$PWD/.github/keys:/pubkeys:ro" "$ALPINE" \
-                apk verify --keys-dir /pubkeys /check/APKINDEX.tar.gz
-              gh release view "$tag" -R "$PACKAGES_REPO" --json assets --jq '.assets[].name' | sort > "$check/assets"
-              tar -xzOf "$check/APKINDEX.tar.gz" APKINDEX 2>/dev/null |
-                awk -F: '/^P:/ { p = $2 } /^V:/ { print p "-" $2 ".apk" }' | sort > "$check/indexed"
-              if comm -23 "$check/indexed" "$check/assets" | grep .; then
-                echo "::error::The index names packages that are not release assets"
-                exit 1
-              fi
-            fi
-            echo "::endgroup::"
-          done
+          UNPUBLISHED=$(awk '$1 == "unpublished" { printf "%s ", $2 }' .github/packages.conf)
+          export UNPUBLISHED
+          mkdir -p "$RUNNER_TEMP/packages"
+          sh .github/scripts/publish.sh "$RUNNER_TEMP/packages"
+          if [ -s "$RUNNER_TEMP/uploaded.sha256" ]; then echo "uploaded=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Attest the uploaded files
+        if: steps.publish.outputs.uploaded && github.event.repository.visibility == 'public'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/uploaded.sha256
+      - name: Say why nothing is attested
+        if: steps.publish.outputs.uploaded && github.event.repository.visibility != 'public'
+        run: echo "::notice::Uploaded files are not attested while this repository is private (artifact attestations need a public repository on this plan)"

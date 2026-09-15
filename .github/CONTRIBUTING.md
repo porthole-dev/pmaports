@@ -44,8 +44,14 @@ to fork and that have no prebuilt package yet:
 - A manual run can name the aports to build instead.
 
 `.github/packages.conf` only overrides this: `heavy` aports (multi-hour
-builds) are built only on a manual run with `heavy` set, and `exclude` aports
-are never built unless a manual run names them.
+builds) are built only on a manual run with `heavy` set, `exclude` aports
+are never built unless a manual run names them, and `unpublished` aports (host
+tools such as `crossdirect`) are built when a change touches them but never
+published.
+
+Every published tree also carries an empty, signed `x86_64` index
+(`main/x86_64`, `systemd/main/x86_64`): pmbootstrap on an x86_64 host reads the
+mirror's index for its own architecture as well and aborts on a 404.
 
 An aport whose source is downloaded from a private repository of this
 organization (for example a release archive of `porthole-dev/tap`) is skipped

@@ -16,7 +16,7 @@ pmaports' own .ci/lib/common.py reads; unset means nothing changed.
 
 "Forked" means added or changed since the merge base with upstream pmaports:
 the aports this branch carries. It is derived from git, never listed by hand;
-.github/packages.conf only marks heavy aports and exclusions.
+.github/packages.conf only marks heavy, excluded and unpublished aports.
 """
 import io
 import json
@@ -56,7 +56,7 @@ def tiers() -> dict[str, str]:
         fields = line.split("#", 1)[0].split()
         if fields:
             tier, name = fields
-            assert tier in ("heavy", "exclude"), f"packages.conf: unknown tier {tier}"
+            assert tier in ("heavy", "exclude", "unpublished"), f"packages.conf: unknown tier {tier}"
             ret[name] = tier
     return ret
 
@@ -278,8 +278,10 @@ def cmd_select() -> int:
     have = published()
     if explicit:
         wanted = set(explicit)
+        changed_now = wanted
     else:
         wanted = changed()
+        changed_now = set(wanted)
         print("changed: " + (", ".join(sorted(wanted)) or "(none)"))
         if os.environ.get("FORKS") == "true":
             fork_set = forks()
@@ -298,6 +300,8 @@ def cmd_select() -> int:
             print(f"{pkg}: heavy tier, skipped (run the workflow manually with heavy)")
         elif tier.get(pkg) == "exclude" and not explicit:
             print(f"{pkg}: excluded in packages.conf")
+        elif tier.get(pkg) == "unpublished" and pkg not in changed_now:
+            print(f"{pkg}: never published (packages.conf), and not changed here")
         elif have is not None and have.get(pkg) == v:
             print(f"{pkg}: {v} already published")
         elif skip_private(pkg, d):

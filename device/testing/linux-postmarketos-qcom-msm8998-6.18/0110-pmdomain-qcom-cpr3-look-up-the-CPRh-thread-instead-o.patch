@@ -39,6 +39,7 @@ the operating point table came back empty: gpd_opp_cnt of zero fell
 through the "greater than zero" test and was returned as a zero exit,
 leaving the caller to fail later on an uninitialised entry count.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c |  79 ++-------

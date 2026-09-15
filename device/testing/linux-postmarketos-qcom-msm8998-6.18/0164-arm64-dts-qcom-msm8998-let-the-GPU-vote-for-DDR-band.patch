@@ -13,6 +13,7 @@ opp-avg-kBps as well as opp-peak-kBps because this RPM's DDR plan
 follows the average-bandwidth arb votes. Active-only tag for the same
 sleep-set reason as the BWMON.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  arch/arm64/boot/dts/qcom/msm8998.dtsi | 17 +++++++++++++++++

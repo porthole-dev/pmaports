@@ -7,6 +7,7 @@ The msm8998 machine driver binds on "qcom,msm8998-sndcard" and shares
 the properties this schema already describes for the other q6dsp-based
 cards.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  Documentation/devicetree/bindings/sound/qcom,sm8250.yaml | 1 +

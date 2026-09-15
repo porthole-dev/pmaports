@@ -42,6 +42,7 @@ Tested on a Pixel 2 XL (IPA v3.1): with the parameter set, three runtime
 suspends issued CH_STOP and the following resumes issued CH_START with no
 error, so GSI does implement the commands on this hardware.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/net/ipa/gsi.c | 26 ++++++++++++++++++++++++--

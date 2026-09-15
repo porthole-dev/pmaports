@@ -29,6 +29,7 @@ leaving the bite 30 s out, which is ample room for the panic to reach
 netconsole. If the reset is still silent after this, the bark never
 arrived and no CPU was left to service it.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/watchdog/qcom-wdt.c | 58 +++++++++++++++++++++++++++++++++++++

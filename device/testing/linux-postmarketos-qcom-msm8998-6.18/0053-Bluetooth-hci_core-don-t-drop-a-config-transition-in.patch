@@ -46,6 +46,7 @@ Move the setup/config completion into a helper and call it from both
 exits, so the transition is honoured whether or not the controller was
 already powered. No functional change for the paths that already worked.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  net/bluetooth/hci_core.c | 73 +++++++++++++++++++++++++---------------

@@ -20,6 +20,7 @@ deliberately comes later in this series.
 
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/power/reset/Kconfig        |  1 +

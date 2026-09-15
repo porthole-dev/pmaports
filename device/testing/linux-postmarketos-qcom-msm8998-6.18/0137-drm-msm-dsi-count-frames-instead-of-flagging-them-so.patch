@@ -45,6 +45,7 @@ including the one with serialization disabled.  dsi_cmd_during_frame counts
 transfers that reached the wire with a frame still armed; it is the bug
 expressed as a number, and it is what makes this change falsifiable.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/msm/dsi/dsi_host.c | 88 +++++++++++++++++++++++++-----

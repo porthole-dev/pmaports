@@ -14,6 +14,7 @@ msm_dsi_host_power_on() fails with "DSI does not support fractional
 bits_per_pixel", so the panel never initializes. Store 8 << 4 and drop the
 shim.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/gpu/drm/panel/panel-lg-sw43402.c | 21 ++-------------------

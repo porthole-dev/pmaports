@@ -39,6 +39,7 @@ msm_pcie_pm_suspend() -> msm_pcie_disable()).
 
 Task context only; bounded sleeps inside.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/pci/controller/dwc/pcie-qcom.c | 85 ++++++++++++++++++++++++++

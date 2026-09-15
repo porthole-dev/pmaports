@@ -35,6 +35,7 @@ Write apm_vc, matching both the vendor driver and the value this driver
 already puts in SEQ_APM_THRESH_VC. The crossover corner keeps going to
 SEQ_REG(72) unchanged.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 11 +++++++++--

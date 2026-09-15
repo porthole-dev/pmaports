@@ -8,6 +8,7 @@ PCI core from sizing a bridge window for them; assigning them from
 probe could never have worked, and now that the class is quirked the
 core places them before the driver is bound.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/misc/easel-mipi.c | 21 +--------------------

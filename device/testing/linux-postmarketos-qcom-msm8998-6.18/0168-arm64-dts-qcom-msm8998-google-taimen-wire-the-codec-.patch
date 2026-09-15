@@ -24,6 +24,7 @@ to be implemented.
 
 Unused links are inert, so this costs nothing when no one opens them.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  .../boot/dts/qcom/msm8998-google-taimen.dts   | 46 +++++++++++++++++++

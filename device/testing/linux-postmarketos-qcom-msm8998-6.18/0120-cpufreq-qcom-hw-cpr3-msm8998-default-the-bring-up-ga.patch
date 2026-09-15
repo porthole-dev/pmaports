@@ -8,6 +8,7 @@ The SAW4 AVS fix makes the OSM deliver on both domains (silver 6.55x
 for a 6.34x request, gold 8.00x for 7.87x, same-boot controlled), so
 program everything by default.  The gates stay available for bisection.
 
+Assisted-by: LLM
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  drivers/cpufreq/qcom-cpufreq-hw.c | 3 ++-

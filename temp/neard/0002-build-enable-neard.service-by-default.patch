@@ -16,6 +16,7 @@ error and no NFC. Add WantedBy=multi-user.target so enabling the unit
 actually enables it, independent of whichever bus-activation mechanism ends
 up starting it on demand.
 
+Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
  src/neard.service.in | 1 +

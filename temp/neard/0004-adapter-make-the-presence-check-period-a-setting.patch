@@ -17,6 +17,8 @@ transactions has no way to say so.
 Make it CheckPresencePeriod in main.conf, in milliseconds, defaulting to
 the 2000 it has always effectively been, so existing behaviour is
 unchanged. The extra transactions only happen while a tag is present.
+
+Assisted-by: Claude
 ---
  include/setting.h |  1 +
  src/adapter.c     | 24 +++++++++++++++++++-----

@@ -75,5 +75,5 @@ jobs:
           export CI_MERGE_REQUEST_DIFF_BASE_SHA
           docker run --rm --privileged \
             -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
-            -e HOST_UID="$(id -u)" -e CI_MERGE_REQUEST_DIFF_BASE_SHA \
+            -e HOST_UID="$(id -u)" -e CI_MERGE_REQUEST_DIFF_BASE_SHA -e GITHUB_REPOSITORY_OWNER \
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'python3 .github/scripts/packages.py check-patches'

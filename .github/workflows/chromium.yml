@@ -118,6 +118,11 @@ jobs:
 
   # Build job k runs while job k-1 succeeded without finishing ninja, up to
   # the run's stages. GitHub has no loops; the chain is written out.
+  #
+  # chromium-stage.yml types stage, stages and stage_minutes as numbers, and a
+  # dispatch input reaches us as a string however it was declared, so every
+  # number crossing the call needs fromJSON. Get it wrong and the stage job is
+  # never created at all -- see the chain job at the end.
   stage-1:
     needs: [plan, prep]
     if: ${{ !cancelled() && needs.plan.outputs.build == 'true' && needs.plan.outputs.done != 'true' && contains(fromJSON('["success", "skipped"]'), needs.prep.result) }}
@@ -130,7 +135,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 1
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-2:
     needs: [plan, stage-1]
@@ -144,7 +149,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 2
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-3:
     needs: [plan, stage-2]
@@ -158,7 +163,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 3
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-4:
     needs: [plan, stage-3]
@@ -172,7 +177,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 4
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-5:
     needs: [plan, stage-4]
@@ -186,7 +191,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 5
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-6:
     needs: [plan, stage-5]
@@ -200,7 +205,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 6
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-7:
     needs: [plan, stage-6]
@@ -214,7 +219,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 7
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-8:
     needs: [plan, stage-7]
@@ -228,7 +233,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 8
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-9:
     needs: [plan, stage-8]
@@ -242,7 +247,7 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 9
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
 
   stage-10:
     needs: [plan, stage-9]
@@ -256,7 +261,34 @@ jobs:
       tag: ${{ needs.plan.outputs.tag }}
       stage: 10
       stages: ${{ fromJSON(needs.plan.outputs.stages) }}
-      stage_minutes: ${{ inputs.stage_minutes || 0 }}
+      stage_minutes: ${{ fromJSON(inputs.stage_minutes || '0') }}
+
+  # A job whose if: or with: does not evaluate is never created, and GitHub
+  # reports that as a skip of everything downstream: the run fails with no
+  # failed job. Say out loud that the chain never started.
+  chain:
+    name: Chain
+    needs: [plan, prep, stage-1]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: The first build job must have run
+        env:
+          BUILD: ${{ needs.plan.outputs.build }}
+          DONE: ${{ needs.plan.outputs.done }}
+          PREP: ${{ needs.prep.result }}
+          STAGE1: ${{ needs.stage-1.result }}
+        run: |
+          set -eu
+          # Nothing to build, or prep already failed and says so itself.
+          [ "$BUILD" = true ] && [ "$DONE" != true ] || exit 0
+          case "$PREP" in success | skipped) ;; *) exit 0 ;; esac
+          case "$STAGE1" in
+          success | failure) ;;
+          *)
+            echo "::error::stage-1 did not run (result '$STAGE1'). GitHub reports a job it could not create as a skip; check this run's annotations for an expression or reusable workflow input error."
+            exit 1 ;;
+          esac
 
   package:
     needs: [plan, stage-1, stage-2, stage-3, stage-4, stage-5, stage-6, stage-7, stage-8, stage-9, stage-10]

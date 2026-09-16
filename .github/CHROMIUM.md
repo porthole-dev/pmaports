@@ -94,6 +94,12 @@ special case.
   is consistent after a failure too. The job then fails and the chain
   stops. **Re-run failed jobs**, or a new run, resumes from that progress.
   A failure never restarts the build.
+- **A job that was never created:** if a job's `if:` or `with:` does not
+  evaluate, GitHub creates no job and reports every job below it as a skip,
+  so the run fails with nothing failed in it. The `chain` job fails loudly
+  when `stage-1` did not run, and the reason is in the run's annotations.
+  Every number handed to `chromium-stage.yml` needs `fromJSON`: its inputs
+  are typed `number`, and a dispatch input arrives as a string.
 
 ### Where state lives
 

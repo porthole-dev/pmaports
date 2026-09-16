@@ -94,8 +94,9 @@ bool argv_has_exact(int argc, char **argv, const char *arg)
 
 int main(int argc, char **argv)
 {
-	// we have a max of five extra args ("-target", "HOSTSPEC", "--sysroot=/",
-	// "-Wl,-rpath-link=/lib:/usr/lib", "--ld-path=..."), plus one ending null
+	// we have a max of five extra args ("-target", "HOSTSPEC", "--sysroot=/"
+	// and "--ld-path=..." or "-B/usr/lib/gcc/", "-B/usr/lib/"), plus one
+	// ending null
 	char *newargv[argc + 6];
 	char *executableName = basename(argv[0]);
 	char newExecutable[PATH_MAX];
@@ -142,14 +143,69 @@ int main(int argc, char **argv)
 			 && native_link_enabled();
 	bool nativeLink = nativeRun && isLink;
 
+	// A GCC link runs the cross toolchain natively too: its collect2, ld and,
+	// with -flto, lto-wrapper and lto1, which under qemu make an LTO link take
+	// minutes instead of seconds. pmaports#227 ("ld: cannot find -lz") was
+	// the cross ld not searching the target's library directories; the cross
+	// binutils are configured with a sysroot now, so with --sysroot=/ ld
+	// searches /lib and /usr/lib, DT_RUNPATH and all, like the target's ld.
+	//
+	// -B/usr/lib/gcc/ and -B/usr/lib/ make the driver pick the target's own
+	// GCC runtime -- crtbegin*.o, libgcc.a, libgcc_s.so, libstdc++.so and the
+	// libgomp.spec style spec files -- ahead of the copies in the cross
+	// toolchain, so the output is byte-for-byte what the target's GCC links
+	// under qemu. (The driver tries a -B directory with and without
+	// <machine>/<version>/, so no version is spelled out here; a target GCC
+	// of another version is not found and the cross toolchain's is used.)
+	//
+	// Everything that is not a link keeps going to qemu: -E, -S and -M
+	// preprocess, and queries answer for the target's GCC. "-print-prog-name=ld"
+	// matters most: libtool runs the path it prints directly, and the cross
+	// ld cannot run without crossdirect's LD_LIBRARY_PATH. So does -v, which
+	// libtool parses for the target's runtime objects and search paths. Under
+	// fakeroot (a link in package(), like libtool's relink on install) the
+	// native binaries cannot run, so that stays in qemu as well.
+	char *ldPreload = getenv("LD_PRELOAD");
+	bool underFakeroot = ldPreload && strstr(ldPreload, "libfakeroot.so");
+	bool isCpp = strcmp(executableName, "cpp") == 0
+		     || strcmp(executableName, HOSTSPEC "-cpp") == 0;
+	bool gccLink = notCompile
+		       && !isClang
+		       && !isCpp
+		       && !underFakeroot
+		       && !argv_has_exact(argc, argv, "-E")
+		       && !argv_has_exact(argc, argv, "-S")
+		       && !argv_has_exact(argc, argv, "-M")
+		       && !argv_has_exact(argc, argv, "-MM")
+		       && !argv_has_exact(argc, argv, "-v")
+		       && !argv_has_exact(argc, argv, "-###")
+		       && !argv_has_exact(argc, argv, "--version")
+		       && !argv_has_arg(argc, argv, "--help")
+		       && !argv_has_arg(argc, argv, "-print-")
+		       && !argv_has_arg(argc, argv, "-dump");
+	nativeRun = nativeRun || gccLink;
+
 	// Say so on stderr: a build log is otherwise the only place the two paths
 	// can be told apart, and they differ by hours.
 	if (nativeLink)
 		fprintf(stderr, "crossdirect: linking natively (%s)\n", executableName);
 
+	// With CROSSDIRECT_DRY_RUN set, print the command that would run instead
+	// of running it. That is what test-routing.sh drives: which compiler an
+	// invocation goes to, and with which added arguments, without a chroot,
+	// a cross toolchain or a foreign binary to run.
+	bool dryRun = getenv("CROSSDIRECT_DRY_RUN") != NULL;
+
 	// linker is involved: just use qemu binary (to avoid broken cross-ld, pmaports#227)
 	if (notCompile && !nativeRun) {
 		snprintf(newExecutable, sizeof(newExecutable), "/usr/bin/%s", executableName);
+		if (dryRun) {
+			printf("qemu %s", newExecutable);
+			for (int i = 1; i < argc; i++)
+				printf(" %s", argv[i]);
+			printf("\n");
+			return 0;
+		}
 		if (execv(newExecutable, argv) == -1) {
 			fprintf(stderr, "ERROR: crossdirect: failed to execute %s: %s\n", newExecutable, strerror(errno));
 			fprintf(stderr, "NOTE: this is a foreign arch binary that would run with qemu (linker is involved).\n");
@@ -187,6 +243,9 @@ int main(int argc, char **argv)
 		// exactly like the broken cross-ld this branch exists to avoid.
 		if (nativeLink)
 			*newArgsPtr++ = "--ld-path=" NATIVE_LLD;
+	} else if (gccLink) {
+		*newArgsPtr++ = "-B/usr/lib/gcc/";
+		*newArgsPtr++ = "-B/usr/lib/";
 	}
 	*newArgsPtr++ = "--sysroot=/";
 
@@ -201,7 +260,6 @@ int main(int argc, char **argv)
 		"LD_LIBRARY_PATH=/native/lib:/native/usr/lib",
 		"CCACHE_PATH=/native/usr/bin",
 		NULL };
-	char *ldPreload = getenv("LD_PRELOAD");
 	if (ldPreload) {
 		if (strstr(ldPreload, "libfakeroot.so")) {
 			fprintf(stderr, "============================================================================================\n");
@@ -215,6 +273,14 @@ int main(int argc, char **argv)
 			fprintf(stderr, "============================================================================================\n");
 			exit(1);
 		}
+	}
+
+	if (dryRun) {
+		printf("native");
+		for (char **arg = newargv; *arg; arg++)
+			printf(" %s", *arg);
+		printf("\n");
+		return 0;
 	}
 
 	// finally exec GCC / clang

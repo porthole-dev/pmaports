@@ -149,6 +149,14 @@ def enter() -> tuple[CrossCompile, dict]:
             print(f"::notice::recreating the cache directory {target}", flush=True)
             pmb.chroot.root(["mkdir", "-p", target], chroot)
             pmb.chroot.root(["chown", "pmos:pmos", target], chroot)
+    # run_abuild() gives $WORK/packages to the chroot's build user, but only
+    # when it creates the directory. The restored one exists and belongs to
+    # the runner: run-pmbootstrap.sh hands the work directory back to
+    # HOST_UID when the prep container exits, and the layer keeps that owner.
+    # abuild (uid 12345) writes the apks there in the package stage.
+    uid = pmb.config.chroot_uid_user
+    subprocess.run(["sudo", "chown", "-R", f"{uid}:{uid}", str(context.config.work / "packages")],
+                   check=True)
     # What pmb.build.backend.run_abuild() sets up before running abuild.
     if cross == CrossCompile.CROSS_NATIVE2:
         pmb.helpers.mount.bind(cross.host_chroot(ARCH).path, chroot / "mnt/sysroot", umount=True)

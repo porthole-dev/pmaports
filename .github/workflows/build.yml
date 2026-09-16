@@ -26,6 +26,10 @@ on:
         description: Allow heavy-tier aports (multi-hour builds)
         type: boolean
         default: false
+      forks:
+        description: Also build every forked aport that is not published yet
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,9 +59,10 @@ jobs:
       - run: apk -q add git github-cli jq python3
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Pushes and manual runs also build the forked aports that are not
-          # published yet, measured from the merge base with upstream
-          # pmaports: that needs the whole history, commits and trees only.
+          # A manual run with "forks" measures against the merge base with
+          # upstream pmaports: that needs the whole history, commits and trees
+          # only. A push keeps it too, so base-commit.sh finds its base after
+          # a force push.
           fetch-depth: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 100 || 0 }}
           filter: blob:none
           persist-credentials: false
@@ -90,8 +95,9 @@ jobs:
         env:
           PACKAGES: ${{ inputs.packages }}
           HEAVY: ${{ inputs.heavy }}
-          # A merge group builds what its pull requests change, like they did.
-          FORKS: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
+          # Every automatic run builds what it changed, nothing else. Rebuilding
+          # the whole fork delta is hundreds of jobs and is asked for by hand.
+          FORKS: ${{ inputs.forks }}
         run: |
           git config --global --add safe.directory "$PWD"
           CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)

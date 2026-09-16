@@ -97,14 +97,18 @@ jobs:
           CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
           export CI_MERGE_REQUEST_DIFF_BASE_SHA
           INDEX_DIR=/index sh .github/scripts/run-pmbootstrap.sh --no-init 'python3 .github/scripts/packages.py select'
-          echo "packages=$(cat /work/matrix.json)" >> "$GITHUB_OUTPUT"
+          # An absent or empty matrix.json must still be valid JSON: the build
+          # job feeds this straight to fromJSON(), and fromJSON("") fails the
+          # run with no job attached to blame.
+          packages=$(cat /work/matrix.json 2>/dev/null || true)
+          echo "packages=${packages:-[]}" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
   build:
     # GitHub appends the package, "Build (mesa)"; a skipped job shows "Build".
     name: Build
     needs: select
-    if: needs.select.outputs.packages != '[]'
+    if: needs.select.outputs.packages != '[]' && needs.select.outputs.packages != ''
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
     strategy:

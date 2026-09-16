@@ -56,8 +56,16 @@ jobs:
     steps:
       - name: Start the clock
         run: |
-          echo "START=$(date +%s)" >> "$GITHUB_ENV"
-          echo "WORK=$RUNNER_TEMP/work" >> "$GITHUB_ENV"
+          {
+            echo "START=$(date +%s)"
+            echo "WORK=$RUNNER_TEMP/work"
+            # The build runs in a container with its own UTS namespace, so the
+            # only hostname a package can leak is that container's, never this
+            # runner's. Name it here: unnamed it is a 12 hex digit container
+            # id that the leak check downstream cannot know, and a short
+            # generic name would match by accident inside a 200 MB binary.
+            echo "BUILD_HOST=chromium-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          } >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -92,7 +100,7 @@ jobs:
           build) init=--no-init; args="build $deadline"; echo "ninja stops at $(date -u -d "@$deadline")" ;;
           package) init=--no-init; args=package ;;
           esac
-          docker run --rm --privileged \
+          docker run --rm --privileged --hostname "$BUILD_HOST" \
             -v "$PWD:/pmaports" -w /pmaports -v "$WORK:/work" \
             -e HOST_UID="$(id -u)" -e PACKAGER \
             -e PACKAGES_URL="https://github.com/$PACKAGES_REPO/releases/download" \
@@ -126,12 +134,57 @@ jobs:
           if [ "$MODE" = build ] && [ "$done" != true ] && [ "$STAGE" = "$STAGES" ]; then
             echo "::warning::ninja has not finished after the last build job of this run. Run the workflow again: it resumes from the stored state."
           fi
-      - name: Check packages for build machine details
+      - name: Check the packages this stage built
         if: inputs.mode == 'package'
         run: |
           set -eu
+          # An empty glob must say so, not hand tar the literal pattern.
+          shopt -s nullglob
+          # chromium-stage.py builds for aarch64 whatever the runner is: the
+          # runner input picks native or cross compilation, not the target.
+          arch=aarch64
+          apks=("$WORK"/packages/*/"$arch"/*.apk)
+          if [ "${#apks[@]}" -eq 0 ]; then
+            echo "::error::the package stage produced no apks in $WORK/packages/*/$arch/"
+            find "$WORK/packages" -maxdepth 3 | head -n 50
+            exit 1
+          fi
+          # One local repository, one architecture: the layout the publish job
+          # maps onto release assets, and the layout actions/upload-artifact
+          # roots the artifact at. Keep it a checked fact, not a coincidence.
+          repos=$(printf '%s\n' "${apks[@]}" | sed -E 's![^/]+$!!' | sort -u)
+          if [ "$(printf '%s\n' "$repos" | wc -l)" != 1 ]; then
+            echo "::error::expected one local repository under $WORK/packages, found:"
+            printf '%s\n' "$repos"
+            exit 1
+          fi
+          echo "${#apks[@]} apk(s) in ${repos#"$WORK/packages/"}"
+
+          # What a package could carry off this machine. The build runs in a
+          # container, so the only hostname it can see is that container's,
+          # named in "Start the clock"; and its bind mounts put the checkout
+          # and the work directory at /pmaports and /work, so the two runner
+          # paths are belt and braces. Every needle is long enough that a
+          # match in a 200 MB binary means a leak and not a coincidence, and
+          # each one is planted in a binary probe first, so a scan that cannot
+          # match anything fails here instead of passing everything.
+          needles=("$BUILD_HOST" /home/runner "$GITHUB_WORKSPACE")
+          probe=$(mktemp -d)
+          head -c 4096 /dev/urandom > "$probe/binary"
+          for needle in "${needles[@]}"; do
+            if [ "${#needle}" -lt 8 ]; then
+              echo "::error::'$needle' is too short to search a binary for"
+              exit 1
+            fi
+            printf '%s' "$needle" >> "$probe/binary"
+            grep -rlaF -- "$needle" "$probe" >/dev/null ||
+              { echo "::error::the leak scan cannot find a planted '$needle'"; exit 1; }
+          done
+          rm -rf "$probe"
+
           fail=0
-          for apk in "$WORK"/packages/*/aarch64/*.apk; do
+          kept=0
+          for apk in "${apks[@]}"; do
             dir=$(mktemp -d)
             tar -xzf "$apk" -C "$dir" 2>/dev/null
             # prep also built the forked build dependencies that were not
@@ -141,9 +194,10 @@ jobs:
               rm -rf "$dir" "$apk"
               continue
             fi
+            kept=$((kept + 1))
             echo "${apk##*/packages/}"
             grep -E '^(pkgname|pkgver|packager|maintainer|origin|commit) ' "$dir/.PKGINFO" | sed 's/^/  /'
-            for needle in "$(hostname)" /home/runner "$GITHUB_WORKSPACE"; do
+            for needle in "${needles[@]}"; do
               if grep -rlaF -- "$needle" "$dir" >/dev/null; then
                 echo "::error::${apk##*/} contains a build machine path or hostname"
                 fail=1
@@ -151,6 +205,10 @@ jobs:
             done
             rm -rf "$dir"
           done
+          if [ "$kept" -eq 0 ]; then
+            echo "::error::none of the ${#apks[@]} apks was built from temp/chromium"
+            exit 1
+          fi
           exit "$fail"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: inputs.mode == 'package'

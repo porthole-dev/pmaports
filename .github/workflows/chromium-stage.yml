@@ -88,15 +88,15 @@ jobs:
             deadline=$(($(date +%s) + STAGE_MINUTES * 60))
           fi
           case "$MODE" in
-          prep) init= args=prep ;;
-          build) init=--no-init args="build $deadline"; echo "ninja stops at $(date -u -d "@$deadline")" ;;
-          package) init=--no-init args=package ;;
+          prep) init=''; args=prep ;;
+          build) init=--no-init; args="build $deadline"; echo "ninja stops at $(date -u -d "@$deadline")" ;;
+          package) init=--no-init; args=package ;;
           esac
           docker run --rm --privileged \
             -v "$PWD:/pmaports" -w /pmaports -v "$WORK:/work" \
             -e HOST_UID="$(id -u)" -e PACKAGER \
             -e PACKAGES_URL="https://github.com/$PACKAGES_REPO/releases/download" \
-            "$ALPINE" sh .github/scripts/run-pmbootstrap.sh $init "python3 .github/scripts/chromium-stage.py $args"
+            "$ALPINE" sh .github/scripts/run-pmbootstrap.sh ${init:+"$init"} "python3 .github/scripts/chromium-stage.py $args"
           df -h /
       - name: Store the state
         id: save

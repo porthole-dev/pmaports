@@ -18,6 +18,9 @@ run the parts of abuild's own sequence that are left:
   build    build (ninja resumes from out/bld/.ninja_log)
   package  build (nothing left) check rootpkg
 
+check is in that list only where abuild's own want_check() would put it, see
+want_check() below.
+
 Writes /work/chromium/result.json for chromium-state.sh.
 """
 import json
@@ -119,7 +122,21 @@ class Watchdog(threading.Thread):
                 return
 
 
-def enter() -> tuple[CrossCompile, dict]:
+def want_check(apkbuild: dict, env: dict) -> bool:
+    """abuild's own want_check(): it drops the check part when CBUILD != CHOST
+    or when options has !check (abuild.in want_check(), build_abuildrepo()).
+    Naming the parts by hand bypasses that -- abuild runs any part it is
+    given -- and the APKBUILD's build() builds the five unit test binaries
+    under the same want_check(), so a check part where abuild would not have
+    one fails on a test binary that was never built.
+
+    Of the two cross values this workflow can produce, pmbootstrap sets CHOST
+    only for cross-native2 (pmb.build.backend.abuild_env), the x86_64 runner;
+    the native arm64 runner leaves CBUILD == CHOST and runs every suite."""
+    return "CHOST" not in env and "!check" not in apkbuild["options"]
+
+
+def enter() -> tuple[CrossCompile, dict, dict]:
     """pmbootstrap's context for the work directory prep left behind."""
     sys.argv = ["pmbootstrap.py", "--config", str(CONFIG), "--aports", str(packages.ROOT),
                 "--details-to-stdout", "--timeout", "3600", "chroot"]
@@ -161,7 +178,7 @@ def enter() -> tuple[CrossCompile, dict]:
     if cross == CrossCompile.CROSS_NATIVE2:
         pmb.helpers.mount.bind(cross.host_chroot(ARCH).path, chroot / "mnt/sysroot", umount=True)
     pmb.build.backend.mount_pmaports(chroot)
-    return cross, pmb.build.backend.abuild_env(context, ARCH, cross, 0)
+    return cross, pmb.build.backend.abuild_env(context, ARCH, cross, 0), apkbuild
 
 
 def abuild(parts: list[str], cross: CrossCompile, env: dict) -> int:
@@ -202,12 +219,20 @@ def main() -> int:
         if not ok:
             print("::error::prep did not reach ninja" if rc else "::error::prep built the whole package")
     else:
-        cross, env = enter()
+        cross, env, apkbuild = enter()
         deadline = float(args[0]) if mode == "build" else None
         dog = Watchdog(deadline, before) if mode == "build" else None
         if dog:
             dog.start()
-        parts = ["build"] if mode == "build" else ["build", "check", "rootpkg"]
+        if mode == "build":
+            parts = ["build"]
+        else:
+            check = ["check"] if want_check(apkbuild, env) else []
+            if not check:
+                print(f"::notice::abuild skips check for cross={cross}"
+                      f" and options={' '.join(apkbuild['options'])}", flush=True)
+            parts = ["build", *check, "rootpkg"]
+            result["parts"] = parts
         rc = abuild(parts, cross, env)
         if dog:
             dog.done.set()

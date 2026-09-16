@@ -131,12 +131,27 @@ algorithms:
           exposureTime: [ 1000, 33000, 66000, 125000 ]
           gain: [ 1.0, 1.0, 2.0, 8.0 ]
   - Af:
-      # Lens position in dioptres to lc898214xd focus_absolute code. Measured,
-      # not taken from the driver's comment: with the VL53L0 laser reading
-      # 155 mm to a book page, a sweep of the whole code range was sharpest
-      # at codes 0-50 and fell steadily to 581, so low codes focus near.
-      # Linear in dioptres (VCM travel is); the 581 = infinity end is assumed
-      # and wants a far scene to confirm.
-      map: [ 0.0, 581, 7.0, 0 ]
+      # Lens position in dioptres to lc898214xd focus_absolute code.
+      #
+      # REPLACED 2026-09-16 together with the driver's control range. The old
+      # map ([0.0, 581, 7.0, 0]) was fitted while FOCUS_ABSOLUTE still spanned
+      # hall +324..-257 -- a narrow slice on the FAR side of the travel, in
+      # which nothing close could be focused at all. The driver now exposes
+      # 0..1369 onto hall -257..+1112, low = far, high = near, so these codes
+      # mean nothing against an older kernel.
+      #
+      # focus_absolute = hall + 257. Anchors:
+      #
+      #   0.0 dioptres -> hall  268 -> code  525   this module's OTP infinity
+      #   4.5 dioptres -> hall ~530 -> code  787   MEASURED: a 0.222 m subject
+      #                                            (laser, +/-3%) peaked here,
+      #                                            13x over the worst position
+      #
+      # That slope is ~58 codes per dioptre. The third point extends it to the
+      # 0.1 m the vendor's LensInfo claims as MinFocusDistance; it is
+      # EXTRAPOLATED, not measured, and wants a station near 0.1 m to confirm.
+      # Stations between 0.5 and 2 m are owed too: the sweeps taken there
+      # measured the old, clipped range and do not transfer.
+      map: [ 0.0, 525, 4.5, 787, 10.0, 1107 ]
       default: 0.5
 ...

@@ -256,9 +256,13 @@ int main(int argc, char **argv)
 	*newArgsPtr = NULL;
 
 	// new arguments prepared; now setup environmental vars
+	// Only what is listed here reaches the native compiler. CCACHE_DISABLE
+	// is how pmbootstrap --no-ccache turns the cache off (rustc.sh honours it
+	// too); without it, ccache kept serving hits to a build asked not to.
 	char *env[] = { "LD_PRELOAD=",
 		"LD_LIBRARY_PATH=/native/lib:/native/usr/lib",
 		"CCACHE_PATH=/native/usr/bin",
+		getenv("CCACHE_DISABLE") ? "CCACHE_DISABLE=1" : NULL,
 		NULL };
 	if (ldPreload) {
 		if (strstr(ldPreload, "libfakeroot.so")) {

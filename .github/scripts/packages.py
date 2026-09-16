@@ -42,6 +42,9 @@ WORK = pathlib.Path("/work")
 ARCH = "aarch64"
 PACKAGER = os.environ.get("PACKAGER", "")
 UPSTREAM = "https://gitlab.postmarketos.org/postmarketOS/pmaports.git"
+# GitHub refuses a matrix of more than 256 jobs, and refuses it while the
+# matrix expression is evaluated: the run then fails with no job to blame.
+MAX_JOBS = 200
 
 
 def excluded(pkg: str) -> bool:
@@ -114,9 +117,21 @@ def forks() -> set[str]:
     common.run_git(["config", "remote.upstream.partialclonefilter", "blob:none"])
     common.run_git(["fetch", "-q", "--filter=blob:none", "--no-tags", "upstream", branch])
     base = common.run_git(["merge-base", "FETCH_HEAD", "HEAD"]).strip()
-    print(f"fork point: {base}, the merge base with upstream {branch}")
+    date = common.run_git(["log", "-1", "--format=%as", base]).strip()
+    print(f"fork point: {base} ({date}), the merge base with upstream {branch}")
     excluded_here = {p for p, t in tiers().items() if t == "exclude"}
-    return changed(base) - excluded_here
+    ret = changed(base) - excluded_here
+    # A branch rebased onto upstream forks a few dozen aports. Hundreds means
+    # the merge base is not where this branch left upstream (a rewritten
+    # history shares no commits with upstream, so the merge base falls back to
+    # an ancient one) and this is the whole upstream delta, not our forks.
+    if len(ret) > MAX_JOBS:
+        # ::error:: is only read from stdout, so print it, do not raise.
+        print(f"::error::{len(ret)} aports differ from the fork point {base} of {date}: that is the "
+              "upstream delta, not this branch's forks. The merge base with upstream is no longer "
+              "meaningful; name the aports to build instead.")
+        sys.exit(1)
+    return ret
 
 
 def private_source(d: pathlib.Path) -> str | None:
@@ -311,6 +326,11 @@ def cmd_select() -> int:
         else:
             print(f"{pkg}: {v} will be built")
             matrix.append(pkg)
+    if len(matrix) > MAX_JOBS:
+        print(f"::error::{len(matrix)} aports selected, more than the {MAX_JOBS} one run builds "
+              "(GitHub caps a matrix at 256 jobs); build them in batches with the workflow's "
+              "packages input")
+        return 1
     (WORK / "matrix.json").write_text(json.dumps(matrix))
     return 0
 

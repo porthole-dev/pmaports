@@ -347,18 +347,31 @@ jobs:
           keys=$RUNNER_TEMP/keys
           (umask 077; mkdir -p "$keys"; printf '%s\n' "$SIGNING_KEY" > "$keys/$SIGNING_KEY_NAME")
           trap 'rm -rf "$keys"' EXIT
-          local_repo=$(ls "$RUNNER_TEMP/packages")
-          [ "$(echo "$local_repo" | wc -l)" = 1 ] || { echo "::error::expected one local repository: $local_repo"; exit 1; }
-          tag=$BRANCH/aarch64
+          # The artifact contract. actions/upload-artifact roots an artifact at
+          # the least common ancestor of what it matched, which for the package
+          # job's single search path is work/packages/, so the apks arrive as
+          # <local repository>/<arch>/*.apk. Nothing in the action promises
+          # that, and this step rewrites a signed index, so find the directory
+          # instead of assuming it -- `ls` of an empty directory is one empty
+          # line, which the old count accepted as one repository.
+          arch=aarch64  # chromium-stage.py builds for aarch64 on either runner
+          new=$(find "$RUNNER_TEMP/packages" -mindepth 3 -maxdepth 3 \
+            -name '*.apk' -path "*/$arch/*" -printf '%h\n' | sort -u)
+          if [ "$(printf '%s' "$new" | grep -c . || true)" != 1 ]; then
+            echo "::error::expected one <local repository>/$arch directory of apks in the packages-chromium artifact, found:"
+            find "$RUNNER_TEMP/packages" | head -n 50
+            exit 1
+          fi
+          tag=$BRANCH/$arch
           repo=$RUNNER_TEMP/repo
           mkdir -p "$repo"
           gh release view "$tag" -R "$PACKAGES_REPO" >/dev/null 2>&1 ||
             gh release create "$tag" -R "$PACKAGES_REPO" --title "$tag" \
               --notes "apk repository for pmaports branch $BRANCH"
           gh release download "$tag" -R "$PACKAGES_REPO" -p '*.apk' -D "$repo" 2>/dev/null || true
-          docker run -i --rm -v "$repo:/repo" -v "$RUNNER_TEMP/packages/$local_repo/aarch64:/new:ro" \
+          docker run -i --rm -v "$repo:/repo" -v "$new:/new:ro" \
             -v "$keys:/keys:ro" -v "$PWD/.github/keys:/pubkeys:ro" \
-            -e ARCH=aarch64 -e KEY="$SIGNING_KEY_NAME" -e PACKAGER \
+            -e ARCH="$arch" -e KEY="$SIGNING_KEY_NAME" -e PACKAGER \
             -e DESCRIPTION="$PACKAGES_REPO $tag" \
             "$ALPINE" sh -s < .github/scripts/publish-repo.sh
           if [ ! -f "$repo/.upload" ]; then
@@ -369,20 +382,30 @@ jobs:
             (cd "$repo" && grep -vx APKINDEX.tar.gz .upload | xargs -r gh release upload "$tag" -R "$PACKAGES_REPO" --clobber)
             gh release upload "$tag" -R "$PACKAGES_REPO" --clobber "$repo/APKINDEX.tar.gz"
             xargs -r -n1 gh release delete-asset "$tag" -R "$PACKAGES_REPO" -y < "$repo/.remove"
-            check=$RUNNER_TEMP/check
-            mkdir -p "$check"
-            gh release download "$tag" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "$check"
-            cmp "$check/APKINDEX.tar.gz" "$repo/APKINDEX.tar.gz"
-            docker run --rm -v "$check:/check:ro" -v "$PWD/.github/keys:/pubkeys:ro" "$ALPINE" \
-              apk verify --keys-dir /pubkeys /check/APKINDEX.tar.gz
-            gh release view "$tag" -R "$PACKAGES_REPO" --json assets --jq '.assets[].name' | sort > "$check/assets"
-            tar -xzOf "$check/APKINDEX.tar.gz" APKINDEX 2>/dev/null |
-              awk -F: '/^P:/ { p = $2 } /^V:/ { print p "-" $2 ".apk" }' | sort > "$check/indexed"
-            if comm -23 "$check/indexed" "$check/assets" | grep .; then
-              echo "::error::The index names packages that are not release assets"
-              exit 1
-            fi
           fi
+          # Verify the release whether or not this run changed it. The next
+          # step deletes the stored state -- the whole build -- so "nothing
+          # new" has to mean "already published", which is only true if the
+          # index really names every package this run handed over.
+          check=$RUNNER_TEMP/check
+          mkdir -p "$check"
+          gh release download "$tag" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "$check"
+          [ ! -s "$repo/.upload" ] || cmp "$check/APKINDEX.tar.gz" "$repo/APKINDEX.tar.gz"
+          docker run --rm -v "$check:/check:ro" -v "$PWD/.github/keys:/pubkeys:ro" "$ALPINE" \
+            apk verify --keys-dir /pubkeys /check/APKINDEX.tar.gz
+          gh release view "$tag" -R "$PACKAGES_REPO" --json assets --jq '.assets[].name' | sort > "$check/assets"
+          tar -xzOf "$check/APKINDEX.tar.gz" APKINDEX 2>/dev/null |
+            awk -F: '/^P:/ { p = $2 } /^V:/ { print p "-" $2 ".apk" }' | sort > "$check/indexed"
+          if comm -23 "$check/indexed" "$check/assets" | grep .; then
+            echo "::error::The index names packages that are not release assets"
+            exit 1
+          fi
+          find "$new" -maxdepth 1 -name '*.apk' -printf '%f\n' | sort > "$check/ours"
+          if comm -23 "$check/ours" "$check/indexed" | grep .; then
+            echo "::error::The index does not name every package this run built"
+            exit 1
+          fi
+          echo "published $(wc -l < "$check/ours") package(s) into $tag"
       - name: Delete the stored state
         env:
           GH_TOKEN: ${{ github.token }}

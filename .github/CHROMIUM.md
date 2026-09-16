@@ -71,6 +71,14 @@ special case.
     itself, not by guessing from exit codes.
 - **mtimes:** tar's `posix` format keeps mtimes to the nanosecond, the
   resolution samurai compares.
+- **Caches are not state:** the prep layer stores the work directory without
+  the contents of `cache_*`; they are rebuildable, and the go, rust and
+  ccache directories would only make the layer bigger. pmbootstrap creates
+  the directories that `/home/pmos`'s cache symlinks point at only when it
+  creates a chroot, so a restored stage recreates the missing ones before
+  abuild runs (`enter()` in `scripts/chromium-stage.py`). Without that,
+  `/home/pmos/.cache/go-build` dangles and the build's Go actions fail with
+  "failed to initialize build cache".
 - **A frozen toolchain:**
   - Alpine edge changes daily. Every stage restores the chroots that prep
     installed, so all objects are compiled by one clang against one set of

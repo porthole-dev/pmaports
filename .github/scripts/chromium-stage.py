@@ -133,6 +133,22 @@ def enter() -> tuple[CrossCompile, dict]:
     chroot = cross.build_chroot(ARCH)
     pmb.chroot.init(chroot)
     pmb.build.other.configure_abuild(chroot)
+    # pmbootstrap creates the directories that /home/pmos's cache symlinks
+    # point at only while it creates a chroot; init() returns early for one
+    # that exists. chromium-state.sh stores the prep layer without the cache
+    # contents (--exclude='./cache_*/*'), so in a restored chroot the targets
+    # that live *inside* a cache bind mount are gone and their symlinks
+    # dangle: /home/pmos/.cache/go-build -> /mnt/pmbootstrap/go/gocache (and
+    # the three cargo ones). os.MkdirAll() returns EEXIST on a dangling
+    # symlink, which is Go's "failed to initialize build cache at
+    # /home/pmos/.cache/go-build: ... file exists" that broke dawn's
+    # generate_sources in run 35075286983. Recreate only what is missing: a
+    # target that exists as something else still fails where it is used.
+    for target in pmb.config.chroot_home_symlinks:
+        if not (chroot / target).is_dir():
+            print(f"::notice::recreating the cache directory {target}", flush=True)
+            pmb.chroot.root(["mkdir", "-p", target], chroot)
+            pmb.chroot.root(["chown", "pmos:pmos", target], chroot)
     # What pmb.build.backend.run_abuild() sets up before running abuild.
     if cross == CrossCompile.CROSS_NATIVE2:
         pmb.helpers.mount.bind(cross.host_chroot(ARCH).path, chroot / "mnt/sysroot", umount=True)

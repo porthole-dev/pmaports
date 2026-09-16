@@ -31,8 +31,47 @@ plan ─ prep ─ build 1 ─ build 2 ─ … ─ build 10 ─ package ─ publi
 | plan | computes the state tag. Stops if this `pkgver-pkgrel` is already published. Prunes states idle for 14 days. | nothing |
 | prep | `packages.py build chromium`, exactly what `build.yml` runs. Stopped by the watchdog when ninja starts. | the prep layer: the whole pmbootstrap work directory (chroots, prepared source tree, `gn gen` output) |
 | build k | restore, then abuild's `build` part until the deadline | `out/bld` as the newest out layer, and the manifest |
-| package | restore, then abuild's `build check rootpkg` parts | the apks, as the `packages-chromium` artifact |
+| package | restore, then abuild's `build check rootpkg` parts (`check` only where abuild's `want_check()` would run it) | the apks, as the `packages-chromium` artifact |
 | publish | `publish-repo.sh`, then verifies the published index the way `build.yml` does, then deletes the state | the release assets in `pmos-packages` |
+
+### The tail: package, then publish
+
+- **check is Alpine's, unchanged.** `temp/chromium`'s `check()` and its five
+  suites are byte for byte Alpine's. Only `compositor_unittests` runs under
+  `xvfb-run`, because only it opens windows; `base`, `gfx`, `net` and `ozone`
+  need no display. `checkdepends="xvfb-run"` is installed into the build
+  chroot by prep (pmbootstrap adds `checkdepends` unless `options` has
+  `!check`), so it is in the stored prep layer. If a suite turns out to fail
+  in this environment, the fix is a broken-list entry with the reason next to
+  it, the way Alpine already marks the ones that fail on its own builders --
+  not a suite dropped from `check()`.
+- **check runs where abuild would run it.** `chromium-stage.py` names abuild's
+  parts itself, and abuild runs any part it is given: `build_abuildrepo()`'s
+  `want_check()` gate is not in that path. So the script applies the same two
+  conditions (`CBUILD != CHOST`, `!check` in `options`). It matters on the
+  x86_64 runner: `build()` gates the five test binaries on `want_check()` too,
+  so there a `check` part would run binaries that were never built. The
+  arm64 default runs every suite.
+- **The package job checks what it built** before anything is uploaded: at
+  least one apk, exactly one `<local repository>/<arch>` directory, and at
+  least one package whose origin is `chromium` (prep also builds forked build
+  dependencies that were not published yet; `build.yml` publishes those).
+  The target is aarch64 on either runner -- the `runner` input picks native or
+  cross compilation, not the architecture.
+- **Nothing that names this machine.** Every apk is searched for the build
+  container's hostname and the runner's paths. The build has its own UTS
+  namespace, so the runner's own hostname is not what could leak; the
+  container is named `chromium-build-<run>-<attempt>` in `Start the clock` so
+  the check knows what to look for and cannot collide with 200 MB of binary.
+  Each needle is planted in a binary probe first, so a search that has stopped
+  matching anything fails the job instead of passing every package.
+- **The artifact contract is checked, not assumed.** `actions/upload-artifact`
+  roots an artifact at the least common ancestor of what it matched, which for
+  the package job's one search path is `work/packages/`, so publish unpacks
+  `<local repository>/<arch>/*.apk`. Publish finds that directory and refuses
+  anything else. It then verifies the release -- signature, index against
+  assets, and the index against the apks this run handed over -- whether or
+  not this run changed it, because the step after it deletes the stored state.
 
 ### The same apk pmbootstrap builds
 
@@ -206,15 +245,36 @@ On a **private-repository `ubuntu-24.04-arm` runner (2 vCPU, 8 GB)**, run
 | tar + zstd -3 + upload of the prep layer | 5.4 min |
 | **prep layer stored** | **2.92 GB in 2 parts** (13 GB of work directory) |
 
+On a **public-repository `ubuntu-24.04-arm` runner (4 vCPU, 16 GB)**, run
+[35081495196](https://github.com/porthole-dev/pmaports/actions/runs/35081495196),
+five build jobs with `stage_minutes=20`, every one of them resuming the
+previous one with `"rebuilt": 0`:
+
+| stage | ninja log records | out layer |
+| --- | --- | --- |
+| 1 | 1206 | |
+| 2 | 4208 | |
+| 3 | 4888 | |
+| 4 | 65434 | |
+| 5 | 66658 | **547 MiB** stored, **4.96 GiB** in the work directory (9.7x) |
+
+The out layer is stored in one 1900 MiB part and grows with the build. The
+45 minute reserve the watchdog keeps back is for storing it: tar of 5 GiB
+plus `zstd -3 -T0` on 4 cores is a couple of minutes, and the upload of
+547 MiB a couple more. At `symbol_level=0` (and `blink_symbol_level=0`) the
+links left to do add a few hundred MiB of binaries, not gigabytes, so expect
+the final layer around 1 GiB and the store well inside 10 minutes. It becomes
+a problem only if a layer's store cannot finish in 45 minutes, which at the
+measured throughput means roughly 40 GiB of out directory -- eight times what
+is there now, and more than the runner's free disk. **The binding constraint
+is disk, not the reserve:** the work directory is 13 GB after prep plus the
+out directory, against 54 GB free after the runner cleanup.
+
 `.github/scripts/chromium-state-test.sh` runs the layering (prep, two stages,
 restore, a corrupted part) against a fake `gh` in about a second.
 
-**Not yet measured on real runners:** the build and package jobs. The
-organization ran out of included Actions minutes for private repositories
-during this work ("The job was not started because recent account payments
-have failed or your spending limit needs to be increased"), so nothing has
-run since the prep layer was stored. The stored state is keyed by the aport's
-git tree, so the next run picks it up and starts with build job 1.
+**Not yet measured on real runners:** the package and publish jobs. Nothing
+has run them: the state has reached stage 5 and ninja has not finished.
 
 ## Cost and wall-clock once public
 

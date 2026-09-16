@@ -110,7 +110,7 @@ jobs:
     if: needs.plan.outputs.build == 'true' && needs.plan.outputs.prepared != 'true'
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: prep
       runner: ${{ needs.plan.outputs.runner }}
@@ -123,7 +123,7 @@ jobs:
     if: ${{ !cancelled() && needs.plan.outputs.build == 'true' && needs.plan.outputs.done != 'true' && contains(fromJSON('["success", "skipped"]'), needs.prep.result) }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -137,7 +137,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-1.result == 'success' && needs.stage-1.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 2 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -151,7 +151,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-2.result == 'success' && needs.stage-2.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 3 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -165,7 +165,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-3.result == 'success' && needs.stage-3.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 4 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -179,7 +179,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-4.result == 'success' && needs.stage-4.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 5 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -193,7 +193,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-5.result == 'success' && needs.stage-5.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 6 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -207,7 +207,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-6.result == 'success' && needs.stage-6.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 7 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -221,7 +221,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-7.result == 'success' && needs.stage-7.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 8 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -235,7 +235,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-8.result == 'success' && needs.stage-8.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 9 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -249,7 +249,7 @@ jobs:
     if: ${{ !cancelled() && needs.stage-9.result == 'success' && needs.stage-9.outputs.done != 'true' && fromJSON(needs.plan.outputs.stages) >= 10 }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: build
       runner: ${{ needs.plan.outputs.runner }}
@@ -263,7 +263,7 @@ jobs:
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && (needs.plan.outputs.done == 'true' || contains(needs.*.outputs.done, 'true')) }}
     permissions:
       contents: write
-    uses: ./.github/workflows/chromium-stage.yml
+    uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]
     with:
       mode: package
       runner: ${{ needs.plan.outputs.runner }}

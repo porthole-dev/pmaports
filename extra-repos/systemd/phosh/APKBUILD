@@ -11,7 +11,7 @@ maintainer="Stefan Hansson <newbyte@postmarketos.org>"
 pkgname=phosh
 _pkgver=0.57.0
 pkgver=9999$_pkgver
-pkgrel=24
+pkgrel=25
 pkgdesc="Wayland shell for GNOME on mobile devices"
 # armhf: blocked by gnome-shell-schemas
 arch="all !armhf"
@@ -87,8 +87,7 @@ source="https://sources.phosh.mobi/releases/phosh/phosh-${_pkgver/_/.}.tar.xz
 	"
 builddir="$srcdir/$pkgname-${_pkgver/_/.}"
 somask="libphoshsearch.so"
-# crossdirect disabled because the ARMv7 cross compiler crashes internally with LTO
-options="!check !pmb:crossdirect" # weird test environment, idk and dont care, tests work in Alpine
+options="!check" # weird test environment, idk and dont care, tests work in Alpine
 
 prepare() {
 	default_prepare

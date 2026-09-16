@@ -5,7 +5,7 @@
 > issue here.
 >
 > **Experimental.** Flashing can brick the device or erase data. No warranty,
-> see [COPYING](COPYING).
+> see [LICENSE](LICENSE).
 >
 > **AI-assisted.** See [AI.md](AI.md).
 

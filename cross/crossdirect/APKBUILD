@@ -22,12 +22,11 @@
 maintainer="Oliver Smith <ollieparanoid@postmarketos.org>"
 pkgname=crossdirect
 pkgver=5.3.1
-pkgrel=5
+pkgrel=6
 pkgdesc="Wrappers to launch native programs (e.g. cross compilers) in foreign chroots"
 url="https://postmarketOS.org"
 arch="all"
 license="MIT"
-options="!check"
 source="
 	bindgen.sh
 	cargo.sh
@@ -35,6 +34,7 @@ source="
 	exec_native.sh
 	rust-qemu-linker.sh
 	rustc.sh
+	test-routing.sh
 "
 
 build() {
@@ -53,6 +53,14 @@ build() {
 			-DHOSTSPEC="\"$_hostspec\"" \
 			crossdirect.c
 	done
+}
+
+check() {
+	cd "$srcdir"
+	# Any of the wrappers will do; build() skips the one for $CARCH.
+	local _arch="aarch64"
+	[ "$CARCH" = "aarch64" ] && _arch="x86_64"
+	sh test-routing.sh "./crossdirect-$_arch" "$(arch_to_hostspec $_arch)"
 }
 
 package() {
@@ -133,8 +141,9 @@ package() {
 sha512sums="
 17e1272d9fb0eb213f3e0c16db12d9abef728f3b52f7f702766da0ae7f3accaca502a95b00e2715e8eaec59b45e7a848851723ed078c3516e4e1ddea9d5a040f  bindgen.sh
 b067529f0ef0569ba902be3e1029ecf7f2c948ffeba02f9211c21ca731b88b0169f0d3898cbc227215a52832a3818da09da3186c036d5309e18893fe3c94fa0e  cargo.sh
-a9f8b5e1ef1c61cf98d50c552a55a0922f2273079140c870b431d1e4ffd8792f3fcadd71e03a6659ec2624ea3ca0218424fa4636c5c93a8be01377595a319c0f  crossdirect.c
+24f2afd4aa2e215df1192f29b68fd2b0137a54afe8ab4e8b4afde66b633705c860cf1b82bd10704a6e52d8675bc24d86bd29090a57a049878d1e2b160acb743c  crossdirect.c
 73e2b5d2d8ef7c6002b3a787d14945586991493b8d81f59e5c0beda0d3b290543e1fdc6f288da726c5dd121c0861d2a894410b7b749a537df0df5b409e102330  exec_native.sh
 5c0dedba79946b7c293a8e211e1c39b8660e05a15b4e556e05d2d76dc4834c51c9ab927d2f22ce49d417cd5190a21b7f626ca05c3264c95a6445860c5d86fb3f  rust-qemu-linker.sh
 03d15064e369a21b1777273155943280641748d3c218c30120ec00dc665e7e680f68cd5cd92620c6958090f40f07cd8eed65a0661b7680a70774e62a3e3f4696  rustc.sh
+f92f1667594d8461c42f7437972cb2f9e31a4a7a52aba4d71fec3ad5b6507632fe16e3eea27448984c5a88da630350ac1404160cf5fe5c914e6638cb995c78af  test-routing.sh
 "

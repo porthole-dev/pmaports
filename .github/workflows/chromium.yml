@@ -290,9 +290,29 @@ jobs:
             exit 1 ;;
           esac
 
+  # ninja has finished when the state already said so, or when the build job
+  # that stopped the chain said so: stage k+1 runs only while stage k did not
+  # finish, so at most one of them reports done. Naming each of them is worth
+  # the eleven lines -- contains(needs.*.outputs.done, 'true') would also read
+  # the unrelated `done` that plan exports, and would keep being true for any
+  # output named done that a future need happens to have.
   package:
     needs: [plan, stage-1, stage-2, stage-3, stage-4, stage-5, stage-6, stage-7, stage-8, stage-9, stage-10]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && (needs.plan.outputs.done == 'true' || contains(needs.*.outputs.done, 'true')) }}
+    # One folded line: a multi-line expression is a job GitHub might fail to
+    # create, and a job it does not create reads as a skip, not a failure.
+    if: >-
+      ${{ !cancelled() && !contains(needs.*.result, 'failure')
+      && (needs.plan.outputs.done == 'true'
+      || needs.stage-1.outputs.done == 'true'
+      || needs.stage-2.outputs.done == 'true'
+      || needs.stage-3.outputs.done == 'true'
+      || needs.stage-4.outputs.done == 'true'
+      || needs.stage-5.outputs.done == 'true'
+      || needs.stage-6.outputs.done == 'true'
+      || needs.stage-7.outputs.done == 'true'
+      || needs.stage-8.outputs.done == 'true'
+      || needs.stage-9.outputs.done == 'true'
+      || needs.stage-10.outputs.done == 'true') }}
     permissions:
       contents: write
     uses: ./.github/workflows/chromium-stage.yml # zizmor: ignore[self-repository]

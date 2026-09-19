@@ -1,0 +1,56 @@
+From fe9663234e5114ef5a98c1aa718f238a806dfec8 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 15:52:52 +0200
+Subject: [PATCH] thermal: qcom-spmi-adc-tm5: stop requiring IIO_VAL_INT from a
+ processed read
+
+Every get_temp on an adc-tm zone fails with -EINVAL, and the thermal core says
+so once per zone at boot:
+
+	thermal thermal_zone19: Temperature check failed (-22)
+
+while the same channel read straight from IIO gives a sane value:
+
+	/sys/bus/iio/devices/iio:device0/in_temp_skin_therm_input -> 36666
+
+adc_tm5_get_temp() checks that iio_read_channel_processed() returned
+IIO_VAL_INT. That was true until commit 05f958d003c9 ("iio: Improve
+iio_read_channel_processed_scale() precision"), which replaced
+
+	*val *= scale;
+	return ret;
+
+with a call to the new iio_multiply_value() helper, and that returns 0 on
+success rather than passing the driver's value type back up. IIO_VAL_INT is 1,
+so the check now rejects every successful read. The RAW fallback branch of the
+same function returns 0 as well, so there is no value type left to check
+against; the return is 0-or-negative-errno now and the value is in *temp
+either way.
+
+No other caller of iio_read_channel_processed() in the tree tests the return
+for a value type.
+
+Fixes: 05f958d003c9 ("iio: Improve iio_read_channel_processed_scale() precision")
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/thermal/qcom/qcom-spmi-adc-tm5.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/drivers/thermal/qcom/qcom-spmi-adc-tm5.c b/drivers/thermal/qcom/qcom-spmi-adc-tm5.c
+index d7f2e6ca92c2..d1b086737bcd 100644
+--- a/drivers/thermal/qcom/qcom-spmi-adc-tm5.c
++++ b/drivers/thermal/qcom/qcom-spmi-adc-tm5.c
+@@ -369,9 +369,6 @@ static int adc_tm5_get_temp(struct thermal_zone_device *tz, int *temp)
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	if (ret != IIO_VAL_INT)
+-		return -EINVAL;
+-
+ 	return 0;
+ }
+ 
+-- 
+2.55.0
+

@@ -1,0 +1,184 @@
+From 5a04998dc266ce77e089f06157fcfecf86a6228b Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 15:17:48 +0200
+Subject: [PATCH 239/240] arm64: dts: qcom: msm8998-google-taimen: wire the
+ vendor's skin thermal ladder
+
+The skin thermistor landed with no trips on purpose, because a curve that had
+not been correlated with a real warm-up is not something to hang a power-off
+on. It has been correlated now: a 100 s CPU burn moved tsens junction +34.9 C
+while skin moved 33.7 -> 37.2 C, and junction saturates at 73.8 C while skin
+keeps climbing. That is the shape the vendor's policy assumes -- junction is
+the backstop, skin is the thing a hand feels -- so the ladder can go in.
+
+The trips and the caps are transcribed from /vendor/etc/thermal-engine.conf,
+bd_therm2 sections (the *2 sections are the rev C/D/1.0 ones, and this board
+reports androidboot.revision=rev_10):
+
+  38 C  SKIN-MID-FLOOR2      cluster1 <= 1804800
+  40 C  SKIN-MID-LOW-FLOOR2  cluster1 <= 1497600
+  45 C  SKIN-LOW-FLOOR2      cluster1 <= 1190400
+  48 C  SKIN-MONITOR2        cluster0 <= 1094400, cluster1 <= 1190400, gpu 414 MHz
+  50 C  SKIN-MONITOR2        cluster0 <=  883200, cluster1 <=  902400, gpu 342 MHz
+  52 C  SKIN-MONITOR2        cluster0 <=  300000, cluster1 <=  300000, gpu 257 MHz
+
+each with the vendor's 1 C of hysteresis, and polling-delay-passive set to the
+vendor's own 2000 ms sampling period rather than left at 0: the adc-tm
+threshold interrupt is what notices the first crossing, but relying on it
+alone to also notice every step after that makes a stuck cooling state
+indistinguishable from a working one.
+
+Every map is bounded min == max so the trip pins its cooling device at exactly
+the vendor's cap. SKIN-MONITOR2 is a discrete threshold table, not a gradient,
+and bounding the map is how that is spelled here; letting step_wise walk
+towards the cap would be a different controller wearing the same numbers.
+
+No critical trip. The vendor does shut down at 56 C from this sensor, but it
+does so from a userspace loop that can be observed to be alive, and the
+junction zones already carry their own critical trips at 110 C.
+
+What this replaces on our side is one passive trip at 75 C junction with
+THERMAL_NO_LIMIT bounds, measured doing nothing: a 180 s burn sat at
+73.5-75.1 C with the cpu4 cooling device at state 0-2 of 29 for 71 of 84
+samples. The die parked one degree under a cliff that then walks the cluster
+from 2.36 GHz to 300 MHz, which is bistable rather than mitigated.
+
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 111 +++++++++++++++++-
+ 1 file changed, 105 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index 12b9406cb32e..f1f5957c46f1 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -1351,20 +1351,119 @@ &venus {
+  * overlay-taimen-rev-1_0.dts, both at VADC channel 0x51 with
+  * qcom,scale-function = <2>, which is this generic 100k pull-up table.
+  *
+- * NO TRIPS YET, DELIBERATELY. The channel and its scaling are verified
+- * against downstream, but the curve has not yet been correlated with a real
+- * warm-up on this board, and a critical trip on a sensor that reads high
+- * would power the phone off. Land the reading first, correlate it, then wire
+- * the vendor's ladder.
++ * The trips below are the vendor's own ladder, transcribed from
++ * /vendor/etc/thermal-engine.conf's bd_therm2 sections -- the *2 sections are
++ * the ones for rev C/D/1.0, and /proc/cmdline says androidboot.revision=rev_10:
++ *
++ *   38 C  SKIN-MID-FLOOR2      cluster1 <= 1804800
++ *   40 C  SKIN-MID-LOW-FLOOR2  cluster1 <= 1497600
++ *   45 C  SKIN-LOW-FLOOR2      cluster1 <= 1190400
++ *   48 C  SKIN-MONITOR2        cluster0 <= 1094400, cluster1 <= 1190400, gpu <= 414 MHz
++ *   50 C  SKIN-MONITOR2        cluster0 <=  883200, cluster1 <=  902400, gpu <= 342 MHz
++ *   52 C  SKIN-MONITOR2        cluster0 <=  300000, cluster1 <=  300000, gpu <= 257 MHz
++ *
++ * every one of them with 1 C of hysteresis (set_point_clr / thresholds_clr)
++ * and a 2 s sampling period, which is polling-delay-passive here.
++ *
++ * Each map is bounded min == max, so the trip pins its cooling device at
++ * exactly the vendor's cap instead of letting step_wise walk towards it. The
++ * vendor's SKIN-MONITOR2 is a discrete threshold table, not a gradient, and a
++ * bounded map is how that is spelled in this binding.
++ *
++ * NO CRITICAL TRIP, DELIBERATELY. The vendor shuts down at 56 C from this
++ * sensor, but it does so from userspace with a 1 s sampling loop that can be
++ * seen to be alive; a critical trip here is a kernel-side power-off on a
++ * curve we have correlated only across a 3.5 C rise. The junction zones keep
++ * their own critical trips at 110 C, which is the backstop that matters.
+  */
+ / {
+ 	thermal-zones {
+ 		skin-thermal {
+-			polling-delay-passive = <0>;
++			/* vendor thermal-engine samples bd_therm2 every 2000 ms */
++			polling-delay-passive = <2000>;
+ 			polling-delay = <0>;
+ 			thermal-sensors = <&pm8998_adc_tm 4>;
+ 
+ 			trips {
++				skin_floor_mid: trip-point0 {
++					temperature = <38000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++
++				skin_floor_midlow: trip-point1 {
++					temperature = <40000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++
++				skin_floor_low: trip-point2 {
++					temperature = <45000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++
++				skin_mon0: trip-point3 {
++					temperature = <48000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++
++				skin_mon1: trip-point4 {
++					temperature = <50000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++
++				skin_mon2: trip-point5 {
++					temperature = <52000>;
++					hysteresis = <1000>;
++					type = "passive";
++				};
++			};
++
++			/*
++			 * The states are indices into each policy's frequency
++			 * table, counted down from the top: gold 0 = 2361600 ..
++			 * 29 = 300000, silver 0 = 1900800 .. 21 = 300000, GPU
++			 * 0 = 710 MHz .. 6 = 257 MHz.
++			 */
++			cooling-maps {
++				map0 {
++					trip = <&skin_floor_mid>;
++					cooling-device = <&cpu4 9 9>;   /* 1804800 */
++				};
++
++				map1 {
++					trip = <&skin_floor_midlow>;
++					cooling-device = <&cpu4 13 13>; /* 1497600 */
++				};
++
++				map2 {
++					trip = <&skin_floor_low>;
++					cooling-device = <&cpu4 17 17>; /* 1190400 */
++				};
++
++				map3 {
++					trip = <&skin_mon0>;
++					cooling-device = <&cpu4 17 17>, /* 1190400 */
++							 <&cpu0 10 10>, /* 1094400 */
++							 <&adreno_gpu 4 4>; /* 414 MHz */
++				};
++
++				map4 {
++					trip = <&skin_mon1>;
++					cooling-device = <&cpu4 21 21>, /*  902400 */
++							 <&cpu0 13 13>, /*  883200 */
++							 <&adreno_gpu 5 5>; /* 342 MHz */
++				};
++
++				map5 {
++					trip = <&skin_mon2>;
++					cooling-device = <&cpu4 29 29>, /*  300000 */
++							 <&cpu0 21 21>, /*  300000 */
++							 <&adreno_gpu 6 6>; /* 257 MHz */
++				};
+ 			};
+ 		};
+ 	};
+-- 
+2.55.0
+

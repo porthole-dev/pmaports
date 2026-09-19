@@ -1,0 +1,172 @@
+From 22bf6723609f89eeff33c848a779116bfb4e5f0f Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 16 Sep 2026 20:09:19 +0200
+Subject: [PATCH 235/235] media: qcom: camss: offer unpacked 10-bit on RDI for
+ every Bayer order
+
+CSID gen1 can write each sample into its own 16-bit word instead of dumping
+MIPI-packed data: csid_configure_stream() programs RDI_MODE_PLAIN_PACKING and
+PLAIN_FORMAT_16 when the source pad carries a padded code. Only SBGGR10 and
+Y10 could ever reach it, because csid_src_pad_code() offers the padded
+alternative for those two sink codes alone.
+
+Nothing about the hardware is BGGR-specific -- plain packing is per sample and
+does not care which colour a sample is. Offer the padded source code for all
+four 10-bit Bayer orders, accept them through the ISPIF, and map them to the
+unpacked V4L2 pixel formats at 16 bits per pixel.
+
+This matters beyond tidiness. Packed RAW10 rows are width * 5 / 4 bytes, which
+is almost never 64-byte aligned, and a GPU that needs a 64-aligned pitch to
+import a dmabuf cannot take the buffer at all -- so a software ISP ends up
+copying the whole raw plane every frame. Unpacked rows are width * 2, which is
+64-aligned for every even width, and the copy disappears. On a 4032-wide
+sensor that is 5040 bytes a row versus 8064.
+
+Assisted-by: Claude
+---
+ .../platform/qcom/camss/camss-csid-4-7.c      | 31 ++++++++++++++++---
+ .../media/platform/qcom/camss/camss-csid.c    | 30 ++++++++++++++++++
+ .../media/platform/qcom/camss/camss-ispif.c   | 14 +++++++--
+ drivers/media/platform/qcom/camss/camss-vfe.c |  6 ++++
+ 4 files changed, 75 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/platform/qcom/camss/camss-csid-4-7.c b/drivers/media/platform/qcom/camss/camss-csid-4-7.c
+index 66054d4872e6..d0a7da402393 100644
+--- a/drivers/media/platform/qcom/camss/camss-csid-4-7.c
++++ b/drivers/media/platform/qcom/camss/camss-csid-4-7.c
+@@ -43,6 +43,32 @@
+ #define CAMSS_CSID_TG_DT_n_CGG_1(n)	(0x0b8 + 0xc * (n))
+ #define CAMSS_CSID_TG_DT_n_CGG_2(n)	(0x0bc + 0xc * (n))
+ 
++/*
++ * csid_is_plain16 - is this sink/src pair asking for unpacked 16-bit output
++ * @sink_code: media bus format code on the sink pad
++ * @src_code: media bus format code on the source pad
++ *
++ * The padded source code is how userspace asks the CSID to unpack MIPI
++ * samples into one 16-bit word each, rather than dumping them packed.
++ */
++static bool csid_is_plain16(u32 sink_code, u32 src_code)
++{
++	switch (sink_code) {
++	case MEDIA_BUS_FMT_SBGGR10_1X10:
++		return src_code == MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE;
++	case MEDIA_BUS_FMT_SGBRG10_1X10:
++		return src_code == MEDIA_BUS_FMT_SGBRG10_2X8_PADHI_LE;
++	case MEDIA_BUS_FMT_SGRBG10_1X10:
++		return src_code == MEDIA_BUS_FMT_SGRBG10_2X8_PADHI_LE;
++	case MEDIA_BUS_FMT_SRGGB10_1X10:
++		return src_code == MEDIA_BUS_FMT_SRGGB10_2X8_PADHI_LE;
++	case MEDIA_BUS_FMT_Y10_1X10:
++		return src_code == MEDIA_BUS_FMT_Y10_2X8_PADHI_LE;
++	default:
++		return false;
++	}
++}
++
+ static void csid_configure_stream(struct csid_device *csid, u8 enable)
+ {
+ 	struct csid_testgen_config *tg = &csid->testgen;
+@@ -119,10 +145,7 @@ static void csid_configure_stream(struct csid_device *csid, u8 enable)
+ 		val |= format->decode_format << CAMSS_CSID_CID_n_CFG_DECODE_FORMAT_SHIFT;
+ 		val |= CAMSS_CSID_CID_n_CFG_RDI_MODE_RAW_DUMP;
+ 
+-		if ((sink_code == MEDIA_BUS_FMT_SBGGR10_1X10 &&
+-		     src_code == MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE) ||
+-		    (sink_code == MEDIA_BUS_FMT_Y10_1X10 &&
+-		     src_code == MEDIA_BUS_FMT_Y10_2X8_PADHI_LE)) {
++		if (csid_is_plain16(sink_code, src_code)) {
+ 			val |= CAMSS_CSID_CID_n_CFG_RDI_MODE_PLAIN_PACKING;
+ 			val |= CAMSS_CSID_CID_n_CFG_PLAIN_FORMAT_16;
+ 			val |= CAMSS_CSID_CID_n_CFG_PLAIN_ALIGNMENT_LSB;
+diff --git a/drivers/media/platform/qcom/camss/camss-csid.c b/drivers/media/platform/qcom/camss/camss-csid.c
+index 48459b46a981..74a95bfb5265 100644
+--- a/drivers/media/platform/qcom/camss/camss-csid.c
++++ b/drivers/media/platform/qcom/camss/camss-csid.c
+@@ -652,6 +652,36 @@ u32 csid_src_pad_code(struct csid_device *csid, u32 sink_code,
+ 		return csid_find_code(src_code, ARRAY_SIZE(src_code),
+ 				      match_format_idx, match_code);
+ 	}
++	case MEDIA_BUS_FMT_SGBRG10_1X10:
++	{
++		u32 src_code[] = {
++			MEDIA_BUS_FMT_SGBRG10_1X10,
++			MEDIA_BUS_FMT_SGBRG10_2X8_PADHI_LE,
++		};
++
++		return csid_find_code(src_code, ARRAY_SIZE(src_code),
++				      match_format_idx, match_code);
++	}
++	case MEDIA_BUS_FMT_SGRBG10_1X10:
++	{
++		u32 src_code[] = {
++			MEDIA_BUS_FMT_SGRBG10_1X10,
++			MEDIA_BUS_FMT_SGRBG10_2X8_PADHI_LE,
++		};
++
++		return csid_find_code(src_code, ARRAY_SIZE(src_code),
++				      match_format_idx, match_code);
++	}
++	case MEDIA_BUS_FMT_SRGGB10_1X10:
++	{
++		u32 src_code[] = {
++			MEDIA_BUS_FMT_SRGGB10_1X10,
++			MEDIA_BUS_FMT_SRGGB10_2X8_PADHI_LE,
++		};
++
++		return csid_find_code(src_code, ARRAY_SIZE(src_code),
++				      match_format_idx, match_code);
++	}
+ 	case MEDIA_BUS_FMT_Y10_1X10:
+ 	{
+ 		u32 src_code[] = {
+diff --git a/drivers/media/platform/qcom/camss/camss-ispif.c b/drivers/media/platform/qcom/camss/camss-ispif.c
+index b095639ee93c..4735d9398295 100644
+--- a/drivers/media/platform/qcom/camss/camss-ispif.c
++++ b/drivers/media/platform/qcom/camss/camss-ispif.c
+@@ -139,6 +139,9 @@ static const u32 ispif_formats_8x96[] = {
+ 	MEDIA_BUS_FMT_SGRBG10_1X10,
+ 	MEDIA_BUS_FMT_SRGGB10_1X10,
+ 	MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE,
++	MEDIA_BUS_FMT_SGBRG10_2X8_PADHI_LE,
++	MEDIA_BUS_FMT_SGRBG10_2X8_PADHI_LE,
++	MEDIA_BUS_FMT_SRGGB10_2X8_PADHI_LE,
+ 	MEDIA_BUS_FMT_SBGGR12_1X12,
+ 	MEDIA_BUS_FMT_SGBRG12_1X12,
+ 	MEDIA_BUS_FMT_SGRBG12_1X12,
+@@ -760,9 +763,16 @@ static void ispif_config_pack(struct ispif_device *ispif, u32 code,
+ {
+ 	u32 addr, val;
+ 
+-	if (code != MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE &&
+-	    code != MEDIA_BUS_FMT_Y10_2X8_PADHI_LE)
++	switch (code) {
++	case MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE:
++	case MEDIA_BUS_FMT_SGBRG10_2X8_PADHI_LE:
++	case MEDIA_BUS_FMT_SGRBG10_2X8_PADHI_LE:
++	case MEDIA_BUS_FMT_SRGGB10_2X8_PADHI_LE:
++	case MEDIA_BUS_FMT_Y10_2X8_PADHI_LE:
++		break;
++	default:
+ 		return;
++	}
+ 
+ 	switch (intf) {
+ 	case RDI0:
+diff --git a/drivers/media/platform/qcom/camss/camss-vfe.c b/drivers/media/platform/qcom/camss/camss-vfe.c
+index d62178a7f6fc..026487a0bce0 100644
+--- a/drivers/media/platform/qcom/camss/camss-vfe.c
++++ b/drivers/media/platform/qcom/camss/camss-vfe.c
+@@ -101,6 +101,12 @@ static const struct camss_format_info formats_rdi_8x96[] = {
+ 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 10) },
+ 	{ MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_SBGGR10, 1,
+ 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
++	{ MEDIA_BUS_FMT_SGBRG10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_SGBRG10, 1,
++	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
++	{ MEDIA_BUS_FMT_SGRBG10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_SGRBG10, 1,
++	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
++	{ MEDIA_BUS_FMT_SRGGB10_2X8_PADHI_LE, 16, V4L2_PIX_FMT_SRGGB10, 1,
++	  PER_PLANE_DATA(0, 1, 1, 1, 1, 16) },
+ 	{ MEDIA_BUS_FMT_SBGGR12_1X12, 12, V4L2_PIX_FMT_SBGGR12P, 1,
+ 	  PER_PLANE_DATA(0, 1, 1, 1, 1, 12) },
+ 	{ MEDIA_BUS_FMT_SGBRG12_1X12, 12, V4L2_PIX_FMT_SGBRG12P, 1,

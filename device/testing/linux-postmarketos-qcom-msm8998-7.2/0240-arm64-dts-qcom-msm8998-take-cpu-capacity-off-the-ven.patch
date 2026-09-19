@@ -1,0 +1,148 @@
+From efd85475b49b30a7569680a15b11ce76ea8615ed Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 15:17:49 +0200
+Subject: [PATCH 240/240] arm64: dts: qcom: msm8998: take cpu capacity off the
+ vendor's own scale
+
+capacity-dmips-mhz was 1024 silver / 1536 gold, which normalises to
+cpu_capacity 549/1024 for the A53 cluster. The vendor's own kernel arrives at
+419/1024, and it does not get there from a property we can copy across.
+
+Downstream msm8998.dtsi:51-228 carries efficiency = <1024> on the silver cores
+and <1536> on the gold ones -- the same pair, which is where ours came from.
+But arch/arm64/kernel/topology.c:297-306 does not use it for capacity:
+
+	static void update_cpu_capacity(unsigned int cpu)
+	{
+		unsigned long capacity = SCHED_CAPACITY_SCALE;
+
+		if (cpu_core_energy(cpu)) {
+			int max_cap_idx = cpu_core_energy(cpu)->nr_cap_states - 1;
+			capacity = cpu_core_energy(cpu)->cap_states[max_cap_idx].cap;
+		}
+
+		set_capacity_scale(cpu, capacity);
+	}
+
+The last cap state of the energy model is what becomes cpu_scale. efficiency
+feeds per_cpu(cpu_efficiency) at :226-230 and is read back by
+arch_get_cpu_efficiency(), which is a different consumer. So the vendor's
+capacity is msm8998.dtsi:282-350 -- CPU_COST_0 busy-cost-data ending at
+419 201, CPU_COST_1 ending at 1024 1683 -- and it is 419/1024.
+
+Per MHz that is A53:A73 = 0.508 against the 0.666 the efficiency pair implies.
+We were overstating the little cluster by 31%.
+
+This matters more than it used to. The OPP tables just gained opp-microwatt
+derived from those same two cost curves, so the energy model and the capacity
+scale are now read together by every EAS placement decision, and they have to
+come off the same measurement -- which, downstream, they literally do: one
+array feeds both. Overstating silver capacity while costing it from that curve
+tells the scheduler a little core can absorb work it cannot, at a power figure
+that assumed it could not.
+
+Expressed as 521/1024 rather than 781/1536 so the reference 1024 sits on the
+biggest core, as it does elsewhere in arm64. The ratio is what is read:
+521 * 1900800 / (1024 * 2361600) = 0.40925, i.e. 419/1024.
+
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 27 +++++++++++++++++++--------
+ 1 file changed, 19 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 04631d4b8da2..162df5a90788 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -150,12 +150,23 @@ cpus {
+ 		#address-cells = <2>;
+ 		#size-cells = <0>;
+ 
++		/*
++		 * capacity-dmips-mhz: 521 silver against 1024 gold puts
++		 * cpu_capacity at 419/1024 for the A53s. That is the vendor's
++		 * number, but not one of its properties: downstream carries
++		 * efficiency = <1024>/<1536> (the pair this replaces, worth
++		 * 549), and arch/arm64/kernel/topology.c:297 ignores it for
++		 * capacity, taking cpu_scale from the last cap state of the
++		 * energy model instead -- CPU_COST_0 ends at 419, CPU_COST_1
++		 * at 1024. Since our OPPs now carry opp-microwatt from those
++		 * same two curves, capacity has to be read off the same scale.
++		 */
+ 		cpu0: cpu@0 {
+ 			device_type = "cpu";
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x0>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1024>;
++			capacity-dmips-mhz = <521>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+@@ -176,7 +187,7 @@ cpu1: cpu@1 {
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x1>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1024>;
++			capacity-dmips-mhz = <521>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+@@ -192,7 +203,7 @@ cpu2: cpu@2 {
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x2>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1024>;
++			capacity-dmips-mhz = <521>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+@@ -208,7 +219,7 @@ cpu3: cpu@3 {
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x3>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1024>;
++			capacity-dmips-mhz = <521>;
+ 			cpu-idle-states = <&little_cpu_sleep_0 &little_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_0>;
+@@ -224,7 +235,7 @@ cpu4: cpu@100 {
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x100>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1536>;
++			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+@@ -245,7 +256,7 @@ cpu5: cpu@101 {
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x101>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1536>;
++			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+@@ -261,7 +272,7 @@ cpu6: cpu@102 {
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x102>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1536>;
++			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+@@ -277,7 +288,7 @@ cpu7: cpu@103 {
+ 			compatible = "qcom,kryo280";
+ 			reg = <0x0 0x103>;
+ 			enable-method = "psci";
+-			capacity-dmips-mhz = <1536>;
++			capacity-dmips-mhz = <1024>;
+ 			cpu-idle-states = <&big_cpu_sleep_0 &big_cpu_sleep_1
+ 					  &system_sleep>;
+ 			next-level-cache = <&l2_1>;
+-- 
+2.55.0
+

@@ -1,0 +1,181 @@
+From 04fdd3d63a81e3f55fb45ac17b195a10c9c3a21c Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 18:58:09 +0200
+Subject: [PATCH] iio: qcom-smgr: give the wake gestures an input device
+
+The SLPI detects double-tap, long-press and swipe-up itself and reports them
+over SMGR. That is how the vendor serves ambient-display gestures: their own
+touch driver has no gesture decode at all and disables its interrupt in
+lowpower_mode, leaving detection to the sensor hub.
+
+This driver already surfaces those three as IIO event devices, which is the
+right shape for a sensor consumer and the wrong shape for a wake key. An IIO
+event device is not an input device, so nothing in a session stack treats it as
+input -- /proc/bus/input/devices has pwrkey, resin, gpio-keys, haptics, ftm4
+and the headset, and no gesture node -- and an IIO device cannot be a wakeup
+source. A gesture that fires while the screen is off therefore reaches nothing.
+
+Register an input device for those three sensor types and report a KEY_WAKEUP
+press/release alongside the existing IIO event, with pm_wakeup_event() so the
+gesture counts as wake activity. KEY_WAKEUP rather than KEY_POWER because it
+means exactly this and cannot be mistaken for a request to power off.
+
+The device is marked wakeup-capable but not wakeup-enabled: enabling it here
+would commit every board to waking on a gesture, and the sysfs knob is the
+ordinary place for that decision.
+
+This is necessary but, on taimen today, not yet sufficient. With the gesture's
+IIO event enabled and a real positive control -- the ftm4 interrupt count moved
+270 -> 774 while the screen was tapped -- the SLPI reported zero double-tap
+events in 180 s, so nothing currently drives this path. The remaining work is
+on the SLPI side: the vendor hands the shared touch i2c to the sensor hub while
+keeping the controller powered, which this tree only started doing when
+ftm4.keep_powered landed.
+
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/iio/common/qcom_smgr/qcom_smgr.c | 78 ++++++++++++++++++++++++
+ include/linux/iio/common/qcom_smgr.h     |  9 +++
+ 2 files changed, 87 insertions(+)
+
+diff --git a/drivers/iio/common/qcom_smgr/qcom_smgr.c b/drivers/iio/common/qcom_smgr/qcom_smgr.c
+index 2a30a6147b00..d1b59d2b8b82 100644
+--- a/drivers/iio/common/qcom_smgr/qcom_smgr.c
++++ b/drivers/iio/common/qcom_smgr/qcom_smgr.c
+@@ -8,6 +8,7 @@
+ #include <linux/iio/buffer.h>
+ #include <linux/iio/common/qcom_smgr.h>
+ #include <linux/iio/events.h>
++#include <linux/input.h>
+ #include <linux/iio/iio.h>
+ #include <linux/iio/kfifo_buf.h>
+ #include <linux/math64.h>
+@@ -702,6 +703,22 @@ static void qcom_smgr_buffering_report_handler(struct qmi_handle *hdl,
+ 
+ 		iio_push_event(sensor->iio_dev, code, now);
+ 
++		/*
++		 * The same detection as a wake key. IIO events are the right
++		 * shape for a sensor consumer but nothing in a session stack
++		 * treats them as input, and an IIO device cannot be a wakeup
++		 * source -- so a gesture that fires while the screen is off
++		 * has nowhere to go. A KEY_WAKEUP press/release pair gives
++		 * logind and the compositor something they already understand.
++		 */
++		if (sensor->input) {
++			input_report_key(sensor->input, KEY_WAKEUP, 1);
++			input_sync(sensor->input);
++			input_report_key(sensor->input, KEY_WAKEUP, 0);
++			input_sync(sensor->input);
++			pm_wakeup_event(&sensor->input->dev, 0);
++		}
++
+ 		mutex_lock(&sensor->lock);
+ 		sensor->have_report = true;
+ 		complete(&sensor->report[is_secondary]);
+@@ -1613,6 +1630,63 @@ static const size_t qcom_smgr_sensor_type_num_channels[] = {
+ 	[SNS_SMGR_SENSOR_TYPE_SWIPE_UP] = ARRAY_SIZE(qcom_smgr_gesture_iio_channels)
+ };
+ 
++/*
++ * Give the wake gestures an input device.
++ *
++ * The SLPI detects double-tap, long-press and swipe-up itself and reports them
++ * over SMGR, which is how the vendor serves ambient-display gestures -- their
++ * own touch driver disables its interrupt in lowpower_mode and does not decode
++ * anything. On our side the gestures already arrive as IIO events, but an IIO
++ * event device is not an input device and cannot be a wakeup source, so a
++ * gesture that fires with the screen off reaches nothing: /proc/bus/input/
++ * devices has pwrkey, resin, gpio-keys, haptics, ftm4 and the headset, and no
++ * gesture node.
++ *
++ * KEY_WAKEUP rather than KEY_POWER: it means exactly this and cannot be
++ * mistaken for a request to power off if a session ever grows a long-press
++ * handler for it.
++ *
++ * Marked wakeup-capable but not wakeup-enabled. Enabling it here would commit
++ * every board to waking on a gesture; leaving it to userspace keeps it a
++ * policy decision, and the sysfs knob is the ordinary one.
++ */
++static int qcom_smgr_register_gesture_input(struct qcom_smgr *smgr,
++					    struct qcom_smgr_sensor *sensor)
++{
++	struct input_dev *input;
++	int ret;
++
++	switch (sensor->type) {
++	case SNS_SMGR_SENSOR_TYPE_DOUBLE_TAP:
++	case SNS_SMGR_SENSOR_TYPE_LONG_PRESS:
++	case SNS_SMGR_SENSOR_TYPE_SWIPE_UP:
++		break;
++	default:
++		return 0;
++	}
++
++	input = devm_input_allocate_device(smgr->dev);
++	if (!input)
++		return -ENOMEM;
++
++	input->name = qcom_smgr_sensor_type_device_names[sensor->type];
++	input->phys = "qcom-smgr/input0";
++	input->id.bustype = BUS_HOST;
++	input_set_capability(input, EV_KEY, KEY_WAKEUP);
++
++	ret = input_register_device(input);
++	if (ret) {
++		dev_err(smgr->dev, "Failed to register gesture input: %pe\n",
++			ERR_PTR(ret));
++		return ret;
++	}
++
++	device_set_wakeup_capable(&input->dev, true);
++	sensor->input = input;
++
++	return 0;
++}
++
+ static int qcom_smgr_register_sensor(struct qcom_smgr *smgr,
+ 				     struct qcom_smgr_sensor *sensor)
+ {
+@@ -1657,6 +1731,10 @@ static int qcom_smgr_register_sensor(struct qcom_smgr *smgr,
+ 		return ret;
+ 	}
+ 
++	ret = qcom_smgr_register_gesture_input(smgr, sensor);
++	if (ret)
++		return ret;
++
+ 	return 0;
+ }
+ 
+diff --git a/include/linux/iio/common/qcom_smgr.h b/include/linux/iio/common/qcom_smgr.h
+index 0a408d6e6829..fba01e2b9840 100644
+--- a/include/linux/iio/common/qcom_smgr.h
++++ b/include/linux/iio/common/qcom_smgr.h
+@@ -50,6 +50,8 @@ struct qcom_smgr_data_type_item {
+ 	u16 cur_sample_rate;
+ };
+ 
++struct input_dev;
++
+ struct qcom_smgr_sensor {
+ 	u8 id;
+ 	enum qcom_smgr_sensor_type type;
+@@ -64,6 +66,13 @@ struct qcom_smgr_sensor {
+ 
+ 	struct iio_dev *iio_dev;
+ 
++	/*
++	 * Wake-gesture sensors only. An IIO event device cannot be a wakeup
++	 * source and logind cannot treat it as a wake key, so the gestures
++	 * additionally appear as an input device reporting KEY_WAKEUP.
++	 */
++	struct input_dev *input;
++
+ 	/*
+ 	 * Last report, kept so a raw read has something to return. SMGR only
+ 	 * pushes, so without this there is no in_*_raw at all and consumers
+-- 
+2.55.0
+

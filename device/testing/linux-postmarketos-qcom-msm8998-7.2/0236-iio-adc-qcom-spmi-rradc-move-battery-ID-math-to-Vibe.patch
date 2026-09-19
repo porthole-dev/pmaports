@@ -1,0 +1,188 @@
+From 271e0c943412bdacf8d7e5dbc4a360fcfefbd99a Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Fri, 18 Sep 2026 12:45:37 +0200
+Subject: [PATCH] iio: adc: qcom-spmi-rradc: move battery ID math to Vibelang
+
+---
+ drivers/iio/adc/Makefile          | 15 +++++
+ drivers/iio/adc/qcom-spmi-rradc.c | 10 +---
+ drivers/iio/adc/rradc.vibe        |  7 +++
+ drivers/iio/adc/vibe/vibert.h     | 98 +++++++++++++++++++++++++++++++
+ 4 files changed, 123 insertions(+), 7 deletions(-)
+ create mode 100644 drivers/iio/adc/rradc.vibe
+ create mode 100644 drivers/iio/adc/vibe/vibert.h
+
+diff --git a/drivers/iio/adc/Makefile b/drivers/iio/adc/Makefile
+index 707dd708912f..ec5e6c7f841e 100644
+--- a/drivers/iio/adc/Makefile
++++ b/drivers/iio/adc/Makefile
+@@ -122,6 +122,21 @@ obj-$(CONFIG_QCOM_SPMI_IADC) += qcom-spmi-iadc.o
+ obj-$(CONFIG_QCOM_SPMI_RRADC) += qcom-spmi-rradc.o
+ obj-$(CONFIG_QCOM_SPMI_VADC) += qcom-spmi-vadc.o
+ obj-$(CONFIG_QCOM_VADC_COMMON) += qcom-vadc-common.o
++
++VIBE ?= vibe
++quiet_cmd_vibe = VIBE    $@
++      cmd_vibe = mkdir -p $(obj)/.vibe-rradc; \
++	$(VIBE) check --prove $< --diag=struct && \
++	$(VIBE) build --lib --emit-c $< -o $(obj)/.vibe-rradc/librradc.a >/dev/null && \
++	cp $(obj)/.vibe-rradc/librradc.c $@
++
++$(obj)/rradc-vibe.inc: $(src)/rradc.vibe FORCE
++	$(call if_changed,vibe)
++
++targets += rradc-vibe.inc
++clean-files += .vibe-rradc
++CFLAGS_qcom-spmi-rradc.o += -I$(src)/vibe
++$(obj)/qcom-spmi-rradc.o: $(obj)/rradc-vibe.inc
+ obj-$(CONFIG_RCAR_GYRO_ADC) += rcar-gyroadc.o
+ obj-$(CONFIG_RICHTEK_RTQ6056) += rtq6056.o
+ obj-$(CONFIG_RN5T618_ADC) += rn5t618-adc.o
+diff --git a/drivers/iio/adc/qcom-spmi-rradc.c b/drivers/iio/adc/qcom-spmi-rradc.c
+index 1682c6faf62c..1c3edcb9c591 100644
+--- a/drivers/iio/adc/qcom-spmi-rradc.c
++++ b/drivers/iio/adc/qcom-spmi-rradc.c
+@@ -26,6 +26,8 @@
+ 
+ #include <soc/qcom/qcom-spmi-pmic.h>
+ 
++#include "rradc-vibe.inc"
++
+ #define DRIVER_NAME "qcom-spmi-rradc"
+ 
+ #define RR_ADC_EN_CTL 0x46
+@@ -341,13 +343,7 @@ static int rradc_get_fab_coeff(struct rradc_chip *chip, int64_t *offset,
+ static int rradc_post_process_batt_id(struct rradc_chip *chip, u16 adc_code,
+ 				      int *result_ohms)
+ {
+-	uint32_t current_value;
+-	int64_t r_id;
+-
+-	current_value = chip->batt_id_data;
+-	r_id = ((int64_t)adc_code * RR_ADC_FS_VOLTAGE_MV);
+-	r_id = div64_s64(r_id, (RR_ADC_CHAN_MSB * current_value));
+-	*result_ohms = (int)(r_id * MILLI);
++	*result_ohms = Rradc_batt_id_ohms(adc_code, chip->batt_id_data);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/iio/adc/rradc.vibe b/drivers/iio/adc/rradc.vibe
+new file mode 100644
+index 000000000000..2732df48d7c5
+--- /dev/null
++++ b/drivers/iio/adc/rradc.vibe
+@@ -0,0 +1,7 @@
++mod Rradc
++
++;; PMI8998 RRADC is 10-bit; the hardware selects a 5, 15, or 150 uA source.
++batt_id_ohms (adc:U64, adc<=1023) (current:U64, current==5 || current==15 || current==150) : U64 =
++  adc * 2500 / (1024 * current) * 1000
++
++exp c batt_id_ohms
+diff --git a/drivers/iio/adc/vibe/vibert.h b/drivers/iio/adc/vibe/vibert.h
+new file mode 100644
+index 000000000000..b386a3d1a15e
+--- /dev/null
++++ b/drivers/iio/adc/vibe/vibert.h
+@@ -0,0 +1,98 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _IIO_VIBERT_H
++#define _IIO_VIBERT_H
++
++#include <linux/bug.h>
++#include <linux/types.h>
++
++enum vb_tag {
++	VB_UNIT,
++	VB_INT,
++	VB_UINT,
++	VB_BOOL,
++};
++
++typedef struct {
++	u8 tag;
++	union {
++		s64 i;
++		u64 u;
++		bool b;
++	} v;
++} VbVal;
++
++typedef struct {
++	const char *name;
++	u32 nfields;
++	const char *const *fields;
++} VbInfo;
++
++static inline void vb_init(void) {}
++
++static inline VbVal vb_unit(void)
++{
++	return (VbVal) { .tag = VB_UNIT };
++}
++
++static inline VbVal vb_int(s64 value)
++{
++	return (VbVal) { .tag = VB_INT, .v.i = value };
++}
++
++static inline VbVal vb_uint(u64 value)
++{
++	return (VbVal) { .tag = VB_UINT, .v.u = value };
++}
++
++static inline VbVal vb_bool(bool value)
++{
++	return (VbVal) { .tag = VB_BOOL, .v.b = value };
++}
++
++static inline u64 vb_as_uint(VbVal value)
++{
++	return value.tag == VB_INT ? value.v.i : value.v.u;
++}
++
++static inline bool vb_as_bool(VbVal value)
++{
++	return value.v.b;
++}
++
++static inline void vb_require(bool condition, const char *path, const char *what)
++{
++	(void)path;
++	(void)what;
++	WARN_ON_ONCE(!condition);
++}
++
++static inline int vb_cmp(VbVal left, VbVal right)
++{
++	u64 a = vb_as_uint(left);
++	u64 b = vb_as_uint(right);
++
++	return (a > b) - (a < b);
++}
++
++static inline bool vb_eq(VbVal left, VbVal right)
++{
++	return vb_cmp(left, right) == 0;
++}
++
++static inline VbVal vb_mul(VbVal left, VbVal right)
++{
++	return vb_uint(vb_as_uint(left) * vb_as_uint(right));
++}
++
++static inline VbVal vb_div(VbVal left, VbVal right, const char *path)
++{
++	u64 divisor = vb_as_uint(right);
++
++	(void)path;
++	if (WARN_ON_ONCE(!divisor))
++		return vb_uint(0);
++
++	return vb_uint(vb_as_uint(left) / divisor);
++}
++
++#endif
+-- 
+2.55.0
+

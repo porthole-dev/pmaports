@@ -32,7 +32,11 @@
 # Env: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SERVER_URL, GITHUB_RUN_ID.
 set -euo pipefail
 
-FORMAT=1  # bump when the layout changes: every stored state becomes unusable
+# Bump when the layout changes, or when something outside the key changes what
+# a stored state means: every stored state becomes unusable.
+#   2  USE_CCACHE=1 (packages.py): before it, prep baked cc_wrapper="" into
+#      args.gn, so a state from then would keep building without ccache.
+FORMAT=2
 R=$GITHUB_REPOSITORY
 TMP=${RUNNER_TEMP:-/tmp}/chromium-state
 mkdir -p "$TMP"

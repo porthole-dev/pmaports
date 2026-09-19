@@ -339,10 +339,29 @@ are for that. They are estimates; the build jobs have not run yet.
 
 ## The compiler cache
 
-`USE_CCACHE=1` was already on (pmbootstrap's default), so `gn` already got
-`cc_wrapper="ccache"` and every compile already went through ccache -- into a
-directory the prep layer deliberately excludes, and which was thrown away
-with the runner. Now it is kept:
+`USE_CCACHE` is **abuild's** variable, and nobody was setting it: pmbootstrap
+only ever sets `CCACHE_DISABLE` (when ccache is off), and Alpine's
+`abuild.conf` ships the line commented out. So the APKBUILD's gate always
+resolved to `cc_wrapper=""` and **nothing in this repository has ever used
+ccache** -- `build.yml`'s `actions/cache` of `cache_ccache_$ARCH` has been
+caching an empty directory. Measured: the first stored ccache layer was
+242 bytes, which is `ccache.conf` and nothing else
+([run 35432584387](https://github.com/porthole-dev/pmaports/actions/runs/35432584387)).
+
+`packages.py` now appends `USE_CCACHE=1` to `$WORK/config_abuild/abuild.conf`,
+which is `/home/pmos/.abuild/abuild.conf` in the chroot and is sourced by
+every abuild run -- the same mechanism that already sets `PACKAGER`. It fixes
+every package, not only chromium. pmbootstrap installs ccache into every
+build chroot (`pmb.config.build_packages`) and already bind mounts
+`$WORK/cache_ccache_$ARCH` at `/home/pmos/.ccache`, so that was the only
+missing piece.
+
+It has to be on during **prep**, because `gn gen` bakes `cc_wrapper` into
+`args.gn` and every later stage just resumes that configuration. A state
+prepared without it would keep building without ccache forever while its key
+stayed the same, so `FORMAT` is bumped to 2 to retire those states.
+
+With it on, the cache is kept:
 
 - **Its own release**, `chromium-ccache-<arch>`, with the same manifest,
   sha256-per-part and atomic-commit machinery as the state.

@@ -15,6 +15,8 @@
 #   HANDHELD    ozone is wayland-only. Nothing here is SoC-specific: the apk
 #               is meant to serve any aarch64 pmOS handheld, msm8998 and
 #               sdm845 alike. Per-device flags go in the device package.
+#   NINJA       ninja-build, not Alpine's samurai, for out/bld -- see build().
+#               Only this build's ninja; meson still gets samurai.
 #   CROSS       pmb:cross-native2 with Chromium's unbundled host, target and
 #               V8 snapshot toolchains: nothing runs under emulation. See
 #               _toolchain() and cross-unbundle-toolchains.patch. A native
@@ -24,12 +26,13 @@
 # carrying divergence.
 pkgname=chromium
 pkgver=152.0.7977.82
-pkgrel=52
+pkgrel=53
 _copium_tag=152.0
 # DEPS file -> deps['src/third_party/test_fonts']['objects'][0]['object_name']
 # (for the given version, when it changes)
 _testfonts=a28b222b79851716f8358d2800157d9ffe117b3545031ae51f69b7e1e1b9a969
 _rollup=4.22.4
+_ninja=/usr/lib/ninja-build/bin/ninja  # the ninja-build aport keeps it out of PATH
 pkgdesc="Chromium web browser"
 url="https://www.chromium.org/Home"
 arch="aarch64 armv7 x86_64"
@@ -142,6 +145,7 @@ makedepends_build="
 	lld$_llvmver
 	llvm$_llvmver
 	mold
+	ninja-build
 	nodejs
 	perl
 	py3-setuptools
@@ -1016,8 +1020,19 @@ build() {
 	# final link needs lots of file descriptors
 	ulimit -n 4096
 
+	# ninja-build, not samurai. samurai's depfile parser rejects two kinds
+	# of depfile this tree writes -- rustc's, which name both the .rmeta and
+	# the .rlib as targets ("multiple outputs"), and xnnpack's, whose object
+	# directories contain '=' ("expected ':', saw '='", the character is not
+	# in the target character class of depsparse() in samurai's deps.c).
+	# depsload() marks an edge whose depfile it could not read dirty and
+	# leaves it dirty, so those ~900 edges are rebuilt by every ninja run.
+	# A one-shot build never notices; the staged build in
+	# .github/workflows/chromium.yml does, and cannot converge. ninja reads
+	# both (src/depfile_parser.in.cc: outs_ is a list, '=' is a plain text
+	# character), so the resumed stage rebuilds only what it interrupted.
 	# shellcheck disable=2046
-	ninja -C out/bld \
+	"$_ninja" -C out/bld -j"${JOBS:-$(nproc)}" \
 		chrome \
 		chrome_sandbox \
 		headless_shell \

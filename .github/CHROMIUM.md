@@ -34,6 +34,9 @@ plan ─ prep ─ build 1 ─ build 2 ─ … ─ build 10 ─ package ─ publi
 | package | restore, then abuild's `build check rootpkg` parts (`check` only where abuild's `want_check()` would run it) | the apks, as the `packages-chromium` artifact |
 | publish | `publish-repo.sh`, then verifies the published index the way `build.yml` does, then deletes the state | the release assets in `pmos-packages` |
 
+Every job also restores the compiler cache, and every build job stores it
+again. It is not part of the state: see "The compiler cache" below.
+
 ### The tail: package, then publish
 
 - **check is Alpine's, unchanged.** `temp/chromium`'s `check()` and its five
@@ -101,23 +104,46 @@ special case.
     whichever comes first.
   - A watchdog thread in `scripts/chromium-stage.py` sends SIGTERM to ninja
     only, and never to pmbootstrap or abuild, so they fail cleanly.
-  - samurai (Alpine's ninja) passes the signal on to its jobs and exits.
-  - An interrupted job writes no `.ninja_log` record. samurai treats an
-    output with no record as dirty ("no record in .ninja_log", `isdirty()`
-    in samurai's `build.c`), so a partly written object is rebuilt, never
-    trusted.
+  - ninja handles SIGTERM (`SubprocessSet` installs handlers for INT, TERM
+    and HUP), kills each running job's process group with the same signal,
+    and exits.
+  - `Builder::Cleanup()` then deletes the already-modified output of every
+    edge that was still running, so nothing partly written is left behind;
+    and an interrupted edge writes no `.ninja_log` record either, which is
+    the second reason it is rebuilt rather than trusted. The log is line
+    buffered, so every finished edge is on disk.
   - Whether a stage was stopped deliberately is decided by the watchdog
     itself, not by guessing from exit codes.
 - **mtimes:** tar's `posix` format keeps mtimes to the nanosecond, the
   resolution samurai compares.
 - **Caches are not state:** the prep layer stores the work directory without
-  the contents of `cache_*`; they are rebuildable, and the go, rust and
-  ccache directories would only make the layer bigger. pmbootstrap creates
+  the contents of `cache_*`; they are rebuildable, and the go, rust and apk
+  directories would only make the layer bigger. The compiler cache is kept,
+  but separately and unversioned -- see "The compiler cache". pmbootstrap creates
   the directories that `/home/pmos`'s cache symlinks point at only when it
   creates a chroot, so a restored stage recreates the missing ones before
   abuild runs (`enter()` in `scripts/chromium-stage.py`). Without that,
   `/home/pmos/.cache/go-build` dangles and the build's Go actions fail with
   "failed to initialize build cache".
+- **ninja, not samurai** (`makedepends_build`, and `build()` calls
+  `/usr/lib/ninja-build/bin/ninja`; meson still gets samurai). samurai's
+  depfile parser rejects two kinds of depfile this tree writes:
+  - rustc's, which name both the `.rmeta` and the `.rlib` as targets --
+    *"bad depfile: multiple outputs"*;
+  - xnnpack's, whose object directories contain `=`
+    (`f16-avgpool_arch=armv8.2-a+fp16`) -- *"expected ':', saw '='"*, because
+    `=` is not in the target character class of `depsparse()` in samurai's
+    `deps.c`.
+
+  `depsload()` marks an edge whose depfile it could not read dirty, and
+  nothing ever clears that, so about 900 edges were rebuilt by *every* ninja
+  run. A one-shot build (Alpine's) never notices. This one did: once the log
+  held 104k records, every resumed stage rebuilt more than the old watchdog
+  limit of 1000 and aborted, and the build could not converge --
+  [run 35096688173](https://github.com/porthole-dev/pmaports/actions/runs/35096688173).
+  ninja reads both kinds (`src/depfile_parser.in.cc`: `outs_` is a list, and
+  `=` is a plain-text character), so a resumed stage rebuilds only what the
+  previous one interrupted.
 - **A frozen toolchain:**
   - Alpine edge changes daily. Every stage restores the chroots that prep
     installed, so all objects are compiled by one clang against one set of
@@ -130,9 +156,10 @@ special case.
   - After a restore, the number of ninja log records must equal the number
     the manifest recorded, or the job fails before it builds anything.
   - While ninja runs, the watchdog counts outputs that earlier stages had
-    already recorded and that are now being rebuilt. More than 1000 means
-    the restore is inconsistent (lost mtimes, a changed command line), so it
-    stops the stage within a minute instead of burning 5 hours.
+    already recorded and that are now being rebuilt. A restore that lost
+    mtimes rebuilds *everything*, so the tell is the share of the restored
+    log, not a count: more than a quarter of it (floor 2000) stops the stage
+    within a minute instead of burning 5 hours.
 - **Atomic commit:** parts are uploaded first and `state.json` last. The
   previous out layer is deleted only after the new manifest is up. A job
   that dies while uploading leaves the previous state intact.
@@ -209,8 +236,14 @@ What this workflow does differently:
 6. **The package is pmbootstrap's.** The build is not a bespoke `gn`/`ninja`
    invocation: prep is `build.yml`'s build, and the rest is abuild's own
    parts with pmbootstrap's environment.
-7. **No compiler cache for a cold build.** The out directory is the cache.
-   ci-prebuilds' measurement shows why a GHA-backed sccache does not help.
+7. **A compiler cache across versions**, stored the same way the state is.
+   The out directory is the cache *within* a version -- ci-prebuilds'
+   measurement shows why a GHA-backed sccache does not help a cold build --
+   but a security bump changes few translation units, and that is where the
+   cache pays.
+8. **Real ninja.** Every fork above uses upstream ninja and so never meets
+   the samurai depfile problem; this is the price of building the Alpine
+   package rather than a bespoke tree, and it is paid in `makedepends_build`.
 
 ## Native arm64 or x86_64 cross
 
@@ -298,15 +331,37 @@ are for that. They are estimates; the build jobs have not run yet.
 - **Storage:** one state is the prep layer (~3 GB) plus the newest out layer
   (expect 5-10 GB). Release assets do not count against the Actions storage
   quota, and the state is deleted when the package is published.
-- **A rebuild for a new Chromium version starts cold.** Nothing is shared
-  between versions today; see "Possible improvements".
+- **A rebuild for a new Chromium version starts warm** from the stored
+  compiler cache; only the first build of all is cold.
+
+## The compiler cache
+
+`USE_CCACHE=1` was already on (pmbootstrap's default), so `gn` already got
+`cc_wrapper="ccache"` and every compile already went through ccache -- into a
+directory the prep layer deliberately excludes, and which was thrown away
+with the runner. Now it is kept:
+
+- **Its own release**, `chromium-ccache-<arch>`, with the same manifest,
+  sha256-per-part and atomic-commit machinery as the state.
+- **Not keyed by version.** That is the point: within one chromium version
+  the out directory is the cache and ccache adds nothing, so the cache only
+  earns its upload from the second version on. A security bump
+  (152.0.7977.82 -> .95) changes few translation units.
+- **Restored before every job** (prep included, so its forked build
+  dependencies feed it) and **stored after every build job**, failed ones
+  too: the objects a failed stage did compile are cached, and a wrong cache
+  entry is a miss, not a wrong package.
+- **Capped at 6 GiB** (`CCACHE_MAX_SIZE`), written into `ccache.conf` on
+  restore. pmbootstrap writes that file only while it creates a chroot, which
+  a restored stage never does, so its 5 G default would not otherwise apply.
+- **Measured, not assumed:** every build job prints `ccache --show-stats`.
+  `-D__DATE__= -D__TIME__= -D__TIMESTAMP__=` is already in `CPPFLAGS` and
+  `symbol_level=0` keeps absolute paths out of the objects, so the hit rate
+  is not being thrown away by timestamps or debug info.
+- The release is never pruned and `publish` does not delete it.
 
 ## Possible improvements
 
-- **A ccache layer across versions.** A security bump (152.0.7977.82 ->
-  .95) changes few translation units. `USE_CCACHE=1` and a stored ccache
-  layer would turn a 17 h rebuild into a few hours. It costs another layer to
-  store and restore, and only pays off from the second version on.
 - **Incremental out layers.** Each build job stores the whole out directory.
   Storing only what changed would cut the upload, but restoring then needs
   every layer, and files deleted by build actions would have to be tracked.

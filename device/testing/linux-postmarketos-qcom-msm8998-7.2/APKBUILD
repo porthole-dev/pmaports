@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=66
+pkgrel=67
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -335,6 +335,7 @@ source="
 	0245-misc-easel-mipi-revive-Easel-off-the-resume-path.patch
 	0246-Input-ftm4-add-handover-to-give-the-touch-i2c-to-the.patch
 	0247-arm64-dts-qcom-msm8998-google-taimen-poll-the-skin-t.patch
+	0248-rpmsg-qcom_glink_rpm-mask-the-RPM-channel-across-sys.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -613,4 +614,5 @@ d84f0b3b5c32e75b8cebcabad99aec2c95daf1c3edbc88057103d355d88e22d308fac62acd31dca2
 c60eb012d0349bf8475357a692f2adec217e56dde4b0985f661929ff74ff64cb7142ef710f001f470f4921098a2da3d6303f69d7e918e058248bbbcbe7ea506b  0245-misc-easel-mipi-revive-Easel-off-the-resume-path.patch
 5b2d2742110fd92ba0cac2b74a67f57110c11b58636e931476461486c0d024b47f70949b73114f52c456b9b6c54ae58b0965729fc335c6322ccbe56df3fba9c6  0246-Input-ftm4-add-handover-to-give-the-touch-i2c-to-the.patch
 2bc2b2c19b5d7070a9ac169a69a735da3fe484163ed82eca4607474289f7a3f6d396be56751aac569eac1de2873278bbd792b995b8c252f5b3bd08cd8d071158  0247-arm64-dts-qcom-msm8998-google-taimen-poll-the-skin-t.patch
+6e59463b0332f95db519927d2375fe13288a05278497bee6ae6480fc982284399cf57daf171324ce75ec8821e0ddbb6ff1a9127196161382e020bdd734ffcd6e  0248-rpmsg-qcom_glink_rpm-mask-the-RPM-channel-across-sys.patch
 "

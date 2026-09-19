@@ -1,0 +1,433 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 08:51:31 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: give the CPU OPPs the vendor's
+ measured energy model
+
+msm8998 is an asymmetric big.LITTLE part, but the scheduler has never had an
+energy model for it, so EAS never starts: /sys/kernel/debug/energy_model is
+created and stays empty. qcom-cpufreq-hw does set .register_em to
+cpufreq_register_em_with_opp(), but that resolves to
+dev_pm_opp_of_register_em(), which needs either opp-microwatt or
+"dynamic-power-coefficient" plus known voltages. These OPP tables carry
+opp-level -- a CPRh corner -- and neither, so registration fails silently and
+the scheduler treats a 2.36 GHz A73 and a 1.9 GHz A53 as interchangeable
+capacity.
+
+Downstream shipped a measured model for this exact SoC. msm-4.4's
+arch/arm/boot/dts/qcom/msm8998.dtsi carries an energy-costs node whose
+busy-cost-data gives <capacity power> pairs per cluster, with capacity
+normalised so 1024 is the gold cluster at its top OPP:
+
+  CPU_COST_0 (silver, 22 points):   65 -> 11   ...   419 -> 201
+  CPU_COST_1 (gold,   31 points):  129 -> 56   ...  1024 -> 1683
+  CLUSTER_COST_0: 65 -> 17 ... 419 -> 66
+  CLUSTER_COST_1: 129 -> 24 ... 1024 -> 203
+
+Within a cluster capacity is proportional to frequency, so each curve maps
+onto these tables directly; the silver curve has exactly as many points as
+this table has OPPs, and the gold curve has one more (its 1021 point sits
+between our top two). Values here are the curves interpolated at each OPP's
+frequency.
+
+Each OPP is charged CPU_COST plus CLUSTER_COST/4, so a fully occupied cluster
+sums to downstream's own cluster total. The unit scale is 0.384 mW, taken from
+a measured 8-thread burn on a Pixel 2 XL: 4x gold@1024 + 4x silver@419 plus
+both cluster terms is 7805 units and drew ~3.0 W over idle. That puts a gold
+core at 666 mW at 2.36 GHz and a silver core at 84 mW at 1.9 GHz, and the two
+tables now cost the same at equal capacity -- 209 versus 217 units at 419 --
+which is the design point the downstream curves encode.
+
+The shape is what matters to the scheduler, and the shape is the useful part:
+gold costs 8.6x the power for 2.44x the capacity between 419 and 1024.
+
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 52 +++++++++++++++++++++++++++
+ 1 file changed, 52 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index a73be4fb1b06..04631d4b8da2 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -398,96 +398,112 @@ cpu_gold_opp_table: cpu-gold-opp-table {
+ 
+ 		opp-2361600000 {
+ 			opp-hz = /bits/ 64 <2361600000>;
++			opp-microwatt = <665760>;
+ 			required-opps = <&cprh_opp30>;
+ 			qcom,pll-override = <0x0a620062>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-2342400000 {
+ 			opp-hz = /bits/ 64 <2342400000>;
++			opp-microwatt = <639680>;
+ 			required-opps = <&cprh_opp29>;
+ 			qcom,pll-override = <0x0a620062>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-2323200000 {
+ 			opp-hz = /bits/ 64 <2323200000>;
++			opp-microwatt = <628211>;
+ 			required-opps = <&cprh_opp28>;
+ 			qcom,pll-override = <0x0a610061>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-2265600000 {
+ 			opp-hz = /bits/ 64 <2265600000>;
++			opp-microwatt = <568786>;
+ 			required-opps = <&cprh_opp27>;
+ 			qcom,pll-override = <0x0a5e005e>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-2208000000 {
+ 			opp-hz = /bits/ 64 <2208000000>;
++			opp-microwatt = <495240>;
+ 			required-opps = <&cprh_opp26>;
+ 			qcom,pll-override = <0x0a5c005c>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-2112000000 {
+ 			opp-hz = /bits/ 64 <2112000000>;
++			opp-microwatt = <422226>;
+ 			required-opps = <&cprh_opp25>;
+ 			qcom,pll-override = <0x0a580058>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-2035200000 {
+ 			opp-hz = /bits/ 64 <2035200000>;
++			opp-microwatt = <355850>;
+ 			required-opps = <&cprh_opp24>;
+ 			qcom,pll-override = <0x09550055>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-1958400000 {
+ 			opp-hz = /bits/ 64 <1958400000>;
++			opp-microwatt = <326631>;
+ 			required-opps = <&cprh_opp23>;
+ 			qcom,pll-override = <0x09520052>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1881600000 {
+ 			opp-hz = /bits/ 64 <1881600000>;
++			opp-microwatt = <290980>;
+ 			required-opps = <&cprh_opp22>;
+ 			qcom,pll-override = <0x094e004e>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1804800000 {
+ 			opp-hz = /bits/ 64 <1804800000>;
++			opp-microwatt = <253857>;
+ 			required-opps = <&cprh_opp21>;
+ 			qcom,pll-override = <0x084b004b>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1728000000 {
+ 			opp-hz = /bits/ 64 <1728000000>;
++			opp-microwatt = <230901>;
+ 			required-opps = <&cprh_opp20>;
+ 			qcom,pll-override = <0x08480048>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1651200000 {
+ 			opp-hz = /bits/ 64 <1651200000>;
++			opp-microwatt = <201218>;
+ 			required-opps = <&cprh_opp19>;
+ 			qcom,pll-override = <0x07450045>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1574400000 {
+ 			opp-hz = /bits/ 64 <1574400000>;
++			opp-microwatt = <179349>;
+ 			required-opps = <&cprh_opp18>;
+ 			qcom,pll-override = <0x07420042>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1497600000 {
+ 			opp-hz = /bits/ 64 <1497600000>;
++			opp-microwatt = <156306>;
+ 			required-opps = <&cprh_opp17>;
+ 			qcom,pll-override = <0x073e003e>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1420800000 {
+ 			opp-hz = /bits/ 64 <1420800000>;
++			opp-microwatt = <142149>;
+ 			required-opps = <&cprh_opp16>;
+ 			qcom,pll-override = <0x063b003b>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1344000000 {
+ 			opp-hz = /bits/ 64 <1344000000>;
++			opp-microwatt = <127315>;
+ 			required-opps = <&cprh_opp15>;
+ 			qcom,pll-override = <0x06380038>;
+ 			qcom,spare-data = <2>;
+@@ -495,42 +511,49 @@ opp-1344000000 {
+ 
+ 		opp-1267200000 {
+ 			opp-hz = /bits/ 64 <1267200000>;
++			opp-microwatt = <113726>;
+ 			required-opps = <&cprh_opp14>;
+ 			qcom,pll-override = <0x06350035>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1190400000 {
+ 			opp-hz = /bits/ 64 <1190400000>;
++			opp-microwatt = <102101>;
+ 			required-opps = <&cprh_opp13>;
+ 			qcom,pll-override = <0x05320032>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1132800000 {
+ 			opp-hz = /bits/ 64 <1132800000>;
++			opp-microwatt = <93585>;
+ 			required-opps = <&cprh_opp12>;
+ 			qcom,pll-override = <0x052f002f>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-1056000000 {
+ 			opp-hz = /bits/ 64 <1056000000>;
++			opp-microwatt = <87146>;
+ 			required-opps = <&cprh_opp11>;
+ 			qcom,pll-override = <0x052c002c>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-979200000 {
+ 			opp-hz = /bits/ 64 <979200000>;
++			opp-microwatt = <80287>;
+ 			required-opps = <&cprh_opp10>;
+ 			qcom,pll-override = <0x4290029>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-902400000 {
+ 			opp-hz = /bits/ 64 <902400000>;
++			opp-microwatt = <73212>;
+ 			required-opps = <&cprh_opp9>;
+ 			qcom,pll-override = <0x4260026>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-806400000 {
+ 			opp-hz = /bits/ 64 <806400000>;
++			opp-microwatt = <66650>;
+ 			required-opps = <&cprh_opp8>;
+ 			qcom,pll-override = <0x3220022>;
+ 			qcom,pll-div = <1>;
+@@ -538,6 +561,7 @@ opp-806400000 {
+ 		};
+ 		opp-729600000 {
+ 			opp-hz = /bits/ 64 <729600000>;
++			opp-microwatt = <61614>;
+ 			required-opps = <&cprh_opp7>;
+ 			qcom,pll-override = <0x3200020>;
+ 			qcom,pll-div = <1>;
+@@ -545,6 +569,7 @@ opp-729600000 {
+ 		};
+ 		opp-652800000 {
+ 			opp-hz = /bits/ 64 <652800000>;
++			opp-microwatt = <55893>;
+ 			required-opps = <&cprh_opp6>;
+ 			qcom,pll-override = <0x3200020>;
+ 			qcom,pll-div = <1>;
+@@ -552,6 +577,7 @@ opp-652800000 {
+ 		};
+ 		opp-576000000 {
+ 			opp-hz = /bits/ 64 <576000000>;
++			opp-microwatt = <48798>;
+ 			required-opps = <&cprh_opp5>;
+ 			qcom,pll-override = <0x2200020>;
+ 			qcom,pll-div = <1>;
+@@ -559,6 +585,7 @@ opp-576000000 {
+ 		};
+ 		opp-499200000 {
+ 			opp-hz = /bits/ 64 <499200000>;
++			opp-microwatt = <43179>;
+ 			required-opps = <&cprh_opp4>;
+ 			qcom,pll-override = <0x2200020>;
+ 			qcom,pll-div = <1>;
+@@ -566,6 +593,7 @@ opp-499200000 {
+ 		};
+ 		opp-422400000 {
+ 			opp-hz = /bits/ 64 <422400000>;
++			opp-microwatt = <37632>;
+ 			required-opps = <&cprh_opp3>;
+ 			qcom,pll-override = <0x2200020>;
+ 			qcom,pll-div = <1>;
+@@ -573,6 +601,7 @@ opp-422400000 {
+ 		};
+ 		opp-345600000 {
+ 			opp-hz = /bits/ 64 <345600000>;
++			opp-microwatt = <31903>;
+ 			required-opps = <&cprh_opp2>;
+ 			qcom,pll-override = <0x1200020>;
+ 			qcom,pll-div = <1>;
+@@ -580,6 +609,7 @@ opp-345600000 {
+ 		};
+ 		opp-300000000 {
+ 			opp-hz = /bits/ 64 <300000000>;
++			opp-microwatt = <24251>;
+ 			required-opps = <&cprh_opp1>;
+ 			qcom,pll-override = <0x1200020>;
+ 			qcom,spare-data = <1>;
+@@ -592,96 +622,112 @@ cpu_silver_opp_table: cpu-silver-opp-table {
+ 
+ 		opp-1900800000 {
+ 			opp-hz = /bits/ 64 <1900800000>;
++			opp-microwatt = <83520>;
+ 			required-opps = <&cprh_opp22>;
+ 			qcom,pll-override = <0x094f004f>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-1824000000 {
+ 			opp-hz = /bits/ 64 <1824000000>;
++			opp-microwatt = <74581>;
+ 			required-opps = <&cprh_opp21>;
+ 			qcom,pll-override = <0x084c004c>;
+ 			qcom,spare-data = <3>;
+ 		};
+ 		opp-1747200000 {
+ 			opp-hz = /bits/ 64 <1747200000>;
++			opp-microwatt = <65240>;
+ 			required-opps = <&cprh_opp20>;
+ 			qcom,pll-override = <0x08490049>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1670400000 {
+ 			opp-hz = /bits/ 64 <1670400000>;
++			opp-microwatt = <56177>;
+ 			required-opps = <&cprh_opp19>;
+ 			qcom,pll-override = <0x08460046>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1555200000 {
+ 			opp-hz = /bits/ 64 <1555200000>;
++			opp-microwatt = <47324>;
+ 			required-opps = <&cprh_opp18>;
+ 			qcom,pll-override = <0x07410041>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1478400000 {
+ 			opp-hz = /bits/ 64 <1478400000>;
++			opp-microwatt = <43945>;
+ 			required-opps = <&cprh_opp17>;
+ 			qcom,pll-override = <0x073e003e>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1401600000 {
+ 			opp-hz = /bits/ 64 <1401600000>;
++			opp-microwatt = <40424>;
+ 			required-opps = <&cprh_opp16>;
+ 			qcom,pll-override = <0x063a003a>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1324800000 {
+ 			opp-hz = /bits/ 64 <1324800000>;
++			opp-microwatt = <37445>;
+ 			required-opps = <&cprh_opp15>;
+ 			qcom,pll-override = <0x06370037>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1248000000 {
+ 			opp-hz = /bits/ 64 <1248000000>;
++			opp-microwatt = <33718>;
+ 			required-opps = <&cprh_opp14>;
+ 			qcom,pll-override = <0x05340034>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1171200000 {
+ 			opp-hz = /bits/ 64 <1171200000>;
++			opp-microwatt = <31225>;
+ 			required-opps = <&cprh_opp13>;
+ 			qcom,pll-override = <0x05310031>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1094400000 {
+ 			opp-hz = /bits/ 64 <1094400000>;
++			opp-microwatt = <28553>;
+ 			required-opps = <&cprh_opp12>;
+ 			qcom,pll-override = <0x052e002e>;
+ 			qcom,spare-data = <2>;
+ 		};
+ 		opp-1036800000 {
+ 			opp-hz = /bits/ 64 <1036800000>;
++			opp-microwatt = <26765>;
+ 			required-opps = <&cprh_opp11>;
+ 			qcom,pll-override = <0x042b002b>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-960000000 {
+ 			opp-hz = /bits/ 64 <960000000>;
++			opp-microwatt = <23635>;
+ 			required-opps = <&cprh_opp10>;
+ 			qcom,pll-override = <0x4280028>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-883200000 {
+ 			opp-hz = /bits/ 64 <883200000>;
++			opp-microwatt = <20756>;
+ 			required-opps = <&cprh_opp9>;
+ 			qcom,pll-override = <0x4250025>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-825600000 {
+ 			opp-hz = /bits/ 64 <825600000>;
++			opp-microwatt = <18600>;
+ 			required-opps = <&cprh_opp8>;
+ 			qcom,pll-override = <0x3220022>;
+ 			qcom,spare-data = <1>;
+ 		};
+ 		opp-748800000 {
+ 			opp-hz = /bits/ 64 <748800000>;
++			opp-microwatt = <16182>;
+ 			required-opps = <&cprh_opp7>;
+ 			qcom,pll-override = <0x3200020>;
+ 			qcom,pll-div = <1>;
+@@ -689,6 +735,7 @@ opp-748800000 {
+ 		};
+ 		opp-672000000 {
+ 			opp-hz = /bits/ 64 <672000000>;
++			opp-microwatt = <15584>;
+ 			required-opps = <&cprh_opp6>;
+ 			qcom,pll-override = <0x3200020>;
+ 			qcom,pll-div = <1>;
+@@ -696,6 +743,7 @@ opp-672000000 {
+ 		};
+ 		opp-595200000 {
+ 			opp-hz = /bits/ 64 <595200000>;
++			opp-microwatt = <14749>;
+ 			required-opps = <&cprh_opp5>;
+ 			qcom,pll-override = <0x2200020>;
+ 			qcom,pll-div = <1>;
+@@ -703,6 +751,7 @@ opp-595200000 {
+ 		};
+ 		opp-518400000 {
+ 			opp-hz = /bits/ 64 <518400000>;
++			opp-microwatt = <13533>;
+ 			required-opps = <&cprh_opp4>;
+ 			qcom,pll-override = <0x2200020>;
+ 			qcom,pll-div = <1>;
+@@ -710,6 +759,7 @@ opp-518400000 {
+ 		};
+ 		opp-441600000 {
+ 			opp-hz = /bits/ 64 <441600000>;
++			opp-microwatt = <11495>;
+ 			required-opps = <&cprh_opp3>;
+ 			qcom,pll-override = <0x2200020>;
+ 			qcom,pll-div = <1>;
+@@ -717,6 +767,7 @@ opp-441600000 {
+ 		};
+ 		opp-364800000 {
+ 			opp-hz = /bits/ 64 <364800000>;
++			opp-microwatt = <9458>;
+ 			required-opps = <&cprh_opp2>;
+ 			qcom,pll-override = <0x1200020>;
+ 			qcom,pll-div = <1>;
+@@ -724,6 +775,7 @@ opp-364800000 {
+ 		};
+ 		opp-300000000 {
+ 			opp-hz = /bits/ 64 <300000000>;
++			opp-microwatt = <6124>;
+ 			required-opps = <&cprh_opp1>;
+ 			qcom,pll-override = <0x1200020>;
+ 		};

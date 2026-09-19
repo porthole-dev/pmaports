@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=51
+pkgrel=57
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -322,6 +322,10 @@ source="
 	0231-iio-proximity-vl53l0x-i2c-identify-the-sensor-after-.patch
 	0232-media-i2c-lc898123f40-defer-probe-until-the-controll.patch
 	0233-media-venus-hfi_cmds-packetize-the-H.264-8x8-transfo.patch
+	0234-media-uapi-add-2X8_PADHI_LE-codes-for-the-other-10-b.patch
+	0235-media-qcom-camss-offer-unpacked-10-bit-on-RDI-for-ev.patch
+	0237-arm64-dts-qcom-msm8998-give-the-CPU-OPPs-the-vendor-.patch
+	0238-arm64-dts-qcom-msm8998-google-taimen-add-the-skin-th.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -587,4 +591,8 @@ dc9b8d20c730d6558e28c0ba1ffcac585e64e29eb7068c954e8b0f42b34ec40c27aa53b90ef5ced5
 e954f7ab6a27775c006b1dc422aea3d54c703700e23e93eb73fd4accc185aab408f9686d6b6babdb5cb1cdba0ee94149c37067cf3b008e86d8ef7c780e689ef1  0231-iio-proximity-vl53l0x-i2c-identify-the-sensor-after-.patch
 aa1d8fc42ab6c45e0fd802739c72d42ba7877ba719557105f7eb9a195b38f2f595345763eaede05d4ab9af1b75a00b920e8fe63de81fe60ef329e508affbfcb8  0232-media-i2c-lc898123f40-defer-probe-until-the-controll.patch
 d89a799acd7329c36d160ed85119964bf1e80cf4eb497d6a39114deb41e4b4d180143630b63b9f71cdb8256990f5ff60b799ea71a86af5336baab4474e19a8a1  0233-media-venus-hfi_cmds-packetize-the-H.264-8x8-transfo.patch
+ebdc79ad3370bec30aaec6c1997f20c703316c83f70e34845fd24ba49790869c8ef9f385d77e13484d6a7c9da0d983c7670d0fc3b4f50e48281b1ac64f33a788  0234-media-uapi-add-2X8_PADHI_LE-codes-for-the-other-10-b.patch
+4fca5fbef4022fe175d68588fbb9ac02d27ef47e06a60f6ec6587a79d806d898358ce7468fc03568980e93a0461f66e874540edc1cd32e9270bf1ac5ce2b439a  0235-media-qcom-camss-offer-unpacked-10-bit-on-RDI-for-ev.patch
+a33dd511c8708653611b2265f8553377af37b7d1148c810793b2ee39cedc59fdc39336afbb0fdf6c383963c8c243c96100e8ae8dccecab0af65a87ce7ddf12e2  0237-arm64-dts-qcom-msm8998-give-the-CPU-OPPs-the-vendor-.patch
+ddd018e510b65446ce96a81243ca3e1ca7e87791a4a9864a27aadff1720c16885a2370c3aeafed381f4680ab29b5150172a425faa8a01f63edcbfa1a526b4bd3  0238-arm64-dts-qcom-msm8998-google-taimen-add-the-skin-th.patch
 "

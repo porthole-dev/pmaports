@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=64
+pkgrel=65
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -333,6 +333,7 @@ source="
 	0243-wifi-ath10k-trust-the-WMI-service-map-for-WoWLAN-on-.patch
 	0244-iio-qcom-smgr-give-the-wake-gestures-an-input-device.patch
 	0245-misc-easel-mipi-revive-Easel-off-the-resume-path.patch
+	0246-Input-ftm4-add-handover-to-give-the-touch-i2c-to-the.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -609,4 +610,5 @@ cec0313100271adfd75e967fec2fcf11e6663ce6e6bd083159587e986664530dfe8f8d66ec65f0cd
 91afad8ec4f9d3ea015db711ffe8d9fffb56d5dc915726328014b2696be099dbb7f4b9a7b798818b14cf6aadea45132ff54468588ee2230d05ba4638137cce1e  0243-wifi-ath10k-trust-the-WMI-service-map-for-WoWLAN-on-.patch
 d84f0b3b5c32e75b8cebcabad99aec2c95daf1c3edbc88057103d355d88e22d308fac62acd31dca24e26a0877a3682e9992a69485316064295e6b3de6f2e88a2  0244-iio-qcom-smgr-give-the-wake-gestures-an-input-device.patch
 c60eb012d0349bf8475357a692f2adec217e56dde4b0985f661929ff74ff64cb7142ef710f001f470f4921098a2da3d6303f69d7e918e058248bbbcbe7ea506b  0245-misc-easel-mipi-revive-Easel-off-the-resume-path.patch
+5b2d2742110fd92ba0cac2b74a67f57110c11b58636e931476461486c0d024b47f70949b73114f52c456b9b6c54ae58b0965729fc335c6322ccbe56df3fba9c6  0246-Input-ftm4-add-handover-to-give-the-touch-i2c-to-the.patch
 "

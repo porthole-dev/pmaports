@@ -83,6 +83,16 @@ jobs:
       - name: Restore the state
         if: inputs.mode != 'prep'
         run: bash .github/scripts/chromium-state.sh restore "$TAG" "$WORK"
+      # Not part of the state: the compiler cache is shared across chromium
+      # versions, which is the only time it pays (within one version the out
+      # directory is the cache). Restored for prep too, so its forked build
+      # dependencies feed it; not for package, which compiles nothing and
+      # would download gigabytes to use none of them.
+      - name: Restore the compiler cache
+        if: inputs.mode != 'package'
+        run: |
+          bash .github/scripts/chromium-state.sh ccache-restore aarch64 "$WORK"
+          df -h /
       - name: ${{ inputs.mode == 'build' && 'Run ninja' || (inputs.mode == 'prep' && 'Fetch, unpack, patch, configure' || 'Finish, check and package') }}
         id: run
         env:
@@ -134,6 +144,11 @@ jobs:
           if [ "$MODE" = build ] && [ "$done" != true ] && [ "$STAGE" = "$STAGES" ]; then
             echo "::warning::ninja has not finished after the last build job of this run. Run the workflow again: it resumes from the stored state."
           fi
+      - name: Store the compiler cache
+        # After a failed stage too: the objects it did compile are cached, and
+        # the cache is read-only to correctness -- a wrong entry is a miss.
+        if: ${{ !cancelled() && inputs.mode == 'build' && steps.run.outcome != 'skipped' }}
+        run: bash .github/scripts/chromium-state.sh ccache-save aarch64 "$WORK"
       - name: Check the packages this stage built
         if: inputs.mode == 'package'
         run: |

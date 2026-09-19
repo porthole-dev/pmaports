@@ -9,6 +9,8 @@
 #                                         describes, then commit the manifest
 #   chromium-state.sh delete TAG
 #   chromium-state.sh prune TAG DAYS      delete other states idle for DAYS
+#   chromium-state.sh ccache-restore ARCH WORK   unpack the compiler cache
+#   chromium-state.sh ccache-save ARCH WORK      store it again
 #
 # A state is a draft release of this repository (drafts are only visible to
 # people with write access). Its assets:
@@ -21,11 +23,20 @@
 #                       previous state intact.
 # Parts are 1900 MiB (PART_SIZE, for tests), under the 2 GiB asset limit.
 #
+# The compiler cache is a state of its own, tagged chromium-ccache-<arch>:
+# deliberately not keyed by pkgver, because a security bump changes few
+# translation units and reusing the cache across versions is the whole point.
+# It is restored before every stage and stored again after every build stage.
+#
 # Runs on the runner as a user with sudo (tar keeps the chroots' owners).
 # Env: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SERVER_URL, GITHUB_RUN_ID.
 set -euo pipefail
 
-FORMAT=1  # bump when the layout changes: every stored state becomes unusable
+# Bump when the layout changes, or when something outside the key changes what
+# a stored state means: every stored state becomes unusable.
+#   2  USE_CCACHE=1 (packages.py): before it, prep baked cc_wrapper="" into
+#      args.gn, so a state from then would keep building without ccache.
+FORMAT=2
 R=$GITHUB_REPOSITORY
 TMP=${RUNNER_TEMP:-/tmp}/chromium-state
 mkdir -p "$TMP"
@@ -48,10 +59,10 @@ manifest() {
 	gh release download "$1" -R "$R" -p state.json -O - 2>/dev/null || echo '{}'
 }
 
-# the decompressed layer $2 (prep or out) of state $1, checked part by part
+# the decompressed layer $2 (prep, out or ccache) of state $1, checked part by part
 fetch_layer() {
 	local part name sha
-	jq -c ".$2.parts[]" "$TMP/manifest.json" | while read -r part; do
+	jq -c ".$2.parts[]" "${3:-$TMP/manifest.json}" | while read -r part; do
 		name=$(jq -r .name <<<"$part")
 		sha=$(jq -r .sha256 <<<"$part")
 		retry gh release download "$1" -R "$R" -p "$name" -O "$TMP/part" --clobber
@@ -165,6 +176,48 @@ save)
 		retry gh release delete-asset "$TAG" "$name" -R "$R" -y
 	done
 	jq '{stage, records, done, prep_bytes: .prep.bytes, out_bytes: .out.bytes, last: .history[-1]}' "$TMP/new.json"
+	;;
+ccache-restore)
+	arch=$2 WORK=$3
+	TAG=chromium-ccache-$arch
+	dir=$WORK/cache_ccache_$arch
+	sudo mkdir -p "$dir"
+	manifest "$TAG" > "$TMP/ccache.json"
+	if jq -e .ccache "$TMP/ccache.json" >/dev/null; then
+		fetch_layer "$TAG" ccache "$TMP/ccache.json" | sudo tar -C "$dir" --numeric-owner -xpf -
+		echo "restored $TAG: $(jq .ccache.bytes "$TMP/ccache.json") compressed bytes"
+	else
+		echo "no $TAG yet: the compiler cache starts empty"
+	fi
+	# ccache's own limit. pmbootstrap's default is 5G and it writes
+	# ccache.conf only while it creates a chroot, which a restored stage
+	# never does -- and this cache is the whole reason the next version's
+	# build is cheap, so it is sized here and not left to chance.
+	printf 'max_size = %s\n' "${CCACHE_MAX_SIZE:-6G}" | sudo tee "$dir/ccache.conf" >/dev/null
+	;;
+ccache-save)
+	arch=$2 WORK=$3
+	TAG=chromium-ccache-$arch
+	dir=$WORK/cache_ccache_$arch
+	[ -d "$dir" ] || { echo "::warning::no $dir to store"; exit 0; }
+	gh release view "$TAG" -R "$R" --json tagName >/dev/null 2>&1 ||
+		gh release create "$TAG" -R "$R" --draft --title "$TAG" \
+			--notes "Compiler cache for the staged chromium build, shared across versions." >&2
+	mkdir -p "$TMP/cc"
+	manifest "$TAG" > "$TMP/old-ccache.json"
+	layer=$(store_layer ccache -C "$dir" .)
+	jq -n --argjson layer "$layer" --arg tag "$TAG" --argjson format "$FORMAT" \
+		--arg run "$GITHUB_SERVER_URL/$R/actions/runs/$GITHUB_RUN_ID" \
+		'{format: $format, tag: $tag, ccache: $layer, run: $run, at: (now | todate)}' \
+		> "$TMP/cc/state.json"
+	retry gh release upload "$TAG" "$TMP/cc/state.json" -R "$R" --clobber
+	# The new manifest is committed: parts only the old one named can go.
+	jq -r '[.ccache.parts[]?.name] | .[]' "$TMP/old-ccache.json" | sort > "$TMP/old"
+	jq -r '[.ccache.parts[]?.name] | .[]' "$TMP/cc/state.json" | sort > "$TMP/new"
+	comm -23 "$TMP/old" "$TMP/new" | while read -r name; do
+		retry gh release delete-asset "$TAG" "$name" -R "$R" -y
+	done
+	jq '{ccache_bytes: .ccache.bytes}' "$TMP/cc/state.json"
 	;;
 delete)
 	gh release delete "$2" -R "$R" -y

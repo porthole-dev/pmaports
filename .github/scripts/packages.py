@@ -372,10 +372,22 @@ def cmd_build(pkg: str) -> int:
     use_systemd(is_systemd(d))
     use_published_repository()
     pmbootstrap("build_init")
+    # $WORK/config_abuild is /home/pmos/.abuild in the chroot, and abuild
+    # sources that abuild.conf after /etc/abuild.conf, so this is how a
+    # setting reaches every abuild run.
+    conf = WORK / "config_abuild/abuild.conf"
     if PACKAGER:
-        conf = WORK / "config_abuild/abuild.conf"
         subprocess.run(["sudo", "sh", "-c", f"grep -q '^PACKAGER=' {conf} || "
                         f"echo 'PACKAGER=\"{PACKAGER}\"' >> {conf}"], check=True)
+    # USE_CCACHE is abuild's, and nobody sets it: pmbootstrap only ever sets
+    # CCACHE_DISABLE (when ccache is off) and Alpine's abuild.conf ships the
+    # line commented out. So every build here ran without ccache, and
+    # build.yml's actions/cache of cache_ccache_$ARCH cached an empty
+    # directory. pmbootstrap installs ccache into every build chroot
+    # (pmb.config.build_packages) and bind mounts $WORK/cache_ccache_$ARCH at
+    # /home/pmos/.ccache, so turning it on is all that was missing.
+    subprocess.run(["sudo", "sh", "-c", f"grep -q '^USE_CCACHE=' {conf} || "
+                    f"echo 'USE_CCACHE=1' >> {conf}"], check=True)
     # --ignore-depends: build what the APKBUILD needs to build, not its runtime
     # depends. Those are aports with their own jobs, and one of them (device ->
     # firmware) must never be built here. Needs pmbootstrap patch 0002:

@@ -205,13 +205,16 @@ All of these time-box ninja, tar the tree, and pass it to the next job:
 - [ungoogled-chromium-portablelinux](https://github.com/ungoogled-software/ungoogled-chromium-portablelinux/blob/master/.github/workflows/build-steps.yml)
   and [Helium](https://github.com/imputnet/helium-linux/blob/main/.github/workflows/build-steps.yml)
   run 10 parts of `timeout 5h ninja` and pass the whole `build/` tree as one
-  artifact.
+  artifact with `retention-days: 1`. Neither uses a compiler cache.
 - [ungoogled-chromium-windows](https://github.com/ungoogled-software/ungoogled-chromium-windows/blob/master/.github/workflows/reusable-build.yml)
   runs 16 stages.
 - [ungoogled-chromium-archlinux](https://github.com/ungoogled-software/ungoogled-chromium-archlinux/blob/master/.github/workflows/release.yml)
   and [-macos](https://github.com/ungoogled-software/ungoogled-chromium-macos/blob/master/.github/scripts/github_build.sh)
   are the only ones that checksum the archive, and macOS derives the
   timeout from the job's start.
+- [Cromite](https://github.com/uazo/cromite/blob/master/.github/workflows/build_cromite.yaml)
+  is **not** a reference for this: `timeout-minutes: 1440` on a self-hosted
+  runner. Checked so it does not get checked again.
 - [jclaveau/ci-prebuilds](https://github.com/jclaveau/ci-prebuilds/blob/main/playwright/alpine-browsers/chromium-headless-shell/scripts/ninja-resume.sh)
   builds Alpine's musl Chromium in Docker image layers. Its notes record
   that busybox `timeout` never returns 124, and that sccache over the GHA

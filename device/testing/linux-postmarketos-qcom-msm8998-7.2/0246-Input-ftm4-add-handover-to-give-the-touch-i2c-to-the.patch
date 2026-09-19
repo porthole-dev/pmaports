@@ -1,0 +1,149 @@
+From e90c6237aa9fef70ebb8abc53f13763e68f29bed Mon Sep 17 00:00:00 2001
+From: jert <joseph96tb@gmail.com>
+Date: Sat, 19 Sep 2026 21:32:57 +0200
+Subject: [PATCH] Input: ftm4 - add handover, to give the touch i2c to the SLPI
+ while awake
+
+The SLPI runs its own ftm4 driver, and it decides whether it may drive the
+controller by reading tlmm 75 itself. In slpi_v2.mbn:
+
+    bool ftm4_i2c_switched_to_slpi(void) {
+        r = gpio_read(0x4b, &v);      /* 0x4b == 75 */
+        if (r) log("%s: failed to read gpio, status = %d");
+        return r == 0 && v != 0;      /* the SLPI owns it when 75 is high */
+    }
+
+and ftm4_enable_sensor() spins on that 50 times at 10 ms before giving up:
+
+    log("%s: switch not ready, time out");
+    log("%s: i2c switch not toggled, status = %d");
+    log("%s: touch i2c port offline, aborting");
+
+So a wake gesture can only arm while the SLPI already holds the bus. Enabling
+one from userspace on an awake phone gives the SLPI 500 ms of an AP-owned mux
+and then a dead sensor -- long before the suspend that would have handed the
+bus over. That is a plausible reason the gesture sensors have always been
+silent, and it is not something a suspend-time handover can fix by itself.
+
+This is the handover on demand: exactly what ftm4_suspend() does with
+keep_powered=1, available while the phone is awake, so the sequence can be
+tried in the right order. Default off. While it is set the touchscreen reports
+nothing, because the controller is not ours.
+
+NOT a fix, and its effect is unmeasured: arming a gesture behind it has not yet
+been tested with anyone at the phone. The policy version -- hand over when the
+screen blanks and a gesture is armed, take it back on unblank -- needs ftm4 and
+qcom_smgr to agree on who wants the bus.
+
+Assisted-by: Claude
+---
+ drivers/input/touchscreen/ftm4.c | 82 ++++++++++++++++++++++++++++++++
+ 1 file changed, 82 insertions(+)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index 5f4be674caa8..dc7fdbc159a7 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -434,6 +434,14 @@ static void ftm4_power_down_action(void *data)
+ 
+ static void ftm4_release_all(struct ftm4_ts *ts);
+ 
++/* One controller on this board; the handover knob below needs to find it. */
++static struct ftm4_ts *ftm4_the_controller;
++
++static void ftm4_forget_controller(void *unused)
++{
++	ftm4_the_controller = NULL;
++}
++
+ static void ftm4_report_contact(struct ftm4_ts *ts, const u8 *event)
+ {
+ 	unsigned int slot = FIELD_GET(FTM4_MASK_TOUCH_ID, event[0]);
+@@ -656,6 +664,11 @@ static int ftm4_probe(struct i2c_client *client)
+ 	ts->client = client;
+ 	i2c_set_clientdata(client, ts);
+ 
++	ftm4_the_controller = ts;
++	error = devm_add_action_or_reset(dev, ftm4_forget_controller, NULL);
++	if (error)
++		return error;
++
+ 	mutex_init(&ts->lock);
+ 
+ 	error = devm_delayed_work_autocancel(dev, &ts->health_work,
+@@ -856,6 +869,75 @@ static int ftm4_resume(struct device *dev)
+ 	return 0;
+ }
+ 
++/*
++ * The SLPI's own ftm4 driver decides it may drive the controller by reading
++ * tlmm 75 directly -- ftm4_i2c_switched_to_slpi() in slpi_v2.mbn is a GPIO
++ * read of 0x4b that returns true when the line is high -- and
++ * ftm4_enable_sensor() spins on it for 50 x 10 ms before giving up with
++ * "touch i2c port offline, aborting".
++ *
++ * So arming a wake gesture only works while the SLPI already holds the bus.
++ * Enabling one from userspace on an awake phone cannot work: the AP owns the
++ * mux, the SLPI times out, and the gesture is dead long before the suspend
++ * that would have handed the bus over.
++ *
++ * This is the handover on demand, doing exactly what ftm4_suspend() does with
++ * keep_powered=1. It is a knob, not a policy: while it is set the touchscreen
++ * reports nothing, because the controller is not ours.
++ *
++ * ponytail: a module param and a single-controller pointer, because this board
++ * has one. The policy version -- hand over when the screen blanks and a
++ * gesture is armed, take it back on unblank -- needs ftm4 and qcom_smgr to
++ * agree on who wants the bus, and that is a design, not a knob.
++ */
++static bool handover;
++
++static int ftm4_handover_set(const char *val, const struct kernel_param *kp)
++{
++	struct ftm4_ts *ts = ftm4_the_controller;
++	bool want;
++	int error;
++
++	error = kstrtobool(val, &want);
++	if (error)
++		return error;
++	if (!ts)
++		return -ENODEV;
++	if (want == handover)
++		return 0;
++
++	if (want) {
++		cancel_delayed_work_sync(&ts->health_work);
++		disable_irq(ts->client->irq);
++		ftm4_stop(ts);
++		gpiod_set_value_cansleep(ts->switch_gpio, 0);
++		ftm4_release_all(ts);
++	} else {
++		gpiod_set_value_cansleep(ts->switch_gpio, 1);
++		error = ftm4_start(ts);
++		if (error) {
++			dev_err(&ts->client->dev,
++				"failed to restart sensing: %d\n", error);
++			gpiod_set_value_cansleep(ts->switch_gpio, 0);
++			return error;
++		}
++		enable_irq(ts->client->irq);
++		queue_delayed_work(system_long_wq, &ts->health_work,
++				   msecs_to_jiffies(FTM4_HEALTH_POLL_MS));
++	}
++
++	handover = want;
++	return 0;
++}
++
++static const struct kernel_param_ops ftm4_handover_ops = {
++	.set = ftm4_handover_set,
++	.get = param_get_bool,
++};
++module_param_cb(handover, &ftm4_handover_ops, &handover, 0644);
++MODULE_PARM_DESC(handover,
++		 "give the touch i2c to the sensor DSP while awake, so a wake gesture can arm (touch stops working)");
++
+ static DEFINE_SIMPLE_DEV_PM_OPS(ftm4_pm_ops, ftm4_suspend, ftm4_resume);
+ 
+ static const struct of_device_id ftm4_of_match[] = {

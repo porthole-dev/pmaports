@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=56
+pkgrel=57
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -136,6 +136,7 @@ source="
 	taimen-accel-matrix.rules
 	phosh-desktop-env.conf
 	taimen-wowlan-sleep-hook
+	taimen-wowlan-dispatcher
 	taimen-ftm4.conf
 	taimen-voicehold
 	52-taimen-voice.conf
@@ -305,6 +306,13 @@ package() {
 	# reaches the kernel, verified across a real suspend on NM 1.58.
 	install -Dm755 "$srcdir"/taimen-wowlan-sleep-hook \
 		"$pkgdir"/usr/lib/systemd/system-sleep/10-taimen-wowlan
+
+	# Arming WoWLAN is only half of it: NetworkManager unmanages every wifi
+	# device on PrepareForSleep and a torn-down association cannot be woken.
+	# The property that stops that is per-connection and cannot be set as a
+	# conf.d default -- see the script's own header for the measurement.
+	install -Dm755 "$srcdir"/taimen-wowlan-dispatcher \
+		"$pkgdir"/usr/lib/NetworkManager/dispatcher.d/90-taimen-wowlan
 
 	# ftm4.keep_powered -- see the file's header for the measurement.
 	install -Dm644 "$srcdir"/taimen-ftm4.conf \
@@ -608,6 +616,7 @@ ccc83c0111c5fd66a71d4ef4fb45a37064e1ca50a18bbe8f1ddae7fbc99a0ea78e52165950e227e2
 e9a8ad48c0b9e250ace1e6cea004f628ebf741fcdfe6d767f1fc4da953c8205c87f84b4e61a15a6a82582790e241b06ce20e220c2165c365062c293d0335de7d  taimen-accel-matrix.rules
 6cb9e6ebcc0cd5677afa99372405b24f56b3b854885917fcf344d8ccce0b42bf9488144893dacb5bb52b0deef3103f01755fff14a5a318e0a0151875363e5a46  phosh-desktop-env.conf
 6a4d1eae6072311d73e91f1fc75ef242bca0363bc2b204b9748a6b665b5ca358fa4807393ab70367baa199b5e41bb561358264cf5df71d254271cfd9a881ce6e  taimen-wowlan-sleep-hook
+b3b1ef51c3d44b7d7a785d68f65389ff709bb6111876f787d278c6c004d762b9f64d6d99a23e877488e2a25f88f100bf589be72ea7f125edb72b13f53eb4ad4f  taimen-wowlan-dispatcher
 949b03f9b38c83bf304c21113618198668ceb40ab5fd0617b8d7259cec80218e674c4c71a4408aae3227b7299129dc71714692620c13f3eedc01d7e4752b5bf9  taimen-ftm4.conf
 b5d4c97d455b526c6b0e335fb13f48c3b0761aa59897d6c28d92c4ee4f70182b0bbddde54e11fcd2f0d33ca5cfc0bd9bd9ccb2efa692b72b1b4fb3223b99bf5a  taimen-voicehold
 6662639d9a808e7ebddc97f72a95ca8bdbd659f59c4d749386f0e0668632d3024b8592b0cf671775497461b2d4d75018bcb1ee23216562bcda6483110f88fdfb  52-taimen-voice.conf

@@ -1,0 +1,43 @@
+From d8bf5499a5b2ea7e2e8cdd5b652ca5eddc631581 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 16 Sep 2026 20:09:19 +0200
+Subject: [PATCH 234/235] media: uapi: add 2X8_PADHI_LE codes for the other
+ 10-bit Bayer orders
+
+MEDIA_BUS_FMT_SBGGR10_2X8_PADHI_LE has existed since the beginning, but the
+same code was never defined for the other three Bayer orders. That asymmetry
+is a historical accident -- the code was added for parallel sensors that
+happened to be BGGR -- and it has become load bearing: on Qualcomm CAMSS the
+padded code on the CSID source pad is how userspace asks for unpacked 16-bit
+samples instead of MIPI-packed ones, so only a BGGR sensor can ask.
+
+Add the missing three so the request can be expressed for any Bayer order.
+
+Assisted-by: Claude
+---
+ include/uapi/linux/media-bus-format.h | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/include/uapi/linux/media-bus-format.h b/include/uapi/linux/media-bus-format.h
+index 6005f033e62c..9d97fe1a4d3c 100644
+--- a/include/uapi/linux/media-bus-format.h
++++ b/include/uapi/linux/media-bus-format.h
+@@ -124,7 +124,7 @@
+ #define MEDIA_BUS_FMT_YUV16_1X48		0x202a
+ #define MEDIA_BUS_FMT_UYYVYY16_0_5X48		0x202b
+ 
+-/* Bayer - next is	0x3025 */
++/* Bayer - next is	0x3028 */
+ #define MEDIA_BUS_FMT_SBGGR8_1X8		0x3001
+ #define MEDIA_BUS_FMT_SGBRG8_1X8		0x3013
+ #define MEDIA_BUS_FMT_SGRBG8_1X8		0x3002
+@@ -161,6 +161,9 @@
+ #define MEDIA_BUS_FMT_SGBRG20_1X20		0x3022
+ #define MEDIA_BUS_FMT_SGRBG20_1X20		0x3023
+ #define MEDIA_BUS_FMT_SRGGB20_1X20		0x3024
++#define MEDIA_BUS_FMT_SGBRG10_2X8_PADHI_LE	0x3025
++#define MEDIA_BUS_FMT_SGRBG10_2X8_PADHI_LE	0x3026
++#define MEDIA_BUS_FMT_SRGGB10_2X8_PADHI_LE	0x3027
+ 
+ /* JPEG compressed formats - next is	0x4002 */
+ #define MEDIA_BUS_FMT_JPEG_1X8			0x4001

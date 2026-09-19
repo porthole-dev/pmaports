@@ -86,8 +86,10 @@ jobs:
       # Not part of the state: the compiler cache is shared across chromium
       # versions, which is the only time it pays (within one version the out
       # directory is the cache). Restored for prep too, so its forked build
-      # dependencies feed it.
+      # dependencies feed it; not for package, which compiles nothing and
+      # would download gigabytes to use none of them.
       - name: Restore the compiler cache
+        if: inputs.mode != 'package'
         run: |
           bash .github/scripts/chromium-state.sh ccache-restore aarch64 "$WORK"
           df -h /

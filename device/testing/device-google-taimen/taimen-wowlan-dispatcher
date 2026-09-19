@@ -1,0 +1,28 @@
+#!/bin/sh
+# Keep WoWLAN usable on the connection NetworkManager actually brings up.
+#
+# Arming WoWLAN in the kernel is not enough on its own. On PrepareForSleep,
+# NetworkManager unmanages every wifi device -- "state change: disconnected ->
+# unmanaged (reason 'unmanaged-nm-disabled')", followed by a MAC reset -- and a
+# torn-down association cannot be woken by anything. Measured 2026-09-19: a
+# magic packet wakes this phone in 1 s from a real logind suspend once the
+# association survives, and not at all before.
+#
+# The property that stops the teardown is per-connection and CANNOT be set as a
+# conf.d default: `[connection] wifi.wake-on-wlan=magic` and its long form
+# `802-11-wireless.wake-on-wlan=magic` both leave it reading "0x1 (default)",
+# verified by nmcli after `nmcli general reload conf`. So set it on the
+# connection itself, once, the first time it comes up.
+#
+# The guard matters: modifying a connection from a dispatcher re-triggers the
+# dispatcher, so only write when the value is not already what we want.
+[ "$2" = up ] || exit 0
+case "$DEVICE_IFACE" in wl*) ;; *) exit 0 ;; esac
+[ -n "$CONNECTION_UUID" ] || exit 0
+
+cur=$(nmcli -g 802-11-wireless.wake-on-wlan connection show "$CONNECTION_UUID" 2>/dev/null)
+case "$cur" in
+	*0x8*|*magic*) exit 0 ;;
+esac
+
+nmcli connection modify "$CONNECTION_UUID" 802-11-wireless.wake-on-wlan magic

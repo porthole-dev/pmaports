@@ -1,0 +1,87 @@
+From e90951a6913f025bdbf77e7b3fc24907be1ae6e4 Mon Sep 17 00:00:00 2001
+From: jert <joseph96tb@gmail.com>
+Date: Sat, 19 Sep 2026 23:08:32 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: poll the skin
+ thermistor
+
+Wiring skin-thermal to the PMIC's ADC-TM threshold monitor costs ~1600
+interrupts a second, for the life of the boot, on an idle phone. The
+comparator on channel 4 latches STATUS_LOW (0x340a reads 0x10) and nothing
+in mainline can clear it: adc_tm5_isr() reads the status and writes nothing
+back, relying on the thermal core to come back through set_trips -- which it
+skips whenever the trip window is unchanged. Verified by register: the latch
+survives seconds, survives threshold rewrites (0x3481/82 moves 0x2847 ->
+0x25ee -> 0x2847 as trip0 is moved 38 -> 44 -> 38 C), and survives a driver
+unbind/rebind. It holds even against a threshold moved further away, so the
+monitor's own measurement sits below anything that can be programmed, while
+the IIO path on the same input reads correctly.
+
+The vendor never uses the monitor here -- thermal-engine samples bd_therm2
+every 2000 ms -- so do that instead: a generic-adc-thermal sensor over the
+same VADC channel, polled at the vendor's interval. The temperature is
+identical to the digit (32647 both ways), so the ladder's trip points are
+unaffected.
+
+pm8998_adc_tm had no other consumer on this board and is left disabled.
+
+Assisted-by: Claude
+---
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 35 +++++++++++++------
+ 1 file changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index f1f5957c46f1..0d9d4420bdca 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -1377,12 +1377,29 @@ &venus {
+  * their own critical trips at 110 C, which is the backstop that matters.
+  */
+ / {
++	/*
++	 * The vendor samples bd_therm2 every 2000 ms from thermal-engine and
++	 * never wires it to a hardware threshold monitor.  Doing it the other
++	 * way round cost ~1600 PMIC interrupts a second, for the life of the
++	 * boot: the ADC-TM comparator on channel 4 latches STATUS_LOW and
++	 * nothing mainline does can clear it -- adc_tm5_isr() writes nothing
++	 * back, and the latch survives threshold rewrites and a driver
++	 * unbind/rebind.  The IIO channel underneath reports the same
++	 * millidegrees the ADC-TM zone did, to the digit (32647 both ways).
++	 */
++	skin_therm: thermal-sensor-skin {
++		compatible = "generic-adc-thermal";
++		#thermal-sensor-cells = <0>;
++		io-channels = <&pm8998_adc ADC5_AMUX_THM5_100K_PU>;
++		io-channel-names = "sensor-channel";
++	};
++
+ 	thermal-zones {
+ 		skin-thermal {
+ 			/* vendor thermal-engine samples bd_therm2 every 2000 ms */
+ 			polling-delay-passive = <2000>;
+-			polling-delay = <0>;
+-			thermal-sensors = <&pm8998_adc_tm 4>;
++			polling-delay = <2000>;
++			thermal-sensors = <&skin_therm>;
+ 
+ 			trips {
+ 				skin_floor_mid: trip-point0 {
+@@ -1478,13 +1495,11 @@ channel@51 {
+ 	};
+ };
+ 
++/*
++ * Left disabled on purpose: the only consumer was skin-thermal, which now
++ * polls the same input through IIO.  See the comment above the
++ * thermal-sensor-skin node.
++ */
+ &pm8998_adc_tm {
+-	status = "okay";
+-
+-	skin-thermistor@4 {
+-		reg = <4>;
+-		io-channels = <&pm8998_adc ADC5_AMUX_THM5_100K_PU>;
+-		qcom,ratiometric;
+-		qcom,hw-settle-time-us = <200>;
+-	};
++	status = "disabled";
+ };

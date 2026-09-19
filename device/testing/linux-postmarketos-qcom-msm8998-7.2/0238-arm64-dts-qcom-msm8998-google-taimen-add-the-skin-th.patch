@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 08:51:31 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998-google-taimen: add the skin
+ thermistor
+
+taimen has a board thermistor on the PM8998 VADC, and every layer of the
+vendor's thermal policy is driven from it rather than from the tsens junction
+sensors. /vendor/etc/thermal-engine.conf caps both CPU clusters and the GPU
+off it, and the Android thermal HAL's thermal_info_config.json gives it type
+"SKIN" with severities at 38/45/48/50/52/54 C while CPU and GPU junction only
+reach SEVERE at 95 C and SHUTDOWN at 125 C. Junction is the backstop; skin is
+the policy. Without this channel none of that policy can be expressed.
+
+It is AMUX_THM5 behind the 100k pull-up. The downstream board files call it
+bd_therm on the early revisions and bd_therm2 on rev C, D and 1.0 -- the
+shipping ones -- but it is VADC channel 0x51 with qcom,scale-function = <2>
+in all of them, and that scale function is the generic 100k pull-up table the
+ADC5 driver already applies to ADC5_AMUX_THM5_100K_PU. sdm845-mtp wires the
+same PMIC channel the same way for its quiet_therm.
+
+No trips yet, deliberately. The channel and its scaling are verified against
+the downstream board files, but the curve has not been correlated with a real
+warm-up on this board, and a critical trip on a sensor that reads high would
+power the phone off. Land the reading, correlate it, then wire the ladder.
+
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ .../boot/dts/qcom/msm8998-google-taimen.dts   | 56 +++++++++++++++++++
+ 1 file changed, 56 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index 0b5e95198029..12b9406cb32e 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -5,6 +5,7 @@
+ 
+ /dts-v1/;
+ 
++#include <dt-bindings/iio/qcom,spmi-vadc.h>
+ #include <dt-bindings/leds/common.h>
+ #include <dt-bindings/sound/qcom,q6afe.h>
+ #include <dt-bindings/sound/qcom,q6asm.h>
+@@ -1333,3 +1334,58 @@ imx179_ep: endpoint {
+ &venus {
+ 	status = "okay";
+ };
++
++/*
++ * Skin temperature.
++ *
++ * Every layer of the vendor's thermal policy is driven from this one
++ * thermistor and not from the tsens junction sensors: /vendor/etc/
++ * thermal-engine.conf caps both CPU clusters and the GPU off it, and the
++ * Android thermal HAL's thermal_info_config.json gives it Type "SKIN" with
++ * severities at 38/45/48/50/52/54 C while CPU and GPU junction only reach
++ * SEVERE at 95 C. Junction is the backstop; skin is the policy.
++ *
++ * It is AMUX_THM5 with the 100k pull-up, which the downstream board files
++ * call bd_therm (rev A/B) or bd_therm2 (rev C, D and 1.0 -- the shipping
++ * revisions): arch/arm64/boot/dts/lge/msm8998-taimen-pm.dtsi and
++ * overlay-taimen-rev-1_0.dts, both at VADC channel 0x51 with
++ * qcom,scale-function = <2>, which is this generic 100k pull-up table.
++ *
++ * NO TRIPS YET, DELIBERATELY. The channel and its scaling are verified
++ * against downstream, but the curve has not yet been correlated with a real
++ * warm-up on this board, and a critical trip on a sensor that reads high
++ * would power the phone off. Land the reading first, correlate it, then wire
++ * the vendor's ladder.
++ */
++/ {
++	thermal-zones {
++		skin-thermal {
++			polling-delay-passive = <0>;
++			polling-delay = <0>;
++			thermal-sensors = <&pm8998_adc_tm 4>;
++
++			trips {
++			};
++		};
++	};
++};
++
++&pm8998_adc {
++	channel@51 {
++		reg = <ADC5_AMUX_THM5_100K_PU>;
++		label = "skin_therm";
++		qcom,ratiometric;
++		qcom,hw-settle-time = <200>;
++	};
++};
++
++&pm8998_adc_tm {
++	status = "okay";
++
++	skin-thermistor@4 {
++		reg = <4>;
++		io-channels = <&pm8998_adc ADC5_AMUX_THM5_100K_PU>;
++		qcom,ratiometric;
++		qcom,hw-settle-time-us = <200>;
++	};
++};

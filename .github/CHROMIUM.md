@@ -306,8 +306,26 @@ is there now, and more than the runner's free disk. **The binding constraint
 is disk, not the reserve:** the work directory is 13 GB after prep plus the
 out directory, against 54 GB free after the runner cleanup.
 
+On the same runner with ninja instead of samurai, run
+[35432584387](https://github.com/porthole-dev/pmaports/actions/runs/35432584387),
+`stages=2 stage_minutes=25`:
+
+| | samurai | ninja |
+| --- | --- | --- |
+| stage 2 | **failed at 6m21s** | **success, ran to its deadline** |
+| `rebuilt` on resume | **1050** | **0** |
+| `bad depfile` lines | 478 in three minutes | **0** |
+
+prep took 6m57s (the forked mesa is published now, so it is not rebuilt),
+stage 1 recorded 7904 edges in 25 min and stage 2 another 1107, resuming with
+`records_before: 7904` and `rebuilt: 0`. The rate falls as the cheap codegen
+edges give way to C++: at stage 2's ~43 edges/min the 54.5k edges left are
+about **21 h of ninja**, four or five full build jobs, which is the estimate
+below.
+
 `.github/scripts/chromium-state-test.sh` runs the layering (prep, two stages,
-restore, a corrupted part) against a fake `gh` in about a second.
+restore, a corrupted part, the ccache round trip) against a fake `gh` in about
+a second.
 
 **Not yet measured on real runners:** the package and publish jobs. Nothing
 has run them: the state has reached stage 5 and ninja has not finished.

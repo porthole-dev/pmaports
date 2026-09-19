@@ -82,4 +82,20 @@ if state restore TAG "$t/damaged" > /dev/null 2>&1; then
 	fail "a corrupted part was restored"
 fi
 
-echo "chromium-state.sh: prep, two stages, restore and corruption all behave"
+# the compiler cache: empty first, then a round trip that keeps its content
+# and does not leave the superseded parts behind
+state ccache-restore aarch64 "$t/cc" > /dev/null
+grep -q '^max_size = ' "$t/cc/cache_ccache_aarch64/ccache.conf" || fail "no ccache.conf was written"
+head -c 2000000 /dev/urandom > "$t/cc/cache_ccache_aarch64/object"
+state ccache-save aarch64 "$t/cc" > /dev/null
+[ -e "$t/rel/chromium-ccache-aarch64/ccache.tar.zst.000" ] || fail "the ccache layer is missing"
+state ccache-restore aarch64 "$t/cc2" > /dev/null
+cmp "$t/cc/cache_ccache_aarch64/object" "$t/cc2/cache_ccache_aarch64/object" ||
+	fail "the restored ccache differs"
+head -c 4000000 /dev/urandom > "$t/cc2/cache_ccache_aarch64/object"
+state ccache-save aarch64 "$t/cc2" > /dev/null
+state ccache-restore aarch64 "$t/cc3" > /dev/null
+cmp "$t/cc2/cache_ccache_aarch64/object" "$t/cc3/cache_ccache_aarch64/object" ||
+	fail "the second ccache round trip differs"
+
+echo "chromium-state.sh: prep, two stages, restore, corruption and the ccache all behave"

@@ -51,9 +51,14 @@ PKG = "chromium"
 STATE = packages.WORK / "chromium"
 CONFIG = STATE / "pmbootstrap_v3.cfg"
 ARCH = Arch.aarch64
-# A resumed stage may re-run the edges the previous stage interrupted and a
-# few that always run. A restore that lost mtimes re-runs tens of thousands.
-REBUILD_LIMIT = 1000
+# A resumed stage re-runs the edges the previous stage interrupted, plus any
+# whose depfile ninja could not read (see the NINJA note in the APKBUILD --
+# under samurai that was ~900 of them, and it is what this guard used to trip
+# on). A restore that lost mtimes re-runs *everything*, so what tells the two
+# apart is the share of the restored log, not an absolute count. The floor
+# keeps the guard meaningful over a short log.
+REBUILD_SHARE = 0.25
+REBUILD_FLOOR = 2000
 
 
 def out_dir() -> pathlib.Path | None:
@@ -94,6 +99,7 @@ class Watchdog(threading.Thread):
     def __init__(self, deadline: float | None, before: dict[str, str]):
         super().__init__(daemon=True)
         self.deadline, self.before = deadline, before
+        self.limit = max(REBUILD_FLOOR, int(len(before) * REBUILD_SHARE))
         self.reason: str | None = None
         self.rebuilt = 0
         self.done = threading.Event()
@@ -113,8 +119,9 @@ class Watchdog(threading.Thread):
                 continue
             now = records(out_dir())
             self.rebuilt = sum(1 for p, m in now.items() if p in self.before and self.before[p] != m)
-            if self.rebuilt > REBUILD_LIMIT:
-                self.stop(f"{self.rebuilt} outputs of earlier stages are being rebuilt:"
+            if self.rebuilt > self.limit:
+                self.stop(f"{self.rebuilt} of {len(self.before)} outputs of earlier stages are"
+                          f" being rebuilt, more than {self.limit}:"
                           " the restored state is not consistent")
                 return
             if time.time() >= self.deadline:
@@ -237,6 +244,14 @@ def main() -> int:
         if dog:
             dog.done.set()
             result["rebuilt"] = dog.rebuilt
+        if mode == "build":
+            # What the stored compiler cache is actually worth. It only pays
+            # from the second chromium version on, so without this number
+            # there is no way to tell whether carrying it is worth the upload.
+            try:
+                pmb.chroot.user(["ccache", "--show-stats"], cross.build_chroot(ARCH), env=env)
+            except Exception as e:
+                print(f"ccache --show-stats: {e}", flush=True)
         # A deadline stop is the expected end of a stage; a consistency stop
         # or any other failure is not, but its progress is still valid.
         ok = rc == 0 or (dog is not None and dog.reason == "stage deadline")

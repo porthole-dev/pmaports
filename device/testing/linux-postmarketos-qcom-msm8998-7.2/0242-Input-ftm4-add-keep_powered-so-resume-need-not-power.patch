@@ -1,0 +1,150 @@
+From 5e5f6e830428cd31ee33be95b54d69d7fcd95671 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 17:55:46 +0200
+Subject: [PATCH] Input: ftm4 - add keep_powered so resume need not power-cycle
+ the controller
+
+ftm4_resume() costs 209 ms. Measured on a Pixel 2 XL with pm_print_times over a
+real s2idle cycle, that is the second largest single callback in the machine --
+the whole device-resume budget is 576 ms, wiphy_resume is 313 ms of it, ftm4 is
+209 ms, and everything else together is 54 ms.
+
+All of ftm4_resume()'s cost is fixed sleeps, and ftm4_power_up() is 105 ms of
+them on its own: FTM4_POWER_SETTLE_US 5 ms after the regulators come up,
+FTM4_RESET_ASSERT_US 10 ms holding reset, and FTM4_RESET_SETTLE_MS 90 ms after
+releasing it. None of that is needed if the supplies never dropped.
+
+Downstream does not drop them. fts_stop_device() branches on lowpower_mode: that
+path is INT_DISABLE, irq off, synchronize_irq, FLUSHBUFFER, SENSEOFF,
+FLUSHBUFFER and then it stops, leaving the rails up, while the non-lowpower path
+ends in board->power(info, false). fts_start_device() mirrors it exactly --
+lowpower skips board->power(info, true) and calls fts_reinit() directly, and
+fts_reinit() is systemreset, wait_for_ready, SENSEON, a 50 ms settle and
+FLUSHBUFFER, which is what ftm4_start() already does. So the vendor's saving is
+precisely the power-up, which is precisely our 105 ms.
+
+The shared bus is still handed back to the sensor DSP on the way down, exactly
+as ftm4_power_down() does it. That is not incidental: on this board the touch
+i2c is muxed between the AP and the SLPI, and the SLPI owning a still-powered
+controller is how the vendor's ambient-display gestures are detected at all.
+
+Default off. This changes what the hardware does across a suspend and the cost
+side is unmeasured -- a powered controller draws something while idle, and that
+is now measurable against bms/current_now on an unplugged phone -- so an image
+that behaves byte-for-byte as before until the parameter is set makes the A/B
+one boot instead of two.
+
+The parameter is writable, not read-only, because resume keys off
+ts->suspended_powered recorded at suspend time rather than off the parameter.
+Changing it between a suspend and its resume therefore cannot leave the pair
+mismatched, which is the failure a read-only parameter would exist to prevent.
+
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/input/touchscreen/ftm4.c | 63 ++++++++++++++++++++++++++++++--
+ 1 file changed, 59 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index a50cb2e98f34..5f4be674caa8 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -183,6 +183,13 @@ struct ftm4_ts {
+ 	/* Slots currently down, used to derive BTN_TOUCH. */
+ 	DECLARE_BITMAP(slots, FTM4_MAX_FINGERS);
+ 
++	/*
++	 * What suspend actually did, not what the module parameter says now:
++	 * resume must undo the suspend it was paired with, and the parameter
++	 * is writable so it can change in between.
++	 */
++	bool suspended_powered;
++
+ 	/* i2c transfer buffers, kept off the stack so they are DMA-safe. */
+ 	u8 cmd[FTM4_CMD_MAX_LEN];
+ 	u8 data[FTM4_EVENT_SIZE];
+@@ -757,6 +764,37 @@ static int ftm4_probe(struct i2c_client *client)
+ 	return 0;
+ }
+ 
++/*
++ * Keep the controller powered across suspend, as the vendor does.
++ *
++ * Measured on this device with pm_print_times: ftm4_resume() costs 209 ms of a
++ * 576 ms total device-resume budget -- the second largest single callback in
++ * the whole machine. ftm4_power_up() is 105 ms of that on its own
++ * (FTM4_POWER_SETTLE_US 5 ms + FTM4_RESET_ASSERT_US 10 ms +
++ * FTM4_RESET_SETTLE_MS 90 ms) and buys nothing if the supplies never dropped.
++ *
++ * Downstream does exactly this. fts_stop_device() branches on lowpower_mode:
++ * that path does INT_DISABLE, irq off, synchronize_irq, FLUSHBUFFER, SENSEOFF,
++ * FLUSHBUFFER and stops, leaving the rails up, while the non-lowpower path ends
++ * in board->power(info, false). fts_start_device() mirrors it -- lowpower skips
++ * board->power(info, true) and goes straight to fts_reinit(), which is SENSEON
++ * plus a 50 ms settle and is what ftm4_start() already does. So the vendor's
++ * saving is precisely the power-up, which is precisely our 105 ms.
++ *
++ * Default off: this changes what the hardware is doing across a suspend, and an
++ * image that behaves byte-for-byte as before until the parameter is set is what
++ * makes the A/B one boot instead of two. The cost side is unmeasured -- the
++ * controller draws something while idle-powered, and with the phone now able to
++ * run unplugged that is finally measurable against bms/current_now.
++ *
++ * Writable rather than read-only because resume keys off ts->suspended_powered,
++ * recorded at suspend time, so flipping this mid-cycle cannot mismatch a pair.
++ */
++static bool keep_powered;
++module_param(keep_powered, bool, 0644);
++MODULE_PARM_DESC(keep_powered,
++		 "Leave the controller powered across suspend, as the vendor's lowpower_mode does (default off)");
++
+ static int ftm4_suspend(struct device *dev)
+ {
+ 	struct ftm4_ts *ts = dev_get_drvdata(dev);
+@@ -769,7 +807,18 @@ static int ftm4_suspend(struct device *dev)
+ 
+ 	disable_irq(ts->client->irq);
+ 	ftm4_stop(ts);
+-	ftm4_power_down(ts);
++
++	ts->suspended_powered = keep_powered;
++	if (ts->suspended_powered)
++		/*
++		 * Sensing is off and the irq is disabled, so nothing here will
++		 * talk to the controller again until resume -- but the bus is
++		 * shared, and the sensor DSP owns it whenever we are not using
++		 * it. Hand it over exactly as the power-down path does.
++		 */
++		gpiod_set_value_cansleep(ts->switch_gpio, 0);
++	else
++		ftm4_power_down(ts);
+ 
+ 	/* The controller will not send a LEAVE for fingers that were down. */
+ 	ftm4_release_all(ts);
+@@ -782,14 +831,20 @@ static int ftm4_resume(struct device *dev)
+ 	struct ftm4_ts *ts = dev_get_drvdata(dev);
+ 	int error;
+ 
+-	error = ftm4_power_up(ts);
+-	if (error)
+-		return error;
++	if (ts->suspended_powered)
++		/* Take the shared bus back from the sensor DSP. */
++		gpiod_set_value_cansleep(ts->switch_gpio, 1);
++	else {
++		error = ftm4_power_up(ts);
++		if (error)
++			return error;
++	}
+ 
+ 	error = ftm4_start(ts);
+ 	if (error) {
+ 		dev_err(dev, "failed to restart sensing: %d\n", error);
+ 		ftm4_power_down(ts);
++		ts->suspended_powered = false;
+ 		return error;
+ 	}
+ 
+-- 
+2.55.0
+

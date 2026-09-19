@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=59
+pkgrel=60
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -329,6 +329,7 @@ source="
 	0239-arm64-dts-qcom-msm8998-google-taimen-wire-the-vendor.patch
 	0240-arm64-dts-qcom-msm8998-take-cpu-capacity-off-the-ven.patch
 	0241-thermal-qcom-spmi-adc-tm5-stop-requiring-IIO_VAL_INT.patch
+	0242-Input-ftm4-add-keep_powered-so-resume-need-not-power.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -601,4 +602,5 @@ ddd018e510b65446ce96a81243ca3e1ca7e87791a4a9864a27aadff1720c16885a2370c3aeafed38
 1a51d23b64f1e07526a93df0c668037b81b903b2bbc411b79d2163db900b937128b66f978566c9b7dbddedfb69817e4529b60acdb88941bfc38248834b68c095  0239-arm64-dts-qcom-msm8998-google-taimen-wire-the-vendor.patch
 fa4ad8d9903f3a3dca14ff17d5feb218f5fdd736bdcb66f773de9d3a2a30e0fec76edd28e9fa3192d00d67c6582b3377ecd1086bc33e760ad798f03db1bdf843  0240-arm64-dts-qcom-msm8998-take-cpu-capacity-off-the-ven.patch
 f0d383601183f5e23d6bc03b24a9f9382782f6427716d093a887c8c34c3bd962e451486419f64121e9457c82ff5a451c40cf559593a27d14e7bbd323bb6b54ff  0241-thermal-qcom-spmi-adc-tm5-stop-requiring-IIO_VAL_INT.patch
+cec0313100271adfd75e967fec2fcf11e6663ce6e6bd083159587e986664530dfe8f8d66ec65f0cd2c7142ddadc79624f3d0d197ecdc1f25439a2a220e6bb003  0242-Input-ftm4-add-keep_powered-so-resume-need-not-power.patch
 "

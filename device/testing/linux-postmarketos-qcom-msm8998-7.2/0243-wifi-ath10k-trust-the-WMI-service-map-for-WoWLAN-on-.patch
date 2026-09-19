@@ -1,0 +1,80 @@
+From 59f734320b72d6d31762786cb90dae84fbc2c4ec Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sat, 19 Sep 2026 18:35:21 +0200
+Subject: [PATCH] wifi: ath10k: trust the WMI service map for WoWLAN on SNOC
+
+Every SNOC target has WoWLAN disabled no matter how capable it is, because the
+gate is a feature bit in a file that cannot carry one.
+
+ath10k_wow_init() returns early unless ATH10K_FW_FEATURE_WOWLAN_SUPPORT is set
+in the firmware file. On SNOC the firmware is not in that file: it is loaded by
+the WLAN remoteproc and handed over by QMI, and firmware-5.bin is metadata
+only. On WCN3990 hw1.0 it is 60 bytes, and its IEs are FW_VERSION, TIMESTAMP,
+OTP_IMAGE and WMI_OP_VERSION -- there is no FEATURES IE at all, so no feature
+bit is ever set and the early return is unconditional.
+
+The WMI service map is the firmware describing itself, so on this bus it is the
+authoritative answer rather than the cross-check it can be elsewhere. Use it in
+place of the file's bit for SNOC and leave the WARN_ON for every other bus,
+where the file does describe the firmware that will run.
+
+Measured on a Pixel 2 XL (WCN3990, msm8998), with CONFIG_ATH10K_DEBUGFS:
+
+    # grep -i wow /sys/kernel/debug/ieee80211/phy0/ath10k/wmi_services
+    WMI_SERVICE_WOW       enabled
+    WMI_SERVICE_D0WOW     enabled
+
+while `iw phy0 info` showed no WoWLAN section at all, because wiphy->wowlan was
+never assigned.
+
+The cost of leaving it as it is falls on suspend rather than on WoWLAN users.
+cfg80211's wiphy_suspend() takes the wowlan path only if wiphy.wowlan_config is
+set, which requires wiphy->wowlan to exist; otherwise it falls through to
+cfg80211_leave_all() and tears down every interface. So on these devices every
+system suspend disconnects the WLAN outright, and resume rebuilds the stack and
+re-associates from scratch. Measured with pm_print_times on the same device,
+wiphy_resume costs 313 ms of a 576 ms device-resume budget, and the association
+does not complete until 2.6 s after PM: suspend exit.
+
+Assisted-by: LLM
+Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
+---
+ drivers/net/wireless/ath/ath10k/wow.c | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath10k/wow.c b/drivers/net/wireless/ath/ath10k/wow.c
+index 92af8bc63362..df4e23aabea4 100644
+--- a/drivers/net/wireless/ath/ath10k/wow.c
++++ b/drivers/net/wireless/ath/ath10k/wow.c
+@@ -614,8 +614,26 @@ int ath10k_wow_op_resume(struct ieee80211_hw *hw)
+ 
+ int ath10k_wow_init(struct ath10k *ar)
+ {
+-	if (!test_bit(ATH10K_FW_FEATURE_WOWLAN_SUPPORT,
+-		      ar->running_fw->fw_file.fw_features))
++	bool fw_supports_wow = test_bit(ATH10K_FW_FEATURE_WOWLAN_SUPPORT,
++					ar->running_fw->fw_file.fw_features);
++
++	/*
++	 * On SNOC the firmware is not in the firmware file. It is loaded by the
++	 * WLAN remoteproc and handed over by QMI, and firmware-5.bin is
++	 * metadata only -- for WCN3990 hw1.0 it is 60 bytes carrying FW_VERSION,
++	 * TIMESTAMP, OTP_IMAGE and WMI_OP_VERSION, with no FEATURES IE at all.
++	 * Its feature bits therefore say nothing about the firmware that is
++	 * actually running, and every SNOC target ends up with WoWLAN disabled
++	 * however capable it is.
++	 *
++	 * The WMI service map is the firmware describing itself, so on this bus
++	 * it is the authoritative answer rather than a cross-check. WCN3990 on a
++	 * Pixel 2 XL reports WMI_SERVICE_WOW and WMI_SERVICE_D0WOW enabled.
++	 */
++	if (ar->hif.bus == ATH10K_BUS_SNOC)
++		fw_supports_wow = test_bit(WMI_SERVICE_WOW, ar->wmi.svc_map);
++
++	if (!fw_supports_wow)
+ 		return 0;
+ 
+ 	if (WARN_ON(!test_bit(WMI_SERVICE_WOW, ar->wmi.svc_map)))
+-- 
+2.55.0
+

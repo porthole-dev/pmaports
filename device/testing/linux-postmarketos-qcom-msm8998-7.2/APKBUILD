@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=60
+pkgrel=63
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -330,6 +330,8 @@ source="
 	0240-arm64-dts-qcom-msm8998-take-cpu-capacity-off-the-ven.patch
 	0241-thermal-qcom-spmi-adc-tm5-stop-requiring-IIO_VAL_INT.patch
 	0242-Input-ftm4-add-keep_powered-so-resume-need-not-power.patch
+	0243-wifi-ath10k-trust-the-WMI-service-map-for-WoWLAN-on-.patch
+	0244-iio-qcom-smgr-give-the-wake-gestures-an-input-device.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -361,7 +363,7 @@ package() {
 }
 sha512sums="
 6ca338fd2f9d2224b9187ba1cad18c05417c0504771917203a023467a8ac3a34e346bd3bc5a3f5716aa9810381a28c730ea5fc3726773dca36d75a4677178b13  linux-7.2.2.tar.xz
-27fb0c0e471a417fac7c4101197a611dd47388ad6ced8b9085b2ac258459932769ad088f594304d244591d438466bc989a7c4be2e364f86bdc5d68262918c52f  config-postmarketos-qcom-msm8998-7.2.aarch64
+a38080a25af3a895660a4800e377cd2730f6d57dbad19d50e4ed64580e8d796026982acd1fe977a540711a4e6537038acb88f840324861180b9cb8f5d3a7c358  config-postmarketos-qcom-msm8998-7.2.aarch64
 0858ed26e3c55bec0208b918e3438657e0b468b75b5d4f2a994dbe05cf1ff82bf3053dc5584fef7379dcbca0556eacbfd5675adacff1de63cc30fad8f6c17559  0001-iommu-arm-smmu-qcom-Skip-the-TTBR1-quirk-for-MSM8998.patch
 51dcee155f7b1912bd30da88f2f877c6601f2f856f9437aa6da93e1b8dc5dc2fde07b99234bcdb8f8f7a62deaede3563d0959e0e9f628910ae90ad069b6b3c51  0002-iommu-arm-smmu-qcom-Add-MSM8998-and-SDM660-mss-compa.patch
 47e2789a45183718612ce29f3ffd034a27c77b8d437f1c6e3a05e564e4b79b365546b79e8861b92b008f15cf8bba598c2e129a61b695e1cf55ce93a7bcdea7ea  0003-clk-qcom-mmcc-msm8998-Set-CLK_GET_RATE_NOCACHE-to-pi.patch
@@ -603,4 +605,6 @@ ddd018e510b65446ce96a81243ca3e1ca7e87791a4a9864a27aadff1720c16885a2370c3aeafed38
 fa4ad8d9903f3a3dca14ff17d5feb218f5fdd736bdcb66f773de9d3a2a30e0fec76edd28e9fa3192d00d67c6582b3377ecd1086bc33e760ad798f03db1bdf843  0240-arm64-dts-qcom-msm8998-take-cpu-capacity-off-the-ven.patch
 f0d383601183f5e23d6bc03b24a9f9382782f6427716d093a887c8c34c3bd962e451486419f64121e9457c82ff5a451c40cf559593a27d14e7bbd323bb6b54ff  0241-thermal-qcom-spmi-adc-tm5-stop-requiring-IIO_VAL_INT.patch
 cec0313100271adfd75e967fec2fcf11e6663ce6e6bd083159587e986664530dfe8f8d66ec65f0cd2c7142ddadc79624f3d0d197ecdc1f25439a2a220e6bb003  0242-Input-ftm4-add-keep_powered-so-resume-need-not-power.patch
+91afad8ec4f9d3ea015db711ffe8d9fffb56d5dc915726328014b2696be099dbb7f4b9a7b798818b14cf6aadea45132ff54468588ee2230d05ba4638137cce1e  0243-wifi-ath10k-trust-the-WMI-service-map-for-WoWLAN-on-.patch
+d84f0b3b5c32e75b8cebcabad99aec2c95daf1c3edbc88057103d355d88e22d308fac62acd31dca24e26a0877a3682e9992a69485316064295e6b3de6f2e88a2  0244-iio-qcom-smgr-give-the-wake-gestures-an-input-device.patch
 "

@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=57
+pkgrel=58
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -112,7 +112,12 @@ depends="
 # openrc() subpackage below (install_if-gated, same shape as qbootctl's)
 # covers OpenRC for all four -- see that subpackage's own post-install.
 # Neither post-install symlinks anything any more.
-install="$pkgname.post-install $pkgname.post-upgrade"
+# The -openrc scripts are named here rather than inside openrc() below:
+# apkbuild-lint AL65 rejects a non-local 'install' in a subpackage
+# function, and abuild picks a subpackage's scripts out of this global
+# list by their "<subpkgname>." prefix either way.
+install="$pkgname.post-install $pkgname.post-upgrade
+	$pkgname-openrc.post-install $pkgname-openrc.post-upgrade"
 makedepends="devicepkg-dev"
 source="
 	deviceinfo
@@ -530,7 +535,6 @@ openrc() {
 	# from this package, so it cannot be amoved in -- it is guaranteed to
 	# exist by the hard `sns-reg` depends= below instead.
 	install_if="$pkgname=$pkgver-r$pkgrel openrc"
-	install="$subpkgname.post-install $subpkgname.post-upgrade"
 	# install_if is not a dependency edge, so without an explicit depends=
 	# apk can run this post-install before sns-reg's init script exists and
 	# `rc-update add sns-reg default` fails (the script has no `set -e`, so

@@ -1,0 +1,130 @@
+From b899bea0f22a7438db5f2a7a23a5732079dc17f6 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 20 Sep 2026 15:24:45 +0200
+Subject: [PATCH] Input: ftm4 - release the interrupt on handover, so the SLPI
+ can take it
+
+ftm4.handover gave the touch i2c mux to the sensor DSP and masked our
+interrupt with disable_irq(). That is necessary and was not sufficient: the
+SLPI reported nothing, ever.
+
+ftm4_enable_sensor() in slpi_v2.mbn has two gates, not one. The first is the
+mux, ftm4_i2c_switched_to_slpi() polling tlmm 75 high for 50 x 10 ms, and
+handover already satisfied it. The second fails with
+
+  "failed to register ftm4 signal on GPIO [%d]"
+
+because the SLPI registers its OWN handler on the same pin, and disable_irq()
+masks a line we continue to own. So free the request instead, and take it back
+when the mux comes back to us.
+
+With this, the vendor's screen-off path works for the first time: hand the bus
+over, subscribe to qcom-smgr-double-tap, and a double tap on a blanked screen
+is reported by the SLPI as KEY_WAKEUP -- the AP never arms a gesture, which is
+exactly what downstream does.
+
+Measured on taimen 7.2.2, with an operator and a positive control in the same
+run (ph-slpi-dt2w-probe.py): phase 1 keeps the bus and sees a finger, phase 2
+hands over and
+
+  ARMED handover=1 gesture_en=1 ap_ftm4_irq=-1
+  RESULT the SLPI reported it: qcom-smgr-double-tap type=1 code=143 value=1
+
+ap_ftm4_irq going to -1 is the line disappearing from /proc/interrupts
+altogether, which is the proof that the release happened rather than a mask.
+Before this patch the identical run, on the same boot, reported nothing.
+
+Afterwards the interrupt is back in /proc/interrupts and its count moves
+again, touch reports normally, and there is no "nobody cared" or WARNING.
+
+The free is ordered after ftm4_stop(), which already mutes the controller's own
+interrupt, so nothing is asserting the line while it is unowned. Probe and the
+handover return path now share ftm4_request_irq() so the two cannot drift.
+
+Assisted-by: Claude
+---
+ drivers/input/touchscreen/ftm4.c | 44 +++++++++++++++++++++++++++++---
+ 1 file changed, 40 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index 5b5202ed692f..4e04ad8d004f 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -763,6 +763,23 @@ static irqreturn_t ftm4_irq(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
++/*
++ * Request our interrupt, exactly as probe does.
++ *
++ * Split out because ftm4.handover has to give the line up entirely, not merely
++ * mask it: the SLPI registers its OWN handler on the same pin. IRQF_NO_AUTOEN
++ * keeps the request and the enable separate, so the caller decides when the
++ * line goes live -- which is after ftm4_start(), never before.
++ */
++static int ftm4_request_irq(struct ftm4_ts *ts)
++{
++	struct device *dev = &ts->client->dev;
++
++	return devm_request_threaded_irq(dev, ts->client->irq, NULL, ftm4_irq,
++					 IRQF_ONESHOT | IRQF_NO_AUTOEN,
++					 "ftm4", ts);
++}
++
+ static void ftm4_release_all(struct ftm4_ts *ts)
+ {
+ 	unsigned int slot;
+@@ -966,9 +983,7 @@ static int ftm4_probe(struct i2c_client *client)
+ 	 * asserted while its event FIFO is non-empty, so it stays masked until
+ 	 * there is a registered input device to report the drained events to.
+ 	 */
+-	error = devm_request_threaded_irq(dev, client->irq, NULL, ftm4_irq,
+-					  IRQF_ONESHOT | IRQF_NO_AUTOEN,
+-					  "ftm4", ts);
++	error = ftm4_request_irq(ts);
+ 	if (error)
+ 		return dev_err_probe(dev, error, "failed to request irq\n");
+ 
+@@ -1237,17 +1252,38 @@ static int ftm4_handover_set(const char *val, const struct kernel_param *kp)
+ 
+ 	if (want) {
+ 		cancel_delayed_work_sync(&ts->health_work);
+-		disable_irq(ts->client->irq);
+ 		ftm4_stop(ts);
+ 		gpiod_set_value_cansleep(ts->switch_gpio, 0);
+ 		ftm4_release_all(ts);
++		/*
++		 * FREE the interrupt, do not just mask it. Handing over the
++		 * mux is necessary and was not sufficient: ftm4_enable_sensor()
++		 * in slpi_v2.mbn passes its tlmm 75 check and then fails at a
++		 * second gate, "failed to register ftm4 signal on GPIO [%d]",
++		 * because the SLPI registers its own handler on the same pin
++		 * and we still held the request. disable_irq() masks a line we
++		 * continue to own; only freeing it lets the SLPI have it.
++		 *
++		 * Ordered after ftm4_stop(), which has already muted the
++		 * controller's own interrupt, so nothing is asserting the line
++		 * while it is unowned.
++		 */
++		devm_free_irq(&ts->client->dev, ts->client->irq, ts);
+ 	} else {
++		error = ftm4_request_irq(ts);
++		if (error) {
++			dev_err(&ts->client->dev,
++				"failed to take the irq back: %d\n", error);
++			return error;
++		}
++
+ 		gpiod_set_value_cansleep(ts->switch_gpio, 1);
+ 		error = ftm4_start(ts);
+ 		if (error) {
+ 			dev_err(&ts->client->dev,
+ 				"failed to restart sensing: %d\n", error);
+ 			gpiod_set_value_cansleep(ts->switch_gpio, 0);
++			devm_free_irq(&ts->client->dev, ts->client->irq, ts);
+ 			return error;
+ 		}
+ 		enable_irq(ts->client->irq);
+-- 
+2.55.0
+

@@ -41,6 +41,7 @@ import pmb.build.other  # noqa: E402
 import pmb.chroot  # noqa: E402
 import pmb.config  # noqa: E402
 import pmb.helpers.mount  # noqa: E402
+import pmb.helpers.run  # noqa: E402
 import pmb.helpers.pmaports  # noqa: E402
 import pmb.parse  # noqa: E402
 from pmb.core.arch import Arch  # noqa: E402
@@ -173,6 +174,28 @@ def enter() -> tuple[CrossCompile, dict, dict]:
             print(f"::notice::recreating the cache directory {target}", flush=True)
             pmb.chroot.root(["mkdir", "-p", target], chroot)
             pmb.chroot.root(["chown", "pmos:pmos", target], chroot)
+    # The prep layer stored /home/pmos/build, APKBUILD and all, so a restored
+    # stage runs the recipe as it stood at prep time. pmbootstrap's
+    # copy_to_buildpath() cannot refresh it: it starts by deleting that
+    # directory, and that directory *is* the build. So copy the aport's own
+    # files over the top, leaving src/ and pkg/ alone.
+    #
+    # The state key covers temp/chromium, so normally the two cannot differ.
+    # They differ only when a state has been moved to a new key by hand after
+    # a change that cannot affect the build -- a check() edit, see
+    # .github/CHROMIUM.md. Without this the move silently does nothing, and
+    # the stage keeps running the old recipe.
+    aport = pmb.helpers.pmaports.find(PKG)
+    build = chroot / "home/pmos/build"
+    copied = [e.name for e in aport.iterdir() if e.name not in ("src", "pkg")]
+    for name in copied:
+        pmb.helpers.run.root(["cp", "-rL", aport / name, build / name])
+    pmb.build.other.abuild_overrides(build / "APKBUILD")
+    # Only what was copied: chown -R over the whole build directory would walk
+    # the entire out directory for nothing.
+    pmb.chroot.root(["chown", "-R", "pmos:pmos",
+                     *[f"/home/pmos/build/{name}" for name in copied]], chroot)
+
     # run_abuild() gives $WORK/packages to the chroot's build user, but only
     # when it creates the directory. The restored one exists and belongs to
     # the runner: run-pmbootstrap.sh hands the work directory back to

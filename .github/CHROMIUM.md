@@ -200,6 +200,12 @@ special case.
   gh release edit "$old" -R porthole-dev/pmaports --tag "$new" --title "$new"
   ```
 
+  The move alone is not enough: the prep layer stored `/home/pmos/build`,
+  APKBUILD and all, so a restored stage would keep running the recipe as it
+  stood at prep time. `enter()` in `chromium-stage.py` copies the aport's
+  files back over it (not pmbootstrap's `copy_to_buildpath()`, which starts by
+  deleting that directory, and that directory is the build).
+
   Only for a change after `build()` in abuild's sequence. Anything that
   touches sources, patches, gn args or `build()` itself must rebuild, and
   moving the state there would publish a package that does not match its

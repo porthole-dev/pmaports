@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jert <joseph96tb@gmail.com>
+Date: Sun, 20 Sep 2026 01:09:29 +0200
+Subject: [PATCH] Input: ftm4 - add gesture_test, to arm the wake gesture while
+ awake
+
+Testing double-tap-to-wake through a suspend needs an operator hitting a
+window announced in advance, and a three-minute cycle per attempt. The
+first run of it measured nothing at all -- the taps never landed, which
+only the interrupt counter revealed afterwards.
+
+This arms exactly what ftm4_suspend() arms, on an awake phone, so the
+controller side answers in thirty seconds and a null there means the
+controller, not the wake path. /proc/interrupts stays the positive
+control: the ftm4 line reads zero until something physically touches the
+glass.
+
+Assisted-by: Claude
+---
+ drivers/input/touchscreen/ftm4.c | 60 ++++++++++++++++++++++++++++++++
+ 1 file changed, 60 insertions(+)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index 2eb3e4596f59..4bacb53136fc 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -1066,6 +1066,66 @@ static int ftm4_resume(struct device *dev)
+  * gesture is armed, take it back on unblank -- needs ftm4 and qcom_smgr to
+  * agree on who wants the bus, and that is a design, not a knob.
+  */
++/*
++ * Arm the wake gesture on an AWAKE phone, so the controller side can be tested
++ * without a suspend. While it is set the touchscreen reports nothing except a
++ * recognised double tap, which arrives as KEY_WAKEUP on the same input device.
++ *
++ * ponytail: a debug knob, and it earns its place. The alternative is a
++ * three-minute suspend cycle per attempt with an operator hitting a window
++ * announced in advance -- which is how the first attempt at this measured
++ * nothing at all. The interrupt counter in /proc/interrupts is the positive
++ * control either way: it stays at zero until something physically touches the
++ * glass.
++ */
++static bool gesture_test;
++
++static int ftm4_gesture_test_set(const char *val, const struct kernel_param *kp)
++{
++	struct ftm4_ts *ts = ftm4_the_controller;
++	bool want;
++	int error;
++
++	error = kstrtobool(val, &want);
++	if (error)
++		return error;
++	if (!ts)
++		return -ENODEV;
++	if (want == gesture_test)
++		return 0;
++
++	/* It re-runs the init sequence, which is what leaves gesture mode. */
++	cancel_delayed_work_sync(&ts->health_work);
++
++	mutex_lock(&ts->lock);
++	error = want ? ftm4_arm_gesture(ts) : ftm4_start(ts);
++	mutex_unlock(&ts->lock);
++
++	if (error) {
++		dev_err(&ts->client->dev, "failed to %s gesture mode: %d\n",
++			want ? "enter" : "leave", error);
++		if (want)
++			queue_delayed_work(system_long_wq, &ts->health_work,
++					   msecs_to_jiffies(FTM4_HEALTH_POLL_MS));
++		return error;
++	}
++
++	if (!want)
++		queue_delayed_work(system_long_wq, &ts->health_work,
++				   msecs_to_jiffies(FTM4_HEALTH_POLL_MS));
++
++	gesture_test = want;
++	return 0;
++}
++
++static const struct kernel_param_ops ftm4_gesture_test_ops = {
++	.set = ftm4_gesture_test_set,
++	.get = param_get_bool,
++};
++module_param_cb(gesture_test, &ftm4_gesture_test_ops, &gesture_test, 0644);
++MODULE_PARM_DESC(gesture_test,
++		 "arm the double-tap wake gesture while awake, to test it without a suspend (touch reporting stops)");
++
+ static bool handover;
+ 
+ static int ftm4_handover_set(const char *val, const struct kernel_param *kp)

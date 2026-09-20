@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jert <joseph96tb@gmail.com>
+Date: Sun, 20 Sep 2026 00:35:41 +0200
+Subject: [PATCH] arm64: dts: qcom: msm8998: add the TZ DCVS limiter
+
+Two nodes, one per cluster, so drivers/thermal/qcom/lmh.c can arm the
+limiter TrustZone runs on this SoC. Interrupts and thresholds are the
+vendor's (GIC_SPI 37/38 from msm8998.dtsi's qcom,limits-dcvs@0/@1;
+MSM_LIMITS_ARM_THRESHOLD_VAL 65000, MSM_LIMITS_HIGH_THRESHOLD_VAL 95000
+and the 500 mC low offset from msm_lmh_dcvs.c), and they are the same
+numbers sdm845 carries.
+
+The vendor node has no reg -- it hardcodes the DCVS interrupt-clear
+addresses instead, MSM_LIMITS_CLUSTER_0_INT_CLR 0x179ce808 and
+_CLUSTER_1_ 0x179cc808. That is this driver's base plus its
+LMH_REG_DCVS_INTR_CLR, so the bases are 0x179ce800 and 0x179cc800, with
+cluster 0 above cluster 1 exactly as on sdm845.
+
+Assisted-by: Claude
+---
+ arch/arm64/boot/dts/qcom/msm8998.dtsi | 37 +++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998.dtsi b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+index 162df5a90788..7a86b176ac1c 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998.dtsi
++++ b/arch/arm64/boot/dts/qcom/msm8998.dtsi
+@@ -4745,6 +4745,43 @@ gnoc: interconnect@17900000 {
+ 			#interconnect-cells = <2>;
+ 		};
+ 
++		/*
++		 * TrustZone's own DCVS limiter, the layer that acts first and
++		 * fastest on this SoC: it caps the OSM autonomously from 65 C
++		 * junction, in hardware, and Linux only reads the cap back.
++		 * The vendor arms it at probe from drivers/thermal/
++		 * msm_lmh_dcvs.c and nothing else turns it on, so without
++		 * these nodes the limiter never runs at all.
++		 *
++		 * The register is the DCVS interrupt-clear block; the vendor
++		 * names its offset 8 directly (MSM_LIMITS_CLUSTER_0_INT_CLR
++		 * 0x179ce808, _1_ 0x179cc808), and cluster 0 sits ABOVE
++		 * cluster 1 here exactly as it does on sdm845.
++		 */
++		lmh_cluster1: lmh@179cc800 {
++			compatible = "qcom,msm8998-lmh";
++			reg = <0x179cc800 0x400>;
++			interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
++			cpus = <&cpu4>;
++			qcom,lmh-temp-arm-millicelsius = <65000>;
++			qcom,lmh-temp-low-millicelsius = <94500>;
++			qcom,lmh-temp-high-millicelsius = <95000>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++		};
++
++		lmh_cluster0: lmh@179ce800 {
++			compatible = "qcom,msm8998-lmh";
++			reg = <0x179ce800 0x400>;
++			interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
++			cpus = <&cpu0>;
++			qcom,lmh-temp-arm-millicelsius = <65000>;
++			qcom,lmh-temp-low-millicelsius = <94500>;
++			qcom,lmh-temp-high-millicelsius = <95000>;
++			interrupt-controller;
++			#interrupt-cells = <1>;
++		};
++
+ 		cpufreq_hw: cpufreq-hw@17914800 {
+ 			compatible = "qcom,cpufreq-hw-8998";
+ 			reg = <0x017914800 0x100>,  <0x017814800 0x100>,

@@ -1,0 +1,98 @@
+From 894957f201c0cf44a7d285cbe563a7fb8175a68b Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 20 Sep 2026 15:19:13 +0200
+Subject: [PATCH] Input: ftm4 - stop sensing the way the vendor does
+
+ftm4_stop() sent SENSEOFF and nothing else. Downstream's fts_stop_device()
+sends more than that, on both of its branches:
+
+  fts_interrupt_set(info, INT_DISABLE);   /* B6 00 2C 08 -- register 0x2c */
+  fts_irq_enable(info, false);
+  synchronize_irq(info->irq);
+  fts_command(info, FLUSHBUFFER);         /* 0xa1 */
+  fts_command(info, SENSEOFF);            /* 0x92, lowpower branch */
+  fts_command(info, FLUSHBUFFER);
+
+Our register and value defines are already the vendor's bytes -- 0x2c with
+0x48/0x08 -- and ftm4_start() already ends in FTM4_INTERRUPT_ENABLE, so only
+the stop side was missing.
+
+It matters because the interrupt is level triggered and the controller holds
+it asserted while its event FIFO is non-empty. Sending SENSEOFF alone leaves
+the part with events queued and its own interrupt un-muted, so whoever takes
+the controller next inherits a line that is already asserted. That is most
+pointed for ftm4.handover, where the next owner is the SLPI reinitialising a
+chip we handed it in that state.
+
+Both callers are paired: ftm4_suspend()'s non-gesture path is undone by
+ftm4_resume() -> ftm4_start(), and handover=1 by handover=0 -> ftm4_start().
+The gesture path does not go through here at all -- it arms instead of
+stopping -- so double-tap-from-suspend is untouched.
+
+Verified: with this in place the touchscreen still reports normally, a
+handover is still visibly taken (the ftm4 interrupt count stops moving), and
+the bus comes back with sensing alive afterwards.
+
+NOT verified, and stated plainly: this does not by itself make the SLPI report
+a double tap. With the bus handed over, the qcom-smgr-double-tap subscription
+accepted (id 243, 1 Hz, report_rate 65536) and an operator tapping against a
+positive control, the SLPI reported nothing. That is a separate, still open
+question; this patch is vendor parity, not its fix.
+
+Assisted-by: Claude
+---
+ drivers/input/touchscreen/ftm4.c | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index 7f877e42176c..5b5202ed692f 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -418,14 +418,44 @@ static int ftm4_start(struct ftm4_ts *ts)
+ 	return ftm4_write_reg(ts, FTM4_REG_INTERRUPT, FTM4_INTERRUPT_ENABLE);
+ }
+ 
++/*
++ * Stop sensing, in the vendor's order.
++ *
++ * fts_stop_device() does INT_DISABLE (a write of 0x08 to register 0x2c, which
++ * mutes the controller's own interrupt line), then FLUSHBUFFER, SENSEOFF and
++ * FLUSHBUFFER again, on both its branches. This used to send SENSEOFF alone,
++ * which leaves the part with a populated event FIFO and an un-muted INT --
++ * and because the line is level triggered and held asserted while that FIFO
++ * is non-empty, whoever takes the controller next inherits an interrupt that
++ * is already asserted. That matters most for ftm4.handover: the SLPI reinits
++ * a chip it was handed in exactly that state.
++ *
++ * ftm4_start() already mirrors the other half of the vendor sequence and ends
++ * in FTM4_INTERRUPT_ENABLE, so the mute here is always paired.
++ */
+ static void ftm4_stop(struct ftm4_ts *ts)
+ {
+ 	int error;
+ 
++	error = ftm4_write_reg(ts, FTM4_REG_INTERRUPT, FTM4_INTERRUPT_DISABLE);
++	if (error)
++		dev_warn(&ts->client->dev, "failed to mute the interrupt: %d\n",
++			 error);
++
++	error = ftm4_command(ts, FTM4_CMD_FLUSH_BUFFER);
++	if (error)
++		dev_warn(&ts->client->dev, "failed to flush before stopping: %d\n",
++			 error);
++
+ 	error = ftm4_command(ts, FTM4_CMD_SENSE_OFF);
+ 	if (error)
+ 		dev_warn(&ts->client->dev, "failed to stop sensing: %d\n",
+ 			 error);
++
++	error = ftm4_command(ts, FTM4_CMD_FLUSH_BUFFER);
++	if (error)
++		dev_warn(&ts->client->dev, "failed to flush after stopping: %d\n",
++			 error);
+ }
+ 
+ /*
+-- 
+2.55.0
+

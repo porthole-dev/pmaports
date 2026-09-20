@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=76
+pkgrel=77
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -342,6 +342,7 @@ source="
 	0252-media-i2c-imx179-imx362-let-the-sensors-idle-after-p.patch
 	0253-Input-ftm4-add-gesture_test-to-arm-the-wake-gesture-.patch
 	0254-Input-ftm4-do-not-read-the-controller-from-the-wake-.patch
+	0255-Input-ftm4-stop-sensing-the-way-the-vendor-does.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -627,4 +628,5 @@ f7cdb93e913219363ece763a9305ee9f699a59796f441bb8278933d4088b376026954d1cc1fdf1a7
 e1d81f9e4bf08daad56f098d2e9afbcc71b82c990015f5140ae7d72ffc337d2ec0f3328d9244c6e25520276543a72cd74ede6218da2a7ae1033dc4c581410b90  0252-media-i2c-imx179-imx362-let-the-sensors-idle-after-p.patch
 5d3122fa49ab166324ccc6d67a0839a618ce7561a11bb993e2f2d43de0729f299115da4aacf06a43c3080f6bf40c4eb435507671ca4c2596a9c5d384877c19ed  0253-Input-ftm4-add-gesture_test-to-arm-the-wake-gesture-.patch
 500037feafcf3bb1527547cc607ab07f87b5cefd9ccdd3b2442d502da9c8d3036b24ab1b5295699a477ac726b30604ea989a1c5fffaa3b76aea4267c7f15d81d  0254-Input-ftm4-do-not-read-the-controller-from-the-wake-.patch
+911decc66588b83cfade854ce3038fff702306c9b470af2804eb9d73379e145c9b015b79a680d9106187530311fd616aecfc2e6b413cd6ae463547818861ef92  0255-Input-ftm4-stop-sensing-the-way-the-vendor-does.patch
 "

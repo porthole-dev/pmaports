@@ -79,6 +79,15 @@ jobs:
             /opt/hostedtoolcache /usr/lib/jvm /usr/share/swift /usr/local/share/powershell \
             /usr/lib/google-cloud-sdk /opt/az /usr/local/julia* /opt/microsoft /opt/google
           docker image prune -af >/dev/null
+          # chromium's death tests crash processes on purpose, thousands of
+          # times. /proc/sys/kernel/core_pattern is not namespaced, so every
+          # one of those crashes runs *this* runner's core dump helper --
+          # Ubuntu's apport -- and each apport costs about 100 MB. Measured on
+          # the package job: 171 -> 452 processes and AnonPages 1 GB -> 13.6 GB
+          # in 85 seconds, then the VM is gone and uploads no logs.
+          # /bin/false is the cheapest possible helper: no core file, no disk.
+          echo '|/bin/false' | sudo tee /proc/sys/kernel/core_pattern
+          sudo systemctl stop apport.service 2>/dev/null || true
           df -h /
       - name: Restore the state
         if: inputs.mode != 'prep'

@@ -1064,6 +1064,14 @@ check_base_unittests() {
 	# Fails on CI only (k8s?)
 	broken="$broken:ProcessUtilTest.CloneFlags"
 
+	# Sets the spin count to INT_MAX and asserts that a contended TryLock
+	# then acquires without ever entering the kernel. That is an assertion
+	# about the scheduler, not about the code: on a shared 4 vCPU runner the
+	# spinning thread loses its timeslice and falls through to the futex, so
+	# the metrics sample it expects to be absent is recorded. Upstream
+	# already disables it on macOS and iOS for being flaky.
+	broken="$broken:LockTrySpinTest.TrySpinAvoidsSyscall"
+
 	# test-launcher-bot-mode enables parallelism and uncolored output
 	./out/bld/base_unittests --test-launcher-bot-mode --gtest_filter="-$broken"
 }

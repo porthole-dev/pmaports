@@ -30,8 +30,8 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: Pablo Correa Gomez <pabloyoyoista@postmarketos.org>
 # Contributor: team/gnome <achill@achill.org>
 pkgname=gnome-control-center
-pkgver=50.4
-pkgrel=53
+pkgver=51.0
+pkgrel=54
 pkgdesc="GNOME control center"
 url="https://gitlab.gnome.org/GNOME/gnome-control-center"
 arch="all"
@@ -121,8 +121,8 @@ package() {
 }
 
 sha512sums="
-60e4bc9e6b31edf2765f786bcbd49bed683f21960f48eeb6bb87c44602fb7ae32d85b7d930e8cdcfcd8d0eb5a9c5a1d0c08e0a8ddd213f8c5a4c8d29c3359c95  gnome-control-center-50.4.tar.xz
+d12f832dd09c5df3757c2bef606eb6a98ca1d58fe3e7b26d9c21bf5b9de7161bf9b60deb474081de1a79988ffe78e79a012fd6d447d259ac59bb561ba46b0ffd  gnome-control-center-51.0.tar.xz
 350aa443149c71851ad4de0976c7fc5cb626ba0c57a8d41e6ef80da1c65ed84a4dfa2483ae92630a3b611c4bfa9360ded82b55e8cd0e3907294c025e4f6b1671  README.alpine
-cd72ab51ad4646e9c9287500b664cf7e556e1467cf346ccc3cc739d04a6d870c1cceacdc3dcbf8fc5024cf32c18254c3c8833e2b69fe2f021b2c43b17c346fff  privacy-add-an-nfc-page.patch
-d77e0567dca77156b675a0a63c38234c348aca18afdd78e9ecc168b0643175120dae0f49e7f30f57f0f1a1a34818a5d07fe01709e35db4c08fd7ecdc1f91d5b9  users-offer-fingerprint-login-without-gdm.patch
+d6936f298d2bf84bcb5ef8365fc17907dd380e0468ad9d8af55b9d3a241dc1db0020b89da48a6c525ba61a6cb47b80abebc8cf0c156d4b6462e7b24cbec4ca75  privacy-add-an-nfc-page.patch
+75b7fc83e48699190ebd988c4897659df6fc329dbd7b440491704fa947b7712b544af5330a02ee36a01967229a7ce0a09729047a51e7d2e56316a1c95d856331  users-offer-fingerprint-login-without-gdm.patch
 "

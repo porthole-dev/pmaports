@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=63
+pkgrel=64
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -188,7 +188,6 @@ source="
 	qsee-supplicant.service
 	qsee-supplicant.socket
 	taimen-fingerprint-modules.conf
-	taimen-login-screen.gschema.xml
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -603,14 +602,6 @@ fingerprint() {
 		"$subpkgdir"/usr/lib/systemd/system/qsee-supplicant.socket
 	install -Dm644 "$srcdir"/taimen-fingerprint-modules.conf \
 		"$subpkgdir"/usr/lib/modules-load.d/taimen-fingerprint.conf
-
-	# Without org.gnome.login-screen, gnome-control-center hides the
-	# fingerprint row before it ever asks fprintd whether a sensor exists.
-	# The schema ships with GDM and this device autologins through greetd,
-	# so nothing else provides it. See the file for the measurement.
-	# glib-compile-schemas runs from apk's own trigger on this directory.
-	install -Dm644 "$srcdir"/taimen-login-screen.gschema.xml \
-		"$subpkgdir"/usr/share/glib-2.0/schemas/taimen-login-screen.gschema.xml
 }
 
 kernel_mainline() {
@@ -679,7 +670,7 @@ eab9f64855751288d2fb07b9fce20c02cdcb89671b561e4e16bf741d5c6b695b250f9ee4b7374bb3
 fe7a7ea7bc5410ce6076ba12252ce43f5f26c24d9c92d98f5969ca861c45dad109e3e75dfe7a647a268aa5a5e15dfdf63d87e2f46b63b071d3110933a0f96e3c  taimen-ambient-nudge.service
 2d33b8083613f9be530f3901655042aad569e735e20208743ed3b605192787775151171e5ad3ae43f8e04a7fd8bccc037fd6450df4fc2d6fa54cf1054ae9fb29  taimen-perf.rules
 4d627702857106f4166b011185a7e26573b14f78d833fb21d1be5decda87188a1c2e8d9774f647fe3602205730960fa0522ed95e9a42dcf5278dbc6edff6fa9b  taimen-perf.conf
-099af1a90fb815ae24831cca5e167f46f53aa9b50517d0d44abe2613aa904545dd3259d9aad8f2f2075130e76ff91dc8081ab719f115f7e0a4b4884f83ab0b78  taimen-gsk.conf
+0c2f89616e7c40f61c755d6e4fe84157f0ae803a38d7838075b524b040fb263200c644f7ce913d7d201e2a01ea727d5a57df43b31e30f782176f3c7dde0ba1bf  taimen-gsk.conf
 affcfc2eea5afff6b57bdcdcc8173ca30585a088a5d47c38410076d5e3c101ef11506f06a9e2a6b516afa24d6b932a1a6d8549c1f99b848b8121597cae33f28a  taimen-av1.conf
 12344eff61f411b2c3dfe1d24dd18cd4892321f6236ccd696bfc00c044e7649fb110e47f49bf0f499c14a5e5747433418b276e4261d03387b760cb7d56c984cb  taimen-webkit.conf
 0cfab60cdd0189965cb0b3902bfc2c3f510d6c1df5499dba97e8cbe35b52b3ad0590278ac952a4cb32f81a4a1ab575cc682717714493e7584435e7ca2e397dc0  taimen-chromium.conf
@@ -703,5 +694,4 @@ d6f4fcec11c794d73484c735a0b2be8befa00b16a77ed3dbb798d345a7b6ea3fb0bfc87c682a9256
 716315d426b297fbb023ea4b4c4a2d54ee5a9e76cf680ca0bc09021cb8f085b08d267cd775e59e640c71ae101590c7873b04ec3add6b5e0a890bd2dd12ec6d3d  qsee-supplicant.service
 c9eea05ba92470763309d73eff937045f80d2b4dead9aa2922f8028c684b1c8afe0afe94b677df7849f760a0763033290737c235de57b2666c9f5d82fef4e760  qsee-supplicant.socket
 95f5094e2a4bb5abbb4010db037302c20e4b6d5745dddbe720e6283830391bdbef629534f43f1060b854638c61e3f9909f182d600897398d042bbca7087843d3  taimen-fingerprint-modules.conf
-1e1f78bf46fb1640f02fb094a2bce15cf76026928aaf5c41717378974f41e7bf68dca6624d8bd3d3609bb274592bd7fa0f309e854bc8248ef5cf4d5e7acb88af  taimen-login-screen.gschema.xml
 "

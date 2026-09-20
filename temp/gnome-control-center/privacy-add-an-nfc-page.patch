@@ -52,65 +52,42 @@ diff --git a/panels/privacy/cc-privacy-panel.blp b/panels/privacy/cc-privacy-pan
 index 10e6c51..4e78dc0 100644
 --- a/panels/privacy/cc-privacy-panel.blp
 +++ b/panels/privacy/cc-privacy-panel.blp
-@@ -65,6 +65,16 @@ template $CcPrivacyPanel: $CcPanel {
-             action-target: "'camera'";
-           }
+@@ -62,6 +62,16 @@ template $CcPrivacyPanel: $CcPanel {
+           action-target: "'camera'";
+         }
  
-+          $CcListRow nfc_row {
-+            visible: false;
-+            title: _("_NFC");
-+            subtitle: _("Control NFC access");
-+            icon-name: "org.gnome.Settings-nfc-access-symbolic";
-+            show-arrow: true;
-+            action-name: "navigation.push";
-+            action-target: "'nfc'";
-+          }
++        $CcListRow nfc_row {
++          visible: false;
++          title: _("_NFC");
++          subtitle: _("Control NFC access");
++          icon-name: "org.gnome.Settings-nfc-access-symbolic";
++          show-arrow: true;
++          action-name: "navigation.push";
++          action-target: "'nfc'";
++        }
 +
-           $CcListRow bolt_row {
-             visible: false;
-             title: _("_Thunderbolt");
-diff --git a/panels/privacy/cc-privacy-panel.c b/panels/privacy/cc-privacy-panel.c
-index 4ae1421..94d8db7 100644
+         $CcListRow bolt_row {
+           visible: false;
+           title: _("_Thunderbolt");
 --- a/panels/privacy/cc-privacy-panel.c
 +++ b/panels/privacy/cc-privacy-panel.c
-@@ -30,6 +30,7 @@
+@@ -31,5 +31,6 @@
+ #include "diagnostics/cc-diagnostics-page.h"
  #include "firmware-security/cc-firmware-security-page.h"
- #include "cc-list-row.h"
  #include "location/cc-location-page.h"
 +#include "nfc/cc-nfc-page.h"
- #include "cc-privacy-resources.h"
  #include "screen/cc-screen-page.h"
  #include "usage/cc-usage-page.h"
-@@ -40,6 +41,7 @@ struct _CcPrivacyPanel
- 
-   CcListRow         *bolt_row;
-   CcListRow         *location_row;
-+  CcListRow         *nfc_row;
+@@ -42,2 +43,3 @@
+     CcListRow *location_row;
++    CcListRow *nfc_row;
  };
+@@ -76,4 +78,5 @@
+     gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, bolt_row);
+     gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, location_row);
++    gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, nfc_row);
  
- CC_PANEL_REGISTER (CcPrivacyPanel, cc_privacy_panel)
-@@ -70,6 +72,7 @@ cc_privacy_panel_class_init (CcPrivacyPanelClass *klass)
- 
-   gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, bolt_row);
-   gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, location_row);
-+  gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, nfc_row);
- 
-   g_type_ensure (CC_TYPE_CAMERA_PAGE);
-   g_type_ensure (CC_TYPE_DIAGNOSTICS_PAGE);
-@@ -103,4 +106,11 @@ cc_privacy_panel_init (CcPrivacyPanel *self)
-   g_object_bind_property (location_page, "visible",
-                           self->location_row, "visible", G_BINDING_SYNC_CREATE);
- #endif
-+
-+  CcNfcPage *nfc_page = g_object_new (CC_TYPE_NFC_PAGE, NULL);
-+
-+  cc_panel_add_subpage (CC_PANEL (self), "nfc", ADW_NAVIGATION_PAGE (nfc_page));
-+
-+  g_object_bind_property (nfc_page, "visible",
-+                          self->nfc_row, "visible", G_BINDING_SYNC_CREATE);
- }
-diff --git a/panels/privacy/icons/meson.build b/panels/privacy/icons/meson.build
-index 59a4777..2033cb2 100644
+     g_type_ensure (CC_TYPE_CAMERA_PAGE);
 --- a/panels/privacy/icons/meson.build
 +++ b/panels/privacy/icons/meson.build
 @@ -5,6 +5,7 @@ install_data(

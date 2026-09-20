@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=80
+pkgrel=82
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -347,6 +347,8 @@ source="
 	0257-Input-ftm4-follow-the-panel-so-the-SLPI-gets-the-con.patch
 	0258-arm64-dts-qcom-msm8998-google-taimen-make-the-touchs.patch
 	0259-arm64-dts-qcom-msm8998-give-CAMSS-the-TOP-GDSC-it-vo.patch
+	0260-drm-panel-lg-sw43402-send-display-on-after-the-first.patch
+	0261-drm-panel-lg-sw43402-record-why-the-msm-coupling-can.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -637,4 +639,6 @@ e1d81f9e4bf08daad56f098d2e9afbcc71b82c990015f5140ae7d72ffc337d2ec0f3328d9244c6e2
 c1d71ce10ce5f03addae1bd158f28433d3e5d7cb935808f99cc36410eb8905762c7d235b9b9dadcaf6096037d26db15507b90ecc4d34afb0935316f4357a7386  0257-Input-ftm4-follow-the-panel-so-the-SLPI-gets-the-con.patch
 153d886c386ed84883535f38004279f99894c614c6ce643956291e930d14d76654a3324fb290c93ea6e9cfd3748f70dae724ba5f4c6b0c8b76b52b956f3b06a9  0258-arm64-dts-qcom-msm8998-google-taimen-make-the-touchs.patch
 be183e4d5da7234be49b1d174e25089d3df66047d0f60935e5788251fe4bbfbdf8ef73005b29ab6387ec373ca0c96b933b0afca44db51882cdc15fa7978b8207  0259-arm64-dts-qcom-msm8998-give-CAMSS-the-TOP-GDSC-it-vo.patch
+0ea690ddd413032ee0b29d8229828a4cc08e476889950ef59f21b8953dbfd41c50d4eab539b3064bc05080a10c5e7cd8b8dfc6c289b022ec4b63c3288fbcb003  0260-drm-panel-lg-sw43402-send-display-on-after-the-first.patch
+b2eba63711a57d5b34a8bf186b5257ed8cfb769827b6f250805851c0f7ae7fa76d81fe67231eae32c858c5d9d1ae8fc514ea8c21ee3fbdc40ef916faf6f3c011  0261-drm-panel-lg-sw43402-record-why-the-msm-coupling-can.patch
 "

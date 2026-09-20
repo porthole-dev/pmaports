@@ -48,25 +48,35 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-last=
+# Reconcile, do not trust edges. An edge-triggered loop leaves the phone in a
+# state it can never correct: reloading the ftm4 module resets handover to N
+# while the screen is still off, and an edge-only loop sees no transition and
+# leaves double-tap dead until the next blank. Enforcing the desired state on
+# every poll is idempotent and self-healing.
+#
+# Polled twice a second, not once: the gap between the screen going off and the
+# subscription being live is a window in which a tap is lost, and at 1 Hz plus a
+# one-second settle that window was long enough to have to tap twice.
 while :; do
-	now=$(cat "$DPMS" 2>/dev/null)
-	if [ "$now" != "$last" ]; then
-		case $now in
-		Off)
+	if [ "$(cat "$DPMS" 2>/dev/null)" = Off ]; then
+		if [ "$(cat "$HANDOVER" 2>/dev/null)" != Y ]; then
 			echo 0 > "$EN" 2>/dev/null
 			echo 1 > "$HANDOVER" 2>/dev/null
-			sleep 1
+			# Let the mux settle before the SLPI looks at tlmm 75.
+			sleep 0.2
 			echo 1 > "$EN" 2>/dev/null
-			;;
-		On)
+		elif [ "$(cat "$EN" 2>/dev/null)" != 1 ]; then
+			# Handed over but not subscribed: re-issue it. This is the
+			# only order that works, so never subscribe first.
+			echo 1 > "$EN" 2>/dev/null
+		fi
+	else
+		if [ "$(cat "$HANDOVER" 2>/dev/null)" != N ]; then
 			echo 0 > "$EN" 2>/dev/null
 			echo 0 > "$HANDOVER" 2>/dev/null
-			;;
-		esac
-		last=$now
+		fi
 	fi
 	# `& wait` so SIGTERM is acted on now rather than after the sleep: without
 	# it systemd waits out the full stop timeout and kills the unit.
-	sleep 1 & wait $!
+	sleep 0.5 & wait $!
 done

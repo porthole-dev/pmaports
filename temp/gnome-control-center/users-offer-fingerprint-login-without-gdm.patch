@@ -12,26 +12,29 @@ a working reader had no way to enrol a finger at all.
 Keep deferring to GDM's setting when it exists, and treat its absence as
 no policy against it.
 
+Rebased onto 51.0, which rewrote this condition: it dropped the
+act_user_is_local_account() term and reflowed the expression, so the
+50.4 patch no longer applied.
+
 Assisted-by: Claude
 Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
 ---
- panels/system/users/cc-user-page.c | 4 +++-
- 1 file changed, 3 insertions(+), 1 deletion(-)
+ panels/system/users/cc-user-page.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
 
-diff --git a/panels/system/users/cc-user-page.c b/panels/system/users/cc-user-page.c
-index df33bd1..5a12ba1 100644
 --- a/panels/system/users/cc-user-page.c
 +++ b/panels/system/users/cc-user-page.c
-@@ -346,9 +346,11 @@ update_fingerprint_row_state (CcUserPage           *self,
+@@ -344,9 +344,11 @@
      CcFingerprintState state = cc_fingerprint_manager_get_state (manager);
      gboolean visible = FALSE;
  
 +    /* Without GDM there is no login-screen policy to defer to; the lock
 +     * screen (Phosh's, for one) can still take a fingerprint. */
-     visible = (act_user_get_uid (self->user) == getuid () &&
-                act_user_is_local_account (self->user) &&
--               (self->login_screen_settings &&
-+               (!self->login_screen_settings ||
-                 g_settings_get_boolean (self->login_screen_settings,
-                                         "enable-fingerprint-authentication")));
+     visible = (act_user_get_uid (self->user) == getuid ()
+-               && (self->login_screen_settings
+-                   && g_settings_get_boolean (self->login_screen_settings, "enable-fingerprint-authentication")));
++               && (!self->login_screen_settings
++                   || g_settings_get_boolean (self->login_screen_settings, "enable-fingerprint-authentication")));
      gtk_widget_set_visible (GTK_WIDGET (self->fingerprint_row), visible);
+     if (!visible)
+         return;

@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 20 Sep 2026 22:12:31 +0200
+Subject: [PATCH] drm/panel: lg-sw43402: record why the msm coupling cannot go
+ upstream as-is
+
+Verified on hardware: the flash is gone and the unblank is faster than the
+80 ms timer it replaced, because display-on now lands one frame after enable
+instead of waiting out a worst-case delay.
+
+The shape is still not upstreamable, and that should be written down at the
+place it would bite rather than discovered by whoever sends the patch. A panel
+driver reaching into one specific DSI host is a layering violation DRM review
+rejects; it only works because both live in this tree.
+
+The blocker is that DRM has no hook: drm_panel_funcs offers prepare, enable,
+disable and unprepare, and nothing that fires after the first commit. The
+mainline sibling panel-lg-sw43408.c -- same LG family, also cmd-mode DSC --
+has the same latent bug and papers over it with set_display_on followed by
+msleep(50). That is exactly what this driver used to do, and what the flash
+was.
+
+So upstreaming means proposing the hook, not finding one. Noted as
+TODO(upstream) with the argument already assembled: the general case, the
+sibling as evidence it is not taimen-specific, and the vendor's own
+mdss_mdp_cmd_kickoff() comment with its zero-wait post-panel-on command.
+
+Kept in this form on purpose until someone builds that series. It is measured
+and it works; the abstraction is worth doing once, properly, rather than
+guessed at here.
+
+Assisted-by: Claude
+---
+ drivers/gpu/drm/panel/panel-lg-sw43402.c | 30 ++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/drivers/gpu/drm/panel/panel-lg-sw43402.c b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+index 45984e284369..14188dce276f 100644
+--- a/drivers/gpu/drm/panel/panel-lg-sw43402.c
++++ b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+@@ -25,6 +25,36 @@
+  * and the msm DSI host is the only thing that counts completed cmd-mode
+  * frames. See display_on_timeout_ms. Both are EXPORT_SYMBOL_GPL there; if
+  * either signature moves, this breaks at link time rather than silently.
++ *
++ * TODO(upstream): this shape is NOT upstreamable and must not be sent as-is.
++ * A panel driver reaching into one specific DSI host driver is a layering
++ * violation DRM review rejects, and it only works because both live in this
++ * tree.
++ *
++ * The blocker is that DRM has no hook for it: drm_panel_funcs offers
++ * prepare/enable/disable/unprepare and nothing that fires after the first
++ * frame is committed. Checked against this tree, 2026-09-20 -- and the
++ * mainline sibling panel-lg-sw43408.c, same LG family and also cmd-mode DSC,
++ * has the same latent bug and papers over it with
++ *
++ *     mipi_dsi_dcs_set_display_on_multi(&ctx);
++ *     mipi_dsi_msleep(&ctx, 50);
++ *
++ * i.e. a magic sleep, which is what this driver used to do and what the flash
++ * on every unblank actually was.
++ *
++ * So upstreaming means PROPOSING the hook, not finding one: a drm_panel_funcs
++ * or drm_bridge_funcs op invoked after the first commit, msm calling it, this
++ * panel using it. The general case is easy to argue -- a DSC cmd-mode panel
++ * cannot legally send display-on before GRAM has been written, every such
++ * panel hits it, and today they all guess a duration. The vendor's own
++ * mdss_mdp_cmd_kickoff() comment is the supporting evidence: "the panel is
++ * turned on only when we send the first frame ... to ensure that no artifacts
++ * are seen on the panel", with a zero wait field on its post-panel-on command.
++ *
++ * Kept in this form deliberately until then: it is measured, it works, and the
++ * abstraction that would make it upstreamable is worth building once, as a
++ * series, rather than guessed at here.
+  */
+ bool msm_dsi_wait_one_frame(u32 since, unsigned int timeout_ms);
+ u32 msm_dsi_frames_done(void);

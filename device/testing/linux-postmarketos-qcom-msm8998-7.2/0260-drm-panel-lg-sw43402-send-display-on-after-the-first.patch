@@ -1,0 +1,263 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 20 Sep 2026 22:01:49 +0200
+Subject: [PATCH] drm/panel: lg-sw43402: send display-on after the first frame,
+ like the vendor
+
+On a DSC cmd-mode panel the DDIC's GRAM holds garbage after a re-init, so
+display-on (0x29) sent before the first frame has landed flashes that garbage.
+Reported from the device 2026-09-20 as full-screen RGB noise, one frame long,
+on every unblank, and worst when the power key is pressed repeatedly.
+
+This was already known and worked around with a fixed 80 ms delay. That is a
+race, not a fix: too short and the flash returns whenever the first frame is
+late -- which hammering the power key makes likely, and is exactly how it was
+reported -- too long and every wake is needlessly black. Raising the knob to
+400 ms removed the flash on hardware, which is what proved the mechanism. It
+is also not shippable: nobody wants 400 ms of black on every wake.
+
+The vendor does not use a delay at all. mdss_mdp_cmd_kickoff() turns the panel
+on INSIDE the kickoff and fires MDSS_EVENT_POST_PANEL_ON after
+__mdss_mdp_kickoff() returns, with its own comment saying why: "the panel is
+turned on only when we send the first frame and not during cmd start. This is
+to ensure that no artifacts are seen on the panel." Their
+qcom,mdss-dsi-post-panel-on-command is `05 01 00 00 00 00 01 29` -- wait field
+zero. It is ordering, not timing.
+
+dsi_host already counts completed cmd-mode frames for the DCS/frame interlock,
+so the same ordering is expressible directly: msm_dsi_wait_one_frame() blocks
+on frame_wait until frame_done passes the value the panel snapshotted in
+enable(). Display-on now lands one frame after enable -- about 17 ms -- and
+never before the GRAM has been written.
+
+The knob survives as a fallback CEILING rather than a delay. If no frame ever
+arrives the panel still sends 0x29, because without it the panel never scans
+at all (no TE, "frame done timeout") and a dark panel is worse than one flash;
+it warns when that happens, so a real regression in the frame path cannot hide
+behind a silent fallback. 0 still means "send inline", kept for bisecting.
+
+The two helpers are EXPORT_SYMBOL_GPL and declared in the panel rather than
+included: msm_drv.h is private to the msm driver and this panel is a separate
+module. The coupling is narrow and stated at the declaration -- if either
+signature moves it breaks at link time, not silently.
+
+Assisted-by: Claude
+---
+ drivers/gpu/drm/msm/dsi/dsi_host.c       | 54 ++++++++++++++++
+ drivers/gpu/drm/msm/msm_drv.h            | 10 +++
+ drivers/gpu/drm/panel/panel-lg-sw43402.c | 80 ++++++++++++++++++++----
+ 3 files changed, 131 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/dsi/dsi_host.c b/drivers/gpu/drm/msm/dsi/dsi_host.c
+index c899a76766b3..7558572051d4 100644
+--- a/drivers/gpu/drm/msm/dsi/dsi_host.c
++++ b/drivers/gpu/drm/msm/dsi/dsi_host.c
+@@ -1311,6 +1311,60 @@ static bool dsi_frame_pending(struct msm_dsi_host *msm_host)
+ 		     READ_ONCE(msm_host->frame_done)) > 0;
+ }
+ 
++/*
++ * How many cmd-mode frames this panel's host has COMPLETED (CMD_MDP_DONE),
++ * and a bounded wait for the next one.
++ *
++ * WHY A PANEL WANTS THIS. On a DSC cmd-mode panel the DDIC's GRAM holds
++ * garbage after a re-init, so sending display-on (0x29) before the first
++ * frame has landed flashes that garbage on every unblank -- full-screen RGB
++ * noise, reported from the device 2026-09-20. The panel driver worked around
++ * it with a fixed delay, which is a race: it is either too short (the flash
++ * comes back when the first frame is late, which hammering the power key
++ * makes likely) or too long, and 400 ms of black on every wake is not what
++ * anyone wants.
++ *
++ * The vendor does not use a delay at all. In mdss_mdp_cmd_kickoff() it turns
++ * the panel on inside the kickoff and then fires MDSS_EVENT_POST_PANEL_ON
++ * AFTER __mdss_mdp_kickoff() returns, with its own comment saying why: "the
++ * panel is turned on only when we send the first frame ... to ensure that no
++ * artifacts are seen on the panel". Their post-panel-on command carries a
++ * zero wait field. It is ordering, not timing.
++ *
++ * This is the same thing expressed against the counter this host already
++ * keeps. Returns false on timeout WITHOUT having waited for a frame, so the
++ * caller can decide between "send anyway" and "give up"; a panel that never
++ * receives a frame must still be able to come up.
++ */
++bool msm_dsi_wait_one_frame(u32 since, unsigned int timeout_ms)
++{
++	struct msm_dsi_host *msm_host = READ_ONCE(cmd_sync_host);
++	long left;
++
++	/*
++	 * No host registered for cmd sync means nothing is counting frames,
++	 * so there is nothing to wait for and reporting "waited" would be a
++	 * lie. brain/laws/empty-must-mean-unknown-never-changed.
++	 */
++	if (!msm_host)
++		return false;
++
++	left = wait_event_timeout(msm_host->frame_wait,
++				  (s32)(READ_ONCE(msm_host->frame_done) -
++					since) > 0,
++				  msecs_to_jiffies(timeout_ms));
++	return left > 0;
++}
++EXPORT_SYMBOL_GPL(msm_dsi_wait_one_frame);
++
++u32 msm_dsi_frames_done(void)
++{
++	struct msm_dsi_host *msm_host = READ_ONCE(cmd_sync_host);
++
++	return msm_host ? READ_ONCE(msm_host->frame_done) : 0;
++}
++EXPORT_SYMBOL_GPL(msm_dsi_frames_done);
++
+ void msm_dsi_cmd_kickoff_begin(void)
+ {
+ 	struct msm_dsi_host *msm_host = READ_ONCE(cmd_sync_host);
+diff --git a/drivers/gpu/drm/msm/msm_drv.h b/drivers/gpu/drm/msm/msm_drv.h
+index 74b7b3239aee..f1e931327c5c 100644
+--- a/drivers/gpu/drm/msm/msm_drv.h
++++ b/drivers/gpu/drm/msm/msm_drv.h
+@@ -306,6 +306,8 @@ bool msm_dsi_wide_bus_enabled(struct msm_dsi *msm_dsi);
+ struct drm_dsc_config *msm_dsi_get_dsc_config(struct msm_dsi *msm_dsi);
+ const char *msm_dsi_get_te_source(struct msm_dsi *msm_dsi);
+ void msm_dsi_cmd_kickoff_begin(void);
++bool msm_dsi_wait_one_frame(u32 since, unsigned int timeout_ms);
++u32 msm_dsi_frames_done(void);
+ #else
+ static inline void __init msm_dsi_register(void)
+ {
+@@ -351,6 +353,14 @@ static inline const char *msm_dsi_get_te_source(struct msm_dsi *msm_dsi)
+ static inline void msm_dsi_cmd_kickoff_begin(void)
+ {
+ }
++static inline bool msm_dsi_wait_one_frame(u32 since, unsigned int timeout_ms)
++{
++	return false;
++}
++static inline u32 msm_dsi_frames_done(void)
++{
++	return 0;
++}
+ #endif
+ 
+ struct msm_dp;
+diff --git a/drivers/gpu/drm/panel/panel-lg-sw43402.c b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+index f1e3c7e5db78..45984e284369 100644
+--- a/drivers/gpu/drm/panel/panel-lg-sw43402.c
++++ b/drivers/gpu/drm/panel/panel-lg-sw43402.c
+@@ -16,6 +16,18 @@
+ #include <drm/drm_modes.h>
+ #include <drm/drm_panel.h>
+ #include <drm/drm_print.h>
++
++/*
++ * From drivers/gpu/drm/msm/dsi/dsi_host.c, declared here rather than included
++ * because msm_drv.h is private to the msm driver and this panel is a separate
++ * module. The coupling is deliberate and narrow: this panel needs to know when
++ * the FIRST FRAME has reached the DDIC's GRAM before it may send display-on,
++ * and the msm DSI host is the only thing that counts completed cmd-mode
++ * frames. See display_on_timeout_ms. Both are EXPORT_SYMBOL_GPL there; if
++ * either signature moves, this breaks at link time rather than silently.
++ */
++bool msm_dsi_wait_one_frame(u32 since, unsigned int timeout_ms);
++u32 msm_dsi_frames_done(void);
+ #include <drm/display/drm_dsc.h>
+ #include <drm/display/drm_dsc_helper.h>
+ 
+@@ -41,16 +53,33 @@
+ #define LG_SW43402_BRIGHTNESS	(LG_SW43402_BRIGHTNESS_MAX * 40 / 100)
+ 
+ /*
+- * Delay between enable() and the display-on (0x29) DCS. After a re-init the
+- * DDIC's GRAM holds garbage, and enable() runs before the first frame is
+- * written -- sending 0x29 inline flashes that garbage on every unblank
+- * (RGB-noise bands under the incoming image). The vendor ships 0x29 as
+- * qcom,mdss-dsi-POST-panel-on-command for the same reason: it goes out after
+- * the first kickoff. ~5 frames of delay lets the first real frames land in
+- * GRAM while the panel is still dark. 0 = send inline (old behavior).
++ * Display-on (0x29) waits for the FIRST COMPLETED FRAME, not for a duration.
++ *
++ * After a re-init the DDIC's GRAM holds garbage, and enable() runs before the
++ * first frame is written -- sending 0x29 inline flashes that garbage on every
++ * unblank as full-screen RGB noise. This was a fixed 80 ms delay, which is a
++ * race rather than a fix: too short and the flash returns whenever the first
++ * frame is late (hammering the power key makes that likely, and that is
++ * exactly how it was reported on 2026-09-20), too long and every wake is
++ * black for no reason. Raising it to 400 ms did remove the flash, which is
++ * what proved the mechanism -- and 400 ms of black on every unblank is not
++ * shippable.
++ *
++ * The vendor does not use a delay. mdss_mdp_cmd_kickoff() turns the panel on
++ * inside the kickoff and fires MDSS_EVENT_POST_PANEL_ON after
++ * __mdss_mdp_kickoff() returns; their post-panel-on command carries a ZERO
++ * wait field. It is ordering, not timing. msm_dsi_wait_one_frame() expresses
++ * the same ordering against the frame counter dsi_host already keeps, so
++ * display-on lands one frame after enable() -- about 17 ms -- and never
++ * before the GRAM has been written.
++ *
++ * This value is only the FALLBACK ceiling for that wait: if no frame ever
++ * arrives we still send 0x29, because without it the panel never scans at all
++ * (no TE, "frame done timeout") and a dark panel is worse than a brief flash.
++ * 0 = send inline, the old pre-2026-07 behaviour, kept for bisecting.
+  */
+-static uint display_on_delay_ms = 80;
+-module_param(display_on_delay_ms, uint, 0644);
++static uint display_on_timeout_ms = 500;
++module_param(display_on_timeout_ms, uint, 0644);
+ 
+ /*
+  * vddio (1.8V I/O) and vpnl (panel VCC) are both wired to the panel node in
+@@ -80,6 +109,8 @@ struct lg_sw43402 {
+ 	struct delayed_work bl_work;
+ 	bool prepared;
+ 	bool enabled;
++	/* frame counter snapshot taken in enable(); see display_on_timeout_ms */
++	u32 frames_at_enable;
+ };
+ 
+ static inline struct lg_sw43402 *to_lg_sw43402(struct drm_panel *panel)
+@@ -224,9 +255,14 @@ static int lg_panel_enable(struct drm_panel *panel)
+ 	 * See display_on_delay_ms. The vsync source here is the WD timer, not
+ 	 * panel TE, so frames flow even while the display is still off.
+ 	 */
+-	if (display_on_delay_ms) {
+-		schedule_delayed_work(&ctx->display_on_work,
+-				      msecs_to_jiffies(display_on_delay_ms));
++	if (display_on_timeout_ms) {
++		/*
++		 * Snapshot BEFORE the work is queued: the wait is for a frame
++		 * completed after this point, and a frame that landed earlier
++		 * wrote the previous image, not this one.
++		 */
++		ctx->frames_at_enable = msm_dsi_frames_done();
++		schedule_delayed_work(&ctx->display_on_work, 0);
+ 	} else {
+ 		ret = mipi_dsi_dcs_set_display_on(ctx->dsi);
+ 		if (ret < 0) {
+@@ -258,7 +294,25 @@ static void lg_sw43402_display_on_work(struct work_struct *work)
+ 					      display_on_work.work);
+ 	int ret;
+ 
+-	/* The panel may have been disabled again before the delay expired. */
++	/* The panel may have been disabled again before the frame arrived. */
++	if (!ctx->enabled)
++		return;
++
++	/*
++	 * Not a sleep. This returns as soon as one frame has COMPLETED, which
++	 * is what makes the unblank feel instant instead of waiting out a
++	 * worst-case delay. False means the timeout won: send 0x29 anyway,
++	 * because a panel that never scans is worse than one brief flash, and
++	 * say so -- a silent fallback here would hide a real regression in the
++	 * frame path.
++	 */
++	if (!msm_dsi_wait_one_frame(ctx->frames_at_enable,
++				    display_on_timeout_ms))
++		dev_warn(&ctx->dsi->dev,
++			 "no frame within %u ms of enable; display-on sent anyway (expect a flash)\n",
++			 display_on_timeout_ms);
++
++	/* Re-check: the wait can outlive a disable. */
+ 	if (!ctx->enabled)
+ 		return;
+ 

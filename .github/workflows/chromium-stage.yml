@@ -110,12 +110,29 @@ jobs:
           build) init=--no-init; args="build $deadline"; echo "ninja stops at $(date -u -d "@$deadline")" ;;
           package) init=--no-init; args=package ;;
           esac
+          # The package job has twice lost its runner mid-check: once with a
+          # shutdown signal and no exit status, once with no logs uploaded at
+          # all. That is the VM dying, not a command failing, and a dead VM
+          # uploads nothing -- so sample memory to stdout, where the last
+          # readings before a death are already in the log.
+          (
+            while :; do
+              awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree)/ {printf "%s=%dM ", $1, $2/1024}' /proc/meminfo
+              ps -eo rss=,comm= --sort=-rss | awk 'NR<4 {printf "| %dM %s ", $1/1024, $2}'
+              printf '\n'
+              sleep 30
+            done
+          ) &
+          sampler=$!
+          trap 'kill "$sampler" 2>/dev/null || true' EXIT
           docker run --rm --privileged --hostname "$BUILD_HOST" \
             -v "$PWD:/pmaports" -w /pmaports -v "$WORK:/work" \
             -e HOST_UID="$(id -u)" -e PACKAGER \
             -e PACKAGES_URL="https://github.com/$PACKAGES_REPO/releases/download" \
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh ${init:+"$init"} "python3 .github/scripts/chromium-stage.py $args"
           df -h /
+          # An in-guest OOM kill that did not take the runner with it.
+          sudo dmesg 2>/dev/null | grep -iE 'out of memory|killed process' | tail -n 20 || true
       - name: Store the state
         id: save
         # After a failed stage too: samurai's log only records finished edges,

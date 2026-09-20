@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jert <joseph96tb@gmail.com>
+Date: Sun, 20 Sep 2026 00:59:32 +0200
+Subject: [PATCH] media: i2c: imx179, imx362: let the sensors idle after probe
+
+Both drivers take a pm_runtime_get_noresume() at the end of probe and never
+drop it, so the sensor is powered from probe to unbind. Measured on taimen:
+that, venus and Easel together are 48.3 mA of a screen-off idle -- about
+244 mW -- and the two sensors are the largest share of it, pinning
+CAMSS_TOP and the CCI device with them.
+
+The comment that justified the hold is stale. It dodges
+clk_prepare_enable() on MCLK1 returning -EBUSY once CAMSS_TOP has
+collapsed, and imx179_power_on() already solves that directly: it holds
+the CCI device -- which owns CAMSS_TOP -- awake across the sensor's whole
+power cycle, and imx362_power_on() does the same.
+
+Dropping the hold also fixes a functional bug the imx179 s_stream comment
+describes: with the part never powered down, nothing re-initialises it
+between streams, so only the FIRST stream attempt after a boot works.
+
+Assisted-by: Claude
+---
+ drivers/media/i2c/imx179.c | 18 +++++++++---------
+ drivers/media/i2c/imx362.c |  4 ++--
+ 2 files changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/media/i2c/imx179.c b/drivers/media/i2c/imx179.c
+index 2ae417b15037..406faed16db8 100644
+--- a/drivers/media/i2c/imx179.c
++++ b/drivers/media/i2c/imx179.c
+@@ -1136,18 +1136,18 @@ static int imx179_probe(struct i2c_client *client)
+ 	}
+ 
+ 	/*
+-	 * Deliberately NO pm_runtime_idle() here yet: probe already powered the
+-	 * sensor up, and letting it idle straight back down exposes a resume
+-	 * path that currently fails -- clk_prepare_enable() on MCLK1 returns
+-	 * -EBUSY once CAMSS_TOP has collapsed, which puts the device into
+-	 * runtime-PM error state and makes every later get return -EBUSY
+-	 * ("Resource busy" out of VIDIOC_STREAMON). Holding power from probe
+-	 * keeps first light independent of that bug; it costs idle power and
+-	 * must not survive past bring-up.
++	 * Let it idle straight back down. The resume path this used to dodge
++	 * -- clk_prepare_enable() on MCLK1 returning -EBUSY with CAMSS_TOP
++	 * collapsed -- is handled in imx179_power_on() now, which holds the CCI
++	 * device (the one that owns CAMSS_TOP) awake across the sensor's whole
++	 * power cycle. Holding the sensor runtime-active from probe instead
++	 * cost idle power for the life of the boot, and left the part powered
++	 * but never re-initialised, so only the FIRST stream after a boot
++	 * worked.
+ 	 */
+ 	pm_runtime_set_active(dev);
+-	pm_runtime_get_noresume(dev);
+ 	pm_runtime_enable(dev);
++	pm_runtime_idle(dev);
+ 
+ 	return 0;
+ 
+diff --git a/drivers/media/i2c/imx362.c b/drivers/media/i2c/imx362.c
+index 0e0779d49eec..7fad5ef406ed 100644
+--- a/drivers/media/i2c/imx362.c
++++ b/drivers/media/i2c/imx362.c
+@@ -1098,10 +1098,10 @@ static int imx362_probe(struct i2c_client *client)
+ 	if (ret)
+ 		goto err_media_cleanup;
+ 
+-	/* Same runtime-PM hold as imx179 -- see the comment there. */
++	/* Idles straight back down -- see the comment in imx179_probe(). */
+ 	pm_runtime_set_active(dev);
+-	pm_runtime_get_noresume(dev);
+ 	pm_runtime_enable(dev);
++	pm_runtime_idle(dev);
+ 
+ 	return 0;
+ 

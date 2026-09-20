@@ -1,0 +1,165 @@
+From 9e7120e0788bfda7b2a544ba190fd1a93f4a4549 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 20 Sep 2026 12:55:18 +0200
+Subject: [PATCH] Input: ftm4 - do not read the controller from the wake
+ gesture's interrupt
+
+ftm4_suspend() arms the wake gesture and deliberately leaves the interrupt
+live, so a double tap fires ftm4_irq() while the system is still suspended.
+i2c is unreachable there -- runtime PM is disabled for the duration of a
+system sleep -- so ftm4_read_event() fails instead of draining the event
+FIFO. The line is level triggered and the controller holds it asserted until
+that FIFO is empty, so the handler is called straight back the moment
+IRQF_ONESHOT unmasks. The result is a spin that never lets the resume
+finish, ended by the 30 s watchdog.
+
+Measured on taimen, kernel 7.2.2: a tap on an armed, suspended screen reset
+the phone 4 times out of 4, `bootreason=watchdog` each time, 12 to 68 s
+after the tap. Seven cycles without a tap -- including 300 s, 900 s and a
+power-key wake -- resumed cleanly, as did an armed cycle woken by its RTC
+alarm, so arming alone is not the trigger and suspend/resume is not broken
+in general.
+
+So read nothing from the handler while a gesture is armed: mask the line and
+leave the event in the FIFO. ftm4_resume() drains it once i2c is back, which
+is also the only place the event can be looked at, and ftm4_handle_event()
+reports KEY_WAKEUP for FTM4_EV_GESTURE carrying FTM4_GESTURE_DOUBLE_TAP and
+for nothing else. An interrupt that was not the armed gesture therefore
+wakes the SoC but never claims to be a double tap. The drain has to happen
+before ftm4_start(), whose reset drops the FIFO on the floor.
+
+Resume must not mask the line a second time when the handler already did:
+that would leave the interrupt one deeper than the single enable_irq() at
+the end can undo, and the touchscreen would never report anything again.
+
+With this, a double tap wakes the phone from s2idle. Verified three times:
+wakeirq is the ftm4 line, the resume decodes
+"double tap: 22 01 31 65 48 46 00 00", and ordinary touch still works
+afterwards -- the interrupt counter went from 1 to 1897 across twenty
+seconds of touching.
+
+Assisted-by: Claude
+---
+ drivers/input/touchscreen/ftm4.c | 69 ++++++++++++++++++++++++++++++--
+ 1 file changed, 66 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index 4bacb53136fc..7f877e42176c 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -228,6 +228,13 @@ struct ftm4_ts {
+ 	/* Whether that suspend left a wake gesture armed in the controller. */
+ 	bool wake_armed;
+ 
++	/*
++	 * Set when the wake gesture's interrupt masked the line instead of
++	 * draining the FIFO, so resume knows both that the mask is already
++	 * taken and that there is an event waiting to be read.
++	 */
++	bool wake_masked;
++
+ 	/* i2c transfer buffers, kept off the stack so they are DMA-safe. */
+ 	u8 cmd[FTM4_CMD_MAX_LEN];
+ 	u8 data[FTM4_EVENT_SIZE];
+@@ -656,9 +663,14 @@ static bool ftm4_handle_event(struct ftm4_ts *ts, const u8 *event)
+ 	return false;
+ }
+ 
+-static irqreturn_t ftm4_irq(int irq, void *dev_id)
++/*
++ * Read the controller's event FIFO until it is empty and report what was in it.
++ *
++ * The interrupt is level triggered and the part holds it asserted while the
++ * FIFO is non-empty, so draining it is also what releases the line.
++ */
++static void ftm4_drain_events(struct ftm4_ts *ts)
+ {
+-	struct ftm4_ts *ts = dev_id;
+ 	bool sync = false;
+ 	int error;
+ 	int i;
+@@ -688,6 +700,35 @@ static irqreturn_t ftm4_irq(int irq, void *dev_id)
+ 				 !bitmap_empty(ts->slots, FTM4_MAX_FINGERS));
+ 		input_sync(ts->input);
+ 	}
++}
++
++static irqreturn_t ftm4_irq(int irq, void *dev_id)
++{
++	struct ftm4_ts *ts = dev_id;
++
++	/*
++	 * A wake gesture fires this while the system is still suspended, where
++	 * i2c is unreachable: runtime PM is disabled for the duration, so the
++	 * read would fail rather than drain the FIFO. The part holds this level
++	 * triggered line asserted until the FIFO is empty, so a failed read
++	 * gets the handler called straight back the moment IRQF_ONESHOT
++	 * unmasks -- a spin that never lets the resume finish, ended by the
++	 * 30 s watchdog. Measured on taimen: a tap on an armed, suspended
++	 * screen reset the phone 4 times out of 4, while 7 cycles without a
++	 * tap resumed cleanly.
++	 *
++	 * So mask the line and read nothing. The event stays in the FIFO and
++	 * ftm4_resume() drains it once i2c is back, which is also where it is
++	 * decided whether the gesture was the one we armed for -- the wake key
++	 * must not be reported for an interrupt nobody has looked at.
++	 */
++	if (ts->wake_armed) {
++		disable_irq_nosync(irq);
++		ts->wake_masked = true;
++		return IRQ_HANDLED;
++	}
++
++	ftm4_drain_events(ts);
+ 
+ 	return IRQ_HANDLED;
+ }
+@@ -1006,6 +1047,7 @@ static int ftm4_suspend(struct device *dev)
+ static int ftm4_resume(struct device *dev)
+ {
+ 	struct ftm4_ts *ts = dev_get_drvdata(dev);
++	bool woke_on_gesture = false;
+ 	int error;
+ 
+ 	if (ts->wake_armed) {
+@@ -1015,8 +1057,18 @@ static int ftm4_resume(struct device *dev)
+ 		 * The suspend left the interrupt live, so take it down here
+ 		 * instead: ftm4_start() below resets the controller, and the
+ 		 * enable_irq() at the end pairs with this either way.
++		 *
++		 * Unless the gesture already fired, in which case its handler
++		 * masked the line itself. Masking twice would leave the depth
++		 * one deeper than the single enable_irq() below can undo, and
++		 * the touchscreen would never report anything again.
+ 		 */
+-		disable_irq(ts->client->irq);
++		if (ts->wake_masked) {
++			ts->wake_masked = false;
++			woke_on_gesture = true;
++		} else {
++			disable_irq(ts->client->irq);
++		}
+ 	}
+ 
+ 	if (ts->suspended_powered)
+@@ -1028,6 +1080,17 @@ static int ftm4_resume(struct device *dev)
+ 			return error;
+ 	}
+ 
++	/*
++	 * Read out what the gesture interrupt could not. This must happen
++	 * BEFORE ftm4_start(), whose reset drops the FIFO on the floor, and it
++	 * is the only place the event is ever seen: ftm4_handle_event() reports
++	 * KEY_WAKEUP for FTM4_EV_GESTURE carrying FTM4_GESTURE_DOUBLE_TAP and
++	 * for nothing else, so an interrupt that was not the armed gesture
++	 * wakes the SoC but never claims to be a double tap.
++	 */
++	if (woke_on_gesture)
++		ftm4_drain_events(ts);
++
+ 	/* The system reset in here is also what leaves gesture mode. */
+ 	error = ftm4_start(ts);
+ 	if (error) {
+-- 
+2.55.0
+

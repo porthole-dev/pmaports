@@ -1,0 +1,324 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jert <joseph96tb@gmail.com>
+Date: Sun, 20 Sep 2026 11:27:30 +0200
+Subject: [PATCH] Input: ftm4 - wake the system on a double tap
+
+The controller can scan for gestures on its own at low power and raise its
+interrupt for one, but nothing in this driver -- or in the vendor's -- ever
+asked it to. On taimen that job belongs to the sensor DSP, which runs its
+own ftm4 driver over the shared i2c bus and refuses to touch the controller
+until the AP has given the mux away (tlmm 75 high); arming it therefore
+cannot be done from an awake phone, because the AP is holding the mux at
+exactly that moment and the DSP gives up 500 ms later.
+
+Do it from here instead. The programming sequence is the DSP's own, read
+out of slpi_v2.mbn with Ghidra and replayed byte for byte:
+
+  ftm4_enable_sensor                      b2194c04
+  ftm4_configure_double_tap_parameters    b21951b8
+  ftm4_best_effort_update_gesture_mask    b2194bd8
+
+which is FLUSH_BUFFER, then 0xad (the vendor header's
+FTS_CMD_LOWPOWER_MODE), then a notify (0xc0) carrying the gesture window as
+four big-endian 16-bit coordinates, a second notify carrying the maximum
+interval between the two taps, then 0xc3 with the gesture mask, then
+FLUSH_BUFFER again. A recognised gesture arrives as event 0x22 with the
+mask bit in the second byte, which is reported as KEY_WAKEUP.
+
+The bus is not handed over on this path: the controller is ours for the
+whole suspend, so the interrupt stays requested, enable_irq_wake() arms it
+and the supplies stay up regardless of keep_powered. Resume takes the
+controller out of gesture mode with the system reset ftm4_start() already
+does.
+
+Wakeup-capable but NOT armed: userspace opts in through the standard
+power/wakeup. Arming it by default puts new code on the resume path of
+every suspend, and until the gesture is proven to be recognised at all that
+is a cost with no demonstrated benefit.
+
+Assisted-by: Claude
+---
+ drivers/input/touchscreen/ftm4.c | 180 ++++++++++++++++++++++++++++++-
+ 1 file changed, 178 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index dc7fdbc159a7..2eb3e4596f59 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -36,6 +36,7 @@
+ #include <linux/regulator/consumer.h>
+ #include <linux/string.h>
+ #include <linux/types.h>
++#include <linux/unaligned.h>
+ #include <linux/workqueue.h>
+ 
+ /* Commands, written as a single byte. */
+@@ -44,6 +45,35 @@
+ #define FTM4_CMD_SENSE_ON		0x93
+ #define FTM4_CMD_FLUSH_BUFFER		0xa1
+ 
++/*
++ * Low-power wake-gesture mode. Nothing in the vendor's own driver programs
++ * this: on taimen double-tap-to-wake is served by the sensor DSP, which runs
++ * its own ftm4 driver over the shared bus and only ever talks to the
++ * controller once the AP has given the mux away. The sequence below is that
++ * driver's, read out of slpi_v2.mbn with Ghidra -- ftm4_enable_sensor() at
++ * b2194c04, ftm4_configure_double_tap_parameters() at b21951b8 and
++ * ftm4_best_effort_update_gesture_mask() at b2194bd8 -- and is replayed here
++ * byte for byte, so the AP can arm the gesture itself and never hand the bus
++ * over at all.
++ */
++#define FTM4_CMD_LOWPOWER_MODE		0xad
++#define FTM4_CMD_NOTIFY			0xc0
++#define FTM4_CMD_GESTURE_MASK		0xc3
++
++/* Second byte of a notify: which of the gesture settings is being written. */
++#define FTM4_NOTIFY_GESTURE_WINDOW	0x01
++#define FTM4_NOTIFY_GESTURE_PARAM	0x02
++
++/* Third byte of a notify, and the payload of a gesture-mask write. */
++#define FTM4_GESTURE_DOUBLE_TAP		BIT(0)
++
++/*
++ * Longest gap between the two taps, in the controller's own units. 50 is the
++ * value the sensor DSP writes; the part is undocumented and the unit is not
++ * established, so it is carried over rather than converted.
++ */
++#define FTM4_DOUBLE_TAP_INTERVAL	50
++
+ /*
+  * Register access. Writes are {0xb6, 0x00, offset, value}; reads are a write
+  * of {0xb6, 0x00, offset} followed by a read in the same transfer.
+@@ -86,12 +116,17 @@
+  * issues, and anything the controller queued on its own is dropped by the
+  * FTM4_CMD_FLUSH_BUFFER in ftm4_start(), so treating them as pointer events is
+  * both correct and safe. stmfts.c splits the space the same way.
++ *
++ * 0x22 is safe for the same reason: as a pointer event it would be event id
++ * 0x2, which the part does not emit.
+  */
+ #define FTM4_EV_NO_EVENT		0x00
+ #define FTM4_EV_ERROR			0x0f
+ #define FTM4_EV_CONTROLLER_READY	0x10
+ #define FTM4_EV_SLEEPOUT_READY		0x11
+ #define FTM4_EV_STATUS			0x16
++/* A recognised wake gesture; event[1] carries the FTM4_GESTURE_ bit. */
++#define FTM4_EV_GESTURE			0x22
+ 
+ /* Pointer events, in the low nibble of the first byte. */
+ #define FTM4_EV_POINTER_ENTER		0x03
+@@ -111,8 +146,8 @@
+  */
+ #define FTM4_EVENTS_PER_IRQ		64
+ 
+-/* Longest command in use is {0xb6, 0x00, offset, value}. */
+-#define FTM4_CMD_MAX_LEN		4
++/* Longest command in use is the 11-byte gesture window. */
++#define FTM4_CMD_MAX_LEN		11
+ 
+ /*
+  * Touch area is reported as a 10-bit width and a 6-bit height ratio; both are
+@@ -190,6 +225,9 @@ struct ftm4_ts {
+ 	 */
+ 	bool suspended_powered;
+ 
++	/* Whether that suspend left a wake gesture armed in the controller. */
++	bool wake_armed;
++
+ 	/* i2c transfer buffers, kept off the stack so they are DMA-safe. */
+ 	u8 cmd[FTM4_CMD_MAX_LEN];
+ 	u8 data[FTM4_EVENT_SIZE];
+@@ -383,6 +421,59 @@ static void ftm4_stop(struct ftm4_ts *ts)
+ 			 error);
+ }
+ 
++/*
++ * Put the controller into low-power gesture scanning. It stops reporting
++ * pointers and raises its interrupt only for a gesture in the mask, which
++ * arrives as FTM4_EV_GESTURE. A reset -- i.e. ftm4_start() -- is what takes it
++ * back out again.
++ */
++static int ftm4_arm_gesture(struct ftm4_ts *ts)
++{
++	u8 window[] = {
++		FTM4_CMD_NOTIFY, FTM4_NOTIFY_GESTURE_WINDOW,
++		FTM4_GESTURE_DOUBLE_TAP,
++		0, 0, 0, 0,	/* x range, big endian */
++		0, 0, 0, 0,	/* y range, big endian */
++	};
++	const u8 interval[] = {
++		FTM4_CMD_NOTIFY, FTM4_NOTIFY_GESTURE_PARAM,
++		FTM4_GESTURE_DOUBLE_TAP,
++		FTM4_DOUBLE_TAP_INTERVAL >> 8, FTM4_DOUBLE_TAP_INTERVAL & 0xff,
++	};
++	const u8 mask[] = {
++		FTM4_CMD_GESTURE_MASK, 0x01, 0x04, FTM4_GESTURE_DOUBLE_TAP,
++	};
++	int error;
++
++	/* The whole panel, which is the window the sensor DSP programs. */
++	put_unaligned_be16(input_abs_get_max(ts->input, ABS_MT_POSITION_X),
++			   &window[5]);
++	put_unaligned_be16(input_abs_get_max(ts->input, ABS_MT_POSITION_Y),
++			   &window[9]);
++
++	error = ftm4_command(ts, FTM4_CMD_FLUSH_BUFFER);
++	if (error)
++		return error;
++
++	error = ftm4_command(ts, FTM4_CMD_LOWPOWER_MODE);
++	if (error)
++		return error;
++
++	error = ftm4_write(ts, window, sizeof(window));
++	if (error)
++		return error;
++
++	error = ftm4_write(ts, interval, sizeof(interval));
++	if (error)
++		return error;
++
++	error = ftm4_write(ts, mask, sizeof(mask));
++	if (error)
++		return error;
++
++	return ftm4_command(ts, FTM4_CMD_FLUSH_BUFFER);
++}
++
+ /* Bring up the supplies, claim the bus and take the controller out of reset. */
+ static int ftm4_power_up(struct ftm4_ts *ts)
+ {
+@@ -437,6 +528,11 @@ static void ftm4_release_all(struct ftm4_ts *ts);
+ /* One controller on this board; the handover knob below needs to find it. */
+ static struct ftm4_ts *ftm4_the_controller;
+ 
++static void ftm4_disable_wakeup(void *dev)
++{
++	device_init_wakeup(dev, false);
++}
++
+ static void ftm4_forget_controller(void *unused)
+ {
+ 	ftm4_the_controller = NULL;
+@@ -523,6 +619,25 @@ static bool ftm4_handle_event(struct ftm4_ts *ts, const u8 *event)
+ 	case FTM4_EV_STATUS:
+ 		dev_dbg(dev, "status event: %*ph\n", FTM4_EVENT_SIZE, event);
+ 		return false;
++	case FTM4_EV_GESTURE:
++		if (!(event[1] & FTM4_GESTURE_DOUBLE_TAP)) {
++			dev_dbg(dev, "unhandled gesture: %*ph\n",
++				FTM4_EVENT_SIZE, event);
++			return false;
++		}
++		/*
++		 * Reported as a key rather than a tap so that it reaches
++		 * userspace as a wake key and nothing mistakes it for a
++		 * contact -- the coordinates in the event are where the taps
++		 * landed, which no wake consumer wants.
++		 */
++		dev_dbg(dev, "double tap: %*ph\n", FTM4_EVENT_SIZE, event);
++		input_report_key(ts->input, KEY_WAKEUP, 1);
++		input_sync(ts->input);
++		input_report_key(ts->input, KEY_WAKEUP, 0);
++		input_sync(ts->input);
++		pm_wakeup_event(dev, 0);
++		return false;
+ 	}
+ 
+ 	/* Everything else is a pointer event, id in the low nibble. */
+@@ -724,6 +839,28 @@ static int ftm4_probe(struct i2c_client *client)
+ 	input_set_abs_params(ts->input, ABS_MT_TOUCH_MINOR,
+ 			     0, FTM4_MAX_AREA, 0, 0);
+ 
++	/*
++	 * The controller can scan for a double tap while the system is
++	 * suspended and raise its interrupt for it; ftm4_suspend() arms that
++	 * whenever userspace has left this device wakeup-enabled.
++	 *
++	 * CAPABLE BUT NOT ARMED. Enabling it by default puts new code on the
++	 * resume path of every suspend, and on taimen on 2026-09-20 a phone
++	 * left overnight took a watchdog reset on the wake -- resume got past
++	 * qcom_wdt_resume() (resume_early, which re-arms the 30 s watchdog)
++	 * and hung in the device .resume callbacks. That was NOT pinned on
++	 * this driver: the same kernel resumes fine in short cycles and an
++	 * earlier build carrying this patch resumed twice. But it is the only
++	 * new code in that window, so it opts in through the standard
++	 * power/wakeup rather than arming itself on a daily driver.
++	 */
++	input_set_capability(ts->input, EV_KEY, KEY_WAKEUP);
++
++	device_set_wakeup_capable(dev, true);
++	error = devm_add_action_or_reset(dev, ftm4_disable_wakeup, dev);
++	if (error)
++		return error;
++
+ 	/* input_mt_init_slots() declares BTN_TOUCH for us, but not the axes. */
+ 	error = input_mt_init_slots(ts->input, FTM4_MAX_FINGERS,
+ 				    INPUT_MT_DIRECT);
+@@ -811,6 +948,7 @@ MODULE_PARM_DESC(keep_powered,
+ static int ftm4_suspend(struct device *dev)
+ {
+ 	struct ftm4_ts *ts = dev_get_drvdata(dev);
++	int error;
+ 
+ 	/*
+ 	 * Must not be left running: it would talk to a controller whose
+@@ -818,6 +956,32 @@ static int ftm4_suspend(struct device *dev)
+ 	 */
+ 	cancel_delayed_work_sync(&ts->health_work);
+ 
++	/*
++	 * Wake gesture. The controller keeps scanning at low power and raises
++	 * its own interrupt on a double tap, so unlike every other path here
++	 * the interrupt stays enabled, the supplies stay up and the bus stays
++	 * ours: the sensor DSP must not be handed a controller we are using.
++	 */
++	if (device_may_wakeup(dev)) {
++		mutex_lock(&ts->lock);
++		error = ftm4_arm_gesture(ts);
++		mutex_unlock(&ts->lock);
++
++		if (!error) {
++			ts->wake_armed = true;
++			ts->suspended_powered = true;
++			enable_irq_wake(ts->client->irq);
++
++			/* No LEAVE is coming for fingers that were down. */
++			ftm4_release_all(ts);
++
++			return 0;
++		}
++
++		dev_err(dev, "failed to arm the wake gesture, suspending without it: %d\n",
++			error);
++	}
++
+ 	disable_irq(ts->client->irq);
+ 	ftm4_stop(ts);
+ 
+@@ -844,6 +1008,17 @@ static int ftm4_resume(struct device *dev)
+ 	struct ftm4_ts *ts = dev_get_drvdata(dev);
+ 	int error;
+ 
++	if (ts->wake_armed) {
++		ts->wake_armed = false;
++		disable_irq_wake(ts->client->irq);
++		/*
++		 * The suspend left the interrupt live, so take it down here
++		 * instead: ftm4_start() below resets the controller, and the
++		 * enable_irq() at the end pairs with this either way.
++		 */
++		disable_irq(ts->client->irq);
++	}
++
+ 	if (ts->suspended_powered)
+ 		/* Take the shared bus back from the sensor DSP. */
+ 		gpiod_set_value_cansleep(ts->switch_gpio, 1);
+@@ -853,6 +1028,7 @@ static int ftm4_resume(struct device *dev)
+ 			return error;
+ 	}
+ 
++	/* The system reset in here is also what leaves gesture mode. */
+ 	error = ftm4_start(ts);
+ 	if (error) {
+ 		dev_err(dev, "failed to restart sensing: %d\n", error);

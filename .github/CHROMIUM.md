@@ -188,6 +188,22 @@ special case.
 
   A change to any of these gets a new state. The old one is pruned after 14
   idle days, or deleted by publish.
+- **A packaging-only change throws away the build.** The key hashes the whole
+  `temp/chromium` tree, so editing `check()` -- adding a broken-list entry,
+  say -- retires a state that may hold 30 hours of ninja, even though nothing
+  before `check` changed. When the change provably cannot affect the build,
+  move the stored state to the new key instead of rebuilding:
+
+  ```
+  old=$(bash .github/scripts/chromium-state.sh tag ubuntu-24.04-arm)   # before the edit
+  new=$(bash .github/scripts/chromium-state.sh tag ubuntu-24.04-arm)   # after it
+  gh release edit "$old" -R porthole-dev/pmaports --tag "$new" --title "$new"
+  ```
+
+  Only for a change after `build()` in abuild's sequence. Anything that
+  touches sources, patches, gn args or `build()` itself must rebuild, and
+  moving the state there would publish a package that does not match its
+  recipe.
 - **Why not the alternatives:**
   - The actions cache is 10 GB per repository, evicts least recently used
     entries, and is shared with `build.yml`'s apk and ccache caches.
@@ -327,8 +343,23 @@ below.
 restore, a corrupted part, the ccache round trip) against a fake `gh` in about
 a second.
 
-**Not yet measured on real runners:** the package and publish jobs. Nothing
-has run them: the state has reached stage 5 and ninja has not finished.
+The full build took **six build jobs**, about 31 h of ninja, every one of them
+resuming with `rebuilt: 0`.
+
+The package job then took four runners down before it ran. `check` is the
+first thing in this workflow that crashes processes on purpose, thousands of
+times, and `/proc/sys/kernel/core_pattern` is not namespaced: every crash
+inside the container ran the runner's own core dump helper, Ubuntu's apport,
+at about 100 MB each. Measured, 171 -> 452 processes and `AnonPages`
+1008M -> 13640M in 85 seconds, then the VM was gone. Three of the four
+uploaded no logs at all, which is what the heartbeat on the state release is
+for -- a VM that dies takes its log upload with it, so stdout is not an
+evidence channel for this failure.
+
+With `core_pattern` set to `|/bin/false` in "Prepare the runner",
+base_unittests runs all 8484 tests in **64 s**, and the death tests that took
+11 to 36 *seconds* each take 24 to 103 ms: they were waiting on apport, not
+thrashing.
 
 ## Cost and wall-clock once public
 

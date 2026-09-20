@@ -90,3 +90,8 @@ enable powerhintd.service
 # the listener transport it simply does not start rather than failing.
 enable qsee-supplicant.service
 enable qsee-supplicant.socket
+
+# taimen-dt2w: double-tap to wake while the screen is blanked. It hands the
+# touch controller to the SLPI and then re-issues the gesture subscription, in
+# that order -- see the script for why the order cannot be reversed.
+enable taimen-dt2w.service

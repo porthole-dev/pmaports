@@ -117,7 +117,11 @@ jobs:
           # readings before a death are already in the log.
           (
             while :; do
-              awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree)/ {printf "%s=%dM ", $1, $2/1024}' /proc/meminfo
+              awk '/^(MemAvailable|SwapFree|Shmem|Cached):/ {printf "%s%dM ", $1, $2/1024}' /proc/meminfo
+              # pmbootstrap mounts the chroot's /dev/shm with no size=, so it
+              # defaults to half of RAM and its pages are neither reclaimable
+              # nor visible in any process's RSS.
+              df -m "$WORK/chroot_native/dev/shm" 2>/dev/null | awk 'NR==2 {printf "shm=%dM/%dM ", $3, $2}'
               ps -eo rss=,comm= --sort=-rss | awk 'NR<4 {printf "| %dM %s ", $1/1024, $2}'
               printf '\n'
               sleep 30

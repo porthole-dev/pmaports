@@ -2,7 +2,7 @@
 maintainer="team/alpine-desktop <achill@achill.org>"
 pkgname=mesa
 pkgver=26.2.2
-pkgrel=51
+pkgrel=52
 pkgdesc="Mesa DRI OpenGL library"
 url="https://www.mesa3d.org"
 arch="all"
@@ -26,6 +26,14 @@ depends_dev="
 	libxdamage-dev
 	libxshmfence-dev
 	"
+# The rusticl deps (clang/libclc/rust/rust-bindgen/spirv-llvm-translator) are
+# appended again in the case $CARCH block below, which is where they belong --
+# but pmbootstrap parses this file line by line and never runs the shell, so an
+# append inside the case is invisible to it and those packages never reach the
+# buildroot; meson then fails at configure with "Your bindgen version is known
+# to be buggy". They are listed statically here too so pmbootstrap installs
+# them. Comments must stay OUTSIDE the quoted value: a '#' line within it is
+# read as a dependency literally named '#'.
 makedepends="
 	$depends_dev
 	binutils
@@ -60,6 +68,11 @@ makedepends="
 	xorgproto
 	zlib-dev
 	zstd-dev
+	clang$_llvmver-dev
+	libclc-dev~$_llvmver
+	rust
+	rust-bindgen
+	spirv-llvm-translator-dev
 	"
 _paste_version="1.0.14"
 _proc_macro2_version="1.0.86"

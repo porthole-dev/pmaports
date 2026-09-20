@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=62
+pkgrel=63
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -188,6 +188,7 @@ source="
 	qsee-supplicant.service
 	qsee-supplicant.socket
 	taimen-fingerprint-modules.conf
+	taimen-login-screen.gschema.xml
 "
 subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
@@ -602,6 +603,14 @@ fingerprint() {
 		"$subpkgdir"/usr/lib/systemd/system/qsee-supplicant.socket
 	install -Dm644 "$srcdir"/taimen-fingerprint-modules.conf \
 		"$subpkgdir"/usr/lib/modules-load.d/taimen-fingerprint.conf
+
+	# Without org.gnome.login-screen, gnome-control-center hides the
+	# fingerprint row before it ever asks fprintd whether a sensor exists.
+	# The schema ships with GDM and this device autologins through greetd,
+	# so nothing else provides it. See the file for the measurement.
+	# glib-compile-schemas runs from apk's own trigger on this directory.
+	install -Dm644 "$srcdir"/taimen-login-screen.gschema.xml \
+		"$subpkgdir"/usr/share/glib-2.0/schemas/taimen-login-screen.gschema.xml
 }
 
 kernel_mainline() {
@@ -694,4 +703,5 @@ d6f4fcec11c794d73484c735a0b2be8befa00b16a77ed3dbb798d345a7b6ea3fb0bfc87c682a9256
 716315d426b297fbb023ea4b4c4a2d54ee5a9e76cf680ca0bc09021cb8f085b08d267cd775e59e640c71ae101590c7873b04ec3add6b5e0a890bd2dd12ec6d3d  qsee-supplicant.service
 c9eea05ba92470763309d73eff937045f80d2b4dead9aa2922f8028c684b1c8afe0afe94b677df7849f760a0763033290737c235de57b2666c9f5d82fef4e760  qsee-supplicant.socket
 95f5094e2a4bb5abbb4010db037302c20e4b6d5745dddbe720e6283830391bdbef629534f43f1060b854638c61e3f9909f182d600897398d042bbca7087843d3  taimen-fingerprint-modules.conf
+1e1f78bf46fb1640f02fb094a2bce15cf76026928aaf5c41717378974f41e7bf68dca6624d8bd3d3609bb274592bd7fa0f309e854bc8248ef5cf4d5e7acb88af  taimen-login-screen.gschema.xml
 "

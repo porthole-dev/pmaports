@@ -126,16 +126,19 @@ jobs:
             while :; do
               {
                 date -u +%H:%M:%S
-                awk '/^(MemAvailable|SwapFree|Shmem|Cached):/ {printf " %s%dM", $1, $2/1024}' /proc/meminfo
-                df -m "$WORK/chroot_native/dev/shm" 2>/dev/null | awk 'NR==2 {printf " shm=%dM/%dM", $3, $2}'
-                ls "$WORK/chroot_native/dev/shm" 2>/dev/null | wc -l | tr -d '\n' | sed 's/^/ shmfiles=/'
-                ps -eo rss=,comm= --sort=-rss | awk 'NR<4 {printf " | %dM %s", $1/1024, $2}'
+                # Shmem and Cached ruled out tmpfs and page cache, and the top
+                # RSS on the box was 151M while 12.6 GB went in 93 seconds.
+                # AnonPages says process memory; Slab/SUnreclaim/PageTables say
+                # the kernel; Hugetlb says neither is being counted.
+                awk '/^(MemFree|MemAvailable|SwapFree|Cached|Shmem|AnonPages|Mapped|Dirty|Writeback|Slab|SReclaimable|SUnreclaim|PageTables|KernelStack|Hugetlb|CommitLimit|Committed_AS):/ {printf " %s%dM", $1, $2/1024}' /proc/meminfo
+                ps -eo rss= | awk '{n++; s+=$1} END {printf " procs=%d rss_total=%dM", n, s/1024}'
+                ps -eo rss=,comm= --sort=-rss | awk 'NR<11 {printf " | %dM %s", $1/1024, $2}'
                 printf '\n'
               } >> "$beat"
               tail -c 100000 "$beat" > "$beat.tail"
               gh release upload "$TAG" "$beat.tail" -R "$GITHUB_REPOSITORY" --clobber >/dev/null 2>&1 || true
               cat "$beat.tail" | tail -n 1
-              sleep 45
+              sleep 15
             done
           ) &
           sampler=$!

@@ -367,6 +367,22 @@ base_unittests runs all 8484 tests in **64 s**, and the death tests that took
 11 to 36 *seconds* each take 24 to 103 ms: they were waiting on apport, not
 thrashing.
 
+Three real failures were left once it could run, each marked in the APKBUILD
+with its reason:
+
+| suite | time | what it found |
+| --- | --- | --- |
+| base | 61 s | `LockTrySpinTest.TrySpinAvoidsSyscall` asserts a contended `TryLock` never enters the kernel -- a claim about the scheduler, not the code. Broken-listed; upstream already disables it on macOS and iOS. |
+| compositor | 3 s | 23 `SEGV_MAPERR` at `0x40`, not assertions. `ozone_platform_x11=false` here, so under `xvfb-run` there is no X11 platform and the default is wayland, which has no compositor in CI: surface creation returns null. Runs on `--ozone-platform=headless`, which needs no display server. Alpine's aport passes because Alpine builds the X11 platform. |
+| gfx | 4 s | -- |
+| net | 257 s | the two IPv6 source-specific multicast joins, for the reason `UDPSocketTest.SharedMulticastAddress` was already listed. |
+| ozone | 1 s | -- |
+
+`package` then produced **10 apks** -- `chromium` and its `-angle`,
+`-chromedriver`, `-common`, `-dbg`, `-doc`, `-headless-shell`, `-lang`,
+`-qt6` and `-swiftshader` subpackages -- through the artifact and leak checks,
+in [run 35537270416](https://github.com/porthole-dev/pmaports/actions/runs/35537270416).
+
 ## Cost and wall-clock once public
 
 Public repositories get free minutes and 4 vCPU runners, so the numbers below

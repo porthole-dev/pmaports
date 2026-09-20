@@ -147,7 +147,7 @@ jobs:
               tail -c 100000 "$beat" > "$beat.tail"
               gh release upload "$TAG" "$beat.tail" -R "$GITHUB_REPOSITORY" --clobber >/dev/null 2>&1 || true
               cat "$beat.tail" | tail -n 1
-              sleep 15
+              sleep 150
             done
           ) &
           sampler=$!

@@ -1,0 +1,16 @@
+# Subscribe to the SLPI's double-tap gesture, so it is reporting before anything
+# needs it.
+#
+# The SLPI detects the gesture itself and reports it over SMGR; the kernel side
+# is qcom_smgr's write_event_config(), i.e. this attribute, and nothing enables
+# it by default. Without it the whole path is silent even when the SLPI owns the
+# controller: the subscription is what makes it report, and it is accepted
+# (sensor id 243, 1 Hz) but never implied.
+#
+# The other half is the handover, which the ftm4 driver now does itself as a
+# drm_panel follower when the screen blanks. Both halves are needed; either one
+# alone reports nothing.
+#
+# Matched on ATTR{name}, not iio:deviceN: IIO device numbering depends on the
+# order the SSC sensors register and is not a stable identifier.
+SUBSYSTEM=="iio", ACTION=="add", ATTR{name}=="qcom-smgr-double-tap", ATTR{events/in_index0_change_en}="1"

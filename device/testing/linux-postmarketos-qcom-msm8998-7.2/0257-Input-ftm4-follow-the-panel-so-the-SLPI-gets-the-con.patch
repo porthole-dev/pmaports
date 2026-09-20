@@ -1,0 +1,302 @@
+From ac8c4334207df092ff9aec2b87f3632fdfe614ad Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 20 Sep 2026 15:40:19 +0200
+Subject: [PATCH 257/258] Input: ftm4 - follow the panel, so the SLPI gets the
+ controller on screen off
+
+Double-tap-to-wake on a blanked but awake phone is the SLPI's job, not ours:
+it runs its own ftm4 driver, arms the wake gesture itself and reports the tap
+through the sensor manager. It will not touch the controller until it owns both
+the i2c mux and the interrupt, which is what ftm4.handover arranges -- but that
+is a module parameter, i.e. an instrument. Nothing performed the handover when
+the screen actually went off.
+
+Downstream hangs it off an fb notifier: FB_EARLY_EVENT_BLANK hands the bus over
+via fts_stop_device() + fts_suspend(), and FB_EVENT_BLANK with FB_BLANK_UNBLANK
+takes it back. That event does not exist in this kernel -- nothing calls
+fb_notifier_call_chain() with anything but FB_EVENT_FB_REGISTERED and
+FB_EVENT_FB_UNREGISTERED -- and the panel follower API replaces it with the
+same two edges: panel_disabling() runs before the panel and backlight go down,
+panel_enabled() after they come back up. i2c-hid follows a panel the same way.
+
+So the handover body moves into ftm4_give_bus_to_slpi() /
+ftm4_take_bus_from_slpi(), the follower and the handover parameter both call
+them, and both are idempotent under a new bus_lock -- necessary because
+drm_panel_add_follower() may call panel_enabled() the moment we register, and
+because either caller can ask for a transition the other already made.
+
+ftm4_suspend() and ftm4_resume() return early while the SLPI owns the bus.
+That is the normal path into suspend on a phone, since the display blanks
+first: the i2c is not ours to talk to and we hold no interrupt to arm, and the
+bus comes back from panel_enabled() when the screen does, not from resume.
+
+Registration is gated on drm_is_panel_follower(), i.e. on the devicetree
+carrying a "panel" phandle, so a board without it keeps exactly the old
+behaviour and a kernel without CONFIG_DRM_PANEL (where the helper is a stub
+returning false) still probes.
+
+Assisted-by: Claude
+---
+ drivers/input/touchscreen/ftm4.c | 196 +++++++++++++++++++++++++------
+ 1 file changed, 158 insertions(+), 38 deletions(-)
+
+diff --git a/drivers/input/touchscreen/ftm4.c b/drivers/input/touchscreen/ftm4.c
+index 4e04ad8d004f..78c83713faee 100644
+--- a/drivers/input/touchscreen/ftm4.c
++++ b/drivers/input/touchscreen/ftm4.c
+@@ -19,6 +19,7 @@
+ #include <linux/bitmap.h>
+ #include <linux/bitops.h>
+ #include <linux/delay.h>
++#include <drm/drm_panel.h>
+ #include <linux/device.h>
+ #include <linux/devm-helpers.h>
+ #include <linux/errno.h>
+@@ -228,6 +229,15 @@ struct ftm4_ts {
+ 	/* Whether that suspend left a wake gesture armed in the controller. */
+ 	bool wake_armed;
+ 
++	/*
++	 * Whether the sensor DSP currently owns the touch i2c and our
++	 * interrupt. Serialised by bus_lock, because the panel follower and
++	 * the handover parameter can both ask for the same transition.
++	 */
++	bool slpi_owns_bus;
++	struct mutex bus_lock;
++	struct drm_panel_follower panel_follower;
++
+ 	/*
+ 	 * Set when the wake gesture's interrupt masked the line instead of
+ 	 * draining the FIFO, so resume knows both that the mask is already
+@@ -780,6 +790,109 @@ static int ftm4_request_irq(struct ftm4_ts *ts)
+ 					 "ftm4", ts);
+ }
+ 
++/*
++ * Give the touch i2c and our interrupt to the sensor DSP, and take them back.
++ *
++ * This is downstream's screen-off path. fts_stop_device() stops sensing and
++ * fts_suspend() drives the mux to the SLPI, whose own ftm4 driver then arms the
++ * wake gesture and reports a double tap through the sensor manager -- the AP
++ * never arms a gesture itself.
++ *
++ * The interrupt is FREED, not masked. ftm4_enable_sensor() in slpi_v2.mbn has
++ * two gates: ftm4_i2c_switched_to_slpi() polling tlmm 75, and a registration
++ * that fails with "failed to register ftm4 signal on GPIO [%d]" while we still
++ * hold the line. disable_irq() masks a line we continue to own, so the SLPI
++ * reported nothing until this started calling devm_free_irq().
++ *
++ * Both are idempotent, because the panel follower and the handover parameter
++ * can ask for the same transition, and drm_panel_add_follower() may call
++ * panel_enabled() the moment we register.
++ */
++static void ftm4_give_bus_to_slpi(struct ftm4_ts *ts)
++{
++	guard(mutex)(&ts->bus_lock);
++
++	if (ts->slpi_owns_bus)
++		return;
++
++	cancel_delayed_work_sync(&ts->health_work);
++	ftm4_stop(ts);
++	gpiod_set_value_cansleep(ts->switch_gpio, 0);
++	ftm4_release_all(ts);
++	/* After ftm4_stop(), so nothing is asserting the line while it is unowned. */
++	devm_free_irq(&ts->client->dev, ts->client->irq, ts);
++	ts->slpi_owns_bus = true;
++}
++
++static int ftm4_take_bus_from_slpi(struct ftm4_ts *ts)
++{
++	int error;
++
++	guard(mutex)(&ts->bus_lock);
++
++	if (!ts->slpi_owns_bus)
++		return 0;
++
++	error = ftm4_request_irq(ts);
++	if (error) {
++		dev_err(&ts->client->dev, "failed to take the irq back: %d\n",
++			error);
++		return error;
++	}
++
++	gpiod_set_value_cansleep(ts->switch_gpio, 1);
++
++	error = ftm4_start(ts);
++	if (error) {
++		dev_err(&ts->client->dev, "failed to restart sensing: %d\n",
++			error);
++		gpiod_set_value_cansleep(ts->switch_gpio, 0);
++		devm_free_irq(&ts->client->dev, ts->client->irq, ts);
++		return error;
++	}
++
++	enable_irq(ts->client->irq);
++	ts->slpi_owns_bus = false;
++
++	queue_delayed_work(system_long_wq, &ts->health_work,
++			   msecs_to_jiffies(FTM4_HEALTH_POLL_MS));
++
++	return 0;
++}
++
++/*
++ * Follow the panel, which is how downstream knows the screen went off: it hangs
++ * this off an fb notifier (FB_EARLY_EVENT_BLANK to hand over, FB_EVENT_BLANK
++ * with FB_BLANK_UNBLANK to take back). This kernel has no such event -- nothing
++ * calls fb_notifier_call_chain() with anything but FB_EVENT_FB_REGISTERED -- and
++ * the panel follower API is its replacement, with the same two edges:
++ * panel_disabling() runs before the panel and backlight go down, panel_enabled()
++ * after they come back up.
++ */
++static int ftm4_panel_disabling(struct drm_panel_follower *follower)
++{
++	struct ftm4_ts *ts = container_of(follower, struct ftm4_ts,
++					  panel_follower);
++
++	ftm4_give_bus_to_slpi(ts);
++
++	return 0;
++}
++
++static int ftm4_panel_enabled(struct drm_panel_follower *follower)
++{
++	struct ftm4_ts *ts = container_of(follower, struct ftm4_ts,
++					  panel_follower);
++
++	return ftm4_take_bus_from_slpi(ts);
++}
++
++static const struct drm_panel_follower_funcs ftm4_panel_follower_funcs = {
++	.panel_disabling = ftm4_panel_disabling,
++	.panel_enabled = ftm4_panel_enabled,
++};
++
++
+ static void ftm4_release_all(struct ftm4_ts *ts)
+ {
+ 	unsigned int slot;
+@@ -873,6 +986,7 @@ static int ftm4_probe(struct i2c_client *client)
+ 		return error;
+ 
+ 	mutex_init(&ts->lock);
++	mutex_init(&ts->bus_lock);
+ 
+ 	error = devm_delayed_work_autocancel(dev, &ts->health_work,
+ 					     ftm4_health_work);
+@@ -997,6 +1111,26 @@ static int ftm4_probe(struct i2c_client *client)
+ 	queue_delayed_work(system_long_wq, &ts->health_work,
+ 			   msecs_to_jiffies(FTM4_HEALTH_POLL_MS));
+ 
++
++	/*
++	 * Follow the panel if the devicetree says which one we are under. The
++	 * screen going off is what hands the controller to the SLPI, which is
++	 * the only way a wake gesture can be armed -- the SLPI will not touch
++	 * the part until it owns the mux and the interrupt.
++	 *
++	 * Gated on drm_is_panel_follower() so a devicetree without the property
++	 * keeps exactly the old behaviour, and so a kernel built without
++	 * CONFIG_DRM_PANEL (where the helper is a stub returning false) does not
++	 * fail to probe.
++	 */
++	if (drm_is_panel_follower(dev)) {
++		ts->panel_follower.funcs = &ftm4_panel_follower_funcs;
++		error = devm_drm_panel_add_follower(dev, &ts->panel_follower);
++		if (error)
++			return dev_err_probe(dev, error,
++					     "failed to follow the panel\n");
++	}
++
+ 	return 0;
+ }
+ 
+@@ -1036,6 +1170,16 @@ static int ftm4_suspend(struct device *dev)
+ 	struct ftm4_ts *ts = dev_get_drvdata(dev);
+ 	int error;
+ 
++	/*
++	 * The screen is already off and the SLPI already owns the controller,
++	 * the mux and the interrupt -- it is watching for the wake gesture
++	 * itself. There is nothing here we may touch: the i2c is not ours and
++	 * we hold no interrupt to arm. This is the normal path into suspend on
++	 * a phone, since the display blanks first.
++	 */
++	if (ts->slpi_owns_bus)
++		return 0;
++
+ 	/*
+ 	 * Must not be left running: it would talk to a controller whose
+ 	 * supplies are about to go away, and find it "reset" every time.
+@@ -1095,6 +1239,15 @@ static int ftm4_resume(struct device *dev)
+ 	bool woke_on_gesture = false;
+ 	int error;
+ 
++	/*
++	 * Paired with the same test in ftm4_suspend(). The bus comes back when
++	 * the panel does, from ftm4_panel_enabled(), not from here -- resuming
++	 * sensing now would take the controller back while the screen is still
++	 * off and the SLPI is still watching it.
++	 */
++	if (ts->slpi_owns_bus)
++		return 0;
++
+ 	if (ts->wake_armed) {
+ 		ts->wake_armed = false;
+ 		disable_irq_wake(ts->client->irq);
+@@ -1250,45 +1403,12 @@ static int ftm4_handover_set(const char *val, const struct kernel_param *kp)
+ 	if (want == handover)
+ 		return 0;
+ 
+-	if (want) {
+-		cancel_delayed_work_sync(&ts->health_work);
+-		ftm4_stop(ts);
+-		gpiod_set_value_cansleep(ts->switch_gpio, 0);
+-		ftm4_release_all(ts);
+-		/*
+-		 * FREE the interrupt, do not just mask it. Handing over the
+-		 * mux is necessary and was not sufficient: ftm4_enable_sensor()
+-		 * in slpi_v2.mbn passes its tlmm 75 check and then fails at a
+-		 * second gate, "failed to register ftm4 signal on GPIO [%d]",
+-		 * because the SLPI registers its own handler on the same pin
+-		 * and we still held the request. disable_irq() masks a line we
+-		 * continue to own; only freeing it lets the SLPI have it.
+-		 *
+-		 * Ordered after ftm4_stop(), which has already muted the
+-		 * controller's own interrupt, so nothing is asserting the line
+-		 * while it is unowned.
+-		 */
+-		devm_free_irq(&ts->client->dev, ts->client->irq, ts);
+-	} else {
+-		error = ftm4_request_irq(ts);
+-		if (error) {
+-			dev_err(&ts->client->dev,
+-				"failed to take the irq back: %d\n", error);
+-			return error;
+-		}
+-
+-		gpiod_set_value_cansleep(ts->switch_gpio, 1);
+-		error = ftm4_start(ts);
+-		if (error) {
+-			dev_err(&ts->client->dev,
+-				"failed to restart sensing: %d\n", error);
+-			gpiod_set_value_cansleep(ts->switch_gpio, 0);
+-			devm_free_irq(&ts->client->dev, ts->client->irq, ts);
++	if (want)
++		ftm4_give_bus_to_slpi(ts);
++	else {
++		error = ftm4_take_bus_from_slpi(ts);
++		if (error)
+ 			return error;
+-		}
+-		enable_irq(ts->client->irq);
+-		queue_delayed_work(system_long_wq, &ts->health_work,
+-				   msecs_to_jiffies(FTM4_HEALTH_POLL_MS));
+ 	}
+ 
+ 	handover = want;
+-- 
+2.55.0
+

@@ -1116,6 +1116,11 @@ check_net_unittests() {
 	broken="$broken:TrustStoreNSSTestIgnoreSystemCerts.UserDbTrustForSystemRootHonored"
 	broken="$broken:TrustStoreNSSTestIgnoreSystemCerts.UserDbAnchorAndLeafTrustForSystemRootHonored"
 	broken="$broken:UDPSocketTest.SharedMulticastAddress"
+	# Source-specific multicast joins on IPv6. The runner has no IPv6
+	# multicast-capable interface for MCAST_JOIN_SOURCE_GROUP to succeed
+	# on, the same reason SharedMulticastAddress is above this line.
+	broken="$broken:UDPSocketTest.JoinSourceGroupIPv6"
+	broken="$broken:UDPSocketTest.JoinSourceGroupMultipleSourcesIPv6"
 	# failing on package builders
 	broken="$broken:TrustStoreNSSTestAllowSpecifiedUserSlot.CertOnMultipleSlots"
 	broken="$broken:TrustStoreNSSTestIgnoreSystemCerts.UserDbDistrustForSystemRootHonored"

@@ -1,0 +1,23 @@
+# Do not unfold the on-screen keyboard just because Settings opened.
+#
+# The OSK on a current phosh install is phosh-osk-stevia, pulled in by
+# postmarketos-ui-phosh-default-osk. It unfolds whenever an application requests
+# an input method, and gnome-control-center requests one for its search entry as
+# soon as it starts -- so every press of Settings raised the keyboard over the
+# page you were trying to read. Reported on 2026-09-20 on a freshly flashed
+# image; the previous rootfs predated stevia and did not do it, which is why it
+# looked like a kernel regression and was not one.
+#
+# mobi.phosh.osk's own description of the key: "A list of application-ids that
+# are ignored when they request an input method. This means that the OSK doesn't
+# unfold automatically on e.g. text inputs fields in these applications and the
+# user must unfold the OSK via other means." So the keyboard is still reachable
+# by hand; only the automatic unfold is suppressed.
+#
+# org.gnome.Calculator is stevia's own default and is kept: dropping it would
+# regress the calculator, which wants its own keypad rather than the OSK.
+#
+# See taimen-dconf-profile for why this is a dconf system database and not a
+# gschema override.
+[mobi/phosh/osk]
+ignore-activation=['org.gnome.Calculator', 'org.gnome.Settings']

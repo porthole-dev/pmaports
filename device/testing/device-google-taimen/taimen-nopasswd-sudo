@@ -1,0 +1,20 @@
+# Passwordless sudo for the wheel group, on a development device only.
+#
+# THIS GRANTS UNRESTRICTED ROOT TO ANY MEMBER OF wheel WITH NO PASSWORD. That is
+# why it is a separate, opt-in subpackage and not part of the device package:
+# installing it is the decision, exactly as with -fingerprint.
+#
+# Why it exists: the porthole toolbox is unusable without it. `porthole doctor`
+# checks for it and ph-capture.sh refuses to arm anything, because every one of
+# its steps is `sudo -n` and with a password prompt they all fail silently and
+# leave an empty log discovered hours later. On 2026-09-20 a
+# `porthole flash full --replace-rootfs` wiped the hand-made drop-in and every
+# device-side tool started failing with "sudo: interactive authentication is
+# required" until it was recreated by hand -- which is the reason this is
+# packaged rather than remembered.
+#
+# %wheel, not a username: pmOS puts the device's user in wheel at install time
+# and the package cannot know what that user is called.
+#
+# Do NOT install this on a phone you carry.
+%wheel ALL=(ALL) NOPASSWD: ALL

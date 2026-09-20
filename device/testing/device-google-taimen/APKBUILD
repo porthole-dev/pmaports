@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=61
+pkgrel=62
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -137,6 +137,8 @@ source="
 	taimen-dconf-sensors
 	taimen-dconf-greeter
 	taimen-dconf-power
+	taimen-dconf-osk
+	taimen-nopasswd-sudo
 	taimen-proximity.rules
 	taimen-dt2w
 	taimen-dt2w.service
@@ -191,6 +193,7 @@ subpackages="
 	$pkgname-kernel-mainline:kernel_mainline
 	$pkgname-openrc:openrc
 	$pkgname-fingerprint:fingerprint
+	$pkgname-nopasswd-sudo:nopasswd_sudo
 	"
 
 build() {
@@ -292,6 +295,11 @@ package() {
 	# Suspend on idle, including on AC -- see the file for the measurement.
 	install -Dm644 "$srcdir"/taimen-dconf-power \
 		"$pkgdir"/etc/dconf/db/local.d/03-taimen-power
+
+	# Stop the OSK unfolding over Settings -- see the file for why the fresh
+	# image started doing it and the old one did not.
+	install -Dm644 "$srcdir"/taimen-dconf-osk \
+		"$pkgdir"/etc/dconf/db/local.d/04-taimen-osk
 	install -Dm644 "$srcdir"/taimen-proximity.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-proximity.rules
 	install -Dm755 "$srcdir"/taimen-dt2w \
@@ -554,6 +562,19 @@ openrc() {
 	amove etc/init.d/taimen-modem-bringup etc/init.d/taimen-rescue
 }
 
+nopasswd_sudo() {
+	pkgdesc="Passwordless sudo for wheel on a development Pixel 2 XL (opt-in)"
+	# Opt-in for the same reason -fingerprint is: installing it is the
+	# decision. It grants unrestricted root to wheel with no password, so it
+	# belongs on a device on a desk and nowhere else -- see the file.
+	#
+	# No install_if: this must never be pulled in by having sudo present.
+	depends="sudo"
+
+	install -Dm440 "$srcdir"/taimen-nopasswd-sudo \
+		"$subpkgdir"/etc/sudoers.d/99-taimen-nopasswd
+}
+
 fingerprint() {
 	pkgdesc="Fingerprint unlock and enrolment for the Pixel 2 XL (opt-in)"
 	# The sensor sits behind a proprietary TrustZone trustlet, so the whole
@@ -622,6 +643,8 @@ c24db92ededd9b6e936e557a458167f981156bb70e66add92918de0a6cd6ba9cc2b94d0531c87ef2
 5506422fb48be5730036de5e94b66b519091e6cd53c044536cf7c62b80f5660087b1ccbe57e117b2b95453d5ab8a940e83a5b472c0e45e68d1f399ecbb7dcd4c  taimen-dconf-sensors
 be4d6fff0242c91d9db74269067e56baa752fa8906853515bb885d5aa76d053ca8d6996b94cfb2db631bda51ea9b35fbc737b9cc1180642016609f83468fbf51  taimen-dconf-greeter
 ccc83c0111c5fd66a71d4ef4fb45a37064e1ca50a18bbe8f1ddae7fbc99a0ea78e52165950e227e2a46df708a93f48730c91492aa816c5777b76c918672c53b0  taimen-dconf-power
+890f67e374e427c5e8f87364fe6c51b7cf09c9cf12446ee32dcebe3727d98ddb1f5e66651c230a1a6e284108a2c6563a45b681f586feb00debd4abe7b567931c  taimen-dconf-osk
+4b73f6201e2fb3ba16b3be1ecb421b5bb3d130d6cb2216e6c3bb5cf1565bcdaaac99ca01fa216f01372e4b2eff4b6f6962c1fc1d7b6feff6ffaf213628dab450  taimen-nopasswd-sudo
 20bba033222c5979b0c93083a8a5d04a410eb4332112c1fea9c38a6d159d39fccd05533fee7546c01f79ace97a76c69204243efe5266be7ea8eaead807df1213  taimen-proximity.rules
 d46511728b541d6e1dea327eb87ee3bbf2cae4e8a52d86ebdd4f5e6e8bb29f9b3ce34961aa1577b7a276ac0b21c63433ee77dc085465999a4acb696f7f0a8dc2  taimen-dt2w
 68c8b18d8ae9f94f7658df805f79c72c7d726764e42c9d8c6da8c2dcf11f0943a23eb9157a9762a8cd10bb10d89e6363f4b7d7045d4df8b07aa9841f598dd601  taimen-dt2w.service

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  org.gnome.login-screen, for a device that has no GDM.
+
+  gnome-control-center hides the fingerprint row unless it can read
+  enable-fingerprint-authentication out of this schema. From
+  panels/system/users/cc-user-page.c, update_fingerprint_row_state():
+
+      visible = (act_user_get_uid (self->user) == getuid () &&
+                 act_user_is_local_account (self->user) &&
+                 (self->login_screen_settings &&
+                  g_settings_get_boolean (self->login_screen_settings,
+                                          "enable-fingerprint-authentication")));
+      gtk_widget_set_visible (GTK_WIDGET (self->fingerprint_row), visible);
+      if (!visible)
+          return;
+
+  That test runs BEFORE fprintd is consulted, so a sensor which works
+  perfectly is invisible when the schema is missing. The schema ships with
+  GDM, and this device has no GDM: it autologins through greetd into phosh.
+
+  Measured on taimen 2026-09-20. fprintd offered the device on both
+  GetDevices and GetDefaultDevice, gnome-control-center found it and
+  reached CC_FINGERPRINT_STATE_DISABLED, which is 3 and means "no fingers
+  enrolled yet" rather than "unavailable", and the row still never
+  appeared:
+
+      Got fingerprint device FPC Fingerprint Sensor (TrustZone)
+      Device FPC Fingerprint Sensor (TrustZone) has 0 enrolled fingers
+      Fingerprint manager state changed to 3
+
+  Compiling this one schema into an XDG_DATA_DIRS entry and relaunching
+  Settings made the row appear and open its dialog, with nothing else
+  changed.
+
+  This is not a taimen quirk. Any GNOME Settings on a session without GDM,
+  so phosh, greetd or sway, loses fingerprint the same silent way, and it
+  is worth an upstream report. Shipped here meanwhile, in the -fingerprint
+  subpackage rather than the main package, because it is useful on exactly
+  the hardware that subpackage exists for.
+
+  Declaring a schema GDM also declares is safe while GDM is absent, and
+  installing GDM on this device would be a far larger mistake than this
+  file. If that ever happens, drop this.
+-->
+<schemalist>
+  <schema id="org.gnome.login-screen" path="/org/gnome/login-screen/">
+    <key name="enable-fingerprint-authentication" type="b">
+      <default>true</default>
+      <summary>Whether or not to allow fingerprint readers for login</summary>
+      <description>
+        The login screen can optionally allow users who have enrolled their
+        fingerprints to log in using those prints.
+      </description>
+    </key>
+  </schema>
+</schemalist>

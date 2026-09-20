@@ -1078,7 +1078,16 @@ check_base_unittests() {
 
 check_compositor_unittests() {
 	# These tests spawn windows and try to do some basic rendering, crashing if there's no display
-	xvfb-run ./out/bld/compositor_unittests --test-launcher-bot-mode #--gtest_filter="-$broken"
+	#
+	# HANDHELD: with ozone_platform_x11=false there is no X11 platform for
+	# these to land on under xvfb, and the default is wayland, which has no
+	# compositor here either. Surface creation returns null and every
+	# LayerWithRealCompositorTest dies on SEGV_MAPERR at 0x40 -- 23 of them,
+	# each crash taking the rest of its batch with it. The headless platform
+	# is built (ozone_platform_headless=true) and needs no display server,
+	# which is what Chromium's own bots use for this suite. xvfb-run stays:
+	# it costs nothing and the rest of the suite is Alpine's.
+	xvfb-run ./out/bld/compositor_unittests --test-launcher-bot-mode --ozone-platform=headless #--gtest_filter="-$broken"
 }
 
 check_gfx_unittests() {

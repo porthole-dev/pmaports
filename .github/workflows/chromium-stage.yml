@@ -115,16 +115,27 @@ jobs:
           # all. That is the VM dying, not a command failing, and a dead VM
           # uploads nothing -- so sample memory to stdout, where the last
           # readings before a death are already in the log.
+          # Three of the four package jobs that killed their runner uploaded
+          # no logs at all: a VM that dies takes its log upload with it, and
+          # stdout is therefore not an evidence channel for this failure. So
+          # the heartbeat leaves the machine while the machine is still alive,
+          # as an asset on the state's own draft release.
+          beat=$RUNNER_TEMP/heartbeat.txt
+          : > "$beat"
           (
             while :; do
-              awk '/^(MemAvailable|SwapFree|Shmem|Cached):/ {printf "%s%dM ", $1, $2/1024}' /proc/meminfo
-              # pmbootstrap mounts the chroot's /dev/shm with no size=, so it
-              # defaults to half of RAM and its pages are neither reclaimable
-              # nor visible in any process's RSS.
-              df -m "$WORK/chroot_native/dev/shm" 2>/dev/null | awk 'NR==2 {printf "shm=%dM/%dM ", $3, $2}'
-              ps -eo rss=,comm= --sort=-rss | awk 'NR<4 {printf "| %dM %s ", $1/1024, $2}'
-              printf '\n'
-              sleep 30
+              {
+                date -u +%H:%M:%S
+                awk '/^(MemAvailable|SwapFree|Shmem|Cached):/ {printf " %s%dM", $1, $2/1024}' /proc/meminfo
+                df -m "$WORK/chroot_native/dev/shm" 2>/dev/null | awk 'NR==2 {printf " shm=%dM/%dM", $3, $2}'
+                ls "$WORK/chroot_native/dev/shm" 2>/dev/null | wc -l | tr -d '\n' | sed 's/^/ shmfiles=/'
+                ps -eo rss=,comm= --sort=-rss | awk 'NR<4 {printf " | %dM %s", $1/1024, $2}'
+                printf '\n'
+              } >> "$beat"
+              tail -c 100000 "$beat" > "$beat.tail"
+              gh release upload "$TAG" "$beat.tail" -R "$GITHUB_REPOSITORY" --clobber >/dev/null 2>&1 || true
+              cat "$beat.tail" | tail -n 1
+              sleep 45
             done
           ) &
           sampler=$!

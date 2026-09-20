@@ -1,0 +1,15 @@
+[Unit]
+Description=Double-tap to wake while the screen is blanked
+# The gesture sensor is an SSC one, so it does not exist until the sensor
+# registry server has served the SLPI its slices.
+After=sns-reg.service
+Wants=sns-reg.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/taimen-dt2w
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

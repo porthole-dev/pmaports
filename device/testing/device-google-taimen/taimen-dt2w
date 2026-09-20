@@ -1,0 +1,72 @@
+#!/bin/sh
+# Double-tap to wake while the screen is blanked.
+#
+# Two things have to happen, in this order, and the order is load-bearing:
+#
+#   1. the SLPI must own the touch i2c mux AND the ftm4 interrupt. The kernel
+#      does that itself as a drm_panel follower, on the panel's disable edge.
+#      Writing ftm4.handover here as well is harmless and idempotent, and is
+#      what makes this work on a devicetree that has no "panel" phandle yet.
+#
+#   2. only THEN may the gesture be subscribed. The SLPI acts on a subscription
+#      when it arrives: ftm4_enable_sensor() polls tlmm 75 for 50 x 10 ms and,
+#      if the AP still holds the mux, logs "touch i2c port offline, aborting"
+#      and never retries. A subscription made at boot -- say from a udev rule --
+#      is therefore spent long before any handover, and the gesture is silent.
+#      Measured on this device: subscribing at boot never fired; re-issuing the
+#      subscription after the handover fired every time.
+#
+# Polled at 1 Hz because a DPMS change emits no uevent.
+set -u
+
+HANDOVER=/sys/module/ftm4/parameters/handover
+DPMS=/sys/class/drm/card0/card0-DSI-1/dpms
+
+gesture_attr() {
+	for d in /sys/bus/iio/devices/iio:device*; do
+		[ "$(cat "$d/name" 2>/dev/null)" = qcom-smgr-double-tap ] || continue
+		echo "$d/events/in_index0_change_en"
+		return 0
+	done
+	return 1
+}
+
+EN=$(gesture_attr) || {
+	echo "no qcom-smgr-double-tap sensor -- is the SSC up?" >&2
+	exit 1
+}
+[ -w "$HANDOVER" ] || {
+	echo "no ftm4.handover -- kernel too old" >&2
+	exit 1
+}
+
+# Leave nothing armed behind us: a handover left set is a dead touchscreen.
+cleanup() {
+	echo 0 > "$EN" 2>/dev/null
+	echo 0 > "$HANDOVER" 2>/dev/null
+	exit 0
+}
+trap cleanup INT TERM EXIT
+
+last=
+while :; do
+	now=$(cat "$DPMS" 2>/dev/null)
+	if [ "$now" != "$last" ]; then
+		case $now in
+		Off)
+			echo 0 > "$EN" 2>/dev/null
+			echo 1 > "$HANDOVER" 2>/dev/null
+			sleep 1
+			echo 1 > "$EN" 2>/dev/null
+			;;
+		On)
+			echo 0 > "$EN" 2>/dev/null
+			echo 0 > "$HANDOVER" 2>/dev/null
+			;;
+		esac
+		last=$now
+	fi
+	# `& wait` so SIGTERM is acted on now rather than after the sleep: without
+	# it systemd waits out the full stop timeout and kills the unit.
+	sleep 1 & wait $!
+done

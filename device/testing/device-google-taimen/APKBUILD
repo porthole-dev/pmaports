@@ -3,7 +3,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=59
+pkgrel=60
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -138,7 +138,8 @@ source="
 	taimen-dconf-greeter
 	taimen-dconf-power
 	taimen-proximity.rules
-	taimen-dt2w.rules
+	taimen-dt2w
+	taimen-dt2w.service
 	taimen-accel-matrix.rules
 	phosh-desktop-env.conf
 	taimen-wowlan-sleep-hook
@@ -293,8 +294,10 @@ package() {
 		"$pkgdir"/etc/dconf/db/local.d/03-taimen-power
 	install -Dm644 "$srcdir"/taimen-proximity.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-proximity.rules
-	install -Dm644 "$srcdir"/taimen-dt2w.rules \
-		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-dt2w.rules
+	install -Dm755 "$srcdir"/taimen-dt2w \
+		"$pkgdir"/usr/bin/taimen-dt2w
+	install -Dm644 "$srcdir"/taimen-dt2w.service \
+		"$pkgdir"/usr/lib/systemd/system/taimen-dt2w.service
 	install -Dm644 "$srcdir"/taimen-accel-matrix.rules \
 		"$pkgdir"/usr/lib/udev/rules.d/99-taimen-accel-matrix.rules
 
@@ -609,7 +612,7 @@ e1f59cf40a3a58840a86ebc9bd82a78ea0a9ad7d45fd37f6430e47210bb02d636defd487341a8e50
 bb785be14eb0fa9078c6d9ba86e4cd22344857ca680d17b2b7042958c6f109358371a79ebcd6bdd87e6a44b2814973e9dc849e275695e203a5516b6e4d665a5f  taimen-modem-bringup.initd
 cb7d96d5d0f2153ab76556100053162b0a4c90e2301723303b07e39559df762f4c6f5fc4cf3ef572a3212682d983c8daabd8cf1f349396517ab1c00309ecb75e  taimen-modem-bringup.service
 259349fe19752f3d9aac9651acdad3499058030e63587c6af68e1df1c0ddf602096fbccc892893ce02437e67c19b046522c1e80f604a68b48563e486ced143ca  modprobe.conf
-08d0961c63bd8a89c3acb8d0bb40893cea322a305ed21037ccc7d9a7ec60f4c47b44eaa350c3441fc9b9b74468e3e3e61cc144cc2e0f9914c4339b29e6bd981c  taimen.preset
+12495c9dd239dacef55a87559c39eab380bdd026e02cf3c15ee21a2324c30fd481be08b8643d09be95e42fac3e925b7f8f0d207acbc1cfc8a7e0d9ef13a79b02  taimen.preset
 b32551d380308b4c18fe8323f72f581c37227d382457d457db4116e71b83f9e4202b1094fad26892b7c3976d492e710820dc19cca5518da9d4283bbafb8e157c  taimen-user.preset
 a697a1b2fe3dd3d798e6cdc00e76de93076efca81969cc1bcbc61995d24d437438f6f99b191abe9f483d718be9559b100227457c112f78ad3f1593a54f3a0f50  taimen-pipewire-pulse.service
 640951b58023a8594a0c403b7294b78fc2db7d9a957e702c45b168a0b25b37af101f7360ef2122f0cf25fffc46a9160fc52a627c52eea8a89751791eafe45b89  swclock-wait-for-rtc.conf
@@ -620,7 +623,8 @@ c24db92ededd9b6e936e557a458167f981156bb70e66add92918de0a6cd6ba9cc2b94d0531c87ef2
 be4d6fff0242c91d9db74269067e56baa752fa8906853515bb885d5aa76d053ca8d6996b94cfb2db631bda51ea9b35fbc737b9cc1180642016609f83468fbf51  taimen-dconf-greeter
 ccc83c0111c5fd66a71d4ef4fb45a37064e1ca50a18bbe8f1ddae7fbc99a0ea78e52165950e227e2a46df708a93f48730c91492aa816c5777b76c918672c53b0  taimen-dconf-power
 20bba033222c5979b0c93083a8a5d04a410eb4332112c1fea9c38a6d159d39fccd05533fee7546c01f79ace97a76c69204243efe5266be7ea8eaead807df1213  taimen-proximity.rules
-1ef46e4b10f61fd4710c2e7ea1e495781b9cf3b5c9396b059233b59a5fe5e95305441625530de31a77e5acf7e9f89dfae30ec2331ce405c0cb3999c91db85da5  taimen-dt2w.rules
+2b586486cdfc5a368972ba7df929292f4ebc24efffdcd5503daab4b11805b96c66aee4051227f2bf6a2c0494d4601364b06716fdbde942643c819b52c7329415  taimen-dt2w
+68c8b18d8ae9f94f7658df805f79c72c7d726764e42c9d8c6da8c2dcf11f0943a23eb9157a9762a8cd10bb10d89e6363f4b7d7045d4df8b07aa9841f598dd601  taimen-dt2w.service
 e9a8ad48c0b9e250ace1e6cea004f628ebf741fcdfe6d767f1fc4da953c8205c87f84b4e61a15a6a82582790e241b06ce20e220c2165c365062c293d0335de7d  taimen-accel-matrix.rules
 6cb9e6ebcc0cd5677afa99372405b24f56b3b854885917fcf344d8ccce0b42bf9488144893dacb5bb52b0deef3103f01755fff14a5a318e0a0151875363e5a46  phosh-desktop-env.conf
 6a4d1eae6072311d73e91f1fc75ef242bca0363bc2b204b9748a6b665b5ca358fa4807393ab70367baa199b5e41bb561358264cf5df71d254271cfd9a881ce6e  taimen-wowlan-sleep-hook

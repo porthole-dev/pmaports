@@ -59,6 +59,8 @@ ARCH = Arch.aarch64
 # keeps the guard meaningful over a short log.
 REBUILD_SHARE = 0.25
 REBUILD_FLOOR = 2000
+# The chroot's /dev/shm, which pmbootstrap leaves unbounded. See enter().
+SHM_SIZE = "2G"
 
 
 def out_dir() -> pathlib.Path | None:
@@ -173,6 +175,21 @@ def enter() -> tuple[CrossCompile, dict, dict]:
             print(f"::notice::recreating the cache directory {target}", flush=True)
             pmb.chroot.root(["mkdir", "-p", target], chroot)
             pmb.chroot.root(["chown", "pmos:pmos", target], chroot)
+    # pmbootstrap mounts the chroot's /dev/shm with no size= (mount_dev_tmpfs()
+    # in pmb/chroot/mount.py), so tmpfs takes its default of half of RAM: 8 GB
+    # on a 16 GB runner. tmpfs pages belong to no process, are not reclaimable
+    # and do swap, which is exactly the shape of the three package jobs that
+    # took their runner down with them -- 7 GB gone while the largest RSS on
+    # the box was 223M, then swap drained, then the VM. check's test launcher
+    # kills tests that time out, and a killed process never unlinks its shared
+    # memory, so /dev/shm only grows.
+    #
+    # Bounded, a leak fails the test that hits the bound and says so. Unbounded
+    # it fails the machine, and a machine that dies uploads no logs at all.
+    try:
+        pmb.chroot.root(["mount", "-o", f"remount,size={SHM_SIZE}", "/dev/shm"], chroot)
+    except Exception as e:
+        print(f"::warning::could not bound /dev/shm: {e}", flush=True)
     # run_abuild() gives $WORK/packages to the chroot's build user, but only
     # when it creates the directory. The restored one exists and belongs to
     # the runner: run-pmbootstrap.sh hands the work directory back to

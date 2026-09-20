@@ -1,0 +1,40 @@
+From f2da6cdbe54674ac27e76522333ecfd87690a6b7 Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Sun, 20 Sep 2026 15:40:19 +0200
+Subject: [PATCH 258/258] arm64: dts: qcom: msm8998-google-taimen: make the
+ touchscreen follow the panel
+
+drm_is_panel_follower() is a test for a "panel" phandle on the device, so this
+property is what enables the handover on screen off. Without it the ftm4 driver
+keeps its old behaviour and the SLPI is never given the controller, which means
+no double-tap-to-wake while the phone is awake with the screen blanked.
+
+Assisted-by: Claude
+---
+ arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+index 0d9d4420bdca..82382cba8d44 100644
+--- a/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
++++ b/arch/arm64/boot/dts/qcom/msm8998-google-taimen.dts
+@@ -342,6 +342,16 @@ touchscreen@49 {
+ 		 */
+ 		st,i2c-switch-gpios = <&tlmm 75 GPIO_ACTIVE_LOW>;
+ 
++		/*
++		 * Follow the panel. The screen going off is what hands the
++		 * controller to the SLPI, and only the SLPI can arm the wake
++		 * gesture -- it will not touch the part until it owns both the
++		 * i2c mux and the interrupt. Downstream hangs the same
++		 * transition off an fb notifier, which this kernel does not
++		 * have.
++		 */
++		panel = <&panel>;
++
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&ts_int_n &ts_reset_n &ts_i2c_switch>;
+ 
+-- 
+2.55.0
+

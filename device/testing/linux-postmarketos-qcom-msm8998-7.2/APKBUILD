@@ -57,7 +57,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 _flavor="postmarketos-qcom-msm8998-7.2"
 pkgname=linux-$_flavor
 pkgver=7.2.2
-pkgrel=78
+pkgrel=79
 pkgdesc="7.2 mainline kernel for MSM8998 devices"
 arch="aarch64"
 _carch="arm64"
@@ -344,6 +344,8 @@ source="
 	0254-Input-ftm4-do-not-read-the-controller-from-the-wake-.patch
 	0255-Input-ftm4-stop-sensing-the-way-the-vendor-does.patch
 	0256-Input-ftm4-release-the-interrupt-on-handover-so-the-.patch
+	0257-Input-ftm4-follow-the-panel-so-the-SLPI-gets-the-con.patch
+	0258-arm64-dts-qcom-msm8998-google-taimen-make-the-touchs.patch
 "
 builddir="$srcdir/linux-$pkgver"
 
@@ -631,4 +633,6 @@ e1d81f9e4bf08daad56f098d2e9afbcc71b82c990015f5140ae7d72ffc337d2ec0f3328d9244c6e2
 500037feafcf3bb1527547cc607ab07f87b5cefd9ccdd3b2442d502da9c8d3036b24ab1b5295699a477ac726b30604ea989a1c5fffaa3b76aea4267c7f15d81d  0254-Input-ftm4-do-not-read-the-controller-from-the-wake-.patch
 911decc66588b83cfade854ce3038fff702306c9b470af2804eb9d73379e145c9b015b79a680d9106187530311fd616aecfc2e6b413cd6ae463547818861ef92  0255-Input-ftm4-stop-sensing-the-way-the-vendor-does.patch
 3b385834b94f98d107ae4986e1fc16922f651be37a8212f21f76690e79d413b491ed05dba1d3faef329ad125cf1c3e8d85ce05dfcfcdeefbaac2c3e6723df669  0256-Input-ftm4-release-the-interrupt-on-handover-so-the-.patch
+c1d71ce10ce5f03addae1bd158f28433d3e5d7cb935808f99cc36410eb8905762c7d235b9b9dadcaf6096037d26db15507b90ecc4d34afb0935316f4357a7386  0257-Input-ftm4-follow-the-panel-so-the-SLPI-gets-the-con.patch
+153d886c386ed84883535f38004279f99894c614c6ce643956291e930d14d76654a3324fb290c93ea6e9cfd3748f70dae724ba5f4c6b0c8b76b52b956f3b06a9  0258-arm64-dts-qcom-msm8998-google-taimen-make-the-touchs.patch
 "

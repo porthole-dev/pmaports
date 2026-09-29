@@ -3,9 +3,9 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 pkgname=device-google-taimen
 pkgdesc="Google Pixel 2 XL"
 pkgver=1
-pkgrel=64
+pkgrel=68
 url="https://postmarketos.org"
-license="MIT"
+license="MIT AND GPL-2.0-only"
 arch="aarch64"
 options="!check !archcheck"
 # soc-qcom-qbootctl marks each boot successful in the Android A/B interface.
@@ -118,9 +118,11 @@ depends="
 # list by their "<subpkgname>." prefix either way.
 install="$pkgname.post-install $pkgname.post-upgrade
 	$pkgname-openrc.post-install $pkgname-openrc.post-upgrade"
-makedepends="devicepkg-dev"
+makedepends="devicepkg-dev dtc android-tools-mkdtboimg"
 source="
 	deviceinfo
+	dtboimg.cfg
+	msm8998-v2.1.dts
 	kernel-cmdline.mainline.conf
 	modules-initfs.mainline
 	taimen-modem-bringup
@@ -198,10 +200,27 @@ subpackages="
 
 build() {
 	devicepkg_build $startdir $pkgname
+	# The bootloader needs entry 2704; the mainline DTB needs its empty stub.
+	cd "$srcdir"
+	dtc -I dts -O dtb -b 0 -@ -o msm8998-v2.1-mtp.dtbo msm8998-v2.1.dts
+	mkdtboimg cfg_create dtbo.img dtboimg.cfg
+	# mkdtboimg pads to its 2048-byte page although the header declares a
+	# 364-byte table. Keep the declared bytes: that is the known-good image
+	# and the digest checked by image export and full flashing.
+	python3 - <<'PY'
+from pathlib import Path
+p = Path("dtbo.img")
+data = p.read_bytes()
+size = int.from_bytes(data[4:8], "big")
+if data[:4] != b"\xd7\xb7\xab\x1e" or not 32 <= size <= len(data):
+    raise SystemExit("invalid DTBO table size")
+p.write_bytes(data[:size])
+PY
 }
 
 package() {
 	devicepkg_package $startdir $pkgname
+	install -Dm644 "$srcdir/dtbo.img" "$pkgdir/boot/dtbo.img"
 
 	# WLAN/modem bring-up ordering. This used to live in /etc/local.d on the
 	# device only, which meant every clean install silently came up with no
@@ -626,7 +645,9 @@ kernel_mainline() {
 }
 
 sha512sums="
-51b7e9f3edf05d774b4477aa5e978831407a25295e3f451b2cb746b4a508caba529672404061c6147f812978cbb87172e2bacb0d2bd0094aa5a3c4b4017ff9ce  deviceinfo
+89b2039d6865c1a3917e045d9e5a2f5c6cdc375b3a16caaf7a38647f8b1c29127bed5ce47d6a7bbacf271b9fc5e23f40900896666d545ab78598b10c6380a94e  deviceinfo
+2d798f95a671180119da1b17606f05778e60d39ad432e0c972d45c95bfbdee5aae97d6496a4db116abf34dddd604a05ffb1026d354b173eb51cecb50da0852c1  dtboimg.cfg
+89d046c628ce2401450a86c22440e62ef12b2410fff311df531023158bc18de2f2040b1445a75a0807bd974a6d6e0a1e10ef2e1317497bb4dc433cc9ae0a59ff  msm8998-v2.1.dts
 dd9e51e1dae425cede287baf6c5f2325dbfbea0f413c5920a9cb658458228bea07ed1e3ce9cbb79505c397eb82345265179f78eed216571b15d3e17e5ca6520a  kernel-cmdline.mainline.conf
 2caa643431db69a76f62b8ac489d1a3842d34b32750682da88c359918ca7a0899ed7206bb7faa8e311dc7fc66806e77411f63c3d1ac5b2aba840d336aaed1a61  modules-initfs.mainline
 e1f59cf40a3a58840a86ebc9bd82a78ea0a9ad7d45fd37f6430e47210bb02d636defd487341a8e5062bc6b685d9db66b9f35cb89b52361b07e3cb75ffa589025  taimen-modem-bringup

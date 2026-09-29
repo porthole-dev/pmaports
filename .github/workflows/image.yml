@@ -2,21 +2,52 @@ name: Device image
 
 on:
   workflow_dispatch:
+    inputs:
+      device:
+        description: Device codename, or all reviewed devices
+        type: string
+        default: all
 
 permissions:
   contents: read
 
 concurrency:
-  group: taimen-image
+  group: device-images
   cancel-in-progress: false
 
 env:
   ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 jobs:
+  select:
+    runs-on: ubuntu-24.04
+    outputs:
+      devices: ${{ steps.devices.outputs.devices }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: devices
+        env:
+          REQUESTED_DEVICE: ${{ inputs.device }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          devices = json.loads(pathlib.Path(".github/image-devices.json").read_text())
+          requested = os.environ["REQUESTED_DEVICE"]
+          names = list(devices) if requested == "all" else [requested]
+          rows = [{"device": name, "runner": devices[name]["runner"], "grant": devices[name]["grant_variable"], "name": devices[name]["name"]} for name in names]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("devices=" + json.dumps(rows) + "\n")
+          PY
   image:
     if: github.ref_name == 'taimen-bringup'
-    runs-on: ubuntu-24.04-arm
+    needs: select
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.select.outputs.devices) }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     permissions:
       contents: write
@@ -29,13 +60,14 @@ jobs:
           persist-credentials: false
       - name: Assemble and verify the release candidate
         env:
-          FIRMWARE_GRANT_TAIMEN: ${{ vars.FIRMWARE_GRANT_TAIMEN }}
+          FIRMWARE_GRANT: ${{ vars[matrix.grant] }}
+          IMAGE_DEVICE: ${{ matrix.device }}
           PORTHOLE_PMOS_PASSWORD: ${{ secrets.PORTHOLE_PMOS_PASSWORD }}
           PACKAGES_URL: https://github.com/porthole-dev/pmos-packages/releases/download
         run: |
           docker run --rm --privileged \
             -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
-            -e HOST_UID="$(id -u)" -e FIRMWARE_GRANT_TAIMEN \
+            -e HOST_UID="$(id -u)" -e FIRMWARE_GRANT -e IMAGE_DEVICE \
             -e PORTHOLE_PMOS_PASSWORD -e PACKAGES_URL \
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'sh .github/scripts/image.sh'
       - name: Attest the candidate assets
@@ -46,15 +78,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          IMAGE_DEVICE: ${{ matrix.device }}
+          IMAGE_NAME: ${{ matrix.name }}
         run: |
-          tag=taimen-candidate-${GITHUB_RUN_NUMBER}
+          tag=$IMAGE_DEVICE-candidate-${GITHUB_RUN_NUMBER}
           gh release create "$tag" --target "$GITHUB_SHA" --prerelease \
-            --title "Pixel 2 XL · experimental candidate ${GITHUB_RUN_NUMBER}" \
-            --notes-file .github/IMAGE-INSTALL.md "$RUNNER_TEMP"/work/image/*
+            --title "$IMAGE_NAME · experimental candidate ${GITHUB_RUN_NUMBER}" \
+            --notes-file "$RUNNER_TEMP/work/image/INSTALL.md" "$RUNNER_TEMP"/work/image/*
           mkdir "$RUNNER_TEMP/downloaded"
           gh release download "$tag" -D "$RUNNER_TEMP/downloaded"
           cd "$RUNNER_TEMP/downloaded"
           sha256sum -c SHA256SUMS
           gh attestation verify boot.img -R "$GH_REPO"
-          gh attestation verify dtbo.img -R "$GH_REPO"
-          gh attestation verify google-taimen.img.gz -R "$GH_REPO"
+          if [ -f dtbo.img ]; then gh attestation verify dtbo.img -R "$GH_REPO"; fi
+          gh attestation verify "$IMAGE_DEVICE.img.gz" -R "$GH_REPO"

@@ -332,10 +332,9 @@ jobs:
     environment: publish
     permissions:
       contents: write  # delete the stored state
-    # build.yml's run-level group on taimen-bringup: the two never rewrite the
-    # release's index at the same time.
+    # All publishers share this lock, including the core and heavy lanes.
     concurrency:
-      group: build-refs/heads/taimen-bringup
+      group: package-repository-publish
       cancel-in-progress: false
     steps:
       - id: secrets

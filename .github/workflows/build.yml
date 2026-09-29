@@ -184,6 +184,9 @@ jobs:
 
   publish:
     name: Publish repository
+    concurrency:
+      group: package-repository-publish
+      cancel-in-progress: false
     needs: [select, build]
     # A push to taimen-bringup, or a manual run on it (to fill the repository),
     # in this organization. Also when nothing was built: every run keeps the

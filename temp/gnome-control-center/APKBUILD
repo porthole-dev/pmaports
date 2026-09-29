@@ -1,7 +1,7 @@
 # TEMPORARY FORK of community/gnome-control-center.
 #
 # Adds Privacy > NFC: a page whose switch is org.neard.Adapter Powered, and
-# which hides itself where neard reports no adapter. GNOME has no NFC control
+# which stays discoverable while neard initializes. GNOME has no NFC control
 # of any kind -- gnome-control-center#2233 was opened and closed the same day
 # in 2022 with no discussion, and phosh has never had an issue about it -- so
 # the radio on this phone was reachable only from a terminal, or from the
@@ -31,7 +31,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # Contributor: team/gnome <achill@achill.org>
 pkgname=gnome-control-center
 pkgver=51.0
-pkgrel=54
+pkgrel=55
 pkgdesc="GNOME control center"
 url="https://gitlab.gnome.org/GNOME/gnome-control-center"
 arch="all"
@@ -123,6 +123,6 @@ package() {
 sha512sums="
 d12f832dd09c5df3757c2bef606eb6a98ca1d58fe3e7b26d9c21bf5b9de7161bf9b60deb474081de1a79988ffe78e79a012fd6d447d259ac59bb561ba46b0ffd  gnome-control-center-51.0.tar.xz
 350aa443149c71851ad4de0976c7fc5cb626ba0c57a8d41e6ef80da1c65ed84a4dfa2483ae92630a3b611c4bfa9360ded82b55e8cd0e3907294c025e4f6b1671  README.alpine
-d6936f298d2bf84bcb5ef8365fc17907dd380e0468ad9d8af55b9d3a241dc1db0020b89da48a6c525ba61a6cb47b80abebc8cf0c156d4b6462e7b24cbec4ca75  privacy-add-an-nfc-page.patch
+09d15c78d7f6f07a3c045160ab72db114dad1576382d5d0752860006e1b9e13151f31758dbbc214c469dc518bf8a34a7f9153619ef64a911b7fced57e17e7002  privacy-add-an-nfc-page.patch
 75b7fc83e48699190ebd988c4897659df6fc329dbd7b440491704fa947b7712b544af5330a02ee36a01967229a7ce0a09729047a51e7d2e56316a1c95d856331  users-offer-fingerprint-login-without-gdm.patch
 "

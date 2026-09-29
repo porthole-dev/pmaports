@@ -16,9 +16,8 @@ not:
     an NFC adapter has one, and binding to it means the switch reflects the
     radio even when something else changes it.
 
-  - The page hides itself when neard reports no adapter, and the row in the
-    panel follows it. Nearly every machine has a camera, so that page is always
-    shown; nearly no machine has NFC.
+  - The page remains discoverable while neard initializes. Its switch is
+    disabled until an adapter is available.
 
 It also carries the same Permitted Apps list the camera page does, reading the
 same freedesktop permission store (table "devices", id "nfc") that
@@ -49,15 +48,14 @@ Signed-off-by: Giuseppe Maggio <jertlok@proton.me>
  create mode 100644 panels/privacy/nfc/meson.build
 
 diff --git a/panels/privacy/cc-privacy-panel.blp b/panels/privacy/cc-privacy-panel.blp
-index 10e6c51..4e78dc0 100644
 --- a/panels/privacy/cc-privacy-panel.blp
 +++ b/panels/privacy/cc-privacy-panel.blp
-@@ -62,6 +62,16 @@ template $CcPrivacyPanel: $CcPanel {
+@@ -63,6 +63,16 @@
            action-target: "'camera'";
          }
  
 +        $CcListRow nfc_row {
-+          visible: false;
++          visible: true;
 +          title: _("_NFC");
 +          subtitle: _("Control NFC access");
 +          icon-name: "org.gnome.Settings-nfc-access-symbolic";
@@ -69,25 +67,46 @@ index 10e6c51..4e78dc0 100644
          $CcListRow bolt_row {
            visible: false;
            title: _("_Thunderbolt");
+@@ -93,6 +103,9 @@
+   $CcCameraPage {}
+ 
+   [subpage]
++  $CcNfcPage {}
++
++  [subpage]
+   $CcUsagePage {}
+ 
+   [subpage]
+diff --git a/panels/privacy/cc-privacy-panel.c b/panels/privacy/cc-privacy-panel.c
 --- a/panels/privacy/cc-privacy-panel.c
 +++ b/panels/privacy/cc-privacy-panel.c
-@@ -31,5 +31,6 @@
+@@ -31,6 +31,7 @@
  #include "diagnostics/cc-diagnostics-page.h"
  #include "firmware-security/cc-firmware-security-page.h"
  #include "location/cc-location-page.h"
 +#include "nfc/cc-nfc-page.h"
  #include "screen/cc-screen-page.h"
  #include "usage/cc-usage-page.h"
-@@ -42,2 +43,3 @@
+ 
+@@ -39,6 +40,7 @@
+ 
+     CcListRow *bolt_row;
      CcListRow *location_row;
 +    CcListRow *nfc_row;
  };
-@@ -76,4 +78,5 @@
+ 
+ CC_PANEL_REGISTER (CcPrivacyPanel, cc_privacy_panel)
+@@ -78,7 +80,10 @@
      gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, bolt_row);
      gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, location_row);
-+    gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, nfc_row);
  
++    gtk_widget_class_bind_template_child (widget_class, CcPrivacyPanel, nfc_row);
++
      g_type_ensure (CC_TYPE_CAMERA_PAGE);
++    g_type_ensure (CC_TYPE_NFC_PAGE);
+     g_type_ensure (CC_TYPE_DIAGNOSTICS_PAGE);
+     g_type_ensure (CC_TYPE_FIRMWARE_SECURITY_PAGE);
+     g_type_ensure (CC_TYPE_LOCATION_PAGE);
 --- a/panels/privacy/icons/meson.build
 +++ b/panels/privacy/icons/meson.build
 @@ -5,6 +5,7 @@ install_data(
@@ -187,7 +206,7 @@ new file mode 100644
 index 0000000..cbf3779
 --- /dev/null
 +++ b/panels/privacy/nfc/cc-nfc-page.c
-@@ -0,0 +1,581 @@
+@@ -0,0 +1,583 @@
 +/* -*- mode: C; c-file-style: "gnu"; indent-tabs-mode: nil; -*-
 + *
 + * Copyright (C) 2026 Giuseppe Maggio
@@ -575,9 +594,10 @@ index 0000000..cbf3779
 +{
 +  g_set_object (&self->adapter, adapter);
 +
-+  /* Nearly no machine has an NFC adapter. The row in the panel follows this
-+     through a property binding, so a desktop never sees a dead entry. */
-+  gtk_widget_set_visible (GTK_WIDGET (self), adapter != NULL);
++  /* Keep the settings page discoverable even before the daemon finds its
++     adapter. Disable the switch until there is something it can control. */
++  gtk_widget_set_visible (GTK_WIDGET (self), TRUE);
++  gtk_widget_set_sensitive (GTK_WIDGET (self->nfc_row), adapter != NULL);
 +
 +  sync_switch (self);
 +}
@@ -742,8 +762,9 @@ index 0000000..cbf3779
 +{
 +  gtk_widget_init_template (GTK_WIDGET (self));
 +
-+  /* Hidden until neard says there is an adapter. */
-+  gtk_widget_set_visible (GTK_WIDGET (self), FALSE);
++  /* The page stays visible while NFC initializes; the switch starts disabled. */
++  gtk_widget_set_visible (GTK_WIDGET (self), TRUE);
++  gtk_widget_set_sensitive (GTK_WIDGET (self->nfc_row), FALSE);
 +
 +  self->cancellable = g_cancellable_new ();
 +
@@ -851,4 +872,3 @@ index e910c9e..07e341b 100644
  panels/search/cc-search-locations-page.blp
 -- 
 2.55.0
-

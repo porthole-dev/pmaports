@@ -1,47 +1,40 @@
-# pmaports (porthole-dev fork)
+# Nura device packages
 
-> **Unofficial.** Not affiliated with or endorsed by postmarketOS, Google, or
-> Qualcomm. Do not report problems with this port to postmarketOS; open an
-> issue here.
->
-> **Experimental.** Flashing can brick the device or erase data. No warranty,
-> see [LICENSE](LICENSE).
->
-> **AI-assisted.** See [AI.md](AI.md).
+Downstream Nura packages for the porthole Taimen port. Upstream still calls its
+packaging project postmarketOS/pmaports; those Git and package interfaces stay
+unchanged. Upstream project documentation is preserved in
+[README.upstream.md](README.upstream.md).
 
-This is an unofficial downstream fork of
-[postmarketOS/pmaports](https://gitlab.postmarketos.org/postmarketOS/pmaports),
-carrying the [porthole](https://github.com/porthole-dev/porthole) device ports
-and the packages they need patched. See [FORK-NOTICE.md](FORK-NOTICE.md) for
-what that means in practice.
+## What belongs here
 
-Upstream's own README follows.
+Device packages, kernel patch series and the userspace forks needed by our
+profiles. [Maintained aports](.github/maintained-aports.json) records ownership
+and purpose. It is generated from porthole's profile and shared manifests.
+Do not infer maintained packages from the Git merge base: this fork contains
+rewritten history.
 
----
+## Build and check
 
-# postmarketOS aports repository
+Use [porthole](https://github.com/porthole-dev/porthole) and its rootless
+workspace for local builds. CI runs the same pmbootstrap entry point through
+[run-pmbootstrap.sh](.github/scripts/run-pmbootstrap.sh).
 
-This repository contains the APKBUILD files for postmarketOS-specific packages, along with the required patches and scripts, if any.
+- Pull requests: commit policy, APKBUILD/version checks, source/patch checks,
+  and changed non-heavy packages.
+- Manual Build: select named packages or fill missing maintained packages.
+  Heavy packages require explicit opt-in.
+- Upstream check: compare maintained package versions against binary indexes.
+  A newer or equal upstream version requires review.
+- Chromium: staged build and checkpoint workflow; see [build policy](BUILDING.md).
 
-There are many more packages defined in the [Alpine Linux aports](https://gitlab.alpinelinux.org/alpine/aports/) on which these packages depend.
+Signed packages are distributed through
+[pmos-packages](https://github.com/porthole-dev/pmos-packages).
+Device images and hardware support are tracked in
+[Porthole](https://github.com/porthole-dev/porthole).
+A successful package build alone does not establish hardware support.
 
-Helpful resources:
+## Before submitting
 
-* [Issues (this fork)](https://github.com/porthole-dev/pmaports/issues)
-* [Issues (upstream postmarketOS)](https://gitlab.postmarketos.org/postmarketOS/pmaports/-/work_items)
-* [How to create a package](https://wiki.postmarketos.org/wiki/Create_a_package)
-* [APKBUILD reference](https://wiki.alpinelinux.org/wiki/APKBUILD_Reference)
-* [pmaports commit style](./COMMITSTYLE.md)
-* [Approval rules](docs/merge-requests/approval-rules.md)
-* [Alpine Linux aports](https://gitlab.alpinelinux.org/alpine/aports/)
-* [Alpine Linux package search](https://pkgs.alpinelinux.org/packages)
-* [postmarketOS package search](https://pkgs.postmarketos.org/packages)
-
-## Git Hooks
-
-You can find some useful git hooks in the `.githooks` directory.
-To use them, run the following command after cloning this repository:
-
-```sh
-git config --local core.hooksPath .githooks
-```
+Bump `pkgrel` whenever packaged contents change. Keep source URLs public,
+checksums current and patches attributable. Firmware is not published by CI.
+Read [the contribution policy](https://github.com/porthole-dev/.github/blob/main/CONTRIBUTING.md).

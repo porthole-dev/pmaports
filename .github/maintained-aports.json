@@ -1,0 +1,234 @@
+{
+  "inputs": {
+    "profiles/google-taimen/aports.conf": "d95bf591eaed7b25ca548839dd7876268c40fc85c556a80fbecc645fbebc4b26",
+    "profiles/shared-aports.conf": "e7f9a8fb609a60066868926787a3335a959814ef62e4652bfa38eee8322c8032"
+  },
+  "missing": [],
+  "packages": [
+    {
+      "name": "chromium",
+      "owners": [
+        "shared"
+      ],
+      "path": "temp/chromium",
+      "why": "Wayland keymap crash fix; build and publication do not establish phone usability."
+    },
+    {
+      "name": "crossdirect",
+      "owners": [
+        "shared"
+      ],
+      "path": "cross/crossdirect",
+      "why": "Native build helper; checked when changed, never published for the target architecture."
+    },
+    {
+      "name": "device-google-taimen",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "device/testing/device-google-taimen",
+      "why": "the device package itself: kernel cmdline, udev, powerhintd, and"
+    },
+    {
+      "name": "epiphany",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/epiphany",
+      "why": "takes the overview thumbnail from the visible region, which is"
+    },
+    {
+      "name": "firmware-google-taimen",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "device/testing/firmware-google-taimen",
+      "why": "named in the device package's depends=; the radios and venus do"
+    },
+    {
+      "name": "fprintd",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/fprintd",
+      "why": "unmodified content, forked only so pmbootstrap can build it"
+    },
+    {
+      "name": "gnome-control-center",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/gnome-control-center",
+      "why": "privacy-add-an-nfc-page.patch (the NFC switch) and"
+    },
+    {
+      "name": "gnome-shell-extension-convergence",
+      "owners": [
+        "shared"
+      ],
+      "path": "main/gnome-shell-extension-convergence",
+      "why": "Mobile desktop integration carried in the package repository."
+    },
+    {
+      "name": "gst-plugins-good",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/gst-plugins-good",
+      "why": "the venus/dmabuf path -- without it every decoded frame is copied"
+    },
+    {
+      "name": "libcamera",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/libcamera",
+      "why": "the camera: GPU soft ISP, imx179/imx362 sensor support, contrast"
+    },
+    {
+      "name": "libfprint",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/libfprint",
+      "why": "carries the fpctee driver for the FPC trustlet sensor, which"
+    },
+    {
+      "name": "libnma",
+      "owners": [
+        "shared"
+      ],
+      "path": "temp/libnma",
+      "why": "Mobile network configuration integration."
+    },
+    {
+      "name": "linux-postmarketos-qcom-msm8998-7.2",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "device/testing/linux-postmarketos-qcom-msm8998-7.2",
+      "why": "the kernel and its patch series."
+    },
+    {
+      "name": "mesa",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/mesa",
+      "why": "a5xx-tile-init-msaa, a5xx-msaa-sysmem and a5xx-tile-parity."
+    },
+    {
+      "name": "mobile-broadband-provider-info",
+      "owners": [
+        "shared"
+      ],
+      "path": "temp/mobile-broadband-provider-info",
+      "why": "Provider configuration carried alongside the modem stack."
+    },
+    {
+      "name": "modemmanager",
+      "owners": [
+        "shared"
+      ],
+      "path": "main/modemmanager",
+      "why": "Downstream modem integration carried in the published repository."
+    },
+    {
+      "name": "neard",
+      "owners": [
+        "shared"
+      ],
+      "path": "temp/neard",
+      "why": "NFC service required by the portal integration."
+    },
+    {
+      "name": "obscura",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "testing/obscura",
+      "why": "the camera app: its controls panel is generated from libcamera's"
+    },
+    {
+      "name": "phoc",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/phoc",
+      "why": "GPU-reset survival and commit pipelining. Losing this fork once"
+    },
+    {
+      "name": "phosh",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "extra-repos/systemd/phosh",
+      "why": "lock-screen fingerprint unlock"
+    },
+    {
+      "name": "phosh-nfc-quick-setting",
+      "owners": [
+        "shared"
+      ],
+      "path": "temp/phosh-nfc-quick-setting",
+      "why": "Phosh NFC portal integration maintained by this organization."
+    },
+    {
+      "name": "pinephone-callaudiod",
+      "owners": [
+        "shared"
+      ],
+      "path": "main/pinephone-callaudiod",
+      "why": "Call audio integration carried with the modem stack; hardware support remains separately tested."
+    },
+    {
+      "name": "rmtfs",
+      "owners": [
+        "shared"
+      ],
+      "path": "temp/rmtfs",
+      "why": "Qualcomm remote filesystem service required by the device integration."
+    },
+    {
+      "name": "sns-reg",
+      "owners": [
+        "shared"
+      ],
+      "path": "main/sns-reg",
+      "why": "Sensor registry service carried by the device integration."
+    },
+    {
+      "name": "soc-qcom-msm8998",
+      "owners": [
+        "shared"
+      ],
+      "path": "device/testing/soc-qcom-msm8998",
+      "why": "Shared SoC integration required by the device package."
+    },
+    {
+      "name": "tap",
+      "owners": [
+        "shared"
+      ],
+      "path": "temp/tap",
+      "why": "NFC portal client maintained by this organization."
+    },
+    {
+      "name": "webkit2gtk-6.0",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/webkit2gtk-6.0",
+      "why": "composites pixel-moving CSS filters (the multi-second YouTube"
+    },
+    {
+      "name": "xdg-desktop-portal",
+      "owners": [
+        "google-taimen"
+      ],
+      "path": "temp/xdg-desktop-portal",
+      "why": "org.freedesktop.portal.NFC -- AccessNFC, OpenNFCRemote,"
+    }
+  ],
+  "schema": 1
+}

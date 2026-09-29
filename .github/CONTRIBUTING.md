@@ -27,7 +27,9 @@ and AI-assisted contributions are both welcome, under the same rules.
   repository never replaces an existing version.
 - Keep the fork on the version upstream ships and carry changes as patch
   files; CI checks that the sources verify and every patch applies.
-- Firmware packages (`firmware-*`) are never built or published by CI.
+- Firmware packages are excluded unless the documented Taimen grant gate is
+  enabled. That gate permits only `firmware-google-taimen` and its optional
+  fingerprint subpackage; other firmware remains refused.
 
 ## What CI builds
 

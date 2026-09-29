@@ -14,8 +14,8 @@ Run through run-pmbootstrap.sh.
 "Changed" means changed since $CI_MERGE_REQUEST_DIFF_BASE_SHA, the variable
 pmaports' own .ci/lib/common.py reads; unset means nothing changed.
 
-"Forked" means added or changed since the merge base with upstream pmaports:
-the aports this branch carries. It is derived from git, never listed by hand;
+"Forked" means present in .github/maintained-aports.json, generated from
+porthole profile/shared manifests. Git ancestry is not a maintenance inventory.
 .github/packages.conf only marks heavy, excluded and unpublished aports.
 """
 import io
@@ -41,16 +41,17 @@ GITHUB = ROOT / ".github"
 WORK = pathlib.Path("/work")
 ARCH = "aarch64"
 PACKAGER = os.environ.get("PACKAGER", "")
-UPSTREAM = "https://gitlab.postmarketos.org/postmarketOS/pmaports.git"
 # GitHub refuses a matrix of more than 256 jobs, and refuses it while the
 # matrix expression is evaluated: the run then fails with no job to blame.
 MAX_JOBS = 200
 
 
 def excluded(pkg: str) -> bool:
-    # Vendor firmware blobs are not ours to redistribute. Hard-coded on purpose,
-    # so no configuration change can publish them.
-    return pkg.startswith("firmware-")
+    # Only the reviewed Taimen grant may open this exception. Keep the
+    # default closed until its full scope is recorded by the maintainer.
+    taimen = {"firmware-google-taimen", "firmware-google-taimen-fingerprint"}
+    return pkg.startswith("firmware-") and not (
+        pkg in taimen and os.environ.get("FIRMWARE_GRANT_TAIMEN") == "approved")
 
 
 def tiers() -> dict[str, str]:
@@ -108,30 +109,9 @@ def changed(base: str | None = None) -> set[str]:
 
 
 def forks() -> set[str]:
-    """Aports this branch adds or changes relative to upstream pmaports, less
-    the exclusions in packages.conf. Needs the full history of HEAD."""
-    branch = pmb.config.pmaports.read_config_channel()["branch_pmaports"]
-    # A second promisor remote: commits and trees only, like the checkout.
-    common.run_git(["remote", "add", "upstream", UPSTREAM], check=False, stderr=subprocess.DEVNULL)
-    common.run_git(["config", "remote.upstream.promisor", "true"])
-    common.run_git(["config", "remote.upstream.partialclonefilter", "blob:none"])
-    common.run_git(["fetch", "-q", "--filter=blob:none", "--no-tags", "upstream", branch])
-    base = common.run_git(["merge-base", "FETCH_HEAD", "HEAD"]).strip()
-    date = common.run_git(["log", "-1", "--format=%as", base]).strip()
-    print(f"fork point: {base} ({date}), the merge base with upstream {branch}")
-    excluded_here = {p for p, t in tiers().items() if t == "exclude"}
-    ret = changed(base) - excluded_here
-    # A branch rebased onto upstream forks a few dozen aports. Hundreds means
-    # the merge base is not where this branch left upstream (a rewritten
-    # history shares no commits with upstream, so the merge base falls back to
-    # an ancient one) and this is the whole upstream delta, not our forks.
-    if len(ret) > MAX_JOBS:
-        # ::error:: is only read from stdout, so print it, do not raise.
-        print(f"::error::{len(ret)} aports differ from the fork point {base} of {date}: that is the "
-              "upstream delta, not this branch's forks. The merge base with upstream is no longer "
-              "meaningful; name the aports to build instead.")
-        sys.exit(1)
-    return ret
+    """Reviewed maintained inventory; rewritten history cannot identify forks."""
+    from maintained import load
+    return load(ROOT) - {p for p, t in tiers().items() if t == "exclude"}
 
 
 def private_source(d: pathlib.Path) -> str | None:
@@ -154,11 +134,11 @@ def private_source(d: pathlib.Path) -> str | None:
     return None
 
 
-def skip_private(pkg: str, d: pathlib.Path) -> bool:
+def unavailable_source(pkg: str, d: pathlib.Path) -> bool:
     repo = private_source(d)
     if repo:
-        print(f"::notice::{pkg}: skipped, its source comes from {repo}, which cannot be "
-              "downloaded without credentials while that repository is private")
+        print(f"::error::{pkg}: source {repo} is unavailable anonymously; "
+              "publish the reviewed source or repair its URL before building")
     return bool(repo)
 
 
@@ -182,7 +162,7 @@ def resolve(pkgs) -> list[tuple[str, pathlib.Path]]:
     for pkg in sorted(pkgs):
         d = aport_dir(pkg)
         if excluded(pkg):
-            print(f"{pkg}: firmware, never built or published")
+            print(f"{pkg}: firmware grant not enabled; not built or published")
         elif d is None:
             print(f"{pkg}: no aport (deleted or archived), skipping")
         else:
@@ -218,7 +198,10 @@ def cmd_check_patches(everything: bool) -> int:
     tier = tiers()
     pkgs = forks() if everything else changed()
     todo = [(p, d) for p, d in resolve(pkgs)
-            if (tier.get(p) != "heavy" or heavy or not everything) and not skip_private(p, d)]
+            if tier.get(p) != "heavy" or heavy or not everything]
+    unavailable = [p for p, d in todo if unavailable_source(p, d)]
+    if unavailable:
+        return 1
     if not todo:
         print("no aports to check")
         return 0
@@ -264,7 +247,9 @@ def read_index(data: bytes) -> dict[str, str]:
             if line.startswith("P:"):
                 name = line[2:]
             elif line.startswith("V:") and name:
-                ret[name] = line[2:]
+                value = line[2:]
+                if name not in ret or pmb.parse.version.compare(value, ret[name]) > 0:
+                    ret[name] = value
     return ret
 
 
@@ -278,7 +263,9 @@ def published() -> dict[str, str] | None:
     for repo in ("pmaports", "systemd"):
         path = pathlib.Path(index_dir, repo, "APKINDEX.tar.gz")
         if path.exists():
-            ret.update(read_index(path.read_bytes()))
+            for name, value in read_index(path.read_bytes()).items():
+                if name not in ret or pmb.parse.version.compare(value, ret[name]) > 0:
+                    ret[name] = value
         elif not pathlib.Path(index_dir, repo, "NO_RELEASE").exists():
             return None
     return ret
@@ -292,7 +279,14 @@ def cmd_select() -> int:
         if not re.fullmatch(r"[a-z0-9][a-z0-9._+-]*", pkg):
             print(f"::error::not a package name: {pkg!r}")
             return 1
+    for pkg in explicit:
+        if aport_dir(pkg) is None or excluded(pkg):
+            print(f"::error::{pkg}: no buildable aport")
+            return 1
     have = published()
+    if have is None:
+        print("::error::Published indexes unavailable; refusing an unplanned rebuild")
+        return 1
     if explicit:
         wanted = set(explicit)
         changed_now = wanted
@@ -303,12 +297,9 @@ def cmd_select() -> int:
         if os.environ.get("FORKS") == "true":
             fork_set = forks()
             print("forked: " + ", ".join(sorted(fork_set)))
-            if have is None:
-                print("::notice::The published index is not readable (set PACKAGES_READ_TOKEN "
-                      "while the packages repository is private): only changed aports are built")
-            else:
-                wanted |= fork_set  # those already published are dropped below
+            wanted |= fork_set  # those already published are dropped below
     matrix = []
+    invalid_selection = False
     for pkg, d in resolve(wanted):
         v = version(d)
         if Arch.aarch64 not in Arch.from_arch_field(apkbuild(d)["arch"]):
@@ -319,13 +310,19 @@ def cmd_select() -> int:
             print(f"{pkg}: excluded in packages.conf")
         elif tier.get(pkg) == "unpublished" and pkg not in changed_now:
             print(f"{pkg}: never published (packages.conf), and not changed here")
-        elif have is not None and have.get(pkg) == v:
-            print(f"{pkg}: {v} already published")
-        elif skip_private(pkg, d):
-            pass
+        elif pkg in have and pmb.parse.version.compare(have[pkg], v) >= 0:
+            if pkg in changed_now and not explicit:
+                print(f"::error::{pkg}: changed sources do not outrank published version {have[pkg]}; bump pkgrel")
+                invalid_selection = True
+            else:
+                print(f"{pkg}: {have[pkg]} already published; reuse it (bump pkgrel for a replacement)")
+        elif unavailable_source(pkg, d):
+            invalid_selection = True
         else:
             print(f"{pkg}: {v} will be built")
             matrix.append(pkg)
+    if invalid_selection:
+        return 1
     if len(matrix) > MAX_JOBS:
         print(f"::error::{len(matrix)} aports selected, more than the {MAX_JOBS} one run builds "
               "(GitHub caps a matrix at 256 jobs); build them in batches with the workflow's "
@@ -361,16 +358,17 @@ def use_published_repository() -> None:
         subprocess.run(["sudo", "cp", *map(str, (GITHUB / "keys").glob("*.pub")),
                         str(WORK / "config_apk_keys")], check=True)
     else:
-        print("published repository not readable anonymously: forked build dependencies are rebuilt here")
+        raise RuntimeError("published repository unavailable; refusing to rebuild dependencies unexpectedly")
 
 
 def cmd_build(pkg: str) -> int:
     d = aport_dir(pkg)
     if excluded(pkg) or d is None:
-        print(f"::error::{pkg}: not built here (firmware, or no such aport)")
+        print(f"::error::{pkg}: not built here (firmware grant disabled, or no such aport)")
         return 1
     use_systemd(is_systemd(d))
     use_published_repository()
+    pmbootstrap("config", "ccache_size", "256M")
     pmbootstrap("build_init")
     # $WORK/config_abuild is /home/pmos/.abuild in the chroot, and abuild
     # sources that abuild.conf after /etc/abuild.conf, so this is how a
@@ -389,17 +387,24 @@ def cmd_build(pkg: str) -> int:
     subprocess.run(["sudo", "sh", "-c", f"grep -q '^USE_CCACHE=' {conf} || "
                     f"echo 'USE_CCACHE=1' >> {conf}"], check=True)
     # --ignore-depends: build what the APKBUILD needs to build, not its runtime
-    # depends. Those are aports with their own jobs, and one of them (device ->
-    # firmware) must never be built here. Needs pmbootstrap patch 0002:
+    # depends. Those are aports with their own jobs, and firmware must not be
+    # pulled in implicitly, even when the Taimen grant gate is enabled. Needs pmbootstrap patch 0002:
     # upstream parses -i but never applies it.
-    pmbootstrap("--timeout", "3600", "build", "--force", "--ignore-depends", "--arch", ARCH, pkg)
+    import time
+    started = time.monotonic()
+    try:
+        pmbootstrap("--timeout", "3600", "build", "--force", "--ignore-depends", "--arch", ARCH, pkg)
+    finally:
+        print(f"build elapsed seconds: {time.monotonic() - started:.1f}", flush=True)
+        # Native ARM jobs use this chroot; read its cache, not a host cache.
+        subprocess.run(["pmbootstrap", "stats"], check=False)
     ok = True
     for apk in sorted((WORK / "packages").glob(f"*/{ARCH}/*.apk")):
         with tarfile.open(apk) as tar:
             info = dict(line.split(" = ", 1) for line in
                         tar.extractfile(".PKGINFO").read().decode().splitlines() if " = " in line)
         if excluded(info.get("pkgname", "")) or excluded(info.get("origin", "")):
-            print(f"removing {apk.name}: firmware is never published")
+            print(f"removing {apk.name}: firmware grant not enabled")
             subprocess.run(["sudo", "rm", "-f", str(apk)], check=True)
             continue
         print(f"{apk.relative_to(WORK / 'packages')}: packager={info.get('packager')}")
@@ -422,7 +427,9 @@ def cmd_outdated() -> int:
         with urllib.request.urlopen(url, timeout=60) as response:
             for name, ver in read_index(response.read()).items():
                 upstream.setdefault(name, []).append((ver, label))
-    rows, outdated = [], 0
+    missing = json.loads((GITHUB / "maintained-aports.json").read_text()).get("missing", [])
+    rows = [f"| {item['name']} | missing | - | **missing maintained aport** |" for item in missing]
+    outdated = len(missing)
     for pkg, d in resolve(forks()):
         ours = version(d)
         if pkg not in upstream:

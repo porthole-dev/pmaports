@@ -87,7 +87,8 @@ jobs:
               build=false
             fi
           else
-            echo "::notice::the published index is not readable; building chromium $ver"
+            echo "::error::Cannot read the published index; refusing an unplanned Chromium rebuild"
+            exit 1
           fi
 
           bash .github/scripts/chromium-state.sh manifest "$tag" > "$RUNNER_TEMP/state.json"
@@ -431,3 +432,33 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
         run: bash .github/scripts/chromium-state.sh delete "$TAG"
+
+  outcome:
+    name: Delivery outcome
+    needs: [plan, prep, stage-1, stage-2, stage-3, stage-4, stage-5, stage-6, stage-7, stage-8, stage-9, stage-10, package, publish]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Record whether this run delivered a package
+        env:
+          PLAN: ${{ needs.plan.result }}
+          BUILD: ${{ needs.plan.outputs.build }}
+          PACKAGE: ${{ needs.package.result }}
+          PUBLISH: ${{ needs.publish.result }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          if [ "$PLAN" = skipped ]; then
+            echo 'Chromium schedule disabled; no build was attempted.' >> "$GITHUB_STEP_SUMMARY"
+          elif echo "$RESULTS" | grep -Eq 'failure|cancelled'; then
+            echo 'Chromium run failed or was interrupted. Inspect the failed job and retained checkpoint.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          elif [ "$BUILD" = false ]; then
+            echo 'The requested version is already published; reused without rebuilding.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$PUBLISH" = success ]; then
+            echo 'APK published and index verified. Device qualification remains separate.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$PACKAGE" = success ]; then
+            echo 'APK built; publication was not performed. Download the artifact before retention expires.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Compilation is incomplete. Checkpoint retained; rerun to continue. No APK delivered.' >> "$GITHUB_STEP_SUMMARY"
+          fi

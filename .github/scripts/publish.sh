@@ -11,6 +11,7 @@
 # 404. aarch64 hosts are covered by the aarch64 index.
 #
 # Env: PACKAGES_REPO BRANCH ALPINE PACKAGER SIGNING_KEY SIGNING_KEY_NAME
+#      FIRMWARE_GRANT_TAIMEN (approved only after grant documentation)
 #      UNPUBLISHED (origins built but never published, from packages.conf)
 # Appends "sha256  <tag>/<file>" for every file uploaded to
 # $RUNNER_TEMP/uploaded.sha256 (the subjects to attest).
@@ -78,6 +79,7 @@ publish() {
 	docker run -i --rm -v "$repo:/repo" -v "$new:/new:ro" \
 		-v "$keys:/keys:ro" -v "$here/keys:/pubkeys:ro" \
 		-e ARCH="$arch" -e KEY="$SIGNING_KEY_NAME" -e PACKAGER -e UNPUBLISHED \
+		-e FIRMWARE_GRANT_TAIMEN \
 		-e REINDEX="$reindex" -e DESCRIPTION="$PACKAGES_REPO $tag" \
 		"$ALPINE" sh -s < "$here/scripts/publish-repo.sh"
 	# publish-repo.sh always writes .upload (empty when nothing changed).

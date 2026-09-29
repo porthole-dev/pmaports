@@ -6,6 +6,7 @@ on:
   push:
     branches: [taimen-bringup]
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     branches: [taimen-bringup]
   merge_group:
 
@@ -26,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: porthole-dev/.github/actions/commit-check@06b66d018629f11ebf2e305940855793dbc0b775 # v1.0.0
+      - uses: porthole-dev/.github/actions/commit-check@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
 
   lint:
     name: Lint APKBUILDs
@@ -39,6 +40,12 @@ jobs:
         with:
           fetch-depth: 100
           persist-credentials: false
+      - name: Test local CI policy
+        run: |
+          apk -q add python3
+          python3 .github/scripts/test-maintained.py
+          python3 .github/scripts/test-selection.py
+          python3 .github/scripts/test-publish-repo.py
       - name: Test base-commit.sh
         run: sh .github/scripts/test-base-commit.sh
       - name: Run apkbuild-lint and check version bumps
@@ -88,7 +95,7 @@ jobs:
         with:
           sparse-checkout: .github
           persist-credentials: false
-      - uses: porthole-dev/.github/actions/workflow-lint@06b66d018629f11ebf2e305940855793dbc0b775 # v1.0.0
+      - uses: porthole-dev/.github/actions/workflow-lint@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
 
   ci-passed:
     name: CI passed
@@ -97,6 +104,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: porthole-dev/.github/actions/ci-passed@06b66d018629f11ebf2e305940855793dbc0b775 # v1.0.0
+      - uses: porthole-dev/.github/actions/ci-passed@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
         with:
           results: ${{ join(needs.*.result, ' ') }}

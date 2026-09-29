@@ -11,15 +11,26 @@
 #      which with no packages at all gives an empty index).
 # Writes /repo/.upload (files to upload) and /repo/.remove (assets to delete).
 #
-# Firmware is refused, published versions are immutable, and the index is
-# verified against the committed public key before it is uploaded.
+# Firmware stays refused until the Taimen grant gate is explicitly enabled.
+# Published versions are immutable, and the index is verified before upload.
 set -eu
+REPO_DIR=${REPO_DIR:-/repo}
+NEW_DIR=${NEW_DIR:-/new}
+KEYS_DIR=${KEYS_DIR:-/keys}
+PUBKEYS_DIR=${PUBKEYS_DIR:-/pubkeys}
+TRUSTED_DIR=${TRUSTED_DIR:-/tmp/trusted}
 apk -q add abuild >/dev/null
 
 pkginfo() { tar -xzOf "$1" .PKGINFO 2>/dev/null | sed -n "s/^$2 = //p" | head -n1; }
 unpublished() { case " ${UNPUBLISHED:-} " in *" $1 "*) return 0 ;; esac; return 1; }
+taimen_firmware_approved() {
+	[ "${FIRMWARE_GRANT_TAIMEN:-}" = approved ] &&
+	[ "$origin" = firmware-google-taimen ] &&
+	{ [ "$name" = firmware-google-taimen ] ||
+	  [ "$name" = firmware-google-taimen-fingerprint ]; }
+}
 
-cd /repo
+cd "$REPO_DIR"
 : > .upload
 : > .remove
 for old in ./*.apk; do
@@ -30,16 +41,19 @@ for old in ./*.apk; do
 		rm -f "$old"
 	fi
 done
-for apk in /new/*.apk; do
+for apk in "$NEW_DIR"/*.apk; do
 	[ -e "$apk" ] || continue
 	name=$(pkginfo "$apk" pkgname)
 	origin=$(pkginfo "$apk" origin)
 	file=$(basename "$apk")
 	case "$name $origin" in
 	firmware-*|*" firmware-"*)
-		echo "REFUSED $file: firmware is never published" >&2; exit 1 ;;
+		if ! taimen_firmware_approved; then
+			echo "REFUSED $file: firmware grant not enabled" >&2; exit 1
+		fi ;;
 	esac
-	if tar -tzf "$apk" 2>/dev/null | grep -qE '^(usr/)?lib/firmware/'; then
+	if tar -tzf "$apk" 2>/dev/null | grep -qE '^(usr/)?lib/firmware/' &&
+	   ! taimen_firmware_approved; then
 		echo "REFUSED $file: ships files under lib/firmware" >&2; exit 1
 	fi
 	if unpublished "$origin"; then
@@ -50,16 +64,15 @@ for apk in /new/*.apk; do
 		echo "REFUSED $file: packager is not the configured PACKAGER" >&2; exit 1
 	fi
 	if [ -e "$file" ]; then
-		echo "keep $file (already published; versions are immutable)"
+		if ! cmp -s "$file" "$apk"; then
+			echo "REFUSED $file: published version has different bytes; bump pkgrel" >&2
+			exit 1
+		fi
+		echo "keep $file (identical published bytes)"
 		continue
 	fi
-	for old in "$name"-[0-9]*.apk; do
-		[ -e "$old" ] || continue
-		[ "$(pkginfo "$old" pkgname)" = "$name" ] || continue
-		echo "drop $old (superseded by $file)"
-		echo "$old" >> .remove
-		rm -f "$old"
-	done
+	# Cached indexes and retained image snapshots still reference older APKs.
+	# Keep them until an explicit retention review proves no snapshot needs them.
 	cp "$apk" .
 	echo "add  $file"
 	echo "$file" >> .upload
@@ -76,8 +89,8 @@ set -- ./*.apk
 echo "index $# package(s) for $ARCH"
 apk index -q --allow-untrusted --rewrite-arch "$ARCH" --description "$DESCRIPTION" \
 	--output APKINDEX.tar.gz "$@"
-abuild-sign -q -k "/keys/$KEY" -p "$KEY.pub" APKINDEX.tar.gz
-mkdir -p /tmp/trusted
-cp "/pubkeys/$KEY.pub" /tmp/trusted/
-apk verify --keys-dir /tmp/trusted APKINDEX.tar.gz
+abuild-sign -q -k "$KEYS_DIR/$KEY" -p "$KEY.pub" APKINDEX.tar.gz
+mkdir -p "$TRUSTED_DIR"
+cp "$PUBKEYS_DIR/$KEY.pub" "$TRUSTED_DIR/"
+apk verify --keys-dir "$TRUSTED_DIR" APKINDEX.tar.gz
 echo APKINDEX.tar.gz >> .upload

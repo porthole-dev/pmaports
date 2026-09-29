@@ -44,6 +44,9 @@ env:
   PACKAGES_REPO: porthole-dev/pmos-packages
   SIGNING_KEY_NAME: porthole-dev-packages-20260915.rsa
   PACKAGER: Giuseppe Maggio <jertlok@proton.me>
+  # Set this repository variable to "approved" only after the Taimen grant
+  # and its exact APK/image scope are recorded in firmware-google-taimen.
+  FIRMWARE_GRANT_TAIMEN: ${{ vars.FIRMWARE_GRANT_TAIMEN }}
   ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 jobs:
@@ -56,13 +59,11 @@ jobs:
       packages: ${{ steps.select.outputs.packages }}
       branch: ${{ steps.select.outputs.branch }}
     steps:
-      - run: apk -q add git github-cli jq python3
+      - run: apk -q add git github-cli jq python3 curl
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # A manual run with "forks" measures against the merge base with
-          # upstream pmaports: that needs the whole history, commits and trees
-          # only. A push keeps it too, so base-commit.sh finds its base after
-          # a force push.
+          # Push bases may precede a force push. Fork inventory is explicit;
+          # it no longer depends on upstream merge-base history.
           fetch-depth: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 100 || 0 }}
           filter: blob:none
           persist-credentials: false
@@ -84,8 +85,12 @@ jobs:
               *) echo "::error::Cannot download the $2 index: $out"; exit 1 ;;
               esac
             else
-              wget -q -O "/index/$1/APKINDEX.tar.gz" "https://github.com/$PACKAGES_REPO/releases/download/$2/APKINDEX.tar.gz" ||
-                rm -f "/index/$1/APKINDEX.tar.gz"
+              code=$(curl -L -sS --retry 3 --max-time 120 -o "/index/$1/APKINDEX.tar.gz" -w '%{http_code}' "https://github.com/$PACKAGES_REPO/releases/download/$2/APKINDEX.tar.gz") || exit 1
+              case "$code" in
+                200) ;;
+                404) rm -f "/index/$1/APKINDEX.tar.gz"; touch "/index/$1/NO_RELEASE" ;;
+                *) echo "::error::Index download returned HTTP $code"; exit 1 ;;
+              esac
             fi
           }
           fetch pmaports "$branch/aarch64"
@@ -103,11 +108,10 @@ jobs:
           CI_MERGE_REQUEST_DIFF_BASE_SHA=$(sh .github/scripts/base-commit.sh)
           export CI_MERGE_REQUEST_DIFF_BASE_SHA
           INDEX_DIR=/index sh .github/scripts/run-pmbootstrap.sh --no-init 'python3 .github/scripts/packages.py select'
-          # An absent or empty matrix.json must still be valid JSON: the build
-          # job feeds this straight to fromJSON(), and fromJSON("") fails the
-          # run with no job attached to blame.
-          packages=$(cat /work/matrix.json 2>/dev/null || true)
-          echo "packages=${packages:-[]}" >> "$GITHUB_OUTPUT"
+          # A missing matrix is a selector failure, never a successful no-op.
+          packages=$(cat /work/matrix.json)
+          echo "$packages" | jq -e 'type == "array"' >/dev/null
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
   build:
@@ -119,24 +123,20 @@ jobs:
     timeout-minutes: 360
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         package: ${{ fromJSON(needs.select.outputs.packages) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Restore compiler cache
+        id: ccache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/work/cache_apk_aarch64
-          key: pmbootstrap-apk-aarch64-${{ github.run_id }}
-          restore-keys: pmbootstrap-apk-aarch64-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ${{ runner.temp }}/work/cache_ccache_aarch64
-            ${{ runner.temp }}/work/cache_distfiles
-          key: pmbootstrap-build-${{ matrix.package }}-${{ github.run_id }}
-          restore-keys: pmbootstrap-build-${{ matrix.package }}-
+          path: ${{ runner.temp }}/work/cache_ccache_aarch64
+          key: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', '.github/pmbootstrap-patches/**', 'channels.cfg') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', '.github/pmbootstrap-patches/**', 'channels.cfg') }}-
       - name: Build the package
         env:
           PKG: ${{ matrix.package }}
@@ -144,10 +144,16 @@ jobs:
           df -h /
           docker run --rm --privileged \
             -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
-            -e HOST_UID="$(id -u)" -e PACKAGER -e PKG \
+            -e HOST_UID="$(id -u)" -e PACKAGER -e PKG -e FIRMWARE_GRANT_TAIMEN \
             -e PACKAGES_URL="https://github.com/$PACKAGES_REPO/releases/download" \
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'python3 .github/scripts/packages.py build "$PKG"'
           df -h /
+      - name: Save compiler cache from a successful trusted build
+        if: github.ref_name == 'taimen-bringup' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/work/cache_ccache_aarch64
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
       - name: Check packages for build machine details
         run: |
           set -eu
@@ -249,6 +255,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: porthole-dev/.github/actions/ci-passed@06b66d018629f11ebf2e305940855793dbc0b775 # v1.0.0
+      - uses: porthole-dev/.github/actions/ci-passed@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
         with:
           results: ${{ join(needs.*.result, ' ') }}

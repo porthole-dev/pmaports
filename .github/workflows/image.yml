@@ -88,7 +88,7 @@ jobs:
           IMAGE_NAME: ${{ matrix.name }}
         run: |
           tag=$IMAGE_DEVICE-candidate-${GITHUB_RUN_NUMBER}
-          gh release create "$tag" --target "$GITHUB_SHA" --prerelease \
+          gh release create "$tag" --target "$GITHUB_SHA" --prerelease --draft \
             --title "$IMAGE_NAME · experimental candidate ${GITHUB_RUN_NUMBER}" \
             --notes-file "$RUNNER_TEMP/work/image/INSTALL.md" "$RUNNER_TEMP"/work/image/*
           mkdir "$RUNNER_TEMP/downloaded"
@@ -98,3 +98,4 @@ jobs:
           gh attestation verify boot.img -R "$GH_REPO"
           if [ -f dtbo.img ]; then gh attestation verify dtbo.img -R "$GH_REPO"; fi
           gh attestation verify "$IMAGE_DEVICE.img.gz" -R "$GH_REPO"
+          gh release edit "$tag" --draft=false

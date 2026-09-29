@@ -83,7 +83,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 
 pkgname=firmware-google-taimen
 pkgver=20250505
-pkgrel=8
+pkgrel=9
 pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -101,18 +101,7 @@ _repo="TheMuppets/proprietary_vendor_google_taimen"
 _firmware_commit="d7bdad8e5599eefbafb6fa454f0967b01af8f76f"
 source="
 	$pkgname-$_commit.tar.gz::https://github.com/$_repo/archive/$_commit.tar.gz
-	fpctzappfingerprint.b00::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b00
-	fpctzappfingerprint.b01::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b01
-	fpctzappfingerprint.b02::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b02
-	fpctzappfingerprint.b03::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b03
-	fpctzappfingerprint.b04::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b04
-	fpctzappfingerprint.b05::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b05
-	fpctzappfingerprint.b06::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b06
-	fpctzappfingerprint.b07::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.b07
-	fpctzappfingerprint.mdt::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.mdt
-	mba.mbn::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/modem/mba.mbn
-	modem.mbn::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/modem/modem.mbn
-	modemr.jsn::https://raw.githubusercontent.com/porthole-dev/firmware-google-taimen/$_firmware_commit/google-factory/modem/modemr.jsn
+	taimen-factory-$_firmware_commit.tar.gz::https://github.com/porthole-dev/firmware-google-taimen/archive/$_firmware_commit.tar.gz
 	board-2.json
 	"
 builddir="$srcdir/proprietary_vendor_google_taimen-$_commit/proprietary/vendor/firmware"
@@ -165,9 +154,9 @@ package() {
 	# of the two, pd-mapper exits "no pd maps available" and WiFi never comes
 	# up. It lives on the modem partition, not in vendor.img, so it was lost
 	# when the rest of this package moved to TheMuppets in pkgrel 1.
-	install -Dm644 "$srcdir"/mba.mbn \
-		"$srcdir"/modem.mbn \
-		"$srcdir"/modemr.jsn \
+	install -Dm644 "$srcdir"/firmware-google-taimen-$_firmware_commit/google-factory/modem/mba.mbn \
+		"$srcdir"/firmware-google-taimen-$_firmware_commit/google-factory/modem/modem.mbn \
+		"$srcdir"/firmware-google-taimen-$_firmware_commit/google-factory/modem/modemr.jsn \
 		-t "$_fw"/qcom/msm8998/wahoo/
 
 	install -Dm644 crbtfw21.tlv crnv21.bin -t "$_fw"/qca/
@@ -192,11 +181,11 @@ _fingerprint() {
 	# uses qcom_mdt_load(), which opens the .mdt and then requests each
 	# .bNN segment itself by name -- that split *is* the layout it wants,
 	# so squashing them here would only have to be undone there.
-	install -Dm644 "$srcdir"/fpctzappfingerprint.mdt \
+	install -Dm644 "$srcdir"/firmware-google-taimen-$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.mdt \
 		"$subpkgdir"/lib/firmware/qcom/msm8998/taimen/fpctzappfingerprint.mdt
 	local _s
 	for _s in b00 b01 b02 b03 b04 b05 b06 b07; do
-		install -Dm644 "$srcdir"/fpctzappfingerprint.$_s \
+		install -Dm644 "$srcdir"/firmware-google-taimen-$_firmware_commit/google-factory/fingerprint/fpctzappfingerprint.$_s \
 			"$subpkgdir"/lib/firmware/qcom/msm8998/taimen/fpctzappfingerprint.$_s
 	done
 }
@@ -204,16 +193,5 @@ _fingerprint() {
 sha512sums="
 65ebd3c01f5633f8d9818c8410332ccb0f336b0ef8bd99b7b2f046814585395548ce9a432628623672dc811a9ea20aa945925743eed24242866ed3b5983cccea  firmware-google-taimen-d1a4f0d0ea34157875751c812c9887550e216c5a.tar.gz
 0c38e60200837c0d0dc1a84e910b230723de17a9c6c1fce52a84303de38cf43867368c0d42126163395641f432a2eb80abd58809ddb1d66514ed46394a395047  board-2.json
-e8cca8e292b9bba784d066bdf354361bcabedc479dad2c1a3a67973744f94203bb88f2e7fca451b1a00549ebe8f75226c8dabebfb81cf1c6f0f4deac5563a57e  fpctzappfingerprint.b00
-0232794668cf316bbc760cca7e901194f91068bb86f61359d11815dee8a3457d06bbe3027134ddf0c2401a4a2f006bb00e82b29456c5f90cccebdd2d1cceaec4  fpctzappfingerprint.b01
-a60e3dfc8e81afe2c12a70fdb3520d68ef8e21b2295a0add134dc6625c00d6cdfab509623782a75431a55c7d8964baae4bfdafaeee82a599637bf0fe1f0ab028  fpctzappfingerprint.b02
-6dbd53a9dafe39a360b7d26d73261262ab04226c10798a299093fd3b1087da38bc61e9e2ea684515d6ea42d9a16b231aa9aef7a1b9c7acfa445c4b230a442d31  fpctzappfingerprint.b03
-cd1521c66de58b40e2fa10dd32ea12ccbc946847e5a0b83a30e7afaaccc8b7a41263c054622f21fffe83861a05b65ac76474852eb199aabf91dc0dfab5c2c602  fpctzappfingerprint.b04
-ea092484475a585d5e13817a597214312bf6d2a9b2a27731b99a44bf632d28361323f7a25ec45805eb56591fff780057c5b7d217e57efe6edf74e6bd73be83f5  fpctzappfingerprint.b05
-ea092484475a585d5e13817a597214312bf6d2a9b2a27731b99a44bf632d28361323f7a25ec45805eb56591fff780057c5b7d217e57efe6edf74e6bd73be83f5  fpctzappfingerprint.b06
-dd3d2a1cc8b312ae548bbd50b2d289af18a06e51003811eaf98cfa3b440a1848f4e2008e81b7a1c72c1f2ab2d25f4461512e200ac02a3f9f6f85a661adbedee9  fpctzappfingerprint.b07
-fafca967eff4ef2306008480f6a316152aae0b143541e3675bea536ea81c6d59a1415a92020710a4ab213bbe434111dd2ec24e69d463c511e1208ab33cd36170  fpctzappfingerprint.mdt
-e955ea5170c303b1edec2c7f4be28fbfcbd73103ff8b6545217d4b73b18ddbc8b04476627a6c5eaf825f1c1e0c7e8ce0abc9930daa9cae1087bfeb61e24499ac  mba.mbn
-2b9dbf1e44b1a33909480378333d3329e63bf7d03c2894299552167dc665142299f8b4c27a2b6f893e7d9eb8c22b446cc6ebfe930c7c104e6e09082cb599b5a9  modem.mbn
-d13e456e4bfdfc43994bc49f452500c481fc879dc301b6b2a3c4adfd8efab6065d06f1c5a759d4d6f42a29d1fd6d2de9c5df689751ed5f41a673ca3ab78f7f80  modemr.jsn
+903ec45eb2495f49e4396494e4e9fcf5ebf670e3f16dddeb20c4d7fec9bbf4875a9c9f2ea305d0bca3ad878446db5d3a6de3b03d59b6fc54a376dcae24fe9039  taimen-factory-d7bdad8e5599eefbafb6fa454f0967b01af8f76f.tar.gz
 "

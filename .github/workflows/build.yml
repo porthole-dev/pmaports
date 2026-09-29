@@ -135,8 +135,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/work/cache_ccache_aarch64
-          key: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', '.github/pmbootstrap-patches/**', 'channels.cfg') }}-${{ hashFiles(format('**/{0}/**', matrix.package)) }}
-          restore-keys: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', '.github/pmbootstrap-patches/**', 'channels.cfg') }}-
+          key: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', 'channels.cfg') }}-${{ hashFiles(format('**/{0}/**', matrix.package)) }}
+          restore-keys: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', 'channels.cfg') }}-
       - name: Build the package
         env:
           PKG: ${{ matrix.package }}

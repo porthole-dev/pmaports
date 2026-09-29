@@ -111,7 +111,6 @@ tag)
 	arch=$(case "$runner" in *-arm) echo aarch64 ;; *) echo x86_64 ;; esac)
 	key=$(printf '%s\n' "$FORMAT" "$runner" \
 		"$(git rev-parse HEAD:temp/chromium)" \
-		"$(git rev-parse HEAD:.github/pmbootstrap-patches)" \
 		"$(git rev-parse HEAD:.github/scripts/run-pmbootstrap.sh)" | sha256sum | cut -c1-12)
 	echo "chromium-state-$ver-on-$arch-$key"
 	;;

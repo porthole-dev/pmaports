@@ -21,20 +21,14 @@
 #                         steps and actions/cache can read and save them
 set -eu
 
-# pmbootstrap: upstream at the base of the porthole-dev fork branch, plus the
-# fork's commits as patches in .github/pmbootstrap-patches/. Once the fork is
-# published as porthole-dev/pmbootstrap this becomes
-#   PMB_REPO=https://github.com/porthole-dev/pmbootstrap.git
-#   PMB_COMMIT=<the fork commit the patch series was taken from>
-# and the patch directory is deleted.
-PMB_REPO=${PMB_REPO:-https://gitlab.postmarketos.org/postmarketOS/pmbootstrap.git}
-PMB_COMMIT=${PMB_COMMIT:-e8a36b0a65dbd98e2f9f866d80888ba3dd69d6bd}
+# Consume the published fork directly so native and cross builds share fixes.
+PMB_REPO=${PMB_REPO:-https://github.com/porthole-dev/pmbootstrap.git}
+PMB_COMMIT=${PMB_COMMIT:-c81e873788894f2969e6745073eadcb2129f692a}
 
 init=1
 [ "${1:-}" = --no-init ] && { init=; shift; }
 [ $# -eq 1 ] || { echo "usage: run-pmbootstrap.sh [--no-init] COMMAND" >&2; exit 64; }
 pmaports=$(pwd -P)
-patches=$pmaports/.github/pmbootstrap-patches
 
 apk -q add coreutils git losetup multipath-tools openssl procps python3 sudo
 
@@ -46,14 +40,8 @@ mkdir -p /opt/pmbootstrap
 git -C /opt/pmbootstrap init -q
 git -C /opt/pmbootstrap fetch -q --depth 1 "$PMB_REPO" "$PMB_COMMIT"
 git -C /opt/pmbootstrap -c advice.detachedHead=false checkout -q FETCH_HEAD
-count=0
-for patch in "$patches"/*.patch; do
-	[ -e "$patch" ] || continue
-	git -C /opt/pmbootstrap apply "$patch"
-	count=$((count + 1))
-done
 ln -sf /opt/pmbootstrap/pmbootstrap.py /usr/local/bin/pmbootstrap
-echo "pmbootstrap $(git -C /opt/pmbootstrap rev-parse --short HEAD) with $count patch(es)"
+echo "pmbootstrap $(git -C /opt/pmbootstrap rev-parse --short HEAD)"
 
 # The default work path, pointed at /work.
 mkdir -p /work /home/pmos/.local/var /home/pmos/.config

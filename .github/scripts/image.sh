@@ -1,5 +1,5 @@
 #!/bin/sh
-# Assemble an experimental Taimen release in the CI pmbootstrap container.
+# Assemble a configured experimental device release in the CI pmbootstrap container.
 # No device writes. The caller supplies the published package mirror.
 set -eu
 : "${PACKAGES_URL:?published package repository required}"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the packaged Taimen rootfs before publishing an experimental image."""
+"""Check the configured device rootfs before publishing an experimental image."""
 import hashlib
 import json
 import pathlib

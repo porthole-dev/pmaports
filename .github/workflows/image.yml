@@ -1,0 +1,60 @@
+name: Device image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taimen-image
+  cancel-in-progress: false
+
+env:
+  ALPINE: docker.io/library/alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+
+jobs:
+  image:
+    if: github.ref_name == 'taimen-bringup'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Assemble and verify the release candidate
+        env:
+          FIRMWARE_GRANT_TAIMEN: ${{ vars.FIRMWARE_GRANT_TAIMEN }}
+          PORTHOLE_PMOS_PASSWORD: ${{ secrets.PORTHOLE_PMOS_PASSWORD }}
+          PACKAGES_URL: https://github.com/porthole-dev/pmos-packages/releases/download
+        run: |
+          docker run --rm --privileged \
+            -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
+            -e HOST_UID="$(id -u)" -e FIRMWARE_GRANT_TAIMEN \
+            -e PORTHOLE_PMOS_PASSWORD -e PACKAGES_URL \
+            "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'sh .github/scripts/image.sh'
+      - name: Attest the candidate assets
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/work/image/SHA256SUMS
+      - name: Publish the experimental candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag=taimen-candidate-${GITHUB_RUN_NUMBER}
+          gh release create "$tag" --target "$GITHUB_SHA" --prerelease \
+            --title "Pixel 2 XL · experimental candidate ${GITHUB_RUN_NUMBER}" \
+            --notes-file .github/IMAGE-INSTALL.md "$RUNNER_TEMP"/work/image/*
+          mkdir "$RUNNER_TEMP/downloaded"
+          gh release download "$tag" -D "$RUNNER_TEMP/downloaded"
+          cd "$RUNNER_TEMP/downloaded"
+          sha256sum -c SHA256SUMS
+          gh attestation verify boot.img -R "$GH_REPO"
+          gh attestation verify dtbo.img -R "$GH_REPO"
+          gh attestation verify google-taimen.img.gz -R "$GH_REPO"

@@ -368,7 +368,8 @@ def cmd_build(pkg: str) -> int:
         return 1
     use_systemd(is_systemd(d))
     use_published_repository()
-    pmbootstrap("config", "ccache_size", "256M")
+    pmbootstrap("config", "ccache_size", "1G" if pkg.startswith("linux-") else "256M")
+    pmbootstrap("config", "jobs", str(min(os.cpu_count() or 1, 2)))
     pmbootstrap("build_init")
     # $WORK/config_abuild is /home/pmos/.abuild in the chroot, and abuild
     # sources that abuild.conf after /etc/abuild.conf, so this is how a

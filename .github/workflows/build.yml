@@ -135,7 +135,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/work/cache_ccache_aarch64
-          key: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', '.github/pmbootstrap-patches/**', 'channels.cfg') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', '.github/pmbootstrap-patches/**', 'channels.cfg') }}-${{ hashFiles(format('**/{0}/**', matrix.package)) }}
           restore-keys: ccache-v2-aarch64-${{ matrix.package }}-${{ hashFiles('.github/scripts/run-pmbootstrap.sh', '.github/pmbootstrap-patches/**', 'channels.cfg') }}-
       - name: Build the package
         env:
@@ -149,7 +149,7 @@ jobs:
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'python3 .github/scripts/packages.py build "$PKG"'
           df -h /
       - name: Save compiler cache from a successful trusted build
-        if: github.ref_name == 'taimen-bringup' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.ccache.outputs.cache-hit != 'true' && github.ref_name == 'taimen-bringup' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/work/cache_ccache_aarch64

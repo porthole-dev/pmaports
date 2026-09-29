@@ -7,6 +7,7 @@ set -eu
 [ "$FIRMWARE_GRANT" = approved ]
 : "${IMAGE_DEVICE:?device required}"
 eval "$(python3 .github/scripts/image-config.py "$IMAGE_DEVICE")"
+python3 .github/scripts/test-image.py
 pmb() { pmbootstrap --aports "$PWD" "$@"; }
 pmb config device "$IMAGE_DEVICE"
 pmb config kernel "$IMAGE_KERNEL"
@@ -43,9 +44,9 @@ cp "$root/etc/apk/repositories" /work/image/apk-repositories.txt
 git rev-parse HEAD > /work/image/pmaports.commit
 git -C /opt/pmbootstrap rev-parse HEAD > /work/image/pmbootstrap.commit
 cp /work/config_apk_keys/*.pub /work/image/
-for repo in main systemd/main; do
+for repo in "$IMAGE_BRANCH" "systemd/$IMAGE_BRANCH"; do
     name=$(printf '%s' "$repo" | tr / -)
-    wget -q -O "/work/image/$name-APKINDEX.tar.gz" "$PACKAGES_URL/$repo/aarch64/APKINDEX.tar.gz"
+    wget -q -O "/work/image/$name-APKINDEX.tar.gz" "$PACKAGES_URL/$repo/$IMAGE_ARCH/APKINDEX.tar.gz"
 done
 gzip -n "/work/image/$IMAGE_DEVICE.img"
 cp "$IMAGE_INSTALL_GUIDE" /work/image/INSTALL.md

@@ -18,7 +18,13 @@
       "device/testing/device-google-taimen",
       "device/testing/firmware-google-taimen",
       "device/testing/linux-postmarketos-qcom-msm8998-7.2",
-      "temp/gnome-control-center"
+      "temp/gnome-control-center",
+      "temp/fprintd",
+      "temp/libcamera",
+      "testing/obscura",
+      "extra-repos/systemd/phosh",
+      "temp/phosh-nfc-quick-setting",
+      "temp/tap"
     ],
     "required_packages": [
       "neard",

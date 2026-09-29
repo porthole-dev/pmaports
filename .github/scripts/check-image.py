@@ -3,8 +3,12 @@
 import hashlib
 import json
 import pathlib
-import re
 import sys
+
+import pmb.parse
+import pmb.helpers.logging
+
+pmb.helpers.logging.add_verbose_log_level()
 
 root = pathlib.Path(sys.argv[1])
 installed = {}
@@ -14,11 +18,9 @@ for entry in (root / "lib/apk/db/installed").read_text().split("\n\n"):
         installed[fields["P"]] = fields.get("V")
 device = json.loads(pathlib.Path(".github/image-devices.json").read_text())[sys.argv[2]]
 for aport in device["required_aports"]:
-    text = (pathlib.Path(aport) / "APKBUILD").read_text()
-    version = re.search(r"(?m)^pkgver=(\S+)", text)[1]
-    release = re.search(r"(?m)^pkgrel=(\d+)", text)[1]
-    name = pathlib.Path(aport).name
-    expected = version + "-r" + release
+    recipe = pmb.parse.apkbuild(pathlib.Path(aport) / "APKBUILD", False, False)
+    name = recipe["pkgname"]
+    expected = recipe["pkgver"] + "-r" + str(recipe["pkgrel"])
     if installed.get(name) != expected:
         raise SystemExit(f"{name}: installed {installed.get(name)}, expected {expected}")
 for name in device["required_packages"]:

@@ -1,0 +1,134 @@
+From 88e94b39bff033d04060fc13a65823250c350ccd Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 16 Sep 2026 14:08:03 +0200
+Subject: [PATCH 235/235] media: i2c: lc898214xd: expose the lens travel the
+ servo actually has
+
+FOCUS_ABSOLUTE spanned hall +324..-257, taken from the vendor's
+af_tuning region params on the assumption that they bounded the
+mechanism. They do not.
+
+Commanding the target register directly and reading the hall sensor
+back shows the servo tracking to within a few counts across a far wider
+span:
+
+  commanded  268   324   500   700   900  1112  1400
+  hall       267   333   503   702   899  1110  1335
+
+1112 is this module's OTP macro code and the servo lands on it; only
+near 1400 does it lag into the mechanical stop.
+
+What the old range cost: with exposure, scene stability and the
+actuator readback all held, a subject at 0.222 m focuses sharply at
+hall ~530 -- a 13x sharpness peak, and about 200 counts past anything
+the control could command. Nothing nearer than roughly 0.6 m could be
+focused at all; a sweep at 0.155 m stayed flat to within 5% with no
+peak anywhere, and subjects at 0.47 m and 0.57 m pinned against the end
+stop. That is the whole of "autofocus does not work" on this device.
+
+So expose 0..1369 onto hall -257..+1112, which also puts the control
+the way round V4L2 specifies: higher means nearer.
+
+These bounds are the span this part was verified to track, not a
+calibration. Where infinity and macro fall inside it belongs to the
+individual module and stays in userspace tuning data; libcamera's
+dioptre map moves with this commit and the two must land together.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/media/i2c/lc898214xd.c | 68 ++++++++++++++++++++--------------
+ 1 file changed, 40 insertions(+), 28 deletions(-)
+
+diff --git a/drivers/media/i2c/lc898214xd.c b/drivers/media/i2c/lc898214xd.c
+index f71475a423d3..1ea33349343c 100644
+--- a/drivers/media/i2c/lc898214xd.c
++++ b/drivers/media/i2c/lc898214xd.c
+@@ -85,39 +85,51 @@
+  * signed: infinity 0x144 = +324, macro 0x0eff = -257 (libactuator_lc898214xd.so
+  * .data, and .data+0x1808 for initial_code).
+  *
+- * V4L2_CID_FOCUS_ABSOLUTE is unsigned and, by convention, increases towards
+- * near focus. So expose 0..581, mapping 0 -> +324 (infinity) and 581 -> -257
+- * (macro), and convert on the way to the hardware.
++ * Those two af_tuning fields do NOT bound the mechanism, and taking them as
++ * the range made close focus impossible. Measured 2026-09-16 by commanding
++ * the target register directly (bringup/camera/vcm-poke.py) and reading the
++ * hall sensor back:
++ *
++ *   commanded  268   324   500   700   900  1112  1400
++ *   hall       267   333   503   702   899  1110  1335
+  *
+- * UNRESOLVED, measured 2026-09-16 (bringup/camera/af-sweep.py, exposure and
+- * scene stability both held, actuator readback tracking every step):
++ * The servo tracks to within a few counts all the way to 1112 -- which is
++ * exactly this module's OTP macro code -- and only lags approaching 1400 as
++ * it reaches the mechanical stop. So the travel runs from roughly -257 to
++ * about +1335, and af_tuning's "infinity 324 / macro -257" describes a narrow
++ * slice on the FAR side of it.
+  *
+- *   subject                 distance   sharpest at
+- *   lit book, square on     0.47 m     code 0    (9.3x over the range)
+- *   room, shelving          ~2-3 m     code 128  (up to 11x)
+- *   book on a far shelf     far        code 192  (15.5x)
++ * What that cost, measured with the same sweep and all of exposure, scene
++ * stability and actuator readback held (bringup/camera/af-sweep.py): a
++ * subject at 0.222 m focuses sharply at hall ~530, a 13x sharpness peak. The
++ * old range topped out at +324, so no subject nearer than roughly 0.6 m could
++ * be focused at all -- a sweep at 0.155 m stayed flat to within 5% with no
++ * peak anywhere, and subjects at 0.47 m and 0.57 m both pinned against the
++ * end stop.
++ *
++ * V4L2_CID_FOCUS_ABSOLUTE is unsigned and, by convention, increases towards
++ * near focus. So expose 0..1369 mapping onto hall -257..+1112, which finally
++ * puts this control the way round V4L2 specifies.
+  *
+- * Sharpness rises with distance as the CODE rises, so pos 0 focuses NEAR and
+- * pos 581 FAR -- the opposite of both the labels above and the V4L2
+- * convention. A fit through the two solid points puts infinity near code 157,
+- * which would leave roughly two thirds of the exposed range beyond infinity
+- * and the near end unreachable (a subject at 0.155 m stayed flat to within
+- * 5% across the whole sweep, with no peak anywhere).
++ * The bounds below are the span this part was verified to track, not a
++ * calibration: where infinity and macro actually fall within it is a property
++ * of the individual module (its OTP says 268 and 1112 here), and belongs in
++ * userspace tuning data rather than in this driver. libcamera's dioptre-to-
++ * code map is where that lives, and it has to be updated whenever this range
++ * changes.
+  *
+- * That cannot be reconciled with the vendor's af_tuning (infinity +324, macro
+- * -257) without either those two fields being read swapped out of
+- * libactuator_lc898214xd.so, or the hall scale not being the DAC scale. The
+- * polarity is deliberately NOT flipped here yet: the tuning file's dioptre
+- * map would have to move in the same commit, and the fit needs stations at
+- * measured distances in daylight first.
++ * Known follow-up: a blind contrast scan now spends its first ~38% of travel
++ * beyond infinity, where nothing changes. Seeding the scan from the module's
++ * calibration (or from the laser rangefinder) is the fix for that; shrinking
++ * this range to suit one module is not.
+  */
+-#define LC898214XD_CODE_INFINITY	324
+-#define LC898214XD_CODE_MACRO		(-257)
++#define LC898214XD_CODE_FAR		(-257)
++#define LC898214XD_CODE_NEAR		1112
+ #define LC898214XD_POS_MIN		0
+-#define LC898214XD_POS_MAX		(LC898214XD_CODE_INFINITY - LC898214XD_CODE_MACRO)
++#define LC898214XD_POS_MAX		(LC898214XD_CODE_NEAR - LC898214XD_CODE_FAR)
+ 
+-/* Vendor af_tuning initial_code is the macro end. */
+-#define LC898214XD_POS_DEFAULT		LC898214XD_POS_MAX
++/* Park at the far end: a frame focused past infinity beats one at macro. */
++#define LC898214XD_POS_DEFAULT		LC898214XD_POS_MIN
+ 
+ struct lc898214xd {
+ 	struct v4l2_subdev sd;
+@@ -179,8 +191,8 @@ static int lc898214xd_set_pos(struct lc898214xd *lens, u16 pos)
+ 	if (ret)
+ 		return ret;
+ 
+-	/* 0 = infinity, POS_MAX = macro; the hardware code runs the other way. */
+-	code = LC898214XD_CODE_INFINITY - pos;
++	/* 0 = far, POS_MAX = near; the hardware code runs the same way. */
++	code = LC898214XD_CODE_FAR + pos;
+ 
+ 	return i2c_smbus_write_word_swapped(lens->client, LC898214XD_REG_TARGET,
+ 					    (u16)(code << LC898214XD_CODE_SHIFT));

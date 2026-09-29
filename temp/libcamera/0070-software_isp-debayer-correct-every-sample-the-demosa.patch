@@ -1,0 +1,276 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 16 Sep 2026 18:20:00 +0200
+Subject: [PATCH] software_isp: debayer: correct every sample the demosaic reads
+
+Clamping only the CENTRE sample removes a hot photosite from its own output
+pixel and leaves it bleeding into the eight around it: the demosaic
+interpolates those from neighbour samples it fetches uncorrected. Measured on
+two full-resolution dark frames of the taimen rear sensor, counting pixels
+above 60 and then the ones at identical coordinates in both (that intersection
+is the fixed defect pattern; random coincidence predicts ~5):
+
+  no correction         7625 / 7531 bright, 5713 fixed
+  centre, 2 neighbours  3497 / 3637 bright, 2899 fixed   49.3% removed
+  centre, 4 neighbours  3461 / 3542 bright, 2833 fixed   50.4% removed
+
+49.3 -> 50.4 for twice the neighbours is the shape of a half-fix, not of a
+shortage of neighbours. So clamp every sample, not just the centre.
+
+Doing it in the fetch is arithmetically identical to a separate correction
+pass over the raw image before demosaicing -- each sample is clamped against
+its own uncorrected neighbours either way -- and needs no second render
+target, which in libcamera's GLES2 context could not be single-channel
+anyway: GLES2 has no colour-renderable R8, so an intermediate raw plane would
+have to be RGBA8 and cost four bytes per sample of write and read bandwidth.
+
+Sampling by PIXEL index rather than by stepping the texture in bytes is what
+makes this affordable to write: a pixel's high-bits byte is at
+floor(BPP * index) whatever the packing, so the low-bits-byte fixups that the
+one-pixel steps needed disappear, and an arbitrary offset costs the same as
++-1. The shader is 33 lines shorter for it.
+
+Only the MIPI packed shader is changed. bayer_unpacked.frag keeps the
+centre-only clamp: no device on this fork uses that path -- both taimen and
+cheetah deliver packed raw -- so the same change there could not be measured,
+and an unverifiable change to another device's image is not worth the
+symmetry.
+
+Upstream would want this behind tuning data rather than always on, so that a
+sensor with no defect problem does not pay for it.
+
+Assisted-by: Claude
+---
+diff --git a/src/libcamera/shaders/bayer_1x_packed.frag b/src/libcamera/shaders/bayer_1x_packed.frag
+index 54c1aab..dd5ab82 100644
+--- a/src/libcamera/shaders/bayer_1x_packed.frag
++++ b/src/libcamera/shaders/bayer_1x_packed.frag
+@@ -24,34 +24,23 @@ precision highp float;
+ #endif
+ 
+ /*
+- * These constants are used to select the bytes containing the HS part of
+- * the pixel value:
+- * BPP - bytes per pixel,
+- * THRESHOLD_L = fract(BPP) * 0.5 + 0.02
+- * THRESHOLD_H = 1.0 - fract(BPP) * 1.5 + 0.02
+- * Let X is the x coordinate in the texture measured in bytes (so that the
+- * range is from 0 to (stride_-1)) aligned on the nearest pixel.
++ * BPP - bytes per pixel. It is what turns a pixel index into the byte
++ * holding that pixel's 8 high bits: byte = floor(BPP * pixel).
+  * E.g. for RAW10P:
+  * -------------+-------------------+-------------------+--
+  *  pixel No    |  0   1    2   3   |  4   5    6   7   | ...
+  * -------------+-------------------+-------------------+--
+  *  byte offset | 0   1   2   3   4 | 5   6   7   8   9 | ...
+  * -------------+-------------------+-------------------+--
+- *      X       | 0.0 1.25 2.5 3.75 | 5.0 6.25 7.5 8.75 | ...
++ * BPP * pixel  | 0.0 1.25 2.5 3.75 | 5.0 6.25 7.5 8.75 | ...
+  * -------------+-------------------+-------------------+--
+- * If fract(X) < THRESHOLD_L then the previous byte contains the LS
+- * bits of the pixel values and needs to be skipped.
+- * If fract(X) > THRESHOLD_H then the next byte contains the LS bits
+- * of the pixel values and needs to be skipped.
++ * where byte 4 of each group holds the low bits of all four pixels and no
++ * pixel index ever lands on it.
+  */
+ #if defined(RAW10P)
+ #define BPP		1.25
+-#define THRESHOLD_L	0.14
+-#define THRESHOLD_H	0.64
+ #elif defined(RAW12P)
+ #define BPP		1.5
+-#define THRESHOLD_L	0.27
+-#define THRESHOLD_H	0.27
+ #else
+ #error Invalid raw format
+ #endif
+@@ -80,26 +69,65 @@ float apply_contrast(float value)
+ 		return 1.0 - 0.5 * pow((1.0 - value) / 0.5, contrastExp);
+ }
+ 
++/*
++ * Sample one raw pixel by its PIXEL index.
++ *
++ * A pixel's high-bits byte is at floor(BPP * x) whatever the packing, so
++ * addressing from the pixel index lands on it by construction. That is why
++ * none of the steps below need the low-bits-byte fixups that stepping the
++ * texture by whole bytes used to: the index does that work.
++ */
++float rawAt(float px, float py)
++{
++	/*
++	 * Add a small number (a few mantissa's LSBs) to avoid float
++	 * representation issues. Maybe paranoic.
++	 */
++	return texture2D(tex_y, vec2(floor(BPP * px + 0.02) * tex_step.x,
++				     py * tex_step.y)).r;
++}
++
++/*
++ * Defect pixel suppression, applied to EVERY sample the demosaic reads.
++ *
++ * Clamp a sample into the range of the four pixels two steps away, which
++ * carry the same colour filter. A hot photosite disagrees with all four and
++ * is pulled back; real detail does not, because the lens spreads a point
++ * over more than two pixels, so the clamp is then a no-op.
++ *
++ * Correcting only the centre sample -- which is what this started as --
++ * removes a defect from its own output pixel and leaves it bleeding into the
++ * eight around it, because the demosaic interpolates those from the very
++ * samples that were left uncorrected. Measured: centre-only removed 49.3% of
++ * the fixed defect pattern and adding more neighbours to that one clamp took
++ * it to 50.4%, which is the shape of a half-fix, not of a shortage of
++ * neighbours.
++ *
++ * Doing it here is arithmetically identical to a separate correction pass
++ * over the raw image before demosaicing -- each sample is clamped against
++ * its own uncorrected neighbours either way -- and needs no second render
++ * target, which in a GLES2 context cannot be single-channel anyway.
++ */
++float corrected(float px, float py)
++{
++	float c = rawAt(px, py);
++	vec4 n = vec4(rawAt(px, py - 2.0),	/* ( 0,-2) */
++		      rawAt(px, py + 2.0),	/* ( 0, 2) */
++		      rawAt(px - 2.0, py),	/* (-2, 0) */
++		      rawAt(px + 2.0, py));	/* ( 2, 0) */
++
++	return clamp(c, min(min(n.x, n.y), min(n.z, n.w)),
++			max(max(n.x, n.y), max(n.z, n.w)));
++}
++
+ void main(void)
+ {
+ 	vec3 rgb;
+ 
+ 	/*
+-	 * center_bytes holds the coordinates of the MS byte of the pixel
+-	 * being sampled on the [0, stride-1/height-1] range.
+ 	 * center_pixel holds the coordinates of the pixel being sampled
+ 	 * on the [0, width/height-1] range.
+-	 */
+-	vec2 center_bytes;
+-	vec2 center_pixel;
+-
+-	/*
+-	 * x- and y-positions of the adjacent pixels on the [0, 1] range.
+-	 */
+-	vec2 xcoords;
+-	vec2 ycoords;
+-
+-	/*
++	 *
+ 	 * The coordinates passed to the shader in textureOut may point
+ 	 * to a place in between the pixels if the texture format doesn't
+ 	 * match the image format. In particular, MIPI packed raw Bayer
+@@ -107,42 +135,7 @@ void main(void)
+ 	 * In this case align the coordinates to the left nearest pixel
+ 	 * by hand.
+ 	 */
+-	center_pixel = floor(textureOut * tex_size);
+-	center_bytes.y = center_pixel.y;
+-
+-	/*
+-	 * Add a small number (a few mantissa's LSBs) to avoid float
+-	 * representation issues. Maybe paranoic.
+-	 */
+-	center_bytes.x = BPP * center_pixel.x + 0.02;
+-
+-	float fract_x = fract(center_bytes.x);
+-
+-	/*
+-	 * The below floor() call ensures that center_bytes.x points
+-	 * at one of the bytes representing the 8 higher bits of
+-	 * the pixel value, not at the byte containing the LS bits
+-	 * of the group of the pixels.
+-	 */
+-	center_bytes.x = floor(center_bytes.x);
+-	center_bytes *= tex_step;
+-
+-	xcoords = center_bytes.x + vec2(-tex_step.x, tex_step.x);
+-	ycoords = center_bytes.y + vec2(-tex_step.y, tex_step.y);
+-
+-	/*
+-	 * If xcoords[0] points at the byte containing the LS bits
+-	 * of the previous group of the pixels, move xcoords[0] one
+-	 * byte back.
+-	 */
+-	xcoords[0] += (fract_x < THRESHOLD_L) ? -tex_step.x : 0.0;
+-
+-	/*
+-	 * If xcoords[1] points at the byte containing the LS bits
+-	 * of the current group of the pixels, move xcoords[1] one
+-	 * byte forward.
+-	 */
+-	xcoords[1] += (fract_x > THRESHOLD_H) ? tex_step.x : 0.0;
++	vec2 center_pixel = floor(textureOut * tex_size);
+ 
+ 	vec2 alternate = mod(center_pixel.xy + tex_bayer_first_red, 2.0);
+ 	bool even_col = alternate.x < 1.0;
+@@ -165,7 +158,7 @@ void main(void)
+ 	 *   +----+----+----+----+
+ 	 *
+ 	 * In the below equations (0,-1).r means "r component of the texel
+-	 * shifted by -tex_step.y from the center_bytes one" etc.
++	 * one row above the central pixel" etc.
+ 	 *
+ 	 * In the even row / even column (EE) case the colour values are:
+ 	 *   R = C = (0,0).r,
+@@ -199,46 +192,20 @@ void main(void)
+ 	 *   patterns.z = (A0 + A1 + B0 + B1) / 4.0
+ 	 *   patterns.w = (D0 + D1 + D2 + D3) / 4.0
+ 	 */
+-	#define fetch(x, y) texture2D(tex_y, vec2(x, y)).r
+-
+-	float C = texture2D(tex_y, center_bytes).r;
+-
+-	/*
+-	 * Defect pixel suppression: clamp this sample into the range of the
+-	 * four pixels two steps away, which carry the same colour filter. A
+-	 * hot photosite disagrees with all of them and is pulled back; real
+-	 * detail does not, because the lens spreads a point over more than
+-	 * two pixels, so the clamp is then a no-op.
+-	 *
+-	 * Two columns away is not a fixed byte offset in a packed layout, so
+-	 * address it the way the centre is addressed -- from the PIXEL index
+-	 * -- rather than by stepping bytes. That lands on the high-bits byte
+-	 * by construction and needs none of the low-bits-byte fixups xcoords
+-	 * does for its one-pixel steps.
+-	 */
+-	float dpc_xm = floor(BPP * (center_pixel.x - 2.0) + 0.02) * tex_step.x;
+-	float dpc_xp = floor(BPP * (center_pixel.x + 2.0) + 0.02) * tex_step.x;
+-	float dpc_ym = center_bytes.y - 2.0 * tex_step.y;
+-	float dpc_yp = center_bytes.y + 2.0 * tex_step.y;
+-	vec4 dpc = vec4(
+-		fetch(center_bytes.x, dpc_ym),	/* ( 0,-2) */
+-		fetch(center_bytes.x, dpc_yp),	/* ( 0, 2) */
+-		fetch(dpc_xm, center_bytes.y),	/* (-2, 0) */
+-		fetch(dpc_xp, center_bytes.y));	/* ( 2, 0) */
+-	C = clamp(C,
+-		  min(min(dpc.x, dpc.y), min(dpc.z, dpc.w)),
+-		  max(max(dpc.x, dpc.y), max(dpc.z, dpc.w)));
++	float cx = center_pixel.x;
++	float cy = center_pixel.y;
+ 
++	float C = corrected(cx, cy);
+ 	vec4 patterns = vec4(
+-		fetch(center_bytes.x, ycoords[0]),	/* A0: (0,-1) */
+-		fetch(xcoords[0], center_bytes.y),	/* B0: (-1,0) */
+-		fetch(xcoords[0], ycoords[0]),		/* D0: (-1,-1) */
+-		fetch(xcoords[1], ycoords[0]));		/* D1: (1,-1) */
++		corrected(cx,       cy - 1.0),	/* A0: (0,-1) */
++		corrected(cx - 1.0, cy),	/* B0: (-1,0) */
++		corrected(cx - 1.0, cy - 1.0),	/* D0: (-1,-1) */
++		corrected(cx + 1.0, cy - 1.0));	/* D1: (1,-1) */
+ 	vec4 temp = vec4(
+-		fetch(center_bytes.x, ycoords[1]),	/* A1: (0,1) */
+-		fetch(xcoords[1], center_bytes.y),	/* B1: (1,0) */
+-		fetch(xcoords[1], ycoords[1]),		/* D3: (1,1) */
+-		fetch(xcoords[0], ycoords[1]));		/* D2: (-1,1) */
++		corrected(cx,       cy + 1.0),	/* A1: (0,1) */
++		corrected(cx + 1.0, cy),	/* B1: (1,0) */
++		corrected(cx + 1.0, cy + 1.0),	/* D3: (1,1) */
++		corrected(cx - 1.0, cy + 1.0));	/* D2: (-1,1) */
+ 	patterns = (patterns + temp) * 0.5;
+ 		/* .x = (A0 + A1) / 2.0, .y = (B0 + B1) / 2.0 */
+ 		/* .z = (D0 + D3) / 2.0, .w = (D1 + D2) / 2.0 */

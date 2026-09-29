@@ -1,0 +1,99 @@
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Tue, 16 Sep 2026 16:20:00 +0200
+Subject: [PATCH] software_isp: debayer: suppress defect pixels
+
+A black frame from the taimen rear sensor carries about 5700 isolated
+coloured specks. Measured by taking two full-resolution dark frames back
+to back: 7625 and 7531 pixels above threshold, 5713 of them at IDENTICAL
+coordinates, where random coincidence predicts 4.7. They are hot
+photosites, not noise -- a fixed defect pattern, 0.047% of 12 MP.
+
+Nothing in the software ISP corrects them. The pipeline has black level,
+AWB, CCM, LSC, AGC, AF, adjust and lux, and no defective pixel stage;
+the module's OTP carries no defect map either. Hardware ISPs do this,
+which is why the same sensor looks clean under a vendor stack.
+
+Clamp each sample into the range of its four SAME-COLOUR neighbours, the
+pixels two steps away in each axis. This cannot remove real detail: the
+lens spreads a point across more than two pixels, so a genuine feature
+present at one photosite is present in those neighbours too and the
+clamp is a no-op. Only a sensor defect disagrees with all four at once.
+
+The unpacked shader already fetches those four. The MIPI packed shader
+addresses the two-column neighbours from the PIXEL index, the way it
+already addresses the centre, rather than by stepping bytes: that lands
+on the high-bits byte by construction and needs none of the
+low-bits-byte fixups its one-pixel steps require.
+
+Measured free on an Adreno 540. Debayer time at 2016x1512 was 29310
+us/frame with this against 29437 without, inside the +/-8% it varies by
+between runs: the extra fetches land in texture cache.
+
+Assisted-by: Claude
+---
+--- a/src/libcamera/shaders/bayer_unpacked.frag
++++ b/src/libcamera/shaders/bayer_unpacked.frag
+@@ -53,6 +53,27 @@
+     #endif
+ 
+     float C = fetch(center.x, center.y); // ( 0, 0)
++
++    /*
++     * Defect pixel suppression.
++     *
++     * A hot photosite reads high whatever the scene, and survives
++     * demosaicing as an isolated speck in the colour of its own filter.
++     * The four pixels two steps away carry that same filter, so clamping
++     * this one into their range removes a sample that disagrees with all
++     * of them.
++     *
++     * It cannot remove real detail: the lens spreads a point over more
++     * than two pixels, so an image feature present here is present in its
++     * same-colour neighbours too, and the clamp is then a no-op. Only a
++     * sensor defect can disagree with every neighbour at once.
++     */
++    float d0 = fetch(center.x, yCoord[0]);   // ( 0,-2)
++    float d1 = fetch(center.x, yCoord[3]);   // ( 0, 2)
++    float d2 = fetch(xCoord[0], center.y);   // (-2, 0)
++    float d3 = fetch(xCoord[3], center.y);   // ( 2, 0)
++    C = clamp(C, min(min(d0, d1), min(d2, d3)), max(max(d0, d1), max(d2, d3)));
++
+     const vec4 kC = vec4( 4.0,  6.0,  5.0,  5.0) / 8.0;
+ 
+     // Determine which of four types of pixels we are on.
+--- a/src/libcamera/shaders/bayer_1x_packed.frag
++++ b/src/libcamera/shaders/bayer_1x_packed.frag
+@@ -202,6 +202,33 @@
+ 	#define fetch(x, y) texture2D(tex_y, vec2(x, y)).r
+ 
+ 	float C = texture2D(tex_y, center_bytes).r;
++
++	/*
++	 * Defect pixel suppression: clamp this sample into the range of the
++	 * four pixels two steps away, which carry the same colour filter. A
++	 * hot photosite disagrees with all of them and is pulled back; real
++	 * detail does not, because the lens spreads a point over more than
++	 * two pixels, so the clamp is then a no-op.
++	 *
++	 * Two columns away is not a fixed byte offset in a packed layout, so
++	 * address it the way the centre is addressed -- from the PIXEL index
++	 * -- rather than by stepping bytes. That lands on the high-bits byte
++	 * by construction and needs none of the low-bits-byte fixups xcoords
++	 * does for its one-pixel steps.
++	 */
++	float dpc_xm = floor(BPP * (center_pixel.x - 2.0) + 0.02) * tex_step.x;
++	float dpc_xp = floor(BPP * (center_pixel.x + 2.0) + 0.02) * tex_step.x;
++	float dpc_ym = center_bytes.y - 2.0 * tex_step.y;
++	float dpc_yp = center_bytes.y + 2.0 * tex_step.y;
++	vec4 dpc = vec4(
++		fetch(center_bytes.x, dpc_ym),	/* ( 0,-2) */
++		fetch(center_bytes.x, dpc_yp),	/* ( 0, 2) */
++		fetch(dpc_xm, center_bytes.y),	/* (-2, 0) */
++		fetch(dpc_xp, center_bytes.y));	/* ( 2, 0) */
++	C = clamp(C,
++		  min(min(dpc.x, dpc.y), min(dpc.z, dpc.w)),
++		  max(max(dpc.x, dpc.y), max(dpc.z, dpc.w)));
++
+ 	vec4 patterns = vec4(
+ 		fetch(center_bytes.x, ycoords[0]),	/* A0: (0,-1) */
+ 		fetch(xcoords[0], center_bytes.y),	/* B0: (-1,0) */

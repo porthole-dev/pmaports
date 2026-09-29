@@ -1,0 +1,85 @@
+From 370648518a3ac9f6dd0c1a295014e72149ea31fc Mon Sep 17 00:00:00 2001
+From: Giuseppe Maggio <jertlok@proton.me>
+Date: Wed, 16 Sep 2026 13:05:38 +0200
+Subject: [PATCH 234/235] media: i2c: lc898214xd: sign extend the hall position
+ readback
+
+The position debugfs node printed the 12-bit hall reading unsigned, so
+the whole negative half of the lens travel read back as 4019/3933/3828
+instead of -77/-163/-268.
+
+That node is the only instrument that distinguishes "the coil moved"
+from "the target register accepted the write", and it was unreadable
+exactly where the lens sits near its macro stop.
+
+While here, record what a focus sweep measured on 2026-09-16, because it
+contradicts the direction this file asserts: a farther subject is
+sharpest at a HIGHER FOCUS_ABSOLUTE code, so code 0 focuses near rather
+than at infinity, and a fit puts infinity near code 157 rather than 581.
+The polarity is deliberately left alone for now -- libcamera's dioptre
+map has to move in the same change, and the fit wants stations at
+measured distances first.
+
+Assisted-by: Claude:claude-opus-5
+---
+ drivers/media/i2c/lc898214xd.c | 33 +++++++++++++++++++++++++++++++--
+ 1 file changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/lc898214xd.c b/drivers/media/i2c/lc898214xd.c
+index f2f03f067b1a..f71475a423d3 100644
+--- a/drivers/media/i2c/lc898214xd.c
++++ b/drivers/media/i2c/lc898214xd.c
+@@ -42,6 +42,7 @@
+  * 10} and {0xE0, BYTE_ADDR, 0x00, BYTE_DATA, MSM_ACT_POLL, 10}).
+  */
+ 
++#include <linux/bitops.h>
+ #include <linux/debugfs.h>
+ #include <linux/i2c.h>
+ #include <linux/iopoll.h>
+@@ -87,6 +88,28 @@
+  * V4L2_CID_FOCUS_ABSOLUTE is unsigned and, by convention, increases towards
+  * near focus. So expose 0..581, mapping 0 -> +324 (infinity) and 581 -> -257
+  * (macro), and convert on the way to the hardware.
++ *
++ * UNRESOLVED, measured 2026-09-16 (bringup/camera/af-sweep.py, exposure and
++ * scene stability both held, actuator readback tracking every step):
++ *
++ *   subject                 distance   sharpest at
++ *   lit book, square on     0.47 m     code 0    (9.3x over the range)
++ *   room, shelving          ~2-3 m     code 128  (up to 11x)
++ *   book on a far shelf     far        code 192  (15.5x)
++ *
++ * Sharpness rises with distance as the CODE rises, so pos 0 focuses NEAR and
++ * pos 581 FAR -- the opposite of both the labels above and the V4L2
++ * convention. A fit through the two solid points puts infinity near code 157,
++ * which would leave roughly two thirds of the exposed range beyond infinity
++ * and the near end unreachable (a subject at 0.155 m stayed flat to within
++ * 5% across the whole sweep, with no peak anywhere).
++ *
++ * That cannot be reconciled with the vendor's af_tuning (infinity +324, macro
++ * -257) without either those two fields being read swapped out of
++ * libactuator_lc898214xd.so, or the hall scale not being the DAC scale. The
++ * polarity is deliberately NOT flipped here yet: the tuning file's dioptre
++ * map would have to move in the same commit, and the fit needs stations at
++ * measured distances in daylight first.
+  */
+ #define LC898214XD_CODE_INFINITY	324
+ #define LC898214XD_CODE_MACRO		(-257)
+@@ -213,8 +236,14 @@ static int lc898214xd_position_show(struct seq_file *s, void *data)
+ 	if (lsb < 0)
+ 		return lsb;
+ 
+-	seq_printf(s, "%u\n",
+-		   ((msb << 8) | lsb) >> LC898214XD_CODE_SHIFT);
++	/*
++	 * The code is signed 12 bits, so sign extend it. Printed unsigned, the
++	 * whole negative half of the travel read back as 4019/3933/3828 rather
++	 * than -77/-163/-268, which makes the one instrument that proves the
++	 * coil moved unreadable exactly where the lens is near its macro stop.
++	 */
++	seq_printf(s, "%d\n",
++		   sign_extend32(((msb << 8) | lsb) >> LC898214XD_CODE_SHIFT, 11));
+ 
+ 	return 0;
+ }

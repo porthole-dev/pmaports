@@ -394,7 +394,7 @@ def cmd_build(pkg: str) -> int:
     import time
     started = time.monotonic()
     try:
-        pmbootstrap("--timeout", "3600", "build", "--force", "--ignore-depends", "--arch", ARCH, pkg)
+        pmbootstrap("--timeout", "20000" if tiers().get(pkg) == "heavy" else "3600", "build", "--force", "--ignore-depends", "--arch", ARCH, pkg)
     finally:
         print(f"build elapsed seconds: {time.monotonic() - started:.1f}", flush=True)
         # Native ARM jobs use this chroot; read its cache, not a host cache.

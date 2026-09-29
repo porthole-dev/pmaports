@@ -1,5 +1,7 @@
 # Nura device packages
 
+[Website](https://porthole-dev.github.io/porthole/) · [Downloads](https://porthole-dev.github.io/porthole/downloads/) · [Device support](https://porthole-dev.github.io/porthole/devices/)
+
 Downstream Nura packages for the porthole Taimen port. Upstream still calls its
 packaging project postmarketOS/pmaports; those Git and package interfaces stay
 unchanged. Upstream project documentation is preserved in
@@ -36,5 +38,5 @@ A successful package build alone does not establish hardware support.
 ## Before submitting
 
 Bump `pkgrel` whenever packaged contents change. Keep source URLs public,
-checksums current and patches attributable. Firmware is not published by CI.
+checksums current and patches attributable. Taimen firmware is published under the recorded Google and Qualcomm grant; other firmware is excluded.
 Read [the contribution policy](https://github.com/porthole-dev/.github/blob/main/CONTRIBUTING.md).

@@ -83,7 +83,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 
 pkgname=firmware-google-taimen
 pkgver=20250505
-pkgrel=9
+pkgrel=10
 pkgdesc="Firmware for Google Pixel 2 XL (adsp, slpi, wlan, bluetooth, gpu zap, modem)"
 url="https://postmarketos.org"
 arch="aarch64"
@@ -192,6 +192,6 @@ _fingerprint() {
 
 sha512sums="
 65ebd3c01f5633f8d9818c8410332ccb0f336b0ef8bd99b7b2f046814585395548ce9a432628623672dc811a9ea20aa945925743eed24242866ed3b5983cccea  firmware-google-taimen-d1a4f0d0ea34157875751c812c9887550e216c5a.tar.gz
-0c38e60200837c0d0dc1a84e910b230723de17a9c6c1fce52a84303de38cf43867368c0d42126163395641f432a2eb80abd58809ddb1d66514ed46394a395047  board-2.json
 903ec45eb2495f49e4396494e4e9fcf5ebf670e3f16dddeb20c4d7fec9bbf4875a9c9f2ea305d0bca3ad878446db5d3a6de3b03d59b6fc54a376dcae24fe9039  taimen-factory-d7bdad8e5599eefbafb6fa454f0967b01af8f76f.tar.gz
+0c38e60200837c0d0dc1a84e910b230723de17a9c6c1fce52a84303de38cf43867368c0d42126163395641f432a2eb80abd58809ddb1d66514ed46394a395047  board-2.json
 "

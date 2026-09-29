@@ -1,6 +1,6 @@
 {
   "inputs": {
-    "profiles/google-taimen/aports.conf": "d95bf591eaed7b25ca548839dd7876268c40fc85c556a80fbecc645fbebc4b26",
+    "profiles/google-taimen/aports.conf": "d8ae9100373eddf9fb87a5435e56aa319f6f2562dabe4f4af951f173286e5ba4",
     "profiles/shared-aports.conf": "e7f9a8fb609a60066868926787a3335a959814ef62e4652bfa38eee8322c8032"
   },
   "missing": [],
@@ -51,7 +51,7 @@
         "google-taimen"
       ],
       "path": "temp/fprintd",
-      "why": "unmodified content, forked only so pmbootstrap can build it"
+      "why": "fingerprint D-Bus service with build fixes for the device"
     },
     {
       "name": "gnome-control-center",

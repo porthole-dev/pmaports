@@ -7,7 +7,7 @@ maintainer="Giuseppe Maggio <jertlok@proton.me>"
 # TODO: Figure out how to ditch out Polkit (make it optional).
 pkgname=fprintd
 pkgver=1.94.5
-pkgrel=1
+pkgrel=51
 pkgdesc="Daemon that provides fingerprint scanning functionality over D-Bus"
 url="https://fprint.freedesktop.org/"
 arch="all"

@@ -58,6 +58,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: porthole-dev/porthole
+          ref: 968011cad210262b3f1f8d31238b89c9c89f663c
+          path: verification
+          persist-credentials: false
       - name: Assemble and verify the release candidate
         env:
           FIRMWARE_GRANT: ${{ vars[matrix.grant] }}
@@ -66,7 +72,7 @@ jobs:
           PACKAGES_URL: https://github.com/porthole-dev/pmos-packages/releases/download
         run: |
           docker run --rm --privileged \
-            -v "$PWD:/pmaports" -w /pmaports -v "$RUNNER_TEMP/work:/work" \
+            -v "$PWD:/pmaports" -w /pmaports -v "$PWD/verification:/verification:ro" -v "$RUNNER_TEMP/work:/work" \
             -e HOST_UID="$(id -u)" -e FIRMWARE_GRANT -e IMAGE_DEVICE \
             -e PORTHOLE_PMOS_PASSWORD -e PACKAGES_URL \
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'sh .github/scripts/image.sh'

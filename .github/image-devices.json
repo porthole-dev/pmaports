@@ -31,6 +31,8 @@
       "lib/firmware/qcom/msm8998/wahoo/modem.mbn",
       "lib/firmware/qcom/msm8998/wahoo/modemr.jsn"
     ],
-    "install_guide": ".github/IMAGE-INSTALL.md"
+    "install_guide": ".github/IMAGE-INSTALL.md",
+    "boot_dtb": "boot/msm8998-google-taimen.dtb",
+    "boot_kernel": "boot/vmlinuz"
   }
 }

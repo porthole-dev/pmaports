@@ -29,6 +29,8 @@ fi
 # Validate installed versions against the release recipes, not just package presence.
 python3 .github/scripts/check-image.py "$root" "$IMAGE_DEVICE"
 pmb export /work/export
+python3 /verification/tools/bootimg-verify.py /work/export/boot.img \
+    --dtb "$root/$IMAGE_BOOT_DTB" --kernel "$root/$IMAGE_BOOT_KERNEL"
 cp -L /work/export/boot.img /work/image/
 cp -L "/work/export/$IMAGE_DEVICE.img" "/work/image/$IMAGE_DEVICE.img"
 if [ -n "$IMAGE_DTBO_SHA256" ]; then

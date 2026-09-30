@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: porthole-dev/.github/actions/commit-check@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
+      - uses: porthole-dev/.github/actions/commit-check@27dcd140dc7e32d9dbdaba50fef026695905b617 # shared release automation
 
   lint:
     name: Lint APKBUILDs
@@ -96,7 +96,7 @@ jobs:
         with:
           sparse-checkout: .github
           persist-credentials: false
-      - uses: porthole-dev/.github/actions/workflow-lint@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
+      - uses: porthole-dev/.github/actions/workflow-lint@27dcd140dc7e32d9dbdaba50fef026695905b617 # shared release automation
 
   native-installers:
     name: Native installer controls
@@ -130,6 +130,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: porthole-dev/.github/actions/ci-passed@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
+      - uses: porthole-dev/.github/actions/ci-passed@27dcd140dc7e32d9dbdaba50fef026695905b617 # shared release automation
         with:
           results: ${{ join(needs.*.result, ' ') }}

@@ -1,6 +1,6 @@
 # Nura device packages
 
-[Website](https://porthole-dev.github.io/porthole/) · [Downloads](https://porthole-dev.github.io/porthole/downloads/) · [Device support](https://porthole-dev.github.io/porthole/devices/)
+[Website](https://porthole-dev.github.io/porthole/) · [Downloads](https://porthole-dev.github.io/porthole/images/) · [Device support](https://porthole-dev.github.io/porthole/devices/)
 
 Downstream Nura packages for the porthole Taimen port. Upstream still calls its
 packaging project postmarketOS/pmaports; those Git and package interfaces stay

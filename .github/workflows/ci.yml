@@ -4,7 +4,7 @@ name: CI
 
 on:
   push:
-    branches: [taimen-bringup]
+    branches: ["**"]
   pull_request:
     branches: [taimen-bringup]
   merge_group:

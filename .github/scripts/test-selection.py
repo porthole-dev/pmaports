@@ -82,3 +82,16 @@ with patch.dict(os.environ, {}, clear=True):
     assert scope['cmd_check_patches'](True) == 0
     assert ('checksum', '--verify', 'sample') in calls
 print('patch checks: unavailable sources fail; available source reaches verification')
+
+# Execute the production artifact ownership gate with two colliding origins.
+node = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.If)
+            and ast.unparse(n.test) == "info.get('origin') != pkg")
+loop = ast.For(target=ast.Name(id='info', ctx=ast.Store()),
+    iter=ast.Name(id='infos', ctx=ast.Load()), body=[node,
+        ast.Expr(ast.Call(func=ast.Attribute(value=ast.Name(id='kept', ctx=ast.Load()),
+        attr='append', ctx=ast.Load()), args=[ast.Name(id='info', ctx=ast.Load())], keywords=[]))], orelse=[])
+gate = dict(infos=[{'origin':'dependency'}, {'origin':'sample'}], pkg='sample',
+            apk='fixture.apk', subprocess=types.SimpleNamespace(run=lambda *a, **k: None), kept=[])
+exec(compile(ast.fix_missing_locations(ast.Module(body=[loop], type_ignores=[])), 'packages.py', 'exec'), gate)
+assert gate['kept'] == [{'origin':'sample'}]
+print('artifact ownership: dependency excluded; requested origin retained')

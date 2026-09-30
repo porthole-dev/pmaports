@@ -43,6 +43,8 @@ for old in ./*.apk; do
 done
 for apk in "$NEW_DIR"/*.apk; do
 	[ -e "$apk" ] || continue
+	# Native verification catches corrupt payloads that apk index does not read.
+	apk verify --allow-untrusted "$apk"
 	name=$(pkginfo "$apk" pkgname)
 	origin=$(pkginfo "$apk" origin)
 	file=$(basename "$apk")

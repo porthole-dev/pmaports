@@ -99,6 +99,13 @@ publish() {
 	xargs -r -n1 gh release delete-asset "$tag" -R "$PACKAGES_REPO" -y < "$repo/.remove"
 	(cd "$repo" && xargs sha256sum < .upload) | sed "s|  |  $tag/|" >> "$RUNNER_TEMP/uploaded.sha256"
 
+	# Verify downloaded APK bytes as well as the index before attesting success.
+	while IFS= read -r file; do
+		[ "$file" != APKINDEX.tar.gz ] || continue
+		gh release download "$tag" -R "$PACKAGES_REPO" -p "$file" -D "$check" --clobber
+		cmp "$check/$file" "$repo/$file"
+	done < "$repo/.upload"
+
 	# Verify what was published, not what was built.
 	rm -f "$check/APKINDEX.tar.gz"
 	gh release download "$tag" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "$check"

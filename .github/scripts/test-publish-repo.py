@@ -24,6 +24,16 @@ with tempfile.TemporaryDirectory() as tmp:
         p=root/'bin'/name; p.write_text(text); p.chmod(0o755)
     env=dict(os.environ,PATH=str(root/'bin')+':'+os.environ['PATH'],ARCH='aarch64',KEY='test',PACKAGER='Test',DESCRIPTION='fixture',
         **{k:str(root/v) for k,v in {'REPO_DIR':'repo','NEW_DIR':'new','KEYS_DIR':'keys','PUBKEYS_DIR':'pubkeys','TRUSTED_DIR':'trusted'}.items()})
+    verifier=root/'bin/apk'
+    verifier.write_text(verifier.read_text().replace('exit 0',
+        '[ "$1" != verify ] || [ -z "${REJECT_APK:-}" ] || exit 1\nexit 0'))
+    env['REJECT_APK']='1'
+    apk(root/'new/bad-1-r0.apk','1-r0',pkg='bad')
+    def rejected(): return subprocess.run(['sh',str(SCRIPT)],env=env,capture_output=True,text=True)
+    assert rejected().returncode != 0
+    assert not (root/'repo/bad-1-r0.apk').exists()
+    env.pop('REJECT_APK')
+    (root/'new/bad-1-r0.apk').unlink()
     apk(root/'repo/example-1-r0.apk','1-r0')
     apk(root/'new/example-2-r0.apk','2-r0')
     def run(): return subprocess.run(['sh',str(SCRIPT)],env=env,capture_output=True,text=True)

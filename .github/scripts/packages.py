@@ -408,6 +408,11 @@ def cmd_build(pkg: str) -> int:
             print(f"removing {apk.name}: firmware grant not enabled")
             subprocess.run(["sudo", "rm", "-f", str(apk)], check=True)
             continue
+        # Matrix jobs may build the same dependency with different bytes. Never
+        # merge those files concurrently in download-artifact's shared directory.
+        if info.get("origin") != pkg:
+            subprocess.run(["sudo", "rm", "-f", str(apk)], check=True)
+            continue
         print(f"{apk.relative_to(WORK / 'packages')}: packager={info.get('packager')}")
         if PACKAGER and info.get("packager") != PACKAGER:
             print(f"::error::{apk.name}: packager is not the configured PACKAGER")

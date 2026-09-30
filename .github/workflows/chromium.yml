@@ -332,6 +332,9 @@ jobs:
     environment: publish
     permissions:
       contents: write  # delete the stored state
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     # All publishers share this lock, including the core and heavy lanes.
     concurrency:
       group: package-repository-publish
@@ -357,75 +360,42 @@ jobs:
         with:
           name: packages-chromium
           path: ${{ runner.temp }}/packages
-      - name: Sign and upload the repository
+      - id: publish
+        name: Sign, upload and verify the repository
         env:
           GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
           SIGNING_KEY: ${{ secrets.PACKAGES_SIGNING_KEY }}
           BRANCH: ${{ needs.plan.outputs.branch }}
+          FIRMWARE_GRANT_TAIMEN: ${{ vars.FIRMWARE_GRANT_TAIMEN }}
         run: |
           set -eu
-          keys=$RUNNER_TEMP/keys
-          (umask 077; mkdir -p "$keys"; printf '%s\n' "$SIGNING_KEY" > "$keys/$SIGNING_KEY_NAME")
-          trap 'rm -rf "$keys"' EXIT
-          # The artifact contract. actions/upload-artifact roots an artifact at
-          # the least common ancestor of what it matched, which for the package
-          # job's single search path is work/packages/, so the apks arrive as
-          # <local repository>/<arch>/*.apk. Nothing in the action promises
-          # that, and this step rewrites a signed index, so find the directory
-          # instead of assuming it -- `ls` of an empty directory is one empty
-          # line, which the old count accepted as one repository.
-          arch=aarch64  # chromium-stage.py builds for aarch64 on either runner
+          arch=aarch64
           new=$(find "$RUNNER_TEMP/packages" -mindepth 3 -maxdepth 3 \
             -name '*.apk' -path "*/$arch/*" -printf '%h\n' | sort -u)
           if [ "$(printf '%s' "$new" | grep -c . || true)" != 1 ]; then
-            echo "::error::expected one <local repository>/$arch directory of apks in the packages-chromium artifact, found:"
-            find "$RUNNER_TEMP/packages" | head -n 50
+            echo "::error::expected one <local repository>/$arch directory of Chromium APKs"
             exit 1
           fi
-          tag=$BRANCH/$arch
-          repo=$RUNNER_TEMP/repo
-          mkdir -p "$repo"
-          gh release view "$tag" -R "$PACKAGES_REPO" >/dev/null 2>&1 ||
-            gh release create "$tag" -R "$PACKAGES_REPO" --title "$tag" \
-              --notes "apk repository for pmaports branch $BRANCH"
-          gh release download "$tag" -R "$PACKAGES_REPO" -p '*.apk' -D "$repo" 2>/dev/null || true
-          docker run -i --rm -v "$repo:/repo" -v "$new:/new:ro" \
-            -v "$keys:/keys:ro" -v "$PWD/.github/keys:/pubkeys:ro" \
-            -e ARCH="$arch" -e KEY="$SIGNING_KEY_NAME" -e PACKAGER \
-            -e DESCRIPTION="$PACKAGES_REPO $tag" \
-            "$ALPINE" sh -s < .github/scripts/publish-repo.sh
-          if [ ! -f "$repo/.upload" ]; then
-            echo "::error::publish-repo.sh did not run"
-            exit 1
-          fi
-          if [ -s "$repo/.upload" ]; then
-            (cd "$repo" && grep -vx APKINDEX.tar.gz .upload | xargs -r gh release upload "$tag" -R "$PACKAGES_REPO" --clobber)
-            gh release upload "$tag" -R "$PACKAGES_REPO" --clobber "$repo/APKINDEX.tar.gz"
-            xargs -r -n1 gh release delete-asset "$tag" -R "$PACKAGES_REPO" -y < "$repo/.remove"
-          fi
-          # Verify the release whether or not this run changed it. The next
-          # step deletes the stored state -- the whole build -- so "nothing
-          # new" has to mean "already published", which is only true if the
-          # index really names every package this run handed over.
-          check=$RUNNER_TEMP/check
+          UNPUBLISHED=$(awk '$1 == "unpublished" { printf "%s ", $2 }' .github/packages.conf)
+          export UNPUBLISHED
+          sh .github/scripts/publish.sh "$RUNNER_TEMP/packages"
+          # Check unchanged releases too before deleting the build checkpoint.
+          check=$RUNNER_TEMP/chromium-verification
           mkdir -p "$check"
-          gh release download "$tag" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "$check"
-          [ ! -s "$repo/.upload" ] || cmp "$check/APKINDEX.tar.gz" "$repo/APKINDEX.tar.gz"
-          docker run --rm -v "$check:/check:ro" -v "$PWD/.github/keys:/pubkeys:ro" "$ALPINE" \
-            apk verify --keys-dir /pubkeys /check/APKINDEX.tar.gz
-          gh release view "$tag" -R "$PACKAGES_REPO" --json assets --jq '.assets[].name' | sort > "$check/assets"
+          gh release download "$BRANCH/$arch" -R "$PACKAGES_REPO" -p APKINDEX.tar.gz -D "$check"
           tar -xzOf "$check/APKINDEX.tar.gz" APKINDEX 2>/dev/null |
             awk -F: '/^P:/ { p = $2 } /^V:/ { print p "-" $2 ".apk" }' | sort > "$check/indexed"
-          if comm -23 "$check/indexed" "$check/assets" | grep .; then
-            echo "::error::The index names packages that are not release assets"
-            exit 1
-          fi
           find "$new" -maxdepth 1 -name '*.apk' -printf '%f\n' | sort > "$check/ours"
           if comm -23 "$check/ours" "$check/indexed" | grep .; then
             echo "::error::The index does not name every package this run built"
             exit 1
           fi
-          echo "published $(wc -l < "$check/ours") package(s) into $tag"
+          if [ -s "$RUNNER_TEMP/uploaded.sha256" ]; then echo "uploaded=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Attest the uploaded packages and indexes
+        if: steps.publish.outputs.uploaded == 'true'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/uploaded.sha256
       - name: Delete the stored state
         env:
           GH_TOKEN: ${{ github.token }}

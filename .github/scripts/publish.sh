@@ -52,6 +52,12 @@ publish() {
 			echo "the published index does not verify against .github/keys: re-signing it"
 			reindex=1
 		fi
+		# A previous upload can stop after APKs but before the index. Repair
+		# that orphaned-asset state even when every retried APK is identical.
+		tar -xzOf "$check/APKINDEX.tar.gz" APKINDEX 2>/dev/null |
+			awk -F: '/^P:/ { p = $2 } /^V:/ { print p "-" $2 ".apk" }' | sort > "$check/index-before"
+		grep '\.apk$' "$check/before" > "$check/apks-before" || true
+		if ! cmp -s "$check/index-before" "$check/apks-before"; then reindex=1; fi
 		for origin in $(index_origins "$check/APKINDEX.tar.gz"); do
 			if in_list "$origin" "${UNPUBLISHED:-}"; then reindex=1; fi
 		done

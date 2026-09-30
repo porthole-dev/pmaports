@@ -67,3 +67,35 @@ with tempfile.TemporaryDirectory() as tmp:
     apk(root/'new/example-3-r0.apk','3-r0',files=(('usr/lib/firmware/vendor/blob',b'blob'),))
     result=run(); assert result.returncode != 0 and 'lib/firmware' in result.stderr
 print('publisher: immutable APKs; Taimen firmware gated; other firmware refused')
+
+# Every publishing lane must use the same fail-closed download/payload checks.
+workflows = SCRIPT.parents[1] / 'workflows'
+for name in ('build.yml', 'chromium.yml'):
+    workflow = (workflows / name).read_text()
+    assert 'sh .github/scripts/publish.sh "$RUNNER_TEMP/packages"' in workflow, name
+    assert "subject-checksums: ${{ runner.temp }}/uploaded.sha256" in workflow, name
+    assert "2>/dev/null || true" not in workflow, name
+print('core and Chromium share the verified publisher and attestation contract')
+
+# Exercise the actual index/assets comparison: matching, orphaned and empty.
+outer = SCRIPT.with_name('publish.sh').read_text()
+comparison = outer.split('# that orphaned-asset state even when every retried APK is identical.\n', 1)[1]
+comparison = comparison.split('\t\tfor origin in ', 1)[0]
+with tempfile.TemporaryDirectory() as tmp:
+    check = pathlib.Path(tmp)
+    def index(records):
+        with tarfile.open(check/'APKINDEX.tar.gz', 'w:gz') as archive:
+            data=records.encode(); member=tarfile.TarInfo('APKINDEX'); member.size=len(data)
+            archive.addfile(member, io.BytesIO(data))
+    index('P:example\nV:2-r0\n\n')
+    for assets, expected in [('APKINDEX.tar.gz\nexample-2-r0.apk\n', ''),
+                              ('APKINDEX.tar.gz\nexample-2-r0.apk\nexample-3-r0.apk\n', '1')]:
+        (check/'before').write_text(assets)
+        result=subprocess.run(['sh','-ec', comparison+'\nprintf %s "$reindex"'],
+            env=dict(os.environ,check=str(check),reindex=''),capture_output=True,text=True,check=True)
+        assert result.stdout == expected
+    index(''); (check/'before').write_text('APKINDEX.tar.gz\n')
+    result=subprocess.run(['sh','-ec',comparison+'\nprintf %s "$reindex"'],
+        env=dict(os.environ,check=str(check),reindex=''),capture_output=True,text=True,check=True)
+    assert result.stdout == ''
+print('publication retry: matching/empty indexes retained; orphaned assets reindexed')

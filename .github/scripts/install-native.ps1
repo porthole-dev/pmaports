@@ -10,7 +10,7 @@ function Invoke-Fastboot([string[]]$Arguments) {
     try { $output = & $Fastboot @Arguments 2>&1; $result = $LASTEXITCODE }
     finally { $ErrorActionPreference = $saved }
     if ($result -ne 0) { throw "fastboot failed ($result): $output" }
-    return ($output | Out-String)
+    return (($output | ForEach-Object { $_.ToString() }) -join "`n")
 }
 try {
     $manifest = Get-Content -Raw (Join-Path $PSScriptRoot 'bundle.json') | ConvertFrom-Json

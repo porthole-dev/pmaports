@@ -54,7 +54,6 @@ with tempfile.TemporaryDirectory() as temporary:
             assert result.returncode != 0, 'Corrupt image accepted'
             (native_dir / 'boot.img').write_bytes(b'boot')
         print('Native OS runtime: verified dry-run and corrupt-image rejection passed')
-        sys.exit(0)
     fake = root / 'fastboot'
     log = root / 'writes'
     fake.write_text('''#!/usr/bin/env python3
@@ -72,6 +71,10 @@ else:
  if os.environ.get('FAIL') and args[2:4] == ['flash', 'boot_b']: sys.exit(1)
 ''')
     fake.chmod(0o755)
+    if os.name == 'nt':
+        script = fake
+        fake = root / 'fastboot.cmd'
+        fake.write_text('@echo off\n"' + sys.executable + '" "' + str(script) + '" %*\n')
     def run(expected=True, text='google-taimen\n', extra=None, dry=False):
         if log.exists(): log.unlink()
         env = dict(os.environ, WRITES=str(log)); env.update(extra or {})
@@ -86,8 +89,8 @@ else:
     assert run(False, text='cancel\n') == []
     assert run(False, extra={'FAIL': '1'}) == [['flash', 'userdata'], ['flash', 'boot_b']]
     # Exercise the actual shell/PowerShell clients against the same fake phone.
-    clients = [["bash", str(native_dir / 'install.sh')]]
-    pwsh = shutil.which('pwsh')
+    clients = [] if os.name == "nt" else [["bash", str(native_dir / 'install.sh')]]
+    pwsh = shutil.which('powershell' if os.name == 'nt' else 'pwsh')
     if pwsh: clients.append([pwsh, '-NoProfile', '-File', str(native_dir / 'install.ps1'), '-Fastboot', str(fake)])
     for client in clients:
         def native_run(extra=None, text='google-taimen\n', dry=False):

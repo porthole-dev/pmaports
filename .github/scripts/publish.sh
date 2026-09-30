@@ -56,11 +56,6 @@ publish() {
 			if in_list "$origin" "${UNPUBLISHED:-}"; then reindex=1; fi
 		done
 	fi
-	if [ -z "$reindex" ] && ! ls "$new"/*.apk >/dev/null 2>&1; then
-		echo "nothing new"
-		echo "::endgroup::"
-		return 0
-	fi
 
 	# The whole current repository: a failed or partial download must never
 	# produce an index that silently drops published packages.

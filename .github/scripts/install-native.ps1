@@ -16,7 +16,7 @@ try {
     $manifest = Get-Content -Raw (Join-Path $PSScriptRoot 'bundle.json') | ConvertFrom-Json
     if ($manifest.device -ne '@DEVICE@' -or $manifest.product -ne '@PRODUCT@' -or $manifest.slot -ne '@SLOT@' -or $manifest.dtbo.ToString().ToLowerInvariant() -ne '@DTBO@') { throw 'Invalid device policy' }
     foreach ($entry in $manifest.sha256.PSObject.Properties) {
-        if ($entry.Name -notmatch '^[a-zA-Z0-9._-]+$' -or $entry.Value -notmatch '^[a-f0-9]{64}$') { throw 'Invalid checksum entry' }
+        if ($entry.Name -notmatch '^[a-zA-Z0-9._@+-]+$' -or $entry.Value -notmatch '^[a-f0-9]{64}$') { throw 'Invalid checksum entry' }
         $source = [IO.File]::OpenRead((Join-Path $PSScriptRoot $entry.Name))
         $hasher = [Security.Cryptography.SHA256]::Create()
         try { $actual = [BitConverter]::ToString($hasher.ComputeHash($source)).Replace('-', '') }

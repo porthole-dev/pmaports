@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory() as temporary:
     policy = json.loads(Path('.github/image-devices.json').read_text())['google-taimen']
     files = {'google-taimen.img.gz': gzip.compress(b'rootfs'), 'boot.img': b'boot',
              'device.json': json.dumps(dict(device='google-taimen', dtbo_sha256=policy['dtbo_sha256'])).encode(),
+             'alpine-devel@lists.alpinelinux.org-test.rsa.pub': b'key',
              'INSTALL.md': b'instructions', 'pmaports.commit': b'a' * 40, 'pmbootstrap.commit': b'b' * 40}
     # Fixture uses a reviewed overlay checksum, so temporarily copy policy/script.
     old = Path.cwd()

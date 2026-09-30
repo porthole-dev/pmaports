@@ -8,7 +8,7 @@ set -eu
 : "${IMAGE_DEVICE:?device required}"
 eval "$(python3 .github/scripts/image-config.py "$IMAGE_DEVICE")"
 python3 .github/scripts/test-image.py
-pmb() { pmbootstrap --aports "$PWD" "$@"; }
+pmb() { pmbootstrap --details-to-stdout --aports "$PWD" "$@"; }
 pmb config device "$IMAGE_DEVICE"
 pmb config kernel "$IMAGE_KERNEL"
 pmb config ui "$IMAGE_UI"

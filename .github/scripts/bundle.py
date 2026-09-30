@@ -46,7 +46,7 @@ def build(directory, device, native=False):
     if native:
         hashes = {name: digest for name, digest in hashes.items() if not name.endswith('.zip')}
         manifest['sha256'] = hashes
-    bundle = directory / (device + ('-native.zip' if native else '-install.zip'))
+    bundle = directory / (device + ('-native-v2.zip' if native else '-install.zip'))
     # Images are already compressed; ZIP_STORED avoids another costly compression.
     with zipfile.ZipFile(bundle, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
         if native:
@@ -61,7 +61,7 @@ def build(directory, device, native=False):
         archive.writestr('bundle.json', json.dumps(manifest, indent=2) + '\n')
         for name in hashes:
             archive.write(directory / name, name)
-    (directory / ('NATIVE-BUNDLE-SHA256SUMS' if native else 'BUNDLE-SHA256SUMS')).write_text(sha256(bundle) + '  ' + bundle.name + '\n')
+    (directory / ('NATIVE-V2-BUNDLE-SHA256SUMS' if native else 'BUNDLE-SHA256SUMS')).write_text(sha256(bundle) + '  ' + bundle.name + '\n')
     print(bundle)
     return bundle
 

@@ -60,7 +60,7 @@ jobs:
           mkdir "$RUNNER_TEMP/image"
           gh release download "$RELEASE_TAG" -D "$RUNNER_TEMP/image" --skip-existing
           case "$BUNDLE_KIND" in
-            native) suffix=native; checksums=NATIVE-BUNDLE-SHA256SUMS;;
+            native) suffix=native-v2; checksums=NATIVE-V2-BUNDLE-SHA256SUMS;;
             python) suffix=install; checksums=BUNDLE-SHA256SUMS;;
             *) exit 1;;
           esac
@@ -79,7 +79,7 @@ jobs:
           if [ "$BUNDLE_KIND" = native ]; then
             python3 .github/scripts/bundle.py "$RUNNER_TEMP/image" "$IMAGE_DEVICE" --native
             mkdir "$RUNNER_TEMP/extracted"
-            unzip -q "$RUNNER_TEMP/image/$IMAGE_DEVICE-native.zip" -d "$RUNNER_TEMP/extracted"
+            unzip -q "$RUNNER_TEMP/image/$IMAGE_DEVICE-native-v2.zip" -d "$RUNNER_TEMP/extracted"
             bash "$RUNNER_TEMP/extracted/install.sh" --dry-run
             pwsh -NoProfile -File "$RUNNER_TEMP/extracted/install.ps1" -DryRun
           else

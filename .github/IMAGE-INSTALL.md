@@ -5,7 +5,7 @@ the matching images and Bash/PowerShell installers; Python is optional.
 Verify its checksum and provenance before extracting it:
 
 ```sh
-gh attestation verify google-taimen-native.zip -R porthole-dev/pmaports
+gh attestation verify google-taimen-native-v2.zip -R porthole-dev/pmaports
 ```
 
 Install current Android platform-tools and ensure `fastboot` is on PATH.

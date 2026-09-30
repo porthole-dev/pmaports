@@ -35,6 +35,12 @@ cd "$REPO_DIR"
 : > .remove
 for old in ./*.apk; do
 	[ -e "$old" ] || continue
+	if ! apk verify --allow-untrusted "$old"; then
+		echo "drop ${old#./} (invalid APK payload)"
+		echo "${old#./}" >> .remove
+		rm -f "$old"
+		continue
+	fi
 	if unpublished "$(pkginfo "$old" origin)"; then
 		echo "drop ${old#./} (its origin is never published, see packages.conf)"
 		echo "${old#./}" >> .remove

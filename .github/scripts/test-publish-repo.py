@@ -34,6 +34,14 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not (root/'repo/bad-1-r0.apk').exists()
     env.pop('REJECT_APK')
     (root/'new/bad-1-r0.apk').unlink()
+    # A retained malformed candidate must leave the index, while valid history stays.
+    apk(root/'repo/bad-1-r0.apk','1-r0',pkg='bad')
+    text=verifier.read_text().replace('[ -z "${REJECT_APK:-}" ]',
+        '[ "${3##*/}" != bad-1-r0.apk ]')
+    verifier.write_text(text)
+    assert rejected().returncode == 0
+    assert not (root/'repo/bad-1-r0.apk').exists()
+    assert 'bad-1-r0.apk' in (root/'repo/.remove').read_text()
     apk(root/'repo/example-1-r0.apk','1-r0')
     apk(root/'new/example-2-r0.apk','2-r0')
     def run(): return subprocess.run(['sh',str(SCRIPT)],env=env,capture_output=True,text=True)

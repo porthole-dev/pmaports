@@ -27,6 +27,10 @@ if find "$root/home" "$root/root" -name authorized_keys -type f -size +0c | grep
     echo 'Refusing an image containing authorized SSH keys' >&2
     exit 1
 fi
+# Confirm udev works after all systemd components have been installed.
+if [ "$IMAGE_INIT" = systemd ]; then
+    chroot "$root" /usr/bin/udevadm --version
+fi
 # Validate installed versions against the release recipes, not just package presence.
 python3 .github/scripts/check-image.py "$root" "$IMAGE_DEVICE"
 pmb export /work/export

@@ -23,7 +23,7 @@ set -eu
 
 # Consume the published fork directly so native and cross builds share fixes.
 PMB_REPO=${PMB_REPO:-https://github.com/porthole-dev/pmbootstrap.git}
-PMB_COMMIT=${PMB_COMMIT:-276919b37b355fafa2773e23aca2573595708c33}
+PMB_COMMIT=${PMB_COMMIT:-d4183da02b3b3030b0557e4520ade30c3311d53d}
 
 init=1
 [ "${1:-}" = --no-init ] && { init=; shift; }

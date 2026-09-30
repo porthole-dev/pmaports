@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       - name: Test local CI policy
         run: |
-          apk -q add python3
+          apk -q add python3 bash
           python3 .github/scripts/test-maintained.py
           python3 .github/scripts/test-selection.py
           python3 .github/scripts/test-publish-repo.py
@@ -98,10 +98,35 @@ jobs:
           persist-credentials: false
       - uses: porthole-dev/.github/actions/workflow-lint@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
 
+  native-installers:
+    name: Native installer controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          command -v pwsh
+          python3 .github/scripts/test-bundle.py
+
+  native-runtimes:
+    name: Native installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        os: [macos-15, windows-2025]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python .github/scripts/test-bundle.py --native-dry-run
+
   ci-passed:
     name: CI passed
     if: ${{ !cancelled() }}
-    needs: [commit-check, lint, patch-check, workflow-lint]
+    needs: [commit-check, lint, patch-check, workflow-lint, native-installers, native-runtimes]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

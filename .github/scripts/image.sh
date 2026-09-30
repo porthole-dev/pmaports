@@ -61,4 +61,5 @@ cp "$IMAGE_INSTALL_GUIDE" /work/image/INSTALL.md
 cp /work/image-config.json /work/image/device.json
 (cd /work/image && sha256sum ./* > SHA256SUMS)
 python3 .github/scripts/bundle.py /work/image "$IMAGE_DEVICE"
-(cd /work/image && cat BUNDLE-SHA256SUMS >> SHA256SUMS)
+python3 .github/scripts/bundle.py /work/image "$IMAGE_DEVICE" --native
+(cd /work/image && cat BUNDLE-SHA256SUMS NATIVE-BUNDLE-SHA256SUMS >> SHA256SUMS)

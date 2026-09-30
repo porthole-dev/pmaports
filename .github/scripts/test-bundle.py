@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -31,9 +32,28 @@ with tempfile.TemporaryDirectory() as temporary:
     assets = root / 'assets'; assets.mkdir()
     for name, data in files.items(): (assets / name).write_bytes(data)
     (assets / 'SHA256SUMS').write_text(''.join(hashlib.sha256(data).hexdigest() + '  ./' + name + '\n' for name, data in files.items()))
+    for script in ('install-native.sh', 'install-native.ps1'):
+        (root / '.github/scripts' / script).write_bytes(Path('.github/scripts', script).read_bytes())
     os.chdir(root)
+    native = module.build(assets, 'google-taimen', native=True)
+    native_dir = root / 'native'; native_dir.mkdir()
+    with zipfile.ZipFile(native) as archive: archive.extractall(native_dir)
     bundle = module.build(assets, 'google-taimen')
     os.chdir(old)
+    if '--native-dry-run' in sys.argv:
+        runtime = shutil.which('powershell' if os.name == 'nt' else 'pwsh')
+        assert runtime, 'PowerShell runtime required'
+        clients = [[runtime, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(native_dir / 'install.ps1'), '-DryRun']]
+        if os.name != 'nt': clients.append(['bash', str(native_dir / 'install.sh'), '--dry-run'])
+        for client in clients:
+            result = subprocess.run(client, capture_output=True, text=True)
+            assert result.returncode == 0, result.stderr
+            (native_dir / 'boot.img').write_bytes(b'corrupt')
+            result = subprocess.run(client, capture_output=True, text=True)
+            assert result.returncode != 0, 'Corrupt image accepted'
+            (native_dir / 'boot.img').write_bytes(b'boot')
+        print('Native OS runtime: verified dry-run and corrupt-image rejection passed')
+        sys.exit(0)
     fake = root / 'fastboot'
     log = root / 'writes'
     fake.write_text('''#!/usr/bin/env python3
@@ -64,6 +84,32 @@ else:
         assert run(False, extra=extra) == []
     assert run(False, text='cancel\n') == []
     assert run(False, extra={'FAIL': '1'}) == [['flash', 'userdata'], ['flash', 'boot_b']]
+    # Exercise the actual shell/PowerShell clients against the same fake phone.
+    clients = [["bash", str(native_dir / 'install.sh')]]
+    pwsh = shutil.which('pwsh')
+    if pwsh: clients.append([pwsh, '-NoProfile', '-File', str(native_dir / 'install.ps1'), '-Fastboot', str(fake)])
+    for client in clients:
+        def native_run(extra=None, text='google-taimen\n', dry=False):
+            if log.exists(): log.unlink()
+            env = dict(os.environ, WRITES=str(log), FASTBOOT=str(fake)); env.update(extra or {})
+            result = subprocess.run(client + (['-DryRun' if client[0] == pwsh else '--dry-run'] if dry else []), input=text, text=True, capture_output=True, env=env)
+            writes = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+            return result, writes
+        result, writes = native_run(dry=True)
+        assert result.returncode == 0 and not writes, result.stderr
+        result, writes = native_run()
+        assert result.returncode == 0 and writes == [['flash', 'userdata'], ['flash', 'boot_b'], ['flash', 'dtbo_b'], ['set_active', 'b'], ['reboot']], (result.stderr, writes)
+        for extra in [{'PRODUCT': 'walleye'}, {'UNLOCKED': 'no'}, {'MULTIPLE': '1'}]:
+            result, writes = native_run(extra)
+            assert result.returncode != 0 and not writes, result.stderr
+        result, writes = native_run(text='cancel\n')
+        assert result.returncode != 0 and not writes
+        result, writes = native_run({'FAIL': '1'})
+        assert result.returncode != 0 and writes == [['flash', 'userdata'], ['flash', 'boot_b']], (result.stderr, writes)
+        (native_dir / 'boot.img').write_bytes(b'corrupt')
+        result, writes = native_run()
+        assert result.returncode != 0 and not writes
+        (native_dir / 'boot.img').write_bytes(b'boot')
     corrupt = root / 'corrupt.zip'
     with zipfile.ZipFile(bundle) as source, zipfile.ZipFile(corrupt, 'w') as target:
         for name in source.namelist(): target.writestr(name, b'bad boot' if name == 'boot.img' else source.read(name))

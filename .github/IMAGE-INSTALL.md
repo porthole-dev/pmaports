@@ -1,10 +1,41 @@
-# Pixel 2 XL experimental Nura image
+# Install an experimental image
+
+Download the native installation ZIP for your device from the release. It contains
+the matching images and Bash/PowerShell installers; Python is optional.
+Verify its checksum and provenance before extracting it:
+
+```sh
+gh attestation verify google-taimen-native.zip -R porthole-dev/pmaports
+```
+
+Install current Android platform-tools and ensure `fastboot` is on PATH.
+Back up the phone and unlock its bootloader using the device guide first.
+Keep about 8 GiB free for temporary rootfs extraction.
+From the extracted folder, run one command:
+
+```sh
+# Linux / macOS
+bash install.sh
+```
+
+```powershell
+# Windows; execution policy applies only to this process
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Use `--dry-run` (Bash) or `-DryRun` (PowerShell) to verify and preview without
+contacting a phone. The installers check the images, require exactly one matching
+unlocked device, ask before erasing data, pin all writes to that serial, and stop
+on a failed write. Neither automatically unlocks a bootloader.
+The older Python ZIP and separate files remain available.
+
+## Pixel 2 XL experimental Nura image
 
 Target: Google Pixel 2 XL (taimen), mainline Linux, Phosh, systemd.
 Includes the licensed nonfree firmware. This candidate has passed build checks;
 hardware testing applies only when a report names this exact image checksum.
 
-## Recommended: one download, one command
+### Optional Python installer
 
 Download `google-taimen-install.zip` and install Python 3.8 or newer and current
 Android platform-tools. Back up all data and unlock the bootloader using the

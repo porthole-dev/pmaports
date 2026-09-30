@@ -16,7 +16,7 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def build(directory, device):
+def build(directory, device, native=False):
     policy = json.loads(Path('.github/image-devices.json').read_text())[device]
     if policy.get('fastboot_product') is None or policy.get('install_slot') not in ('a', 'b'):
         raise ValueError('Device has no reviewed installation policy')
@@ -43,17 +43,28 @@ def build(directory, device):
     hashes['SHA256SUMS'] = sha256(directory / 'SHA256SUMS')
     manifest = dict(device=device, product=policy['fastboot_product'], slot=policy['install_slot'],
                     dtbo=bool(policy.get('dtbo_sha256')), sha256=hashes)
-    bundle = directory / (device + '-install.zip')
+    if native:
+        hashes = {name: digest for name, digest in hashes.items() if not name.endswith('.zip')}
+        manifest['sha256'] = hashes
+    bundle = directory / (device + ('-native.zip' if native else '-install.zip'))
     # Images are already compressed; ZIP_STORED avoids another costly compression.
     with zipfile.ZipFile(bundle, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
-        archive.write(installer, '__main__.py')
+        if native:
+            for source, name in [('install-native.sh', 'install.sh'), ('install-native.ps1', 'install.ps1')]:
+                script = Path('.github/scripts/' + source).read_text()
+                for key, value in {'DEVICE': device, 'PRODUCT': policy['fastboot_product'], 'SLOT': policy['install_slot'], 'DTBO': str(manifest['dtbo']).lower()}.items():
+                    script = script.replace('@' + key + '@', value)
+                archive.writestr(name, script)
+            archive.writestr('NATIVE-SHA256SUMS', ''.join(digest + '  ' + name + '\n' for name, digest in hashes.items()))
+        else:
+            archive.write(installer, '__main__.py')
         archive.writestr('bundle.json', json.dumps(manifest, indent=2) + '\n')
         for name in hashes:
             archive.write(directory / name, name)
-    (directory / 'BUNDLE-SHA256SUMS').write_text(sha256(bundle) + '  ' + bundle.name + '\n')
+    (directory / ('NATIVE-BUNDLE-SHA256SUMS' if native else 'BUNDLE-SHA256SUMS')).write_text(sha256(bundle) + '  ' + bundle.name + '\n')
     print(bundle)
     return bundle
 
 
 if __name__ == '__main__':
-    build(Path(sys.argv[1]), sys.argv[2])
+    build(Path(sys.argv[1]), sys.argv[2], '--native' in sys.argv[3:])

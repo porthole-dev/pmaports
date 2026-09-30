@@ -253,8 +253,13 @@ jobs:
       - name: Refresh organization website
         if: steps.publish.outputs.uploaded == 'true'
         env:
-          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
-        run: gh workflow run docs.yml -R porthole-dev/porthole --ref main
+          GH_TOKEN: ${{ secrets.WEBSITE_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "Website refresh uses the scheduled Docs workflow. Set WEBSITE_TOKEN (Actions write on porthole-dev/porthole) for immediate refresh." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh workflow run docs.yml -R porthole-dev/porthole --ref main
 
   build-passed:
     # The check for a ruleset to require: the matrix jobs are named after

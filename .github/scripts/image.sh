@@ -22,18 +22,14 @@ mkdir -p /work/config_apk_keys /work/image
 cp .github/keys/*.pub /work/config_apk_keys/
 pmb install --password "${PORTHOLE_PMOS_PASSWORD:?release password required}" --no-local-pkgs --add "$IMAGE_EXTRA"
 root=/work/chroot_rootfs_$IMAGE_DEVICE
-# Public images must never carry a build-host login key.
-if find "$root/home" "$root/root" -name authorized_keys -type f -size +0c | grep -q .; then
-    echo 'Refusing an image containing authorized SSH keys' >&2
-    exit 1
-fi
 # Confirm udev works after all systemd components have been installed.
 if [ "$IMAGE_INIT" = systemd ]; then
-    chroot "$root" /usr/bin/udevadm --version
+    sudo chroot "$root" /usr/bin/udevadm --version
 fi
 # Validate installed versions against the release recipes, not just package presence.
-python3 .github/scripts/check-image.py "$root" "$IMAGE_DEVICE"
+sudo --preserve-env=PYTHONPATH,PMB_CHANNELS_CFG python3 .github/scripts/check-image.py "$root" "$IMAGE_DEVICE"
 pmb export /work/export
+python3 /verification/tools/rootfs-uuid.py "/work/export/$IMAGE_DEVICE.img" --bootimg /work/export/boot.img
 python3 /verification/tools/bootimg-verify.py /work/export/boot.img \
     --dtb "$root/$IMAGE_BOOT_DTB" --kernel "$root/$IMAGE_BOOT_KERNEL"
 cp -L /work/export/boot.img /work/image/

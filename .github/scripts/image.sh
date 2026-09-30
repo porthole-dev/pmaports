@@ -29,7 +29,15 @@ fi
 # Validate installed versions against the release recipes, not just package presence.
 sudo --preserve-env=PYTHONPATH,PMB_CHANNELS_CFG python3 .github/scripts/check-image.py "$root" "$IMAGE_DEVICE"
 pmb export /work/export
-python3 /verification/tools/rootfs-uuid.py "/work/export/$IMAGE_DEVICE.img" --bootimg /work/export/boot.img
+# Fastboot exports may use Android sparse encoding. Verify the filesystem UUIDs
+# on a temporary decoded copy, while publishing the original flashable export.
+uuid_image=/work/export/$IMAGE_DEVICE.img
+if python3 -c 'import sys; sys.exit(open(sys.argv[1], "rb").read(4) != bytes.fromhex("3aff26ed"))' "$uuid_image"; then
+    pmb chroot -- simg2img "/home/pmos/rootfs/$IMAGE_DEVICE.img" "/home/pmos/rootfs/$IMAGE_DEVICE-verify.raw"
+    uuid_image=/work/chroot_native/home/pmos/rootfs/$IMAGE_DEVICE-verify.raw
+fi
+python3 /verification/tools/rootfs-uuid.py "$uuid_image" --bootimg /work/export/boot.img
+if [ "$uuid_image" != "/work/export/$IMAGE_DEVICE.img" ]; then sudo rm -f "$uuid_image"; fi
 python3 /verification/tools/bootimg-verify.py /work/export/boot.img \
     --dtb "$root/$IMAGE_BOOT_DTB" --kernel "$root/$IMAGE_BOOT_KERNEL"
 cp -L /work/export/boot.img /work/image/

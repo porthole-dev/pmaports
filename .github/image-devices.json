@@ -39,6 +39,8 @@
     ],
     "install_guide": ".github/IMAGE-INSTALL.md",
     "boot_dtb": "boot/msm8998-google-taimen.dtb",
-    "boot_kernel": "boot/vmlinuz"
+    "boot_kernel": "boot/vmlinuz",
+    "fastboot_product": "taimen",
+    "install_slot": "b"
   }
 }

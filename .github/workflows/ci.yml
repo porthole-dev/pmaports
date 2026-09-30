@@ -4,7 +4,7 @@ name: CI
 
 on:
   push:
-    branches: [taimen-bringup]
+    branches: ["**"]
   pull_request:
     types: [opened, synchronize, reopened, edited]
     branches: [taimen-bringup]
@@ -46,6 +46,7 @@ jobs:
           python3 .github/scripts/test-maintained.py
           python3 .github/scripts/test-selection.py
           python3 .github/scripts/test-publish-repo.py
+          python3 .github/scripts/test-bundle.py
       - name: Test base-commit.sh
         run: sh .github/scripts/test-base-commit.sh
       - name: Run apkbuild-lint and check version bumps

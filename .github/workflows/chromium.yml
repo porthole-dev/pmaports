@@ -327,7 +327,7 @@ jobs:
   publish:
     name: Publish repository
     needs: [plan, package]
-    if: ${{ !cancelled() && needs.package.result == 'success' && (github.event_name == 'schedule' || inputs.publish) && github.ref_name == 'taimen-bringup' }}
+    if: ${{ !cancelled() && needs.package.result == 'success' && (github.event_name == 'schedule' || inputs.publish) && github.ref == 'refs/heads/taimen-bringup' }}
     runs-on: ubuntu-24.04
     environment: publish
     permissions:
@@ -401,6 +401,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.plan.outputs.tag }}
         run: bash .github/scripts/chromium-state.sh delete "$TAG"
+
+      - name: Refresh organization website
+        if: steps.publish.outputs.uploaded == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: gh workflow run docs.yml -R porthole-dev/porthole --ref main
 
   outcome:
     name: Delivery outcome

@@ -1,6 +1,10 @@
 name: Device image
 
 on:
+  push:
+    branches: [taimen-bringup]
+  pull_request:
+    branches: [taimen-bringup]
   workflow_dispatch:
     inputs:
       device:
@@ -27,6 +31,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check installer safety
+        run: python3 .github/scripts/test-bundle.py
       - id: devices
         env:
           REQUESTED_DEVICE: ${{ inputs.device }}
@@ -34,14 +40,14 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib
           devices = json.loads(pathlib.Path(".github/image-devices.json").read_text())
-          requested = os.environ["REQUESTED_DEVICE"]
+          requested = os.environ["REQUESTED_DEVICE"] or "all"
           names = list(devices) if requested == "all" else [requested]
           rows = [{"device": name, "runner": devices[name]["runner"], "grant": devices[name]["grant_variable"], "name": devices[name]["name"]} for name in names]
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               output.write("devices=" + json.dumps(rows) + "\n")
           PY
   image:
-    if: github.ref_name == 'taimen-bringup'
+    if: github.repository_owner == 'porthole-dev' && github.ref == 'refs/heads/taimen-bringup' && github.event_name == 'workflow_dispatch'
     needs: select
     strategy:
       fail-fast: false
@@ -64,6 +70,10 @@ jobs:
           ref: 968011cad210262b3f1f8d31238b89c9c89f663c
           path: verification
           persist-credentials: false
+      - name: Check the reviewed firmware grant
+        env:
+          FIRMWARE_GRANT: ${{ vars[matrix.grant] }}
+        run: test "$FIRMWARE_GRANT" = approved
       - name: Assemble and verify the release candidate
         env:
           FIRMWARE_GRANT: ${{ vars[matrix.grant] }}
@@ -98,4 +108,17 @@ jobs:
           gh attestation verify boot.img -R "$GH_REPO"
           if [ -f dtbo.img ]; then gh attestation verify dtbo.img -R "$GH_REPO"; fi
           gh attestation verify "$IMAGE_DEVICE.img.gz" -R "$GH_REPO"
+          gh attestation verify "$IMAGE_DEVICE-install.zip" -R "$GH_REPO"
+          python3 "$IMAGE_DEVICE-install.zip" --dry-run
           gh release edit "$tag" --draft=false
+
+  refresh-website:
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: publish
+    steps:
+      - name: Refresh organization website
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: gh workflow run docs.yml -R porthole-dev/porthole --ref main

@@ -12,7 +12,7 @@ name: Build
 
 on:
   push:
-    branches: [taimen-bringup]
+    branches: ["**"]
   pull_request:
     branches: [taimen-bringup]
   merge_group:
@@ -151,7 +151,7 @@ jobs:
             "$ALPINE" sh .github/scripts/run-pmbootstrap.sh 'python3 .github/scripts/packages.py build "$PKG"'
           df -h /
       - name: Save compiler cache from a successful trusted build
-        if: steps.ccache.outputs.cache-hit != 'true' && github.ref_name == 'taimen-bringup' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.ccache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/taimen-bringup' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/work/cache_ccache_aarch64
@@ -196,7 +196,7 @@ jobs:
     if: >-
       !cancelled() && github.repository_owner == 'porthole-dev'
       && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-      && github.ref_name == 'taimen-bringup'
+      && github.ref == 'refs/heads/taimen-bringup'
       && needs.select.result == 'success'
       && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-24.04
@@ -249,6 +249,12 @@ jobs:
       - name: Say why nothing is attested
         if: steps.publish.outputs.uploaded && github.event.repository.visibility != 'public'
         run: echo "::notice::Uploaded files are not attested while this repository is private (artifact attestations need a public repository on this plan)"
+
+      - name: Refresh organization website
+        if: steps.publish.outputs.uploaded == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: gh workflow run docs.yml -R porthole-dev/porthole --ref main
 
   build-passed:
     # The check for a ruleset to require: the matrix jobs are named after

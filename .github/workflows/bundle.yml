@@ -35,7 +35,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Verify and package existing public assets
+      - id: package
+        name: Verify and package existing public assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -54,20 +55,26 @@ jobs:
           gh release download "$RELEASE_TAG" -D "$RUNNER_TEMP/image" --skip-existing
           # Existing bundle checksums must not recursively package the old bundle.
           if [ -f "$RUNNER_TEMP/image/BUNDLE-SHA256SUMS" ]; then
-            echo "::error::This release already has a bundle; preserve its verified assets"
-            exit 1
+            (cd "$RUNNER_TEMP/image" && sha256sum -c BUNDLE-SHA256SUMS)
+            gh attestation verify "$RUNNER_TEMP/image/$IMAGE_DEVICE-install.zip" -R "$GH_REPO"
+            python3 "$RUNNER_TEMP/image/$IMAGE_DEVICE-install.zip" --dry-run
+            echo "Existing bundle verified and preserved." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
           (cd "$RUNNER_TEMP/image" && sha256sum -c SHA256SUMS)
           gh attestation verify "$RUNNER_TEMP/image/$IMAGE_DEVICE.img.gz" -R "$GH_REPO"
           gh attestation verify "$RUNNER_TEMP/image/boot.img" -R "$GH_REPO"
           if [ -f "$RUNNER_TEMP/image/dtbo.img" ]; then gh attestation verify "$RUNNER_TEMP/image/dtbo.img" -R "$GH_REPO"; fi
           python3 .github/scripts/bundle.py "$RUNNER_TEMP/image" "$IMAGE_DEVICE"
+          echo "created=true" >> "$GITHUB_OUTPUT"
           python3 "$RUNNER_TEMP/image/$IMAGE_DEVICE-install.zip" --dry-run
       - name: Attest complete bundle
+        if: steps.package.outputs.created == 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: ${{ runner.temp }}/image/BUNDLE-SHA256SUMS
       - name: Publish and independently verify the new download
+        if: steps.package.outputs.created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

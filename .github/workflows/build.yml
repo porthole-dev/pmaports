@@ -271,6 +271,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: porthole-dev/.github/actions/ci-passed@efe4230d0271f39f3fdf105cb905165340512b9e # shared release automation
+      - uses: porthole-dev/.github/actions/ci-passed@f6861ce33c0791f8608ea68cf21c434fde4979cd # shared release automation
         with:
           results: ${{ join(needs.*.result, ' ') }}
